@@ -36,3 +36,7 @@ coverage/
 
 # local secrets
 passwords.txt
+
+# legacy/context data sources
+/deprecated glide tables/
+/generate report/
