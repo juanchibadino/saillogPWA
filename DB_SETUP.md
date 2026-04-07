@@ -44,8 +44,8 @@ Open the project and collect these values from the dashboard:
 
 ### From **Connect**
 - Project URL
-- anon key
-- service_role key
+- publishable key
+- secret key
 - database connection details
 
 ### From **Project Settings**
@@ -61,9 +61,16 @@ Use names like these in your app:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_SECRET_KEY=
+SUPABASE_PROJECT_REF=
+```
+
+Legacy keys can still be supported for older projects:
+
+```env
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
-SUPABASE_PROJECT_REF=
 ```
 
 If you later need a direct Postgres connection for tooling, keep it separate and never expose it to the browser.
@@ -164,12 +171,12 @@ For normal app access, you usually do not need raw Postgres credentials in front
 Use:
 
 - the Supabase URL
-- the anon key in the browser
+- the publishable key in the browser
 - secure server-side access only where needed
 
 Never expose:
 
-- service role key
+- secret key
 - raw database password
 
 ---
