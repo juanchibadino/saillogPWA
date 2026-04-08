@@ -1,6 +1,6 @@
 # PROGRESS.md
 
-Last updated: 2026-04-07
+Last updated: 2026-04-08
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
 
@@ -23,7 +23,7 @@ Sailog has completed bootstrap + Milestone 1 auth foundation:
 - Migrations applied remotely with `npx supabase db push`:
   - `001_initial_schema.sql`
   - `002_auth_access_policies.sql`
-  - `003_venues_access_policies.sql` (pending apply if not yet pushed)
+  - `003_venues_access_policies.sql`
 
 ### Vercel
 - Active project: `sailog` (renamed from `saillog`)
@@ -104,33 +104,22 @@ Sailog has completed bootstrap + Milestone 1 auth foundation:
   - `/auth/callback`
   - `/dashboard`
   - `/sign-out`
+  - `/venues`
 
-## Local Git Status (Not Yet Committed)
+## Git Status
 
-Pending local changes exist and need commit/push:
-
-- Modified:
-  - `README.md`
-  - `app/page.tsx`
-  - `next-env.d.ts`
-  - `types/database.ts`
-- Added:
-  - `app/(app)/layout.tsx`
-  - `app/(app)/dashboard/page.tsx`
-  - `app/sign-in/page.tsx`
-  - `app/auth/otp/route.ts`
-  - `app/auth/callback/route.ts`
-  - `app/sign-out/route.ts`
-  - `lib/auth/access.ts`
-  - `supabase/migrations/002_auth_access_policies.sql`
+- Milestone + Phase 6 kickoff commit pushed:
+  - `82f81ba feat: milestone 1 auth, protected shell, baseline RLS, and venues CRUD kickoff`
+- Branch is synced:
+  - `main...origin/main`
 
 ## Immediate Next Step
 
-1. Commit and push Milestone 1 + Phase 6 venues kickoff.
+1. Continue Phase 6 with `team_venue_seasons` CRUD slice.
 
 Suggested commit message:
 
-`feat: milestone 1 auth, protected shell, baseline RLS, and venues CRUD kickoff`
+`feat: add team_venue_seasons CRUD vertical slice`
 
 Then verify in production:
 
