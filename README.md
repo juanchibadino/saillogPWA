@@ -45,6 +45,83 @@ npm run dev
 
 5. Open `http://localhost:3000`.
 
+## Milestone 1 Auth Routes
+
+- `/sign-in` request an email magic link
+- `/auth/callback` exchange auth code for session
+- `/dashboard` protected app area
+- `/sign-out` clear session
+
+## Apply Migrations
+
+After pulling latest changes, apply migrations so profile bootstrap trigger and
+RLS policies are available:
+
+```bash
+npx supabase db push
+```
+
+## First Access Grant Sequence (SQL Editor)
+
+If you see this error while granting access:
+
+`ERROR: P0001: No auth user found for that email yet`
+
+it means the user has not been created in `auth.users` yet. In Sailog, the user
+must request the magic link first from `/sign-in`.
+
+1. Ask the user to request a magic link at `/sign-in`.
+2. In Supabase SQL Editor, verify the user exists:
+
+```sql
+select id, email
+from auth.users
+where lower(email) = lower('<email>');
+
+select id, email
+from public.profiles
+where lower(email) = lower('<email>');
+```
+
+3. Grant memberships using `insert ... select` (no `RAISE` blocks):
+
+```sql
+insert into public.organization_memberships (organization_id, profile_id, role)
+select
+  '<organization_id>'::uuid,
+  u.id,
+  'organization_admin'::public.organization_role_type
+from auth.users u
+where lower(u.email) = lower('<email>')
+on conflict (organization_id, profile_id, role) do nothing;
+
+insert into public.team_memberships (team_id, profile_id, role, is_active)
+select
+  '<team_id>'::uuid,
+  u.id,
+  'coach'::public.team_role_type,
+  true
+from auth.users u
+where lower(u.email) = lower('<email>')
+on conflict (team_id, profile_id, role) do update
+set
+  is_active = true,
+  left_at = null;
+```
+
+4. Confirm behavior:
+   - user without memberships sees `Access pending`
+   - user with membership can open `/dashboard`
+
+## Milestone 1 Local Validation Checklist
+
+- `npm run lint`
+- `npm run build`
+- `/sign-in` sends OTP email
+- `/auth/callback` creates session and redirects to `/dashboard`
+- `/dashboard` shows pending access without memberships
+- `/dashboard` shows role cards after membership grants
+
 ## Vercel Environment Variables
 
 Set these in Vercel for both Preview and Production:
