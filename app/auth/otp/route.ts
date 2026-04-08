@@ -1,15 +1,41 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
+import { getOptionalAppUrlOrigin } from "@/lib/supabase/env";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
+function getOriginIfValid(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
+
 function resolveRequestOrigin(request: Request, headerStore: Headers): string {
+  const configuredAppOrigin = getOptionalAppUrlOrigin();
+  if (configuredAppOrigin) {
+    return configuredAppOrigin;
+  }
+
+  const originHeader = getOriginIfValid(headerStore.get("origin"));
+  if (originHeader) {
+    return originHeader;
+  }
+
   const forwardedHost = headerStore.get("x-forwarded-host");
   const forwardedProto = headerStore.get("x-forwarded-proto");
 
   if (forwardedHost) {
     const protocol = forwardedProto ?? "https";
-    return `${protocol}://${forwardedHost}`;
+    const forwardedOrigin = getOriginIfValid(`${protocol}://${forwardedHost}`);
+    if (forwardedOrigin) {
+      return forwardedOrigin;
+    }
   }
 
   return new URL(request.url).origin;
@@ -29,12 +55,13 @@ export async function POST(request: Request) {
   const supabase = await createServerSupabaseClient();
   const headerStore = await headers();
   const origin = resolveRequestOrigin(request, headerStore);
-  const callbackUrl = `${origin}/auth/callback?next=/dashboard`;
+  const callbackUrl = new URL("/auth/callback", origin);
+  callbackUrl.searchParams.set("next", "/dashboard");
 
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: callbackUrl,
+      emailRedirectTo: callbackUrl.toString(),
       shouldCreateUser: true,
     },
   });

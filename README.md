@@ -30,6 +30,14 @@ SUPABASE_SECRET_KEY=
 SUPABASE_PROJECT_REF=
 ```
 
+Recommended for stable magic-link redirects:
+
+```env
+# Local: http://localhost:3000
+# Production: https://sailog.vercel.app
+NEXT_PUBLIC_APP_URL=
+```
+
 Legacy fallback vars are still accepted by the helper layer:
 
 ```env
@@ -51,6 +59,21 @@ npm run dev
 - `/auth/callback` exchange auth code for session
 - `/dashboard` protected app area
 - `/sign-out` clear session
+
+## Magic Link Redirect Setup
+
+If magic links send users to `localhost` from production, verify both app env
+and Supabase Auth settings:
+
+1. Set `NEXT_PUBLIC_APP_URL`:
+   - local: `http://localhost:3000`
+   - production: `https://sailog.vercel.app`
+2. In Supabase **Auth > URL Configuration**:
+   - Site URL: `https://sailog.vercel.app`
+   - Redirect URLs should include:
+     - `http://localhost:3000/auth/callback`
+     - `https://sailog.vercel.app/auth/callback`
+     - optional preview pattern: `https://sailog-*.vercel.app/auth/callback`
 
 ## Apply Migrations
 

@@ -1,6 +1,7 @@
 type SupabaseEnvKey =
   | "NEXT_PUBLIC_SUPABASE_URL"
   | "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
+  | "NEXT_PUBLIC_APP_URL"
   | "NEXT_PUBLIC_SUPABASE_ANON_KEY"
   | "SUPABASE_SECRET_KEY"
   | "SUPABASE_SERVICE_ROLE_KEY"
@@ -88,4 +89,15 @@ export function getOptionalSupabaseSecretKey(): string | undefined {
 
 export function getOptionalSupabaseProjectRef(): string | undefined {
   return getOptionalEnvValue("SUPABASE_PROJECT_REF");
+}
+
+export function getOptionalAppUrlOrigin(): string | undefined {
+  const value = getOptionalEnvValue("NEXT_PUBLIC_APP_URL");
+
+  if (!value) {
+    return undefined;
+  }
+
+  assertValidUrl("NEXT_PUBLIC_APP_URL", value);
+  return new URL(value).origin;
 }
