@@ -15,6 +15,7 @@ Sailog has completed bootstrap + Milestone 1 auth foundation:
 - Environment variables managed in Vercel (not in GitHub)
 - Local development running with `.env.local`
 - Phase 6 kickoff started with first vertical slice: `venues` CRUD
+- Magic-link redirect origin fix deployed for production auth emails
 
 ## Infrastructure Status
 
@@ -33,6 +34,7 @@ Sailog has completed bootstrap + Milestone 1 auth foundation:
   - `NEXT_PUBLIC_SUPABASE_URL`
   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
   - `SUPABASE_SECRET_KEY` (server-only, optional if needed)
+- Added `NEXT_PUBLIC_APP_URL` in Production as `https://sailog.vercel.app`
 
 ### GitHub
 - Remote: `git@github.com:juanchibadino/saillogPWA.git`
@@ -106,10 +108,29 @@ Sailog has completed bootstrap + Milestone 1 auth foundation:
   - `/sign-out`
   - `/venues`
 
+## Magic Link Redirect Fix Completed
+
+- Root cause addressed: email links were sometimes generated with localhost origin.
+- OTP route now resolves callback origin in this order:
+  1. `NEXT_PUBLIC_APP_URL`
+  2. request `Origin` header
+  3. forwarded host/proto headers
+  4. request URL origin fallback
+- Updated files:
+  - `app/auth/otp/route.ts`
+  - `lib/supabase/env.ts`
+  - `.env.example`
+  - `README.md`
+- Production redeploy executed after setting `NEXT_PUBLIC_APP_URL`.
+
 ## Git Status
 
 - Milestone + Phase 6 kickoff commit pushed:
   - `82f81ba feat: milestone 1 auth, protected shell, baseline RLS, and venues CRUD kickoff`
+- Follow-up docs sync commit pushed:
+  - `1a9559c docs: refresh progress status after milestone push`
+- Magic-link redirect fix commit pushed:
+  - `fca6296 fix: stabilize magic-link redirect origin`
 - Branch is synced:
   - `main...origin/main`
 
@@ -124,7 +145,7 @@ Suggested commit message:
 Then verify in production:
 
 1. OTP login email delivery
-2. Callback session creation
+2. Magic-link callback returns to `https://sailog.vercel.app` (not localhost)
 3. Access pending for user without memberships
 4. Dashboard access for user with team/org membership
 
