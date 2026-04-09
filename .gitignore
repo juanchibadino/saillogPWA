@@ -40,3 +40,4 @@ passwords.txt
 # legacy/context data sources
 /deprecated glide tables/
 /generate report/
+/REFERENCE/

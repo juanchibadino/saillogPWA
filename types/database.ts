@@ -136,10 +136,8 @@ export type Database = {
           id: string;
           organization_id: string;
           name: string;
-          country: string | null;
-          city: string | null;
-          venue_type: string | null;
-          notes: string | null;
+          country: string;
+          city: string;
           is_active: boolean;
           legacy_glide_row_id: string | null;
           created_at: string;
@@ -149,10 +147,8 @@ export type Database = {
           id?: string;
           organization_id: string;
           name: string;
-          country?: string | null;
-          city?: string | null;
-          venue_type?: string | null;
-          notes?: string | null;
+          country: string;
+          city: string;
           is_active?: boolean;
           legacy_glide_row_id?: string | null;
           created_at?: string;
@@ -161,10 +157,8 @@ export type Database = {
         Update: {
           organization_id?: string;
           name?: string;
-          country?: string | null;
-          city?: string | null;
-          venue_type?: string | null;
-          notes?: string | null;
+          country?: string;
+          city?: string;
           is_active?: boolean;
           legacy_glide_row_id?: string | null;
           created_at?: string;

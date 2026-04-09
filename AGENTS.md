@@ -167,6 +167,7 @@ These are the expected v1 tables.
 - Avoid dense layouts
 - Keep forms straightforward and easy to complete on phones
 - Prefer simple tables, cards, and segmented detail screens
+- Every new page or major data view must include a matching skeleton loading state using `loading.tsx` (or Suspense fallback when more appropriate)
 
 ### PWA
 - Make the app installable
@@ -493,4 +494,3 @@ Recommended setup:
 - place this content in the repo root as `AGENTS.md`
 - archive or remove older overlapping planning docs
 - if you keep a `PLAN.md`, make it a short pointer back to this document instead of a second source of truth
-

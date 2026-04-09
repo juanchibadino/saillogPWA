@@ -59,8 +59,8 @@ export default async function SignInPage({
   const errorMessage = getErrorMessage(error);
 
   return (
-    <main className="flex min-h-screen flex-col bg-slate-50 px-6 py-12 text-slate-900">
-      <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6 rounded-2xl border border-slate-200 bg-white p-8">
+    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-12 text-slate-900">
+      <div className="w-full max-w-md space-y-6 rounded-2xl border border-slate-200 bg-white p-8">
         <header className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
             Sailog
