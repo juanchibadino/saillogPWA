@@ -615,6 +615,90 @@ export type Database = {
         };
         Relationships: [];
       };
+      organization_subscriptions: {
+        Row: {
+          organization_id: string;
+          plan_tier: Database["public"]["Enums"]["plan_tier"];
+          billing_cycle: Database["public"]["Enums"]["billing_cycle"];
+          status: Database["public"]["Enums"]["subscription_status"];
+          paypal_subscription_id: string | null;
+          paypal_plan_id: string | null;
+          current_period_start_at: string | null;
+          current_period_end_at: string | null;
+          created_by_profile_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          organization_id: string;
+          plan_tier?: Database["public"]["Enums"]["plan_tier"];
+          billing_cycle?: Database["public"]["Enums"]["billing_cycle"];
+          status?: Database["public"]["Enums"]["subscription_status"];
+          paypal_subscription_id?: string | null;
+          paypal_plan_id?: string | null;
+          current_period_start_at?: string | null;
+          current_period_end_at?: string | null;
+          created_by_profile_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          organization_id?: string;
+          plan_tier?: Database["public"]["Enums"]["plan_tier"];
+          billing_cycle?: Database["public"]["Enums"]["billing_cycle"];
+          status?: Database["public"]["Enums"]["subscription_status"];
+          paypal_subscription_id?: string | null;
+          paypal_plan_id?: string | null;
+          current_period_start_at?: string | null;
+          current_period_end_at?: string | null;
+          created_by_profile_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      paypal_webhook_events: {
+        Row: {
+          id: string;
+          event_id: string;
+          event_type: string;
+          resource_id: string | null;
+          organization_id: string | null;
+          payload: Json;
+          verification_status: string;
+          processed_at: string | null;
+          processing_error: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          event_id: string;
+          event_type: string;
+          resource_id?: string | null;
+          organization_id?: string | null;
+          payload: Json;
+          verification_status: string;
+          processed_at?: string | null;
+          processing_error?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          event_id?: string;
+          event_type?: string;
+          resource_id?: string | null;
+          organization_id?: string | null;
+          payload?: Json;
+          verification_status?: string;
+          processed_at?: string | null;
+          processing_error?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       team_memberships: {
         Row: {
           id: string;
@@ -652,11 +736,21 @@ export type Database = {
     Functions: Record<string, never>;
     Enums: {
       asset_type: "photo" | "analytics_file" | "document";
+      billing_cycle: "monthly" | "yearly" | "none";
       camp_type: "training" | "regatta" | "mixed";
       global_role_type: "super_admin";
       organization_role_type: "organization_admin";
+      plan_tier: "free" | "pro" | "olympic";
       session_type: "training" | "regatta";
       setup_input_kind: "single_select" | "multi_select" | "text";
+      subscription_status:
+        | "active"
+        | "approval_pending"
+        | "approved"
+        | "suspended"
+        | "cancelled"
+        | "expired"
+        | "payment_failed";
       team_role_type: "team_admin" | "coach" | "crew";
     };
     CompositeTypes: Record<string, never>;

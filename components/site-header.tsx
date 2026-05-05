@@ -22,6 +22,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
+import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 
@@ -42,6 +43,12 @@ type SessionBreadcrumbResponse = {
   camp_name: string | null
 }
 
+type BillingPlanTier = "free" | "pro" | "olympic"
+
+type BillingPlanResponse = {
+  planTier: BillingPlanTier | null
+}
+
 function getSectionTitle(pathname: string): string {
   if (pathname.startsWith("/organizations")) {
     return "Organizations"
@@ -49,6 +56,10 @@ function getSectionTitle(pathname: string): string {
 
   if (pathname.startsWith("/teams")) {
     return "Teams"
+  }
+
+  if (pathname.startsWith("/users")) {
+    return "Users"
   }
 
   if (pathname.startsWith("/team-home")) {
@@ -69,6 +80,10 @@ function getSectionTitle(pathname: string): string {
 
   if (pathname.startsWith("/venues")) {
     return "Venues"
+  }
+
+  if (pathname.startsWith("/billing")) {
+    return "Billing"
   }
 
   if (pathname.startsWith("/dashboard")) {
@@ -183,6 +198,9 @@ export function SiteHeader({
   >({})
   const [sessionBreadcrumbById, setSessionBreadcrumbById] = useState<
     Record<string, SessionBreadcrumbResponse | null>
+  >({})
+  const [planTierByOrganizationId, setPlanTierByOrganizationId] = useState<
+    Record<string, BillingPlanTier | null>
   >({})
 
   const sectionTitle = pathname.startsWith("/team-venues")
@@ -330,6 +348,61 @@ export function SiteHeader({
     }
   }, [activeScope.activeOrgId, activeScope.activeTeamId, sessionDetailId])
 
+  useEffect(() => {
+    if (!activeScope.activeOrgId) {
+      return
+    }
+
+    const organizationId = activeScope.activeOrgId
+
+    if (organizationId in planTierByOrganizationId) {
+      return
+    }
+
+    const controller = new AbortController()
+
+    const loadPlanTier = async () => {
+      try {
+        const response = await fetch(
+          `/api/billing/plan?org=${encodeURIComponent(organizationId)}`,
+          {
+            cache: "no-store",
+            signal: controller.signal,
+          },
+        )
+
+        if (!response.ok) {
+          setPlanTierByOrganizationId((currentValue) => ({
+            ...currentValue,
+            [organizationId]: "free",
+          }))
+          return
+        }
+
+        const payload = (await response.json()) as BillingPlanResponse
+        setPlanTierByOrganizationId((currentValue) => ({
+          ...currentValue,
+          [organizationId]: payload.planTier,
+        }))
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return
+        }
+
+        setPlanTierByOrganizationId((currentValue) => ({
+          ...currentValue,
+          [organizationId]: "free",
+        }))
+      }
+    }
+
+    void loadPlanTier()
+
+    return () => {
+      controller.abort()
+    }
+  }, [activeScope.activeOrgId, planTierByOrganizationId])
+
   const venueName = venueDetailId ? venueNameById[venueDetailId] ?? null : null
   const sessionBreadcrumb = sessionDetailId
     ? sessionBreadcrumbById[sessionDetailId] ?? null
@@ -349,6 +422,15 @@ export function SiteHeader({
           "sessions",
         )
       : buildScopedHref("/team-camps", activeScope)
+  const activePlanTier = activeScope.activeOrgId
+    ? planTierByOrganizationId[activeScope.activeOrgId]
+    : null
+  const planBadgeLabel =
+    activePlanTier === "pro"
+      ? "Pro Plan"
+      : activePlanTier === "olympic"
+        ? "Olympic Plan"
+        : "Free Plan"
 
   return (
     <header className="group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 flex h-12 shrink-0 items-center gap-2 border-b bg-background transition-[width,height] ease-linear">
@@ -405,7 +487,8 @@ export function SiteHeader({
         ) : (
           <h1 className="text-base font-medium">{sectionTitle}</h1>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <Badge variant="secondary">{planBadgeLabel}</Badge>
           <ThemeToggle />
         </div>
       </div>

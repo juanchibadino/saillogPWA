@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access";
 import { canManageOrganizationOperations } from "@/lib/auth/capabilities";
+import { resolveOrganizationWriteEntitlement } from "@/lib/billing/entitlements";
 import {
   NAVIGATION_SCOPE_ORG_QUERY_KEY,
   NAVIGATION_SCOPE_TEAM_QUERY_KEY,
@@ -64,7 +65,13 @@ function getScopeFromFormData(formData: FormData): {
 
 function buildVenueRedirectPath(input: {
   status?: "created" | "updated";
-  error?: "invalid_input" | "forbidden" | "create_failed" | "update_failed";
+  error?:
+    | "invalid_input"
+    | "forbidden"
+    | "create_failed"
+    | "update_failed"
+    | "plan_limit_reached"
+    | "payment_required";
   scopeOrgId?: string;
   scopeTeamId?: string;
   redirectTo?: string;
@@ -124,6 +131,21 @@ export async function createVenueAction(formData: FormData): Promise<void> {
     redirect(
       buildVenueRedirectPath({
         error: "forbidden",
+        ...scope,
+        redirectTo,
+      }),
+    );
+  }
+
+  const entitlementDecision = await resolveOrganizationWriteEntitlement({
+    organizationId: parsedInput.data.organizationId,
+    resource: "venues",
+  });
+
+  if (!entitlementDecision.allowed && entitlementDecision.reason) {
+    redirect(
+      buildVenueRedirectPath({
+        error: entitlementDecision.reason,
         ...scope,
         redirectTo,
       }),

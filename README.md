@@ -28,6 +28,12 @@ Optional (server-only):
 ```env
 SUPABASE_SECRET_KEY=
 SUPABASE_PROJECT_REF=
+PAYPAL_ENV=sandbox
+PAYPAL_CLIENT_ID=
+PAYPAL_CLIENT_SECRET=
+PAYPAL_WEBHOOK_ID=
+PAYPAL_PRO_MONTHLY_PLAN_ID=
+PAYPAL_PRO_YEARLY_PLAN_ID=
 ```
 
 Recommended for stable magic-link redirects:
@@ -155,8 +161,16 @@ Set these in Vercel for both Preview and Production:
 Set only when needed for trusted server operations:
 
 - `SUPABASE_SECRET_KEY`
+- `PAYPAL_CLIENT_SECRET`
+- `PAYPAL_WEBHOOK_ID`
 
 Do not expose secret keys in client code or with `NEXT_PUBLIC_`.
+
+## Billing Webhook Notes
+
+- PayPal webhook route: `/api/billing/paypal/webhook`
+- Configure the webhook URL in PayPal dashboard for the same environment defined by `PAYPAL_ENV`.
+- Keep `PAYPAL_WEBHOOK_ID` synced with the webhook id for that exact environment.
 
 ## Supabase Runtime Helpers
 

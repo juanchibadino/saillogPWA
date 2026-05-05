@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 
+import { buildRequestUrl } from "@/lib/http/request-origin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 async function signOutAndRedirect(request: Request) {
   const supabase = await createServerSupabaseClient();
   await supabase.auth.signOut();
 
-  return NextResponse.redirect(new URL("/sign-in", request.url), {
+  return NextResponse.redirect(await buildRequestUrl("/sign-in", request), {
     status: 303,
   });
 }

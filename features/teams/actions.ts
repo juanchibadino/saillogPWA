@@ -5,6 +5,7 @@ import { redirect } from "next/navigation"
 
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageOrganizationOperations } from "@/lib/auth/capabilities"
+import { resolveOrganizationWriteEntitlement } from "@/lib/billing/entitlements"
 import { generateUniqueTeamSlug } from "@/lib/db/slugs"
 import {
   NAVIGATION_SCOPE_ORG_QUERY_KEY,
@@ -42,7 +43,12 @@ function getScopeFromFormData(formData: FormData): {
 
 function buildTeamsRedirectPath(input: {
   status?: "created"
-  error?: "invalid_input" | "forbidden" | "create_failed"
+  error?:
+    | "invalid_input"
+    | "forbidden"
+    | "create_failed"
+    | "plan_limit_reached"
+    | "payment_required"
   scopeOrgId?: string
   scopeTeamId?: string
 }): string {
@@ -139,6 +145,20 @@ export async function createTeamAction(formData: FormData): Promise<void> {
     redirect(
       buildTeamsRedirectPath({
         error: "forbidden",
+        ...scope,
+      }),
+    )
+  }
+
+  const entitlementDecision = await resolveOrganizationWriteEntitlement({
+    organizationId: parsedInput.data.organizationId,
+    resource: "teams",
+  })
+
+  if (!entitlementDecision.allowed && entitlementDecision.reason) {
+    redirect(
+      buildTeamsRedirectPath({
+        error: entitlementDecision.reason,
         ...scope,
       }),
     )

@@ -48,6 +48,14 @@ function getErrorMessage(error: string | undefined): string | null {
     return "Could not update camp. Confirm your permissions and try again."
   }
 
+  if (error === "plan_limit_reached") {
+    return "Plan limit reached for camps in this organization. Upgrade or change plan in Billing to continue."
+  }
+
+  if (error === "payment_required") {
+    return "Your paid plan is inactive. Recover payment in Billing to continue creating camps."
+  }
+
   return null
 }
 

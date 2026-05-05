@@ -33,7 +33,10 @@ import {
   NAVIGATION_SCOPE_ORG_QUERY_KEY,
   NAVIGATION_SCOPE_TEAM_QUERY_KEY,
 } from "@/lib/navigation/constants"
-import { resolveNavigationScope } from "@/lib/navigation/scope"
+import {
+  getSingleSearchParamValue,
+  resolveNavigationScope,
+} from "@/lib/navigation/scope"
 
 type TeamHomeSearchParams = Promise<
   Record<string, string | string[] | undefined>
@@ -162,6 +165,18 @@ function formatDurationLabel(minutes: number | null): string {
   return `${String(hours).padStart(2, "0")}h ${String(rest).padStart(2, "0")}m`
 }
 
+function getTeamHomeErrorMessage(error: string | undefined): string | null {
+  if (error === "plan_limit_reached") {
+    return "Plan limit reached for this organization. Upgrade or change plan in Billing to continue."
+  }
+
+  if (error === "payment_required") {
+    return "Your paid plan is inactive. Recover payment in Billing to continue."
+  }
+
+  return null
+}
+
 export default async function TeamHomePage({
   searchParams,
 }: {
@@ -169,6 +184,8 @@ export default async function TeamHomePage({
 }) {
   const context = await requireAuthenticatedAccessContext()
   const resolvedSearchParams = await searchParams
+  const error = getSingleSearchParamValue(resolvedSearchParams.error)
+  const teamHomeErrorMessage = getTeamHomeErrorMessage(error)
 
   const navigation = await resolveNavigationScope({
     context,
@@ -251,6 +268,11 @@ export default async function TeamHomePage({
 
   return (
     <div className="space-y-6">
+      {teamHomeErrorMessage ? (
+        <p className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          {teamHomeErrorMessage}
+        </p>
+      ) : null}
 
       {scope.activeTeamId === null ? (
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">

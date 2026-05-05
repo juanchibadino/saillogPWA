@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { buildRequestUrl } from "@/lib/http/request-origin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 function getTrimmedFormValue(formData: FormData, key: string): string {
@@ -13,16 +14,22 @@ export async function POST(request: Request) {
   const password = getTrimmedFormValue(formData, "password");
 
   if (!email) {
-    return NextResponse.redirect(new URL("/sign-in?error=missing_email", request.url), {
+    return NextResponse.redirect(await buildRequestUrl("/sign-in?error=missing_email", request), {
       status: 303,
     });
   }
 
   if (!password) {
-    return NextResponse.redirect(new URL("/sign-in?error=missing_password", request.url), {
-      status: 303,
-    });
+    return NextResponse.redirect(
+      await buildRequestUrl("/sign-in?error=missing_password", request),
+      {
+        status: 303,
+      },
+    );
   }
+
+  const dashboardUrl = await buildRequestUrl("/dashboard", request);
+  const passwordErrorUrl = await buildRequestUrl("/sign-in?error=password_failed", request);
 
   const supabase = await createServerSupabaseClient();
   const { error } = await supabase.auth.signInWithPassword({
@@ -31,12 +38,12 @@ export async function POST(request: Request) {
   });
 
   if (error) {
-    return NextResponse.redirect(new URL("/sign-in?error=password_failed", request.url), {
+    return NextResponse.redirect(passwordErrorUrl, {
       status: 303,
     });
   }
 
-  return NextResponse.redirect(new URL("/dashboard", request.url), {
+  return NextResponse.redirect(dashboardUrl, {
     status: 303,
   });
 }

@@ -7,6 +7,7 @@ import {
   Building2Icon,
   CheckIcon,
   CircleIcon,
+  CreditCardIcon,
   ChevronsUpDownIcon,
   HomeIcon,
   KeyIcon,
@@ -100,14 +101,20 @@ const organizationNavItems = [
     icon: MapPinIcon,
   },
   {
+    title: "Billing",
+    url: "/billing",
+    icon: CreditCardIcon,
+  },
+  {
     title: "Teams",
     url: "/teams",
     icon: UsersIcon,
   },
   {
     title: "Users",
+    url: "/users",
     icon: UsersIcon,
-    comingSoon: true,
+    comingSoon: false,
   },
 ]
 
@@ -326,6 +333,7 @@ export function AppSidebar({
   const canAccessOrganizationModules =
     uiCapabilities.pickerMode === "super_admin" ||
     uiCapabilities.pickerMode === "organization_admin"
+  const canAccessOrganizationsPage = uiCapabilities.pickerMode === "super_admin"
   const noTeamSelected = activeTeamId === null
 
   React.useEffect(() => {
@@ -565,7 +573,7 @@ export function AppSidebar({
         {canAccessApp ? (
           <>
             <SidebarGroup>
-              <SidebarGroupLabel>General</SidebarGroupLabel>
+              <SidebarGroupLabel>Organization</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem key={homeNavItem.title}>
@@ -587,7 +595,7 @@ export function AppSidebar({
                     </SidebarMenuButton>
                   </SidebarMenuItem>
 
-                  {canAccessOrganizationModules ? (
+                  {canAccessOrganizationsPage ? (
                     <SidebarMenuItem key={organizationsNavItem.title}>
                       <SidebarMenuButton
                         isActive={isItemActive(pathname, organizationsNavItem.url)}
@@ -607,51 +615,43 @@ export function AppSidebar({
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   ) : null}
+                  {canAccessOrganizationModules
+                    ? organizationNavItems.map((item) => (
+                        <SidebarMenuItem key={item.title}>
+                          <SidebarMenuButton
+                            isActive={item.url ? isItemActive(pathname, item.url) : false}
+                            tooltip={
+                              item.comingSoon ? `${item.title} (NIY)` : item.title
+                            }
+                            disabled={item.comingSoon}
+                            render={
+                              item.url
+                                ? (
+                                    <Link
+                                      href={buildScopedHref(
+                                        item.url,
+                                        activeOrgId,
+                                        activeTeamId,
+                                      )}
+                                    />
+                                  )
+                                : undefined
+                            }
+                          >
+                            <item.icon />
+                            <span>{item.title}</span>
+                            {item.comingSoon ? (
+                              <span className="ml-auto text-[10px] text-muted-foreground">
+                                NIY
+                              </span>
+                            ) : null}
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      ))
+                    : null}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
-
-            {canAccessOrganizationModules ? (
-              <SidebarGroup>
-                <SidebarGroupLabel>Organization</SidebarGroupLabel>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {organizationNavItems.map((item) => (
-                      <SidebarMenuItem key={item.title}>
-                        <SidebarMenuButton
-                          isActive={item.url ? isItemActive(pathname, item.url) : false}
-                          tooltip={
-                            item.comingSoon ? `${item.title} (NIY)` : item.title
-                          }
-                          disabled={item.comingSoon}
-                          render={
-                            item.url
-                              ? (
-                                  <Link
-                                    href={buildScopedHref(
-                                      item.url,
-                                      activeOrgId,
-                                      activeTeamId,
-                                    )}
-                                  />
-                                )
-                              : undefined
-                          }
-                        >
-                          <item.icon />
-                          <span>{item.title}</span>
-                          {item.comingSoon ? (
-                            <span className="ml-auto text-[10px] text-muted-foreground">
-                              NIY
-                            </span>
-                          ) : null}
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    ))}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            ) : null}
 
             <SidebarGroup>
               <SidebarGroupLabel>Team</SidebarGroupLabel>

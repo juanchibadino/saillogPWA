@@ -41,6 +41,21 @@ export default async function OrganizationsPage({
   searchParams: OrganizationsSearchParams
 }) {
   const context = await requireAuthenticatedAccessContext()
+  const canManageOrganizations = isSuperAdmin(context)
+
+  if (!canManageOrganizations) {
+    return (
+      <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
+        <h2 className="text-lg font-semibold text-amber-900">
+          Organizations restricted
+        </h2>
+        <p className="mt-2 text-sm text-amber-800">
+          The Organizations module is restricted to super admins.
+        </p>
+      </section>
+    )
+  }
+
   const resolvedSearchParams = await searchParams
   const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
@@ -51,7 +66,6 @@ export default async function OrganizationsPage({
   const statusMessage = getStatusMessage(status)
   const errorMessage = getErrorMessage(error)
   const { organizations } = await getOrganizationsPageData()
-  const canManageOrganizations = isSuperAdmin(context)
 
   const toolbar =
     navigation.scope ? (
@@ -82,16 +96,6 @@ export default async function OrganizationsPage({
       </header>
 
       <OrganizationsFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
-
-      {!canManageOrganizations ? (
-        <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
-          <h2 className="text-lg font-semibold text-amber-900">Read-only access</h2>
-          <p className="mt-2 text-sm text-amber-800">
-            You can view organizations in your scope, but only super admins can create
-            organization records.
-          </p>
-        </section>
-      ) : null}
 
       <OrganizationsTable organizations={organizations} toolbar={toolbar} />
     </div>

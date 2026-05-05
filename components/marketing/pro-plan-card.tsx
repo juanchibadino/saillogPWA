@@ -45,6 +45,8 @@ const FEATURES = [
   "Year calendar connected to Google and Outlook",
 ] as const;
 
+const CONTACT_SALES_EMAIL = "billing@sailog.app";
+
 export function ProPlanCard() {
   const [billingCycle, setBillingCycle] = React.useState<BillingCycle>("yearly");
   const details = PLAN_DETAILS[billingCycle];
@@ -56,7 +58,8 @@ export function ProPlanCard() {
         <h2 className="text-4xl font-semibold tracking-tight text-slate-900">Choose your plan</h2>
         <p className="mx-auto max-w-2xl text-sm text-slate-600">
           Start free and demo our product up to one organization, one team, one venue,
-          one camp, and three sessions. After that, continue on Pro.
+          one camp, and three sessions. Free is hard-capped at session 3 for testing,
+          then continue on Pro.
         </p>
       </div>
 
@@ -79,7 +82,7 @@ export function ProPlanCard() {
         ))}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3">
         <Card className="border-slate-200 bg-white shadow-sm">
           <CardHeader className="space-y-2">
             <CardTitle className="text-2xl">Free</CardTitle>
@@ -105,7 +108,7 @@ export function ProPlanCard() {
               <li>1 team</li>
               <li>1 venue</li>
               <li>1 camp</li>
-              <li>3 sessions</li>
+              <li>3 sessions (hard block at session 3)</li>
             </ul>
           </CardContent>
         </Card>
@@ -145,6 +148,36 @@ export function ProPlanCard() {
                 ))}
               </ul>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200 bg-white shadow-sm">
+          <CardHeader className="space-y-2">
+            <CardTitle className="text-2xl">Olympic</CardTitle>
+            <p className="text-sm text-slate-600">
+              For national programs and high-volume operations with manual onboarding.
+            </p>
+            <p className="text-5xl font-semibold tracking-tight text-slate-900">Custom</p>
+            <p className="text-sm text-slate-600">Contact sales for activation</p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Link
+              href={`mailto:${CONTACT_SALES_EMAIL}?subject=Sailog Olympic plan request`}
+              className={buttonVariants({
+                variant: "outline",
+                className:
+                  "w-full border-slate-300 bg-white text-slate-900 hover:bg-slate-100",
+              })}
+            >
+              Contact sales
+            </Link>
+            <ul className="space-y-2 text-sm text-slate-700">
+              <li>1 organization</li>
+              <li>30 teams</li>
+              <li>Unlimited venues</li>
+              <li>Unlimited camps</li>
+              <li>Unlimited sessions</li>
+            </ul>
           </CardContent>
         </Card>
       </div>

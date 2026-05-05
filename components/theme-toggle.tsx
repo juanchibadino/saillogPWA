@@ -7,14 +7,15 @@ import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
 
 export function ThemeToggle() {
-  const { resolvedTheme, setTheme } = useTheme()
+  const { theme, resolvedTheme, setTheme } = useTheme()
   const [mounted, setMounted] = React.useState(false)
 
   React.useEffect(() => {
     setMounted(true)
   }, [])
 
-  const isDark = resolvedTheme === "dark"
+  const effectiveTheme = theme === "system" ? resolvedTheme : theme
+  const isDark = effectiveTheme === "dark"
   const nextTheme = isDark ? "light" : "dark"
   const ariaLabel = mounted ? `Switch to ${nextTheme} theme` : "Toggle theme"
 
@@ -24,7 +25,13 @@ export function ThemeToggle() {
       variant="ghost"
       size="icon"
       className="size-8"
-      onClick={() => setTheme(nextTheme)}
+      onClick={() => {
+        if (!mounted) {
+          return
+        }
+
+        setTheme(nextTheme)
+      }}
       aria-label={ariaLabel}
     >
       {mounted && isDark ? <SunIcon className="size-4" /> : <MoonIcon className="size-4" />}

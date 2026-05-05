@@ -5,6 +5,7 @@ import { redirect } from "next/navigation"
 
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageTeamSessions } from "@/lib/auth/capabilities"
+import { resolveOrganizationWriteEntitlement } from "@/lib/billing/entitlements"
 import {
   NAVIGATION_SCOPE_ORG_QUERY_KEY,
   NAVIGATION_SCOPE_TEAM_QUERY_KEY,
@@ -279,7 +280,13 @@ function getScopeFromFormData(formData: FormData): SessionActionScope {
 
 function buildTeamSessionsRedirectPath(input: {
   status?: "created" | "updated"
-  error?: "invalid_input" | "forbidden" | "create_failed" | "update_failed"
+  error?:
+    | "invalid_input"
+    | "forbidden"
+    | "create_failed"
+    | "update_failed"
+    | "plan_limit_reached"
+    | "payment_required"
   scopeOrgId?: string
   scopeTeamId?: string
   scopeVenueId?: string
@@ -383,6 +390,21 @@ async function ensureCampBelongsToScope(input: {
   }
 
   return Boolean(teamVenueRow)
+}
+
+async function resolveTeamOrganizationId(teamId: string): Promise<string | null> {
+  const supabase = await createServerSupabaseClient()
+  const { data: teamRow, error: teamError } = await supabase
+    .from("teams")
+    .select("organization_id")
+    .eq("id", teamId)
+    .maybeSingle()
+
+  if (teamError) {
+    return null
+  }
+
+  return teamRow?.organization_id ?? null
 }
 
 async function resolveScopedSessionContext(input: {
@@ -525,6 +547,31 @@ export async function createSessionAction(formData: FormData): Promise<void> {
     redirect(
       buildTeamSessionsRedirectPath({
         error: "invalid_input",
+        ...scope,
+      }),
+    )
+  }
+
+  const resolvedOrganizationId = await resolveTeamOrganizationId(scope.scopeTeamId)
+
+  if (!resolvedOrganizationId || resolvedOrganizationId !== scope.scopeOrgId) {
+    redirect(
+      buildTeamSessionsRedirectPath({
+        error: "invalid_input",
+        ...scope,
+      }),
+    )
+  }
+
+  const entitlementDecision = await resolveOrganizationWriteEntitlement({
+    organizationId: resolvedOrganizationId,
+    resource: "sessions",
+  })
+
+  if (!entitlementDecision.allowed && entitlementDecision.reason) {
+    redirect(
+      buildTeamSessionsRedirectPath({
+        error: entitlementDecision.reason,
         ...scope,
       }),
     )
