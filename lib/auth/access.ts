@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import type { User } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 
@@ -29,6 +30,14 @@ export type AuthenticatedAccessContext = AccessContext & {
   user: User;
 };
 
+type AccessContextWithoutUser = Omit<AccessContext, "user">;
+
+const EMPTY_ROLES: EffectiveRoles = {
+  globalRole: null,
+  organizationRoles: [],
+  teamRoles: [],
+};
+
 function buildEffectiveRoles(
   profile: ProfileRow | null,
   organizationMemberships: OrganizationMembershipRow[],
@@ -55,6 +64,39 @@ export function hasAppAccess(context: AccessContext): boolean {
   );
 }
 
+const loadAccessDataForUser = cache(
+  async (userId: string): Promise<AccessContextWithoutUser> => {
+    const supabase = await createServerSupabaseClient();
+    const [{ data: profile }, { data: organizationMemberships }, { data: teamMemberships }] =
+      await Promise.all([
+        supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", userId)
+          .maybeSingle(),
+        supabase
+          .from("organization_memberships")
+          .select("*")
+          .eq("profile_id", userId),
+        supabase
+          .from("team_memberships")
+          .select("*")
+          .eq("profile_id", userId)
+          .eq("is_active", true),
+      ]);
+
+    const orgRows = organizationMemberships ?? [];
+    const teamRows = teamMemberships ?? [];
+
+    return {
+      profile: profile ?? null,
+      organizationMemberships: orgRows,
+      teamMemberships: teamRows,
+      effectiveRoles: buildEffectiveRoles(profile ?? null, orgRows, teamRows),
+    };
+  },
+);
+
 export async function getCurrentAccessContext(): Promise<AccessContext> {
   const supabase = await createServerSupabaseClient();
   const {
@@ -67,41 +109,14 @@ export async function getCurrentAccessContext(): Promise<AccessContext> {
       profile: null,
       organizationMemberships: [],
       teamMemberships: [],
-      effectiveRoles: {
-        globalRole: null,
-        organizationRoles: [],
-        teamRoles: [],
-      },
+      effectiveRoles: EMPTY_ROLES,
     };
   }
-
-  const [{ data: profile }, { data: organizationMemberships }, { data: teamMemberships }] =
-    await Promise.all([
-      supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .maybeSingle(),
-      supabase
-        .from("organization_memberships")
-        .select("*")
-        .eq("profile_id", user.id),
-      supabase
-        .from("team_memberships")
-        .select("*")
-        .eq("profile_id", user.id)
-        .eq("is_active", true),
-    ]);
-
-  const orgRows = organizationMemberships ?? [];
-  const teamRows = teamMemberships ?? [];
+  const accessData = await loadAccessDataForUser(user.id);
 
   return {
     user,
-    profile: profile ?? null,
-    organizationMemberships: orgRows,
-    teamMemberships: teamRows,
-    effectiveRoles: buildEffectiveRoles(profile ?? null, orgRows, teamRows),
+    ...accessData,
   };
 }
 

@@ -1,77 +1,44 @@
 import {
-  type AuthenticatedAccessContext,
   hasAppAccess,
   requireAuthenticatedAccessContext,
 } from "@/lib/auth/access";
+import { resolveNavigationScope } from "@/lib/navigation/scope";
+import type { ResolvedNavigationScope } from "@/lib/navigation/types";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 function formatDisplayName(firstName: string | null, lastName: string | null): string {
   const name = [firstName, lastName].filter(Boolean).join(" ").trim();
   return name.length > 0 ? name : "Sailog User";
 }
 
-type SidebarBranding = {
-  organizationName: string | null;
-  teamName: string | null;
-  avatarUrl: string | null;
-};
-
-async function getSidebarBranding(
-  context: AuthenticatedAccessContext,
-): Promise<SidebarBranding> {
-  const defaultBranding: SidebarBranding = {
-    organizationName: null,
-    teamName: null,
-    avatarUrl: null,
-  };
-  const firstTeamMembership = context.teamMemberships[0] ?? null;
-  const firstOrganizationMembership = context.organizationMemberships[0] ?? null;
-  let organizationId = firstOrganizationMembership?.organization_id ?? null;
-  let teamName: string | null = null;
-
-  if (!firstTeamMembership && !organizationId) {
-    return defaultBranding;
+function formatUserRole(input: {
+  globalRole: "super_admin" | null;
+  organizationRoles: Array<"organization_admin">;
+  teamRoles: Array<"team_admin" | "coach" | "crew">;
+}): string {
+  if (input.globalRole === "super_admin") {
+    return "Super Admin";
   }
 
-  const supabase = await createServerSupabaseClient();
-
-  if (firstTeamMembership) {
-    const { data: team } = await supabase
-      .from("teams")
-      .select("name, organization_id")
-      .eq("id", firstTeamMembership.team_id)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (team) {
-      teamName = team.name;
-      organizationId = team.organization_id;
-    }
+  if (input.organizationRoles.includes("organization_admin")) {
+    return "Organization Admin";
   }
 
-  let organizationName: string | null = null;
-
-  if (organizationId) {
-    const { data: organization } = await supabase
-      .from("organizations")
-      .select("name")
-      .eq("id", organizationId)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (organization) {
-      organizationName = organization.name;
-    }
+  if (input.teamRoles.includes("team_admin")) {
+    return "Team Admin";
   }
 
-  return {
-    organizationName,
-    teamName,
-    avatarUrl: null,
-  };
+  if (input.teamRoles.includes("coach")) {
+    return "Coach";
+  }
+
+  if (input.teamRoles.includes("crew")) {
+    return "Crew";
+  }
+
+  return "Member";
 }
 
 export default async function AppLayout({
@@ -81,23 +48,41 @@ export default async function AppLayout({
 }) {
   const context = await requireAuthenticatedAccessContext();
   const canAccessApp = hasAppAccess(context);
-  const sidebarBranding = await getSidebarBranding(context);
+  let navigation: ResolvedNavigationScope | null = null;
+
+  if (canAccessApp) {
+    navigation = await resolveNavigationScope({
+      context,
+      searchParams: {},
+    });
+  }
+
   const userName = formatDisplayName(
     context.profile?.first_name ?? null,
     context.profile?.last_name ?? null,
   );
   const userEmail = context.user.email ?? "No email";
+  const userRole = formatUserRole({
+    globalRole: context.effectiveRoles.globalRole,
+    organizationRoles: context.effectiveRoles.organizationRoles,
+    teamRoles: context.effectiveRoles.teamRoles,
+  });
 
   return (
     <SidebarProvider>
       <AppSidebar
         variant="inset"
         canAccessApp={canAccessApp}
-        brand={sidebarBranding}
-        user={{ name: userName, email: userEmail }}
+        navigation={navigation}
+        user={{
+          name: userName,
+          email: userEmail,
+          role: userRole,
+          avatarUrl: context.profile?.photo_url ?? null,
+        }}
       />
       <SidebarInset>
-        <SiteHeader />
+        <SiteHeader navigation={navigation} />
         <div className="flex flex-1 flex-col">
           <div className="@container/main flex flex-1 flex-col gap-4 p-4 md:gap-6 md:p-6">
             {canAccessApp ? (

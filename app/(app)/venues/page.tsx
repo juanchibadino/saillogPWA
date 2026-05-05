@@ -1,23 +1,18 @@
-import {
-  getVenuePageData,
-} from "@/features/venues/data";
+import { getVenuePageData } from "@/features/venues/data";
+import { CreateVenueDialog } from "@/features/venues/venue-form-dialogs";
 import { VenuesFeedback } from "@/features/venues/venues-feedback";
 import { VenuesTable } from "@/features/venues/venues-table";
+import { TableFiltersToolbar } from "@/components/shared/table-filters-toolbar";
+import { canManageOrganizationOperations } from "@/lib/auth/capabilities";
+import {
+  getSingleSearchParamValue,
+  resolveNavigationScope,
+} from "@/lib/navigation/scope";
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access";
 
 type VenuesSearchParams = Promise<
   Record<string, string | string[] | undefined>
 >;
-
-function getSingleSearchParamValue(
-  value: string | string[] | undefined,
-): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  return Array.isArray(value) ? value[0] : value;
-}
 
 function getStatusMessage(status: string | undefined): string | null {
   if (status === "created") {
@@ -34,6 +29,10 @@ function getStatusMessage(status: string | undefined): string | null {
 function getErrorMessage(error: string | undefined): string | null {
   if (error === "invalid_input") {
     return "Some fields are invalid. Review the form and try again.";
+  }
+
+  if (error === "forbidden") {
+    return "You do not have permission to manage venues in the active organization.";
   }
 
   if (error === "create_failed") {
@@ -53,22 +52,74 @@ export default async function VenuesPage({
   searchParams: VenuesSearchParams;
 }) {
   const context = await requireAuthenticatedAccessContext();
-  const isSuperAdmin = context.effectiveRoles.globalRole === "super_admin";
   const resolvedSearchParams = await searchParams;
+
   const status = getSingleSearchParamValue(resolvedSearchParams.status);
   const error = getSingleSearchParamValue(resolvedSearchParams.error);
   const statusMessage = getStatusMessage(status);
   const errorMessage = getErrorMessage(error);
 
-  const { organizations, venues } = await getVenuePageData({
-    profileId: context.user.id,
-    isSuperAdmin,
+  const navigation = await resolveNavigationScope({
+    context,
+    searchParams: resolvedSearchParams,
   });
 
-  const canManageVenues = isSuperAdmin || organizations.length > 0;
+  if (!navigation.scope) {
+    return (
+      <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
+        <h2 className="text-lg font-semibold text-amber-900">No active scope</h2>
+        <p className="mt-2 text-sm text-amber-800">
+          Venue management requires an active organization context.
+        </p>
+      </section>
+    );
+  }
+
+  const scope = navigation.scope;
+  const activeOrganization =
+    navigation.catalog.organizations.find(
+      (organization) => organization.id === scope.activeOrgId,
+    ) ?? null;
+
+  if (!activeOrganization) {
+    return (
+      <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
+        <h2 className="text-lg font-semibold text-amber-900">
+          Organization context unavailable
+        </h2>
+        <p className="mt-2 text-sm text-amber-800">
+          Could not resolve the active organization from your current scope.
+        </p>
+      </section>
+    );
+  }
+
+  const { organizations, venues } = await getVenuePageData({
+    activeOrganization,
+  });
+
+  const canManageVenues = canManageOrganizationOperations(
+    context,
+    scope.activeOrgId,
+  );
+
+  const teamsForOrganization =
+    navigation.catalog.teamsByOrganizationId[scope.activeOrgId] ?? [];
+  const activeTeamLabel =
+    teamsForOrganization.find((team) => team.id === scope.activeTeamId)?.name ??
+    "No team selected";
 
   return (
     <div className="space-y-6">
+      <header className="space-y-2">
+        <h1 className="text-2xl font-semibold tracking-tight">Venues</h1>
+        <p className="text-sm text-muted-foreground">
+          Showing organization-owned venues for <strong>{activeOrganization.name}</strong>.
+          Team scope is <strong>{activeTeamLabel}</strong>. Team-specific venue links are
+          handled in Team Venues.
+        </p>
+      </header>
+
       <VenuesFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
 
       {!canManageVenues ? (
@@ -77,16 +128,29 @@ export default async function VenuesPage({
             Venue management unavailable
           </h2>
           <p className="mt-2 text-sm text-amber-800">
-            You do not have organization admin access yet. Ask an admin to add
-            your `organization_memberships` entry.
+            You can view venues in this scope, but only super admins and
+            organization admins can create or edit organization venue records.
           </p>
         </section>
       ) : null}
 
       <VenuesTable
-        organizations={organizations}
         venues={venues}
-        canManageVenues={canManageVenues}
+        toolbar={
+          <TableFiltersToolbar
+            scope={scope}
+            fields={[]}
+            embedded
+            autoSubmit
+            className="rounded-none border-0 bg-transparent p-0"
+            action={
+              canManageVenues && organizations.length > 0 ? (
+                <CreateVenueDialog organizations={organizations} scope={scope} />
+              ) : undefined
+            }
+          />
+        }
+        scope={scope}
       />
     </div>
   );

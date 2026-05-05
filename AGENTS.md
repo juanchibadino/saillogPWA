@@ -38,10 +38,10 @@ Core business model:
 - Teams are made of users with scoped roles such as `team_admin`, `coach`, and `crew`
 - Venues are stable places such as Palma, Hyeres, etc.
 - A venue must keep the same `venue_id` across years
-- The year-specific operational context is `team + venue + year`
-- Camps live inside a `team_venue_season`
+- Team-venue operations are linked through `team_venues`
+- Camps live inside a `team_venue`
 - Sessions live inside a `camp`
-- Assessments can be multiple per `team_venue_season`
+- Assessments are deferred for now
 - Coach session review and crew session setup are separate concerns
 - Gear will come later and should not distort the MVP schema now
 
@@ -54,10 +54,10 @@ These rules are locked unless explicitly changed by the product owner.
 1. Organizations own Teams
 2. Teams are made of users with scoped roles
 3. Venues are stable places and keep the same id across years
-4. `team_venue_seasons` are unique by `(team_id, venue_id, year)`
-5. Camps belong to `team_venue_seasons`
+4. `team_venues` are unique by `(team_id, venue_id)`
+5. Camps belong to `team_venues`
 6. Sessions belong to camps
-7. Assessments can be multiple within a single `team_venue_season`
+7. Assessments are not part of the current core model
 8. Coach review and crew setup are separate records
 9. Camp totals are derived from session data, not manually edited
 10. Gear is phase 2, not MVP core schema
@@ -77,7 +77,7 @@ These are the expected v1 tables.
 
 ### Operational structure
 - `venues`
-- `team_venue_seasons`
+- `team_venues`
 - `camps`
 - `sessions`
 
@@ -86,12 +86,6 @@ These are the expected v1 tables.
 - `session_regatta_results`
 - `session_setups`
 - `session_assets`
-
-### Assessments
-- `assessment_forms`
-- `assessment_questions`
-- `assessment_submissions`
-- `assessment_answers`
 
 ### Later
 - `gear_items`
@@ -107,13 +101,12 @@ These are the expected v1 tables.
 - organizations and teams
 - role-based access
 - venues
-- team venue seasons
+- team venues
 - camps
 - sessions
 - coach review data
 - crew setup / tuning
 - session photos and analytics files
-- multiple assessments per team venue season
 - basic dashboards and operational views
 - installable PWA shell
 
@@ -125,6 +118,7 @@ These are the expected v1 tables.
 - notification system
 - automation engine
 - a generic workflow engine
+- assessment workflows
 
 ---
 
@@ -134,6 +128,7 @@ These are the expected v1 tables.
 - Use Next.js App Router
 - Prefer Server Components by default
 - Use Server Actions or Route Handlers only when they clearly fit
+- Reuse existing proven vertical patterns before introducing new abstractions (especially the Venues vertical)
 - Keep business logic out of UI components
 - Keep data access centralized in a small number of server-side modules
 - Do not split the backend into a separate service unless there is a proven reason
@@ -150,6 +145,7 @@ These are the expected v1 tables.
 - Design for relational integrity first
 - Use `jsonb` only where the shape is still evolving
 - Add indexes intentionally, especially on foreign keys and common filters
+- Prioritize fast operational queries for `team_venues`, `camps`, and `sessions`; add composite indexes for hot list/sort paths
 - Do not denormalize early
 - Use UTC timestamps in the database
 
@@ -168,6 +164,7 @@ These are the expected v1 tables.
 - Keep forms straightforward and easy to complete on phones
 - Prefer simple tables, cards, and segmented detail screens
 - Every new page or major data view must include a matching skeleton loading state using `loading.tsx` (or Suspense fallback when more appropriate)
+- If backend latency cannot be reduced further, apply UX masking (fast skeletons, progressive loading states, immediate feedback) to avoid perceived waiting
 
 ### PWA
 - Make the app installable
@@ -209,6 +206,8 @@ If requirements are ambiguous:
 - use migrations for schema changes
 - keep changes small
 - keep UI simple
+- prefer reuse-first implementation over new patterns when an equivalent module already exists
+- prioritize data speed and perceived speed for operational pages
 - prefer relational clarity over clever abstractions
 - explain functionality before code
 - test each vertical slice before broadening scope
@@ -278,13 +277,12 @@ Deliverables:
 - organizations
 - teams
 - venues
-- team_venue_seasons
+- team_venues
 - camps
 - sessions
 - session_reviews
 - session_setups
 - session_assets
-- assessment tables
 
 Done when:
 - a realistic sample data flow can be inserted end to end
@@ -323,13 +321,13 @@ Build the backbone workflows.
 
 Deliverables:
 - create and edit venues
-- create and edit team venue seasons
+- create and edit team venues
 - create and edit camps
 - create and edit sessions
 - list/detail pages for each
 
 Done when:
-- the full chain `Team -> TeamVenueSeason -> Camp -> Session` works in the UI
+- the full chain `Team -> TeamVenue -> Camp -> Session` works in the UI
 
 ### Phase 7 — Session detail flows
 Objective:
@@ -345,19 +343,17 @@ Deliverables:
 Done when:
 - a coach and a crew member can complete their parts of the same session cleanly
 
-### Phase 8 — Assessments
+### Phase 8 — Extended modules (deferred)
 Objective:
-Add season-level assessments.
+Add deferred modules after core operations are stable.
 
 Deliverables:
-- assessment form creation
-- question builder
-- crew submission flow
-- coach/admin review view
+- assessment model definition
+- assessment workflow design
+- phased implementation plan
 
 Done when:
-- multiple assessments can exist for the same team venue season
-- users can submit and review answers
+- deferred module requirements are validated and scheduled
 
 ### Phase 9 — Basic analytics and reporting views
 Objective:
@@ -418,9 +414,9 @@ components/
 features/
   teams/
   venues/
+  team-venues/
   camps/
   sessions/
-  assessments/
 lib/
   supabase/
   auth/
@@ -445,7 +441,6 @@ types/
 - sessions
 - session setup
 - session photos
-- assessments
 
 ### Do not migrate blindly
 - Glide helper tables
