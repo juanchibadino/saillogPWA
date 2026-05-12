@@ -7,7 +7,7 @@ import {
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 
 type RouteContext = {
-  params: Promise<{ id: string }> | { id: string }
+  params: Promise<{ id: string }>
 }
 
 export async function GET(request: Request, context: RouteContext) {

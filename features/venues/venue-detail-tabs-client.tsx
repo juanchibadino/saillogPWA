@@ -1,26 +1,32 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { useMemo, useState } from "react"
+import Link from "next/link";
+import { type ReactNode, useMemo, useState } from "react";
 
 import type {
   VenueDetailCampItem,
   VenueDetailKpi,
-  VenueDetailMetrics,
   VenueDetailPageData,
   VenueDetailSessionItem,
   VenueDetailYearData,
-} from "@/features/venues/detail-types"
-import { buildSessionDetailHref } from "@/features/sessions/navigation"
-import { VENUE_DETAIL_TABS, type VenueDetailTab } from "@/features/venues/navigation"
-import type { NavigationScope } from "@/lib/navigation/types"
+} from "@/features/venues/detail-types";
+import { VenueAssessmentsPanel } from "@/features/venues/venue-assessments-panel";
+import { buildCampDetailHref } from "@/features/camps/navigation";
+import { buildSessionDetailHref } from "@/features/sessions/navigation";
+import { createTeamVenueReportAction } from "@/features/reports/actions";
 import {
-  Card,
+  buildVenueDetailHref,
+  VENUE_DETAIL_TABS,
+  type VenueDetailTab,
+} from "@/features/venues/navigation";
+import type { NavigationScope } from "@/lib/navigation/types";
+import { GradientCard } from "@/components/shared/gradient-card";
+import {
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
+} from "@/components/ui/card";
 import {
   Pagination,
   PaginationContent,
@@ -29,38 +35,39 @@ import {
   PaginationLink,
   PaginationNext,
   PaginationPrevious,
-} from "@/components/ui/pagination"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+} from "@/components/ui/pagination";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const EMPTY_KPIS: VenueDetailKpi[] = [
   { label: "Total Camps", value: "0", note: "Selected year" },
   { label: "Total Sessions", value: "0", note: "Selected year" },
   { label: "Avg. Session", value: "—", note: "No net time recorded" },
   { label: "Net Time Sailed", value: "00h 00m", note: "Sum of net time for selected year" },
-]
-
-const EMPTY_METRICS: VenueDetailMetrics = {
-  sessionsWithNetTime: 0,
-  totalNetTimeMinutes: 0,
-  averageNetTimeMinutes: null,
-  highlightedSessionsCount: 0,
-}
+];
 
 const EMPTY_YEAR_DATA: VenueDetailYearData = {
   kpis: EMPTY_KPIS,
   camps: [],
   sessions: [],
-  metrics: EMPTY_METRICS,
-}
+  reports: [],
+  assessments: {
+    templates: [],
+    runs: [],
+  },
+};
 
-const SESSIONS_PAGE_SIZE = 10
+const SESSIONS_PAGE_SIZE = 10;
 
-type SessionPaginationItem = number | "ellipsis-start" | "ellipsis-end"
+type SessionPaginationItem = number | "ellipsis-start" | "ellipsis-end";
 
 function resolveTab(value: string): VenueDetailTab {
+  if (value === "metrics") {
+    return "assessments";
+  }
+
   return VENUE_DETAIL_TABS.includes(value as VenueDetailTab)
     ? (value as VenueDetailTab)
-    : "camps"
+    : "camps";
 }
 
 function buildSessionPaginationItems(
@@ -68,48 +75,70 @@ function buildSessionPaginationItems(
   totalPages: number,
 ): SessionPaginationItem[] {
   if (totalPages <= 7) {
-    return Array.from({ length: totalPages }, (_, index) => index + 1)
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
   }
 
-  const items: SessionPaginationItem[] = [1]
-  const middleStart = Math.max(2, currentPage - 1)
-  const middleEnd = Math.min(totalPages - 1, currentPage + 1)
+  const items: SessionPaginationItem[] = [1];
+  const middleStart = Math.max(2, currentPage - 1);
+  const middleEnd = Math.min(totalPages - 1, currentPage + 1);
 
   if (middleStart > 2) {
-    items.push("ellipsis-start")
+    items.push("ellipsis-start");
   }
 
   for (let page = middleStart; page <= middleEnd; page += 1) {
-    items.push(page)
+    items.push(page);
   }
 
   if (middleEnd < totalPages - 1) {
-    items.push("ellipsis-end")
+    items.push("ellipsis-end");
   }
 
-  items.push(totalPages)
+  items.push(totalPages);
 
-  return items
+  return items;
+}
+
+function formatDateTimeLabel(value: string): string {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Unknown date";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+  }).format(date);
 }
 
 function renderTabPanel(input: {
-  tab: VenueDetailTab
-  scope: NavigationScope
-  camps: VenueDetailCampItem[]
-  sessions: VenueDetailSessionItem[]
-  metrics: VenueDetailMetrics
-  selectedYear: number
+  tab: VenueDetailTab;
+  scope: NavigationScope;
+  teamVenueId: string;
+  camps: VenueDetailCampItem[];
+  sessions: VenueDetailSessionItem[];
+  selectedYear: number;
+  canManageAssessments: boolean;
+  canManageReports: boolean;
+  assessments: VenueDetailYearData["assessments"];
+  reports: VenueDetailYearData["reports"];
   sessionPagination: {
-    page: number
-    pageCount: number
-    pages: SessionPaginationItem[]
-    totalItems: number
-    visibleFrom: number
-    visibleTo: number
-    onSelectPage: (page: number) => void
-    onPreviousPage: () => void
-    onNextPage: () => void
-  }
+    page: number;
+    pageCount: number;
+    pages: SessionPaginationItem[];
+    totalItems: number;
+    visibleFrom: number;
+    visibleTo: number;
+    onSelectPage: (page: number) => void;
+    onPreviousPage: () => void;
+    onNextPage: () => void;
+  };
 }) {
   if (input.tab === "camps") {
     return (
@@ -126,20 +155,28 @@ function renderTabPanel(input: {
         ) : (
           <ul className="divide-y divide-border">
             {input.camps.map((camp) => (
-              <li key={camp.id} className="py-3">
-                <div className="min-w-0 space-y-0.5">
-                  <p className="truncate text-xs text-muted-foreground">{camp.dateRangeLabel}</p>
-                  <p className="truncate text-sm font-medium">{camp.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {camp.sessionCount} {camp.sessionCount === 1 ? "session" : "sessions"}
-                  </p>
-                </div>
+              <li key={camp.id}>
+                <Link
+                  href={buildCampDetailHref({
+                    scope: input.scope,
+                    campId: camp.id,
+                  })}
+                  className="block rounded-md px-2 py-3 -mx-2 transition-colors hover:bg-muted/40"
+                >
+                  <div className="min-w-0 space-y-0.5">
+                    <p className="truncate text-xs text-muted-foreground">{camp.dateRangeLabel}</p>
+                    <p className="truncate text-sm font-medium">{camp.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {camp.sessionCount} {camp.sessionCount === 1 ? "session" : "sessions"}
+                    </p>
+                  </div>
+                </Link>
               </li>
             ))}
           </ul>
         )}
       </div>
-    )
+    );
   }
 
   if (input.tab === "sessions") {
@@ -165,10 +202,10 @@ function renderTabPanel(input: {
                     scope: input.scope,
                     sessionId: session.id,
                   })}
-                  className="grid grid-cols-[minmax(0,1fr)_minmax(7rem,1fr)_auto] items-center gap-3 py-3"
+                  className="grid grid-cols-[minmax(0,1fr)_minmax(7rem,1fr)_auto] items-center gap-3 rounded-md px-2 py-3 -mx-2 transition-colors hover:bg-muted/40"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium underline-offset-4 hover:underline">
+                    <p className="truncate text-sm font-medium">
                       {session.sessionDateLabel}
                     </p>
                     <p className="truncate text-xs text-muted-foreground">{session.campName}</p>
@@ -236,88 +273,190 @@ function renderTabPanel(input: {
           </div>
         ) : null}
       </div>
-    )
+    );
   }
 
-  if (input.tab === "metrics") {
+  if (input.tab === "assessments") {
     return (
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Sessions with net time</CardDescription>
-            <CardTitle>{input.metrics.sessionsWithNetTime}</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Used to compute average and total duration.
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Highlighted sessions</CardDescription>
-            <CardTitle>{input.metrics.highlightedSessionsCount}</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Coach-marked highlights for the selected year.
-          </CardContent>
-        </Card>
-      </div>
-    )
+      <VenueAssessmentsPanel
+        scope={input.scope}
+        teamVenueId={input.teamVenueId}
+        selectedYear={input.selectedYear}
+        canManageAssessments={input.canManageAssessments}
+        templates={input.assessments.templates}
+        runs={input.assessments.runs}
+        availableCamps={input.camps}
+      />
+    );
   }
+
+  const reportCreateRedirectTo = buildVenueDetailHref({
+    scope: input.scope,
+    teamVenueId: input.teamVenueId,
+    tab: "reports",
+    year: input.selectedYear,
+  });
 
   return (
-    <div className="rounded-lg border border-dashed border-border p-6">
-      <h3 className="text-base font-semibold">Reports coming soon</h3>
-      <p className="mt-2 text-sm text-muted-foreground">
-        This tab will host export-oriented and operational report views.
-      </p>
+    <div className="space-y-6">
+      <header className="space-y-1">
+        <h3 className="text-base font-semibold">Reports</h3>
+        <p className="text-sm text-muted-foreground">
+          Team venue report records for {input.selectedYear}.
+        </p>
+      </header>
+
+      {input.canManageReports ? (
+        <form action={createTeamVenueReportAction} className="space-y-4 rounded-lg border p-4">
+          <input type="hidden" name="scopeOrgId" value={input.scope.activeOrgId} />
+          {input.scope.activeTeamId ? (
+            <input type="hidden" name="scopeTeamId" value={input.scope.activeTeamId} />
+          ) : null}
+          <input type="hidden" name="teamVenueId" value={input.teamVenueId} />
+          <input type="hidden" name="year" value={String(input.selectedYear)} />
+          <input type="hidden" name="redirectTo" value={reportCreateRedirectTo} />
+
+          <div className="space-y-2">
+            <label htmlFor={`venue-report-name-${input.teamVenueId}`} className="text-sm font-medium">
+              Report name (optional)
+            </label>
+            <input
+              id={`venue-report-name-${input.teamVenueId}`}
+              name="reportName"
+              maxLength={200}
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+              placeholder="Auto: Venue + year + camps"
+            />
+          </div>
+
+          <fieldset className="space-y-3">
+            <legend className="text-sm font-medium">Camps ({input.selectedYear})</legend>
+
+            {input.camps.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No camps available for this year. Create a camp first to generate reports.
+              </p>
+            ) : (
+              <div className="grid gap-2">
+                {input.camps.map((camp) => (
+                  <label
+                    key={camp.id}
+                    className="flex items-start gap-3 rounded-md border px-3 py-2 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      name="campIds"
+                      value={camp.id}
+                      className="mt-1 size-4 rounded border-input"
+                    />
+                    <span className="min-w-0">
+                      <span className="block font-medium">{camp.name}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {camp.dateRangeLabel}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </fieldset>
+
+          <button
+            type="submit"
+            className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground disabled:pointer-events-none disabled:opacity-50"
+            disabled={input.camps.length === 0}
+          >
+            Create report
+          </button>
+        </form>
+      ) : (
+        <section className="rounded-lg border border-amber-300 bg-amber-50 p-4">
+          <p className="text-sm text-amber-800">
+            You have read-only access in this scope. Report creation is limited to team admins and coaches.
+          </p>
+        </section>
+      )}
+
+      {input.reports.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No reports created yet for {input.selectedYear}.
+        </p>
+      ) : (
+        <ul className="divide-y divide-border rounded-lg border">
+          {input.reports.map((report) => (
+            <li key={report.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
+              <div className="min-w-0 space-y-1">
+                <p className="text-sm font-medium">{report.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {report.campCount} {report.campCount === 1 ? "camp" : "camps"} ·{" "}
+                  {report.campNames.join(", ")}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Created {formatDateTimeLabel(report.createdAt)} UTC
+                </p>
+              </div>
+
+              <a
+                href={`/api/reports/${report.id}/pdf`}
+                className="inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-sm font-medium"
+              >
+                Download PDF
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
-  )
+  );
 }
 
 export function VenueDetailTabsClient(input: {
-  scope: NavigationScope
-  availableYears: VenueDetailPageData["availableYears"]
-  byYear: VenueDetailPageData["byYear"]
-  initialYear: number
-  initialTab: VenueDetailTab
+  scope: NavigationScope;
+  teamVenueId: string;
+  availableYears: VenueDetailPageData["availableYears"];
+  byYear: VenueDetailPageData["byYear"];
+  initialYear: number;
+  initialTab: VenueDetailTab;
+  canManageAssessments: boolean;
+  canManageReports: boolean;
+  action?: ReactNode;
 }) {
-  const [selectedYear, setSelectedYear] = useState(input.initialYear)
-  const [selectedTab, setSelectedTab] = useState<VenueDetailTab>(input.initialTab)
+  const [selectedYear, setSelectedYear] = useState(input.initialYear);
+  const [selectedTab, setSelectedTab] = useState<VenueDetailTab>(input.initialTab);
   const [sessionPageByYear, setSessionPageByYear] = useState<Record<number, number>>(
     {},
-  )
+  );
 
   const yearData = useMemo(() => {
     return (
       input.byYear[selectedYear] ??
       input.byYear[input.availableYears[0] ?? input.initialYear] ??
       EMPTY_YEAR_DATA
-    )
-  }, [input.availableYears, input.byYear, input.initialYear, selectedYear])
+    );
+  }, [input.availableYears, input.byYear, input.initialYear, selectedYear]);
 
-  const totalSessionItems = yearData.sessions.length
+  const totalSessionItems = yearData.sessions.length;
   const sessionPageCount = Math.max(
     1,
     Math.ceil(totalSessionItems / SESSIONS_PAGE_SIZE),
-  )
-  const sessionPage = sessionPageByYear[selectedYear] ?? 1
-  const safeSessionPage = Math.min(sessionPage, sessionPageCount)
+  );
+  const sessionPage = sessionPageByYear[selectedYear] ?? 1;
+  const safeSessionPage = Math.min(sessionPage, sessionPageCount);
   const sessionPaginationItems = useMemo(
     () => buildSessionPaginationItems(safeSessionPage, sessionPageCount),
     [safeSessionPage, sessionPageCount],
-  )
+  );
 
   function setSessionPageForSelectedYear(nextPage: number): void {
-    const normalizedPage = Math.max(1, Math.min(nextPage, sessionPageCount))
+    const normalizedPage = Math.max(1, Math.min(nextPage, sessionPageCount));
 
     setSessionPageByYear((currentValue) => ({
       ...currentValue,
       [selectedYear]: normalizedPage,
-    }))
+    }));
   }
 
-  const sessionsStartIndex = (safeSessionPage - 1) * SESSIONS_PAGE_SIZE
+  const sessionsStartIndex = (safeSessionPage - 1) * SESSIONS_PAGE_SIZE;
   const paginatedSessions = useMemo(
     () =>
       yearData.sessions.slice(
@@ -325,34 +464,41 @@ export function VenueDetailTabsClient(input: {
         sessionsStartIndex + SESSIONS_PAGE_SIZE,
       ),
     [sessionsStartIndex, yearData.sessions],
-  )
-  const visibleSessionsFrom = totalSessionItems > 0 ? sessionsStartIndex + 1 : 0
-  const visibleSessionsTo = sessionsStartIndex + paginatedSessions.length
+  );
+  const visibleSessionsFrom = totalSessionItems > 0 ? sessionsStartIndex + 1 : 0;
+  const visibleSessionsTo = sessionsStartIndex + paginatedSessions.length;
 
   return (
     <div className="space-y-6">
-      <Tabs
-        value={String(selectedYear)}
-        onValueChange={(value) => {
-          const parsedYear = Number.parseInt(value, 10)
+      <div className="flex items-center justify-between gap-3">
+        <Tabs
+          value={String(selectedYear)}
+          onValueChange={(value) => {
+            const parsedYear = Number.parseInt(value, 10);
 
-          if (Number.isFinite(parsedYear) && input.availableYears.includes(parsedYear)) {
-            setSelectedYear(parsedYear)
-          }
-        }}
-      >
-        <TabsList className="h-10">
-          {input.availableYears.map((year) => (
-            <TabsTrigger key={year} value={String(year)} className="min-w-fit">
-              {year}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+            if (Number.isFinite(parsedYear) && input.availableYears.includes(parsedYear)) {
+              setSelectedYear(parsedYear);
+            }
+          }}
+          className="min-w-0"
+        >
+          <div className="max-w-full overflow-x-auto">
+            <TabsList className="h-10 w-max">
+              {input.availableYears.map((year) => (
+                <TabsTrigger key={year} value={String(year)} className="min-w-fit">
+                  {year}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
+        </Tabs>
+
+        {input.action ? <div className="shrink-0">{input.action}</div> : null}
+      </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {yearData.kpis.map((kpi) => (
-          <Card key={kpi.label}>
+          <GradientCard key={kpi.label}>
             <CardHeader className="pb-2">
               <CardDescription>{kpi.label}</CardDescription>
               <CardTitle className="text-2xl font-semibold tabular-nums">
@@ -360,7 +506,7 @@ export function VenueDetailTabsClient(input: {
               </CardTitle>
             </CardHeader>
             <CardContent className="text-xs text-muted-foreground">{kpi.note}</CardContent>
-          </Card>
+          </GradientCard>
         ))}
       </div>
 
@@ -380,14 +526,18 @@ export function VenueDetailTabsClient(input: {
         <section className="rounded-xl border bg-card p-4 sm:p-6">
           {VENUE_DETAIL_TABS.map((tab) => (
             <TabsContent key={tab} value={tab}>
-                  {tab === selectedTab
-                  ? renderTabPanel({
-                      tab,
-                      scope: input.scope,
-                      camps: yearData.camps,
-                      sessions: paginatedSessions,
-                      metrics: yearData.metrics,
+              {tab === selectedTab
+                ? renderTabPanel({
+                    tab,
+                    scope: input.scope,
+                    teamVenueId: input.teamVenueId,
+                    camps: yearData.camps,
+                    sessions: paginatedSessions,
                     selectedYear,
+                    canManageAssessments: input.canManageAssessments,
+                    canManageReports: input.canManageReports,
+                    assessments: yearData.assessments,
+                    reports: yearData.reports,
                     sessionPagination: {
                       page: safeSessionPage,
                       pageCount: sessionPageCount,
@@ -396,13 +546,13 @@ export function VenueDetailTabsClient(input: {
                       visibleFrom: visibleSessionsFrom,
                       visibleTo: visibleSessionsTo,
                       onSelectPage: (page) => {
-                        setSessionPageForSelectedYear(page)
+                        setSessionPageForSelectedYear(page);
                       },
                       onPreviousPage: () => {
-                        setSessionPageForSelectedYear(safeSessionPage - 1)
+                        setSessionPageForSelectedYear(safeSessionPage - 1);
                       },
                       onNextPage: () => {
-                        setSessionPageForSelectedYear(safeSessionPage + 1)
+                        setSessionPageForSelectedYear(safeSessionPage + 1);
                       },
                     },
                   })
@@ -412,5 +562,5 @@ export function VenueDetailTabsClient(input: {
         </section>
       </Tabs>
     </div>
-  )
+  );
 }

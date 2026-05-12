@@ -36,6 +36,11 @@ export const updateCampGoalsInputSchema = z.object({
   goals: optionalLongTextSchema,
 })
 
+export const deleteCampInputSchema = z.object({
+  id: z.string().uuid(),
+})
+
 export type CreateCampInput = z.infer<typeof createCampInputSchema>
 export type UpdateCampInput = z.infer<typeof updateCampInputSchema>
 export type UpdateCampGoalsInput = z.infer<typeof updateCampGoalsInputSchema>
+export type DeleteCampInput = z.infer<typeof deleteCampInputSchema>

@@ -61,6 +61,8 @@ export type TeamSessionCampOption = {
   label: string
 }
 
+export type TeamSessionHighlightFilter = "yes" | "no"
+
 export type TeamSessionsPageData = {
   sessions: TeamSessionListItem[]
   venueFilterOptions: TeamSessionVenueFilterOption[]
@@ -68,6 +70,7 @@ export type TeamSessionsPageData = {
   campOptions: TeamSessionCampOption[]
   selectedVenueId?: string
   selectedCampId?: string
+  selectedHighlight?: TeamSessionHighlightFilter
   currentPage: number
   hasPreviousPage: boolean
   hasNextPage: boolean
@@ -128,6 +131,7 @@ export async function getTeamSessionsPageData(input: {
   activeTeamId: string
   selectedVenueId?: string
   selectedCampId?: string
+  selectedHighlight?: TeamSessionHighlightFilter
   page: number
 }): Promise<TeamSessionsPageData> {
   const supabase = await createServerSupabaseClient()
@@ -199,6 +203,7 @@ export async function getTeamSessionsPageData(input: {
       campFilterOptions: [],
       campOptions: [],
       selectedVenueId,
+      selectedHighlight: input.selectedHighlight,
       currentPage,
       hasPreviousPage: currentPage > 1,
       hasNextPage: false,
@@ -253,6 +258,10 @@ export async function getTeamSessionsPageData(input: {
     selectedId: input.selectedCampId,
     allowedIds: new Set(campFilterOptions.map((row) => row.campId)),
   })
+  const selectedHighlight =
+    input.selectedHighlight === "yes" || input.selectedHighlight === "no"
+      ? input.selectedHighlight
+      : undefined
 
   const sessionCampIds = selectedCampId
     ? [selectedCampId]
@@ -269,6 +278,7 @@ export async function getTeamSessionsPageData(input: {
       }),
       selectedVenueId,
       selectedCampId,
+      selectedHighlight,
       currentPage,
       hasPreviousPage: currentPage > 1,
       hasNextPage: false,
@@ -278,13 +288,25 @@ export async function getTeamSessionsPageData(input: {
   const offset = (currentPage - 1) * TEAM_SESSIONS_PAGE_SIZE
   const rangeEnd = offset + TEAM_SESSIONS_PAGE_SIZE
 
-  const { data: sessionData, error: sessionError } = await supabase
+  let sessionQuery = supabase
     .from("sessions")
     .select(SESSION_SELECT_COLUMNS)
     .in("camp_id", sessionCampIds)
     .order("session_date", { ascending: false })
     .order("created_at", { ascending: false })
-    .range(offset, rangeEnd)
+
+  if (selectedHighlight === "yes") {
+    sessionQuery = sessionQuery.eq("highlighted_by_coach", true)
+  }
+
+  if (selectedHighlight === "no") {
+    sessionQuery = sessionQuery.eq("highlighted_by_coach", false)
+  }
+
+  const { data: sessionData, error: sessionError } = await sessionQuery.range(
+    offset,
+    rangeEnd,
+  )
 
   if (sessionError) {
     throw new Error(`Could not load sessions: ${sessionError.message}`)
@@ -338,6 +360,7 @@ export async function getTeamSessionsPageData(input: {
     }),
     selectedVenueId,
     selectedCampId,
+    selectedHighlight,
     currentPage,
     hasPreviousPage: currentPage > 1,
     hasNextPage,

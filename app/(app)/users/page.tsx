@@ -15,11 +15,11 @@ type UsersSearchParams = Promise<
 
 function getStatusMessage(status: string | undefined): string | null {
   if (status === "updated") {
-    return "User updated successfully."
+    return "Member updated successfully."
   }
 
   if (status === "deleted") {
-    return "User removed successfully."
+    return "Member removed successfully."
   }
 
   return null
@@ -27,19 +27,19 @@ function getStatusMessage(status: string | undefined): string | null {
 
 function getErrorMessage(error: string | undefined): string | null {
   if (error === "invalid_input") {
-    return "The submitted user data is invalid. Review the form and try again."
+    return "The submitted member data is invalid. Review the form and try again."
   }
 
   if (error === "forbidden") {
-    return "You do not have permission to manage users in the active organization."
+    return "You do not have permission to manage members in the active organization."
   }
 
   if (error === "update_failed") {
-    return "Could not update user data. Confirm your permissions and try again."
+    return "Could not update member data. Confirm your permissions and try again."
   }
 
   if (error === "delete_failed") {
-    return "Could not remove user from this team. Confirm your permissions and try again."
+    return "Could not remove member from this team. Confirm your permissions and try again."
   }
 
   return null
@@ -68,9 +68,9 @@ export default async function UsersPage({
   if (!navigation.scope) {
     return (
       <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
-        <h2 className="text-lg font-semibold text-amber-900">Users unavailable</h2>
+        <h2 className="text-lg font-semibold text-amber-900">Members unavailable</h2>
         <p className="mt-2 text-sm text-amber-800">
-          User management requires an active organization context.
+          Member management requires an active organization context.
         </p>
       </section>
     )
@@ -106,14 +106,14 @@ export default async function UsersPage({
         requestedTeamId,
       })
     } catch {
-      usersLoadError = "Could not load user data. Check server configuration and try again."
+      usersLoadError = "Could not load member data. Check server configuration and try again."
     }
   }
 
   return (
     <div className="space-y-6">
       <header className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Members</h1>
         <p className="text-sm text-muted-foreground">
           Showing team members for <strong>{activeOrganization.name}</strong>.
         </p>
@@ -125,14 +125,14 @@ export default async function UsersPage({
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
           <h2 className="text-lg font-semibold text-amber-900">Read-only access</h2>
           <p className="mt-2 text-sm text-amber-800">
-            User management is restricted to super admins and organization admins.
+            Member management is restricted to super admins and organization admins.
           </p>
         </section>
       ) : null}
 
       {usersLoadError ? (
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
-          <h2 className="text-lg font-semibold text-amber-900">User data unavailable</h2>
+          <h2 className="text-lg font-semibold text-amber-900">Member data unavailable</h2>
           <p className="mt-2 text-sm text-amber-800">{usersLoadError}</p>
         </section>
       ) : null}

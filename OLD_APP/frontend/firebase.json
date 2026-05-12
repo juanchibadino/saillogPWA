@@ -1,0 +1,41 @@
+{
+  "hosting": {
+    "site": "sailog-data-manager",
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/sessions/**/trims/**",
+        "run": {
+          "serviceId": "sailog-backend",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/sessions/**/trims",
+        "run": {
+          "serviceId": "sailog-backend",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/process-vakaros",
+        "run": {
+          "serviceId": "sailog-backend",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/generate-report",
+        "run": {
+          "serviceId": "sailog-backend",
+          "region": "us-central1"
+        }
+      }
+    ]
+  }
+}

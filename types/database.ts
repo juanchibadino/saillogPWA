@@ -233,6 +233,57 @@ export type Database = {
         };
         Relationships: [];
       };
+      team_venue_reports: {
+        Row: {
+          id: string;
+          team_venue_id: string;
+          year: number;
+          name: string;
+          created_by_profile_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          team_venue_id: string;
+          year: number;
+          name: string;
+          created_by_profile_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          team_venue_id?: string;
+          year?: number;
+          name?: string;
+          created_by_profile_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      team_venue_report_camps: {
+        Row: {
+          id: string;
+          report_id: string;
+          camp_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          report_id: string;
+          camp_id: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          report_id?: string;
+          camp_id?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       sessions: {
         Row: {
           id: string;
@@ -615,6 +666,387 @@ export type Database = {
         };
         Relationships: [];
       };
+      assessment_templates: {
+        Row: {
+          id: string;
+          team_id: string;
+          name: string;
+          description: string | null;
+          is_active: boolean;
+          created_by_profile_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          team_id: string;
+          name: string;
+          description?: string | null;
+          is_active?: boolean;
+          created_by_profile_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          team_id?: string;
+          name?: string;
+          description?: string | null;
+          is_active?: boolean;
+          created_by_profile_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      assessment_template_scale_options: {
+        Row: {
+          id: string;
+          assessment_template_id: string;
+          label: string;
+          position: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          assessment_template_id: string;
+          label: string;
+          position: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          assessment_template_id?: string;
+          label?: string;
+          position?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      assessment_template_categories: {
+        Row: {
+          id: string;
+          assessment_template_id: string;
+          name: string;
+          position: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          assessment_template_id: string;
+          name: string;
+          position: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          assessment_template_id?: string;
+          name?: string;
+          position?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      assessment_template_modes: {
+        Row: {
+          id: string;
+          assessment_template_category_id: string;
+          name: string;
+          position: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          assessment_template_category_id: string;
+          name: string;
+          position: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          assessment_template_category_id?: string;
+          name?: string;
+          position?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      assessment_template_questions: {
+        Row: {
+          id: string;
+          assessment_template_category_id: string;
+          assessment_template_mode_id: string | null;
+          prompt: string;
+          position: number;
+          is_required: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          assessment_template_category_id: string;
+          assessment_template_mode_id?: string | null;
+          prompt: string;
+          position: number;
+          is_required?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          assessment_template_category_id?: string;
+          assessment_template_mode_id?: string | null;
+          prompt?: string;
+          position?: number;
+          is_required?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      assessment_runs: {
+        Row: {
+          id: string;
+          team_id: string;
+          team_venue_id: string;
+          assessment_template_id: string | null;
+          name: string;
+          description: string | null;
+          status: Database["public"]["Enums"]["assessment_run_status_type"];
+          created_by_profile_id: string | null;
+          published_at: string | null;
+          closed_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          team_id: string;
+          team_venue_id: string;
+          assessment_template_id?: string | null;
+          name: string;
+          description?: string | null;
+          status?: Database["public"]["Enums"]["assessment_run_status_type"];
+          created_by_profile_id?: string | null;
+          published_at?: string | null;
+          closed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          team_id?: string;
+          team_venue_id?: string;
+          assessment_template_id?: string | null;
+          name?: string;
+          description?: string | null;
+          status?: Database["public"]["Enums"]["assessment_run_status_type"];
+          created_by_profile_id?: string | null;
+          published_at?: string | null;
+          closed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      assessment_run_scale_options: {
+        Row: {
+          id: string;
+          assessment_run_id: string;
+          label: string;
+          position: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          assessment_run_id: string;
+          label: string;
+          position: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          assessment_run_id?: string;
+          label?: string;
+          position?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      assessment_run_categories: {
+        Row: {
+          id: string;
+          assessment_run_id: string;
+          name: string;
+          position: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          assessment_run_id: string;
+          name: string;
+          position: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          assessment_run_id?: string;
+          name?: string;
+          position?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      assessment_run_modes: {
+        Row: {
+          id: string;
+          assessment_run_category_id: string;
+          name: string;
+          position: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          assessment_run_category_id: string;
+          name: string;
+          position: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          assessment_run_category_id?: string;
+          name?: string;
+          position?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      assessment_run_questions: {
+        Row: {
+          id: string;
+          assessment_run_category_id: string;
+          assessment_run_mode_id: string | null;
+          prompt: string;
+          position: number;
+          is_required: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          assessment_run_category_id: string;
+          assessment_run_mode_id?: string | null;
+          prompt: string;
+          position: number;
+          is_required?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          assessment_run_category_id?: string;
+          assessment_run_mode_id?: string | null;
+          prompt?: string;
+          position?: number;
+          is_required?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      assessment_run_camps: {
+        Row: {
+          id: string;
+          assessment_run_id: string;
+          camp_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          assessment_run_id: string;
+          camp_id: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          assessment_run_id?: string;
+          camp_id?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      assessment_run_respondents: {
+        Row: {
+          id: string;
+          assessment_run_id: string;
+          profile_id: string;
+          responded_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          assessment_run_id: string;
+          profile_id: string;
+          responded_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          assessment_run_id?: string;
+          profile_id?: string;
+          responded_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      assessment_run_answers: {
+        Row: {
+          id: string;
+          assessment_run_id: string;
+          assessment_run_question_id: string;
+          respondent_profile_id: string;
+          assessment_run_scale_option_id: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          assessment_run_id: string;
+          assessment_run_question_id: string;
+          respondent_profile_id: string;
+          assessment_run_scale_option_id: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          assessment_run_id?: string;
+          assessment_run_question_id?: string;
+          respondent_profile_id?: string;
+          assessment_run_scale_option_id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       organization_subscriptions: {
         Row: {
           organization_id: string;
@@ -735,6 +1167,7 @@ export type Database = {
     Views: Record<string, never>;
     Functions: Record<string, never>;
     Enums: {
+      assessment_run_status_type: "draft" | "published" | "closed";
       asset_type: "photo" | "analytics_file" | "document";
       billing_cycle: "monthly" | "yearly" | "none";
       camp_type: "training" | "regatta" | "mixed";

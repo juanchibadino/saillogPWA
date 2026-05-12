@@ -1,6 +1,7 @@
 import { CampsFeedback } from "@/features/camps/camps-feedback"
 import { CreateCampDialog } from "@/features/camps/camp-form-dialogs"
 import { TeamCampsTable } from "@/features/camps/camps-table"
+import { TeamVenuesToolbar } from "@/features/team-venues/team-venues-toolbar"
 import {
   getTeamCampsPageData,
   type TeamCampListItem,
@@ -8,8 +9,11 @@ import {
   type TeamCampVenueOption,
 } from "@/features/camps/data"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
-import { canManageTeamStructure } from "@/lib/auth/capabilities"
-import { TableFiltersToolbar } from "@/components/shared/table-filters-toolbar"
+import { canDeleteCamps, canManageTeamStructure } from "@/lib/auth/capabilities"
+import {
+  NAVIGATION_SCOPE_ORG_QUERY_KEY,
+  NAVIGATION_SCOPE_TEAM_QUERY_KEY,
+} from "@/lib/navigation/constants"
 import {
   getSingleSearchParamValue,
   resolveNavigationScope,
@@ -26,6 +30,10 @@ function getStatusMessage(status: string | undefined): string | null {
 
   if (status === "updated") {
     return "Camp updated successfully."
+  }
+
+  if (status === "deleted") {
+    return "Camp deleted successfully."
   }
 
   return null
@@ -46,6 +54,10 @@ function getErrorMessage(error: string | undefined): string | null {
 
   if (error === "update_failed") {
     return "Could not update camp. Confirm your permissions and try again."
+  }
+
+  if (error === "delete_failed") {
+    return "Could not delete camp. Confirm your permissions and try again."
   }
 
   if (error === "plan_limit_reached") {
@@ -71,6 +83,27 @@ function parseRequestedPage(value: string | undefined): number {
   }
 
   return Math.floor(parsed)
+}
+
+function buildTeamCampVenueFilterHref(input: {
+  venueId?: string
+  scope: {
+    activeOrgId: string
+    activeTeamId: string | null
+  }
+}): string {
+  const params = new URLSearchParams()
+  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.scope.activeOrgId)
+
+  if (input.scope.activeTeamId) {
+    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scope.activeTeamId)
+  }
+
+  if (input.venueId) {
+    params.set("venue", input.venueId)
+  }
+
+  return `/team-camps?${params.toString()}`
 }
 
 export default async function TeamCampsPage({
@@ -114,6 +147,13 @@ export default async function TeamCampsPage({
   const canManageCamps =
     activeTeamId !== null &&
     canManageTeamStructure({
+      context,
+      organizationId: scope.activeOrgId,
+      teamId: activeTeamId,
+    })
+  const canDeleteCampRows =
+    activeTeamId !== null &&
+    canDeleteCamps({
       context,
       organizationId: scope.activeOrgId,
       teamId: activeTeamId,
@@ -175,28 +215,28 @@ export default async function TeamCampsPage({
         camps={camps}
         teamVenueOptions={teamVenueOptions}
         canManageCamps={canManageCamps}
+        canDeleteCamps={canDeleteCampRows}
         noTeamSelected={noTeamSelected}
         toolbar={
-          <TableFiltersToolbar
-            scope={scope}
-            fields={[
+          <TeamVenuesToolbar
+            filterLabel="Venue"
+            selectedValue={selectedVenueId ?? ""}
+            disabled={noTeamSelected || venueFilterOptions.length === 0}
+            options={[
               {
-                id: "camps-venue",
-                name: "venue",
-                label: "Venue",
-                allLabel: "Venues",
-                selectedValue: selectedVenueId,
-                disabled: noTeamSelected || venueFilterOptions.length === 0,
-                controlClassName: "min-w-[11rem]",
-                options: venueFilterOptions.map((option) => ({
-                  value: option.venueId,
-                  label: `${option.venueName} — ${option.venueLocation}`,
-                })),
+                value: "",
+                label: "Venues",
+                href: buildTeamCampVenueFilterHref({ scope }),
               },
+              ...venueFilterOptions.map((option) => ({
+                value: option.venueId,
+                label: `${option.venueName} — ${option.venueLocation}`,
+                href: buildTeamCampVenueFilterHref({
+                  scope,
+                  venueId: option.venueId,
+                }),
+              })),
             ]}
-            embedded
-            autoSubmit
-            className="rounded-none border-0 bg-transparent p-0"
             action={
               <CreateCampDialog
                 teamVenueOptions={teamVenueOptions}

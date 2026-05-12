@@ -1,0 +1,64 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vakaros Track (debug page)</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    html, body, #map { height: 100%; margin: 0; }
+    #log { position:absolute; top:8px; left:8px; background:#fff; padding:8px 10px; border-radius:8px; font:12px/1.3 system-ui; box-shadow:0 4px 10px rgba(0,0,0,.12); max-width:70vw; }
+    pre { margin: 6px 0 0; white-space:pre-wrap; max-height:30vh; overflow:auto; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="log">Loading…</div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const logBox = document.getElementById('log');
+    const log = (...a)=>{ logBox.innerHTML = a.join(' ') };
+
+    const p = new URLSearchParams(location.search);
+    const trackUrl = p.get("track");
+    const map = L.map("map");
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
+
+    async function load() {
+      if (!trackUrl) { log('❗ Falta ?track='); return; }
+      log('Fetch:', trackUrl.slice(0,110)+'…');
+      try {
+        const r = await fetch(trackUrl);
+        log('HTTP', r.status, r.statusText);
+        if (!r.ok) throw new Error('Fetch '+r.status);
+        const gj = await r.json();
+
+        // Extra: mostrar primeras coords para verificar formato
+        const coords = (gj.features?.[0]?.geometry?.coordinates) || [];
+        const head = coords.slice(0,3).map(c => `[${c[0].toFixed?.(5)}, ${c[1].toFixed?.(5)}]`).join(', ');
+        logBox.innerHTML += `<pre>Primeras coords: ${head || 'n/a'}</pre>`;
+
+        // Dibujo con estilo visible
+        const layer = L.geoJSON(gj, { style: { weight: 5, opacity: 0.95 } }).addTo(map);
+        const b = layer.getBounds();
+        if (b.isValid()) {
+          map.fitBounds(b, { padding: [24,24] });
+          logBox.innerHTML += `<pre>Bounds: ${b.toBBoxString()}</pre>`;
+        } else {
+          logBox.innerHTML += `<pre>Bounds inválidos, intento fallback…</pre>`;
+          if (coords.length > 0) {
+            const [lon, lat] = coords[0];
+            map.setView([lat, lon], 13);
+            L.marker([lat, lon]).addTo(map).bindPopup('Primer punto');
+          }
+        }
+      } catch (e) {
+        console.error(e);
+        log('Error:', e.message);
+      }
+    }
+    load();
+  </script>
+</body>
+</html>

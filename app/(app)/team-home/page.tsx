@@ -3,12 +3,12 @@ import Image from "next/image"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { buttonVariants } from "@/components/ui/button"
 import {
-  Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { GradientCard } from "@/components/shared/gradient-card"
 import {
   getTeamCampsPageData,
   type TeamCampListItem,
@@ -285,7 +285,9 @@ export default async function TeamHomePage({
         <>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             {teamKpis.map((kpi) => (
-              <Card key={kpi.label}>
+              <GradientCard
+                key={kpi.label}
+              >
                 <CardHeader className="pb-2">
                   <CardDescription>{kpi.label}</CardDescription>
                   <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
@@ -295,12 +297,12 @@ export default async function TeamHomePage({
                 <CardContent className="text-sm text-muted-foreground">
                   {kpi.note}
                 </CardContent>
-              </Card>
+              </GradientCard>
             ))}
           </div>
 
           <div className="grid gap-4 lg:grid-cols-3">
-            <Card className="border-border/70 bg-card/90">
+            <GradientCard>
               <CardHeader className="flex flex-row items-center justify-between pb-0">
                 <div className="space-y-1">
                   <CardTitle>Latest Sessions</CardTitle>
@@ -347,9 +349,9 @@ export default async function TeamHomePage({
                   </ul>
                 )}
               </CardContent>
-            </Card>
+            </GradientCard>
 
-            <Card className="border-border/70 bg-card/90">
+            <GradientCard>
               <CardHeader className="flex flex-row items-center justify-between pb-0">
                 <div className="space-y-1">
                   <CardTitle>Latest Camps</CardTitle>
@@ -398,9 +400,9 @@ export default async function TeamHomePage({
                   </ul>
                 )}
               </CardContent>
-            </Card>
+            </GradientCard>
 
-            <Card className="border-border/70 bg-card/90">
+            <GradientCard>
               <CardHeader className="flex flex-row items-center justify-between pb-0">
                 <div className="space-y-1">
                   <CardTitle>Latest Venues</CardTitle>
@@ -423,7 +425,7 @@ export default async function TeamHomePage({
                         <Link
                           href={buildVenueDetailHref({
                             scope,
-                            venueId: venue.venueId,
+                            teamVenueId: venue.teamVenueId,
                           })}
                           className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-md -mx-2 px-2 py-3 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40"
                         >
@@ -448,11 +450,11 @@ export default async function TeamHomePage({
                   </ul>
                 )}
               </CardContent>
-            </Card>
+            </GradientCard>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-4">
-            <Card className="relative flex h-full flex-col overflow-hidden border-border/70 bg-card/90 lg:col-span-1">
+            <GradientCard className="relative flex h-full flex-col overflow-hidden lg:col-span-1">
               <CardContent className="relative flex min-h-[18rem] flex-1 p-6">
                 <div className="relative z-10 max-w-[62%] space-y-1">
                   <p className="text-5xl font-semibold leading-none tracking-tight">
@@ -476,9 +478,9 @@ export default async function TeamHomePage({
                   />
                 </div>
               </CardContent>
-            </Card>
+            </GradientCard>
 
-            <Card className="border-border/70 bg-card/90 lg:col-span-3">
+            <GradientCard className="lg:col-span-3">
               <CardHeader>
                 <CardTitle>Team Members</CardTitle>
                 <CardDescription>Coach and crew roster</CardDescription>
@@ -528,7 +530,7 @@ export default async function TeamHomePage({
                   </ul>
                 )}
               </CardContent>
-            </Card>
+            </GradientCard>
           </div>
         </>
       )}

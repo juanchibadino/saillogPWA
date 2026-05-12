@@ -11,7 +11,7 @@ import {
 } from "@/features/camps/data"
 import { buildCampDetailHref } from "@/features/camps/navigation"
 import {
-  EditCampDialog,
+  CampActionsMenu,
 } from "@/features/camps/camp-form-dialogs"
 import type { NavigationScope } from "@/lib/navigation/types"
 import { Button } from "@/components/ui/button"
@@ -35,6 +35,7 @@ type TeamCampsTableProps = {
   camps: TeamCampListItem[]
   teamVenueOptions: TeamCampVenueOption[]
   canManageCamps: boolean
+  canDeleteCamps: boolean
   noTeamSelected: boolean
   toolbar?: ReactNode
   scope: NavigationScope
@@ -67,6 +68,7 @@ export function TeamCampsTable({
   camps,
   teamVenueOptions,
   canManageCamps,
+  canDeleteCamps,
   noTeamSelected,
   toolbar,
   scope,
@@ -178,14 +180,19 @@ export function TeamCampsTable({
                     onClick={(event) => {
                       event.stopPropagation()
                     }}
+                    onKeyDown={(event) => {
+                      event.stopPropagation()
+                    }}
                   >
-                    {canManageCamps ? (
-                      <EditCampDialog
+                    {canManageCamps || canDeleteCamps ? (
+                      <CampActionsMenu
                         camp={camp}
                         teamVenueOptions={teamVenueOptions}
                         scope={scope}
                         selectedVenueId={selectedVenueId}
                         currentPage={currentPage}
+                        canEditCamp={canManageCamps}
+                        canDeleteCamp={canDeleteCamps}
                       />
                     ) : (
                       <Button

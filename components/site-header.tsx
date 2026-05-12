@@ -59,7 +59,7 @@ function getSectionTitle(pathname: string): string {
   }
 
   if (pathname.startsWith("/users")) {
-    return "Users"
+    return "Members"
   }
 
   if (pathname.startsWith("/team-home")) {
@@ -74,6 +74,10 @@ function getSectionTitle(pathname: string): string {
     return "Team Sessions"
   }
 
+  if (pathname.startsWith("/team-reports")) {
+    return "Team Reports"
+  }
+
   if (pathname.startsWith("/team-venues")) {
     return "Team Venues"
   }
@@ -84,6 +88,10 @@ function getSectionTitle(pathname: string): string {
 
   if (pathname.startsWith("/billing")) {
     return "Billing"
+  }
+
+  if (pathname.startsWith("/reports")) {
+    return "Reports"
   }
 
   if (pathname.startsWith("/dashboard")) {
@@ -116,6 +124,56 @@ function getTeamVenuesTitle(
     "No team selected"
 
   return `${activeTeamLabel} > Venues`
+}
+
+function getTeamCampsTitle(
+  navigation: ResolvedNavigationScope | null,
+  searchParams: ReadonlyURLSearchParams,
+): string {
+  if (!navigation?.scope) {
+    return "Team Camps"
+  }
+
+  const activeOrgId =
+    searchParams.get(NAVIGATION_SCOPE_ORG_QUERY_KEY) ?? navigation.scope.activeOrgId
+  const queryTeamId = searchParams.get(NAVIGATION_SCOPE_TEAM_QUERY_KEY)
+
+  const teamsForOrganization =
+    navigation.catalog.teamsByOrganizationId[activeOrgId] ?? []
+  const activeTeamId =
+    queryTeamId && teamsForOrganization.some((team) => team.id === queryTeamId)
+      ? queryTeamId
+      : navigation.scope.activeTeamId
+  const activeTeamLabel =
+    teamsForOrganization.find((team) => team.id === activeTeamId)?.name ??
+    "No team selected"
+
+  return `${activeTeamLabel} > Camps`
+}
+
+function getTeamSessionsTitle(
+  navigation: ResolvedNavigationScope | null,
+  searchParams: ReadonlyURLSearchParams,
+): string {
+  if (!navigation?.scope) {
+    return "Team Sessions"
+  }
+
+  const activeOrgId =
+    searchParams.get(NAVIGATION_SCOPE_ORG_QUERY_KEY) ?? navigation.scope.activeOrgId
+  const queryTeamId = searchParams.get(NAVIGATION_SCOPE_TEAM_QUERY_KEY)
+
+  const teamsForOrganization =
+    navigation.catalog.teamsByOrganizationId[activeOrgId] ?? []
+  const activeTeamId =
+    queryTeamId && teamsForOrganization.some((team) => team.id === queryTeamId)
+      ? queryTeamId
+      : navigation.scope.activeTeamId
+  const activeTeamLabel =
+    teamsForOrganization.find((team) => team.id === activeTeamId)?.name ??
+    "No team selected"
+
+  return `${activeTeamLabel} > Sessions`
 }
 
 function getVenueDetailId(pathname: string): string | null {
@@ -205,7 +263,23 @@ export function SiteHeader({
 
   const sectionTitle = pathname.startsWith("/team-venues")
     ? getTeamVenuesTitle(navigation, searchParams)
-    : getSectionTitle(pathname)
+    : pathname.startsWith("/team-camps")
+      ? getTeamCampsTitle(navigation, searchParams)
+      : pathname.startsWith("/team-sessions")
+        ? getTeamSessionsTitle(navigation, searchParams)
+        : pathname.startsWith("/team-reports")
+          ? "Team Reports"
+        : getSectionTitle(pathname)
+  const isTeamHomeHeader = pathname.startsWith("/team-home")
+  const teamScopeSectionLabel = pathname.startsWith("/team-venues")
+    ? "Venues"
+    : pathname.startsWith("/team-camps")
+      ? "Camps"
+      : pathname.startsWith("/team-sessions")
+        ? "Sessions"
+        : pathname.startsWith("/team-reports")
+          ? "Reports"
+        : null
   const venueDetailId = getVenueDetailId(pathname)
   const sessionDetailId = getSessionDetailId(pathname)
   const activeScope = resolveActiveScope(navigation, searchParams)
@@ -484,8 +558,24 @@ export function SiteHeader({
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
+        ) : teamScopeSectionLabel ? (
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink render={<Link href={teamHomeHref} />}>
+                  {activeTeamLabel}
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>{teamScopeSectionLabel}</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
         ) : (
-          <h1 className="text-base font-medium">{sectionTitle}</h1>
+          <h1 className={isTeamHomeHeader ? "text-sm font-medium" : "text-base font-medium"}>
+            {sectionTitle}
+          </h1>
         )}
         <div className="ml-auto flex items-center gap-2">
           <Badge variant="secondary">{planBadgeLabel}</Badge>

@@ -484,7 +484,7 @@ async function resolveScopedSessionContext(input: {
 function revalidateSessionSlices(input: {
   sessionId: string
   campId?: string
-  venueId?: string
+  teamVenueId?: string
 }): void {
   revalidatePath("/team-home")
   revalidatePath("/team-sessions")
@@ -497,8 +497,8 @@ function revalidateSessionSlices(input: {
 
   revalidatePath("/venues")
 
-  if (input.venueId) {
-    revalidatePath(`/venues/${input.venueId}`)
+  if (input.teamVenueId) {
+    revalidatePath(`/venues/${input.teamVenueId}`)
   }
 }
 
@@ -792,7 +792,7 @@ export async function updateSessionDetailAction(formData: FormData): Promise<voi
   revalidateSessionSlices({
     sessionId: parsedInput.data.id,
     campId: scopedSession.camp.id,
-    venueId: scopedSession.teamVenue.venue_id,
+    teamVenueId: scopedSession.teamVenue.id,
   })
 
   redirect(
@@ -912,7 +912,7 @@ export async function updateSessionInfoAction(formData: FormData): Promise<void>
   revalidateSessionSlices({
     sessionId: parsedInput.data.sessionId,
     campId: scopedSession.camp.id,
-    venueId: scopedSession.teamVenue.venue_id,
+    teamVenueId: scopedSession.teamVenue.id,
   })
 
   redirect(
@@ -1008,7 +1008,7 @@ export async function updateSessionResultsAction(formData: FormData): Promise<vo
   revalidateSessionSlices({
     sessionId: parsedInput.data.sessionId,
     campId: scopedSession.camp.id,
-    venueId: scopedSession.teamVenue.venue_id,
+    teamVenueId: scopedSession.teamVenue.id,
   })
 
   redirect(
@@ -1319,7 +1319,7 @@ export async function updateSessionSetupAction(formData: FormData): Promise<void
   revalidateSessionSlices({
     sessionId: parsedInput.data.sessionId,
     campId: scopedSession.camp.id,
-    venueId: scopedSession.teamVenue.venue_id,
+    teamVenueId: scopedSession.teamVenue.id,
   })
 
   redirect(
@@ -1472,7 +1472,7 @@ export async function uploadSessionAssetAction(formData: FormData): Promise<void
   revalidateSessionSlices({
     sessionId: parsedInput.data.sessionId,
     campId: scopedSession.camp.id,
-    venueId: scopedSession.teamVenue.venue_id,
+    teamVenueId: scopedSession.teamVenue.id,
   })
 
   redirect(

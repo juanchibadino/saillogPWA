@@ -182,6 +182,79 @@ export function TeamSessionsPageSkeleton() {
   )
 }
 
+export function TeamReportsPageSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="rounded-xl border bg-card p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1">
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-9 w-32" />
+          </div>
+          <div className="space-y-1">
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-9 w-64" />
+          </div>
+          <Skeleton className="h-9 w-20" />
+        </div>
+      </div>
+
+      <div className="rounded-xl border bg-card p-4">
+        <div className="space-y-3">
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-4 w-80" />
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={`team-reports-create-row-${index}`} className="h-12 w-full" />
+          ))}
+          <Skeleton className="h-9 w-28" />
+        </div>
+      </div>
+
+      <div className="rounded-xl border bg-card p-4">
+        <div className="space-y-3">
+          <Skeleton className="h-6 w-24" />
+          {Array.from({ length: 5 }).map((_, index) => (
+            <Skeleton key={`team-reports-list-row-${index}`} className="h-16 w-full" />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function OrganizationReportsPageSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="rounded-xl border bg-card p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1">
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-9 w-32" />
+          </div>
+          <div className="space-y-1">
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-9 w-64" />
+          </div>
+          <div className="space-y-1">
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-9 w-72" />
+          </div>
+          <Skeleton className="h-9 w-20" />
+        </div>
+      </div>
+
+      <div className="rounded-xl border bg-card p-4">
+        <div className="space-y-3">
+          <Skeleton className="h-6 w-24" />
+          {Array.from({ length: 6 }).map((_, index) => (
+            <Skeleton key={`org-reports-row-${index}`} className="h-16 w-full" />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function SessionDetailPageSkeleton() {
   return (
     <div className="space-y-6">

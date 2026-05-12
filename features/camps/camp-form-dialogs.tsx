@@ -1,9 +1,13 @@
 "use client"
 
 import * as React from "react"
-import { PencilIcon, PlusIcon } from "lucide-react"
+import { MoreHorizontalIcon, PencilIcon, PlusIcon } from "lucide-react"
 
-import { createCampAction, updateCampAction } from "@/features/camps/actions"
+import {
+  createCampAction,
+  deleteCampAction,
+  updateCampAction,
+} from "@/features/camps/actions"
 import type { TeamCampListItem, TeamCampVenueOption } from "@/features/camps/data"
 import type { NavigationScope } from "@/lib/navigation/types"
 import { Button } from "@/components/ui/button"
@@ -16,6 +20,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
@@ -239,19 +249,29 @@ export function EditCampDialog({
   scope,
   selectedVenueId,
   currentPage,
+  open,
+  onOpenChange,
+  hideTrigger = false,
 }: {
   camp: EditableCamp
   teamVenueOptions: TeamCampVenueOption[]
   scope: NavigationScope
   selectedVenueId?: string
   currentPage: number
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  hideTrigger?: boolean
 }) {
+  const isOpenControlled = typeof open === "boolean" && typeof onOpenChange === "function"
+
   return (
-    <Dialog>
-      <DialogTrigger render={<Button variant="outline" size="sm" />}>
-        <PencilIcon className="size-4" />
-        Edit
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {!hideTrigger && !isOpenControlled ? (
+        <DialogTrigger render={<Button variant="outline" size="sm" />}>
+          <PencilIcon className="size-4" />
+          Edit
+        </DialogTrigger>
+      ) : null}
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Edit camp</DialogTitle>
@@ -279,5 +299,145 @@ export function EditCampDialog({
         />
       </DialogContent>
     </Dialog>
+  )
+}
+
+function DeleteCampDialog({
+  camp,
+  scope,
+  selectedVenueId,
+  currentPage,
+  open,
+  onOpenChange,
+}: {
+  camp: EditableCamp
+  scope: NavigationScope
+  selectedVenueId?: string
+  currentPage: number
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete camp</DialogTitle>
+          <DialogDescription>
+            This will permanently delete <strong>{camp.name}</strong> and all sessions
+            linked to it.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form action={deleteCampAction} className="space-y-4">
+          <input type="hidden" name="id" value={camp.id} />
+          <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
+          {scope.activeTeamId ? (
+            <input type="hidden" name="scopeTeamId" value={scope.activeTeamId} />
+          ) : null}
+          {selectedVenueId ? (
+            <input type="hidden" name="scopeVenueId" value={selectedVenueId} />
+          ) : null}
+          {currentPage > 1 ? (
+            <input type="hidden" name="scopePage" value={String(currentPage)} />
+          ) : null}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="destructive">
+              Delete
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+export function CampActionsMenu({
+  camp,
+  teamVenueOptions,
+  scope,
+  selectedVenueId,
+  currentPage,
+  canEditCamp,
+  canDeleteCamp,
+}: {
+  camp: EditableCamp
+  teamVenueOptions: TeamCampVenueOption[]
+  scope: NavigationScope
+  selectedVenueId?: string
+  currentPage: number
+  canEditCamp: boolean
+  canDeleteCamp: boolean
+}) {
+  const [isEditOpen, setIsEditOpen] = React.useState(false)
+  const [isDeleteOpen, setIsDeleteOpen] = React.useState(false)
+
+  if (!canEditCamp && !canDeleteCamp) {
+    return (
+      <Button variant="ghost" size="icon" disabled aria-label="More actions unavailable">
+        <MoreHorizontalIcon className="size-4" />
+      </Button>
+    )
+  }
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={<Button type="button" variant="ghost" size="icon" />}
+          aria-label={`Open actions for ${camp.name}`}
+        >
+          <MoreHorizontalIcon className="size-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {canEditCamp ? (
+            <DropdownMenuItem
+              onClick={() => {
+                setIsEditOpen(true)
+              }}
+            >
+              Edit
+            </DropdownMenuItem>
+          ) : null}
+          {canDeleteCamp ? (
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => {
+                setIsDeleteOpen(true)
+              }}
+            >
+              Delete
+            </DropdownMenuItem>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {canEditCamp ? (
+        <EditCampDialog
+          camp={camp}
+          teamVenueOptions={teamVenueOptions}
+          scope={scope}
+          selectedVenueId={selectedVenueId}
+          currentPage={currentPage}
+          open={isEditOpen}
+          onOpenChange={setIsEditOpen}
+          hideTrigger
+        />
+      ) : null}
+
+      {canDeleteCamp ? (
+        <DeleteCampDialog
+          camp={camp}
+          scope={scope}
+          selectedVenueId={selectedVenueId}
+          currentPage={currentPage}
+          open={isDeleteOpen}
+          onOpenChange={setIsDeleteOpen}
+        />
+      ) : null}
+    </>
   )
 }

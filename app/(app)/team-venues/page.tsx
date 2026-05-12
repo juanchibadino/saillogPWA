@@ -1,16 +1,22 @@
 import {
   type TeamVenueCreateOption,
   type TeamVenueListItem,
+  type TeamVenueStatusCounts,
+  type TeamVenueStatusFilter,
   getTeamVenuesPageData,
 } from "@/features/team-venues/data"
-import { TableFiltersToolbar } from "@/components/shared/table-filters-toolbar"
 import { TeamVenuesFeedback } from "@/features/team-venues/team-venues-feedback"
 import {
   CreateTeamVenueDialog,
   TeamVenuesTable,
 } from "@/features/team-venues/team-venues-table"
+import { TeamVenuesToolbar } from "@/features/team-venues/team-venues-toolbar"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
-import { canManageTeamStructure } from "@/lib/auth/capabilities"
+import { isOrganizationAdmin } from "@/lib/auth/capabilities"
+import {
+  NAVIGATION_SCOPE_ORG_QUERY_KEY,
+  NAVIGATION_SCOPE_TEAM_QUERY_KEY,
+} from "@/lib/navigation/constants"
 import {
   getSingleSearchParamValue,
   resolveNavigationScope,
@@ -21,11 +27,51 @@ type TeamVenuesSearchParams = Promise<
 >
 
 function getStatusMessage(status: string | undefined): string | null {
-  if (status === "created") {
+  if (status === "linked_existing") {
     return "Venue linked to team successfully."
   }
 
+  if (status === "created_and_linked") {
+    return "New venue created and linked to team successfully."
+  }
+
+  if (status === "updated") {
+    return "Team venue updated successfully."
+  }
+
+  if (status === "deleted") {
+    return "Team venue deleted successfully."
+  }
+
   return null
+}
+
+function resolveTeamVenueStatusFilter(
+  value: string | undefined,
+): TeamVenueStatusFilter {
+  if (value === "deprecated") {
+    return "deprecated"
+  }
+
+  return "active"
+}
+
+function buildTeamVenueStatusHref(input: {
+  statusFilter: TeamVenueStatusFilter
+  scope: {
+    activeOrgId: string
+    activeTeamId: string | null
+  }
+}): string {
+  const params = new URLSearchParams()
+  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.scope.activeOrgId)
+  params.set("status", input.statusFilter)
+
+  if (input.scope.activeTeamId) {
+    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scope.activeTeamId)
+  }
+
+  return `/team-venues?${params.toString()}`
 }
 
 function getErrorMessage(error: string | undefined): string | null {
@@ -34,7 +80,7 @@ function getErrorMessage(error: string | undefined): string | null {
   }
 
   if (error === "forbidden") {
-    return "You do not have permission to link venues for this team."
+    return "You do not have access to this scope or the required organization admin permissions."
   }
 
   if (error === "already_linked") {
@@ -42,7 +88,23 @@ function getErrorMessage(error: string | undefined): string | null {
   }
 
   if (error === "create_failed") {
-    return "Could not link venue to team. Confirm your permissions and try again."
+    return "Could not complete the venue request. Try again."
+  }
+
+  if (error === "link_failed_after_create") {
+    return "Venue was created, but linking it to this team failed. You can try linking it again."
+  }
+
+  if (error === "update_failed") {
+    return "Could not update the team venue. Try again."
+  }
+
+  if (error === "delete_failed") {
+    return "Could not delete the team venue. Try again."
+  }
+
+  if (error === "has_linked_operations") {
+    return "This team venue has linked camps or sessions and cannot be deleted."
   }
 
   return null
@@ -56,10 +118,11 @@ export default async function TeamVenuesPage({
   const context = await requireAuthenticatedAccessContext()
   const resolvedSearchParams = await searchParams
 
+  const result = getSingleSearchParamValue(resolvedSearchParams.result)
   const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
-  const selectedVenueId = getSingleSearchParamValue(resolvedSearchParams.venue)
-  const statusMessage = getStatusMessage(status)
+  const selectedStatusFilter = resolveTeamVenueStatusFilter(status)
+  const statusMessage = getStatusMessage(result)
   const errorMessage = getErrorMessage(error)
 
   const navigation = await resolveNavigationScope({
@@ -81,38 +144,31 @@ export default async function TeamVenuesPage({
   const scope = navigation.scope
   const noTeamSelected = scope.activeTeamId === null
   const activeTeamId = scope.activeTeamId
-
-  const canManageTeamVenues =
-    activeTeamId !== null &&
-    canManageTeamStructure({
-      context,
-      organizationId: scope.activeOrgId,
-      teamId: activeTeamId,
-    })
+  const canManageVenueRows = isOrganizationAdmin(context, scope.activeOrgId)
 
   const currentYear = new Date().getUTCFullYear()
 
   let linkedVenues: TeamVenueListItem[] = []
   let availableVenueOptions: TeamVenueCreateOption[] = []
+  let statusCounts: TeamVenueStatusCounts = {
+    active: 0,
+    deprecated: 0,
+  }
 
   if (activeTeamId) {
     const pageData = await getTeamVenuesPageData({
       activeOrganizationId: scope.activeOrgId,
       activeTeamId,
-      selectedVenueId,
+      statusFilter: selectedStatusFilter,
       currentYear,
     })
 
     linkedVenues = pageData.linkedVenues
     availableVenueOptions = pageData.availableVenueOptions
+    statusCounts = pageData.statusCounts
   }
 
-  const venueFilterOptions = linkedVenues.map((linkedVenue) => ({
-    value: linkedVenue.venueId,
-    label: `${linkedVenue.venueName} — ${linkedVenue.city}, ${linkedVenue.country}`,
-  }))
-  const createDisabled =
-    noTeamSelected || !canManageTeamVenues || availableVenueOptions.length === 0
+  const createDisabled = noTeamSelected
 
   return (
     <div className="space-y-6">
@@ -129,48 +185,44 @@ export default async function TeamVenuesPage({
         </section>
       ) : null}
 
-      {!noTeamSelected && !canManageTeamVenues ? (
-        <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
-          <h2 className="text-lg font-semibold text-amber-900">Read-only access</h2>
-          <p className="mt-2 text-sm text-amber-800">
-            You can view team venue links, but only super admins, organization
-            admins, team admins, and coaches can create new links.
-          </p>
-        </section>
-      ) : null}
-
       <TeamVenuesTable
         linkedVenues={linkedVenues}
         noTeamSelected={noTeamSelected}
+        canManageVenueRows={canManageVenueRows}
         toolbar={
-          <TableFiltersToolbar
-            scope={scope}
-            fields={[
+          <TeamVenuesToolbar
+            selectedValue={selectedStatusFilter}
+            options={[
               {
-                id: "team-venues-venue",
-                name: "venue",
-                label: "Venue",
-                allLabel: "Venues",
-                selectedValue: selectedVenueId ?? undefined,
-                disabled: noTeamSelected || venueFilterOptions.length === 0,
-                controlClassName: "min-w-[11rem]",
-                options: venueFilterOptions,
+                label: "Active",
+                value: "active",
+                count: statusCounts.active,
+                href: buildTeamVenueStatusHref({
+                  statusFilter: "active",
+                  scope,
+                }),
+              },
+              {
+                label: "Deprecated",
+                value: "deprecated",
+                count: statusCounts.deprecated,
+                href: buildTeamVenueStatusHref({
+                  statusFilter: "deprecated",
+                  scope,
+                }),
               },
             ]}
-            embedded
-            autoSubmit
-            className="rounded-none border-0 bg-transparent p-0"
             action={
               <CreateTeamVenueDialog
                 availableVenueOptions={availableVenueOptions}
                 scope={scope}
-                selectedVenueId={selectedVenueId}
+                selectedStatusFilter={selectedStatusFilter}
                 disabled={createDisabled}
               />
             }
           />
         }
-        selectedVenueId={selectedVenueId}
+        selectedStatusFilter={selectedStatusFilter}
         scope={scope}
         currentYear={currentYear}
       />

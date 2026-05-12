@@ -4,17 +4,23 @@ import * as React from "react"
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
+  BarChart3Icon,
   Building2Icon,
+  CalendarIcon,
   CheckIcon,
   CircleIcon,
   CreditCardIcon,
   ChevronsUpDownIcon,
+  NotebookTextIcon,
   HomeIcon,
   KeyIcon,
   LogOutIcon,
   MapPinIcon,
+  ReceiptTextIcon,
   SailboatIcon,
+  UserIcon,
   UsersIcon,
+  WrenchIcon,
 } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -106,14 +112,26 @@ const organizationNavItems = [
     icon: CreditCardIcon,
   },
   {
+    title: "Expenses",
+    url: "/expenses",
+    icon: ReceiptTextIcon,
+    comingSoon: true,
+  },
+  {
+    title: "Reports",
+    url: "/reports",
+    icon: BarChart3Icon,
+    comingSoon: false,
+  },
+  {
     title: "Teams",
     url: "/teams",
     icon: UsersIcon,
   },
   {
-    title: "Users",
+    title: "Members",
     url: "/users",
-    icon: UsersIcon,
+    icon: UserIcon,
     comingSoon: false,
   },
 ]
@@ -143,6 +161,36 @@ const teamNavItems = [
     icon: SailboatIcon,
     comingSoon: false,
   },
+  {
+    title: "Gear",
+    url: "/team-gear",
+    icon: WrenchIcon,
+    comingSoon: true,
+  },
+  {
+    title: "Expenses",
+    url: "/team-expenses",
+    icon: ReceiptTextIcon,
+    comingSoon: true,
+  },
+  {
+    title: "Reports",
+    url: "/team-reports",
+    icon: BarChart3Icon,
+    comingSoon: false,
+  },
+  {
+    title: "Notes",
+    url: "/team-notes",
+    icon: NotebookTextIcon,
+    comingSoon: true,
+  },
+  {
+    title: "Calendar",
+    url: "/team-calendar",
+    icon: CalendarIcon,
+    comingSoon: true,
+  },
 ]
 
 const DEFAULT_UI_CAPABILITIES: NavigationScopeUiCapabilities = {
@@ -151,7 +199,21 @@ const DEFAULT_UI_CAPABILITIES: NavigationScopeUiCapabilities = {
   pickerMode: "super_admin",
 }
 
+function isVenueDetailPath(pathname: string): boolean {
+  return /^\/venues\/[^/]+$/.test(pathname)
+}
+
 function isItemActive(pathname: string, itemUrl: string): boolean {
+  if (isVenueDetailPath(pathname)) {
+    if (itemUrl === "/team-venues") {
+      return true
+    }
+
+    if (itemUrl === "/venues") {
+      return false
+    }
+  }
+
   return pathname === itemUrl || pathname.startsWith(`${itemUrl}/`)
 }
 
@@ -414,7 +476,12 @@ export function AppSidebar({
     updateScope(organizationId, nextTeamId)
   }
 
-  const scopedDashboardHref = buildScopedHref("/dashboard", activeOrgId, activeTeamId)
+  const canAccessOrganizationArea = canAccessOrganizationModules
+  const scopedDefaultHomeHref = buildScopedHref(
+    canAccessOrganizationArea ? "/dashboard" : "/team-home",
+    activeOrgId,
+    activeTeamId,
+  )
 
   return (
     <>
@@ -548,7 +615,7 @@ export function AppSidebar({
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <SidebarMenuButton size="lg" render={<Link href={scopedDashboardHref} />}>
+              <SidebarMenuButton size="lg" render={<Link href={scopedDefaultHomeHref} />}>
                 <Avatar className="size-8 rounded-lg">
                   {organizationAvatarUrl ? (
                     <AvatarImage src={organizationAvatarUrl} alt={organizationName} />
@@ -572,86 +639,86 @@ export function AppSidebar({
       <SidebarContent>
         {canAccessApp ? (
           <>
-            <SidebarGroup>
-              <SidebarGroupLabel>Organization</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  <SidebarMenuItem key={homeNavItem.title}>
-                    <SidebarMenuButton
-                      isActive={isItemActive(pathname, homeNavItem.url)}
-                      tooltip={homeNavItem.title}
-                      render={
-                        <Link
-                          href={buildScopedHref(
-                            homeNavItem.url,
-                            activeOrgId,
-                            activeTeamId,
-                          )}
-                        />
-                      }
-                    >
-                      <homeNavItem.icon />
-                      <span>{homeNavItem.title}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-
-                  {canAccessOrganizationsPage ? (
-                    <SidebarMenuItem key={organizationsNavItem.title}>
+            {canAccessOrganizationArea ? (
+              <SidebarGroup>
+                <SidebarGroupLabel>Organization</SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    <SidebarMenuItem key={homeNavItem.title}>
                       <SidebarMenuButton
-                        isActive={isItemActive(pathname, organizationsNavItem.url)}
-                        tooltip={organizationsNavItem.title}
+                        isActive={isItemActive(pathname, homeNavItem.url)}
+                        tooltip={homeNavItem.title}
                         render={
                           <Link
                             href={buildScopedHref(
-                              organizationsNavItem.url,
+                              homeNavItem.url,
                               activeOrgId,
                               activeTeamId,
                             )}
                           />
                         }
                       >
-                        <organizationsNavItem.icon />
-                        <span>{organizationsNavItem.title}</span>
+                        <homeNavItem.icon />
+                        <span>{homeNavItem.title}</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
-                  ) : null}
-                  {canAccessOrganizationModules
-                    ? organizationNavItems.map((item) => (
-                        <SidebarMenuItem key={item.title}>
-                          <SidebarMenuButton
-                            isActive={item.url ? isItemActive(pathname, item.url) : false}
-                            tooltip={
-                              item.comingSoon ? `${item.title} (NIY)` : item.title
-                            }
-                            disabled={item.comingSoon}
-                            render={
-                              item.url
-                                ? (
-                                    <Link
-                                      href={buildScopedHref(
-                                        item.url,
-                                        activeOrgId,
-                                        activeTeamId,
-                                      )}
-                                    />
-                                  )
-                                : undefined
-                            }
-                          >
-                            <item.icon />
-                            <span>{item.title}</span>
-                            {item.comingSoon ? (
-                              <span className="ml-auto text-[10px] text-muted-foreground">
-                                NIY
-                              </span>
-                            ) : null}
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      ))
-                    : null}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
+
+                    {canAccessOrganizationsPage ? (
+                      <SidebarMenuItem key={organizationsNavItem.title}>
+                        <SidebarMenuButton
+                          isActive={isItemActive(pathname, organizationsNavItem.url)}
+                          tooltip={organizationsNavItem.title}
+                          render={
+                            <Link
+                              href={buildScopedHref(
+                                organizationsNavItem.url,
+                                activeOrgId,
+                                activeTeamId,
+                              )}
+                            />
+                          }
+                        >
+                          <organizationsNavItem.icon />
+                          <span>{organizationsNavItem.title}</span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ) : null}
+                    {organizationNavItems.map((item) => (
+                      <SidebarMenuItem key={item.title}>
+                        <SidebarMenuButton
+                          isActive={item.url ? isItemActive(pathname, item.url) : false}
+                          tooltip={
+                            item.comingSoon ? `${item.title} (NIY)` : item.title
+                          }
+                          disabled={item.comingSoon}
+                          render={
+                            item.url
+                              ? (
+                                  <Link
+                                    href={buildScopedHref(
+                                      item.url,
+                                      activeOrgId,
+                                      activeTeamId,
+                                    )}
+                                  />
+                                )
+                              : undefined
+                          }
+                        >
+                          <item.icon />
+                          <span>{item.title}</span>
+                          {item.comingSoon ? (
+                            <span className="ml-auto text-[10px] text-muted-foreground">
+                              NIY
+                            </span>
+                          ) : null}
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            ) : null}
 
             <SidebarGroup>
               <SidebarGroupLabel>Team</SidebarGroupLabel>

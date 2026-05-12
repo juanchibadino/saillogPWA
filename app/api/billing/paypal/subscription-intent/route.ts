@@ -6,6 +6,7 @@ import { canManageOrganizationOperations } from "@/lib/auth/capabilities"
 
 import {
   buildPaypalReturnUrls,
+  fetchPaypalPlan,
   getPaypalClientId,
   resolvePaypalProPlanId,
 } from "@/lib/billing/paypal"
@@ -39,6 +40,18 @@ export async function POST(request: Request) {
       requestUrl: request.url,
       organizationId: parsedInput.data.organizationId,
     })
+    const paypalPlan = await fetchPaypalPlan(paypalPlanId)
+    const normalizedPlanStatus = paypalPlan.status?.trim().toUpperCase() ?? ""
+
+    if (normalizedPlanStatus !== "ACTIVE") {
+      return NextResponse.json(
+        {
+          error: "subscription_intent_failed",
+          detail: `PayPal plan ${paypalPlanId} is ${normalizedPlanStatus || "UNKNOWN"} (must be ACTIVE).`,
+        },
+        { status: 500 },
+      )
+    }
 
     return NextResponse.json({
       organizationId: parsedInput.data.organizationId,

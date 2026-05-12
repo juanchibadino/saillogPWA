@@ -104,6 +104,7 @@ export default async function VenuesPage({
 
   const { organizations, venues } = await getVenuePageData({
     activeOrganization,
+    activeTeamId: scope.activeTeamId,
   });
 
   const canManageVenues = canManageOrganizationOperations(
@@ -111,22 +112,8 @@ export default async function VenuesPage({
     scope.activeOrgId,
   );
 
-  const teamsForOrganization =
-    navigation.catalog.teamsByOrganizationId[scope.activeOrgId] ?? [];
-  const activeTeamLabel =
-    teamsForOrganization.find((team) => team.id === scope.activeTeamId)?.name ??
-    "No team selected";
-
   return (
     <div className="space-y-6">
-      <header className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Venues</h1>
-        <p className="text-sm text-muted-foreground">
-          Showing organization-owned venues for <strong>{activeOrganization.name}</strong>.
-          Team scope is <strong>{activeTeamLabel}</strong>. Team-specific venue links are
-          handled in Team Venues.
-        </p>
-      </header>
 
       <VenuesFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
 

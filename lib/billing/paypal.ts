@@ -31,6 +31,11 @@ export type PaypalSubscription = {
   }
 }
 
+export type PaypalPlan = {
+  id: string
+  status?: string
+}
+
 type PaypalWebhookVerificationResponse = {
   verification_status?: string
 }
@@ -279,6 +284,18 @@ export async function fetchPaypalSubscription(
 
   return await paypalApiRequest<PaypalSubscription>({
     path: `/v1/billing/subscriptions/${encodeURIComponent(trimmedSubscriptionId)}`,
+  })
+}
+
+export async function fetchPaypalPlan(planId: string): Promise<PaypalPlan> {
+  const trimmedPlanId = planId.trim()
+
+  if (trimmedPlanId.length === 0) {
+    throw new Error("A valid PayPal plan id is required.")
+  }
+
+  return await paypalApiRequest<PaypalPlan>({
+    path: `/v1/billing/plans/${encodeURIComponent(trimmedPlanId)}`,
   })
 }
 

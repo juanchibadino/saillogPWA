@@ -1,15 +1,20 @@
-import { TableFiltersToolbar } from "@/components/shared/table-filters-toolbar"
 import { CreateSessionDialog } from "@/features/sessions/session-form-dialogs"
 import { SessionsFeedback } from "@/features/sessions/sessions-feedback"
 import { TeamSessionsTable } from "@/features/sessions/sessions-table"
+import { TeamSessionsToolbar } from "@/features/sessions/team-sessions-toolbar"
 import {
   getTeamSessionsPageData,
   type TeamSessionCampOption,
+  type TeamSessionHighlightFilter,
   type TeamSessionListItem,
   type TeamSessionVenueFilterOption,
 } from "@/features/sessions/data"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageTeamSessions } from "@/lib/auth/capabilities"
+import {
+  NAVIGATION_SCOPE_ORG_QUERY_KEY,
+  NAVIGATION_SCOPE_TEAM_QUERY_KEY,
+} from "@/lib/navigation/constants"
 import {
   getSingleSearchParamValue,
   resolveNavigationScope,
@@ -73,6 +78,47 @@ function parseRequestedPage(value: string | undefined): number {
   return Math.floor(parsed)
 }
 
+function resolveHighlightFilter(
+  value: string | undefined,
+): TeamSessionHighlightFilter | undefined {
+  if (value === "yes" || value === "no") {
+    return value
+  }
+
+  return undefined
+}
+
+function buildTeamSessionFiltersHref(input: {
+  scope: {
+    activeOrgId: string
+    activeTeamId: string | null
+  }
+  venueId?: string
+  campId?: string
+  highlight?: TeamSessionHighlightFilter
+}): string {
+  const params = new URLSearchParams()
+  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.scope.activeOrgId)
+
+  if (input.scope.activeTeamId) {
+    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scope.activeTeamId)
+  }
+
+  if (input.venueId) {
+    params.set("venue", input.venueId)
+  }
+
+  if (input.campId) {
+    params.set("camp", input.campId)
+  }
+
+  if (input.highlight) {
+    params.set("highlight", input.highlight)
+  }
+
+  return `/team-sessions?${params.toString()}`
+}
+
 export default async function TeamSessionsPage({
   searchParams,
 }: {
@@ -85,6 +131,9 @@ export default async function TeamSessionsPage({
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
   const requestedVenueId = getSingleSearchParamValue(resolvedSearchParams.venue)
   const requestedCampId = getSingleSearchParamValue(resolvedSearchParams.camp)
+  const requestedHighlight = resolveHighlightFilter(
+    getSingleSearchParamValue(resolvedSearchParams.highlight),
+  )
   const requestedPage = parseRequestedPage(
     getSingleSearchParamValue(resolvedSearchParams.page),
   )
@@ -126,6 +175,7 @@ export default async function TeamSessionsPage({
   let campOptions: TeamSessionCampOption[] = []
   let selectedVenueId: string | undefined = requestedVenueId
   let selectedCampId: string | undefined = requestedCampId
+  let selectedHighlight: TeamSessionHighlightFilter | undefined = requestedHighlight
   let currentPage = requestedPage
   let hasPreviousPage = requestedPage > 1
   let hasNextPage = false
@@ -135,6 +185,7 @@ export default async function TeamSessionsPage({
       activeTeamId,
       selectedVenueId: requestedVenueId,
       selectedCampId: requestedCampId,
+      selectedHighlight: requestedHighlight,
       page: requestedPage,
     })
 
@@ -144,6 +195,7 @@ export default async function TeamSessionsPage({
     campOptions = pageData.campOptions
     selectedVenueId = pageData.selectedVenueId
     selectedCampId = pageData.selectedCampId
+    selectedHighlight = pageData.selectedHighlight
     currentPage = pageData.currentPage
     hasPreviousPage = pageData.hasPreviousPage
     hasNextPage = pageData.hasNextPage
@@ -184,39 +236,83 @@ export default async function TeamSessionsPage({
         canManageSessions={canManageSessions}
         noTeamSelected={noTeamSelected}
         toolbar={
-          <TableFiltersToolbar
-            scope={scope}
-            fields={[
+          <TeamSessionsToolbar
+            selectedVenueId={selectedVenueId ?? ""}
+            selectedCampId={selectedCampId ?? ""}
+            selectedHighlight={selectedHighlight ?? ""}
+            venueDisabled={noTeamSelected || venueFilterOptions.length === 0}
+            campDisabled={noTeamSelected || campFilterOptions.length === 0}
+            venueOptions={[
               {
-                id: "sessions-venue",
-                name: "venue",
-                label: "Venue",
-                allLabel: "Venues",
-                selectedValue: selectedVenueId,
-                disabled: noTeamSelected || venueFilterOptions.length === 0,
-                controlClassName: "min-w-[10rem]",
-                options: venueFilterOptions.map((option) => ({
-                  value: option.venueId,
-                  label: `${option.venueName} — ${option.venueLocation}`,
-                })),
+                value: "",
+                label: "Venues",
+                href: buildTeamSessionFiltersHref({
+                  scope,
+                  highlight: selectedHighlight,
+                }),
+              },
+              ...venueFilterOptions.map((option) => ({
+                value: option.venueId,
+                label: `${option.venueName} — ${option.venueLocation}`,
+                href: buildTeamSessionFiltersHref({
+                  scope,
+                  venueId: option.venueId,
+                  highlight: selectedHighlight,
+                }),
+              })),
+            ]}
+            campOptions={[
+              {
+                value: "",
+                label: "Camps",
+                href: buildTeamSessionFiltersHref({
+                  scope,
+                  venueId: selectedVenueId,
+                  highlight: selectedHighlight,
+                }),
+              },
+              ...campFilterOptions.map((option) => ({
+                value: option.campId,
+                label: option.label,
+                href: buildTeamSessionFiltersHref({
+                  scope,
+                  venueId: selectedVenueId,
+                  campId: option.campId,
+                  highlight: selectedHighlight,
+                }),
+              })),
+            ]}
+            highlightOptions={[
+              {
+                value: "",
+                label: "All",
+                href: buildTeamSessionFiltersHref({
+                  scope,
+                  venueId: selectedVenueId,
+                  campId: selectedCampId,
+                }),
               },
               {
-                id: "sessions-camp",
-                name: "camp",
-                label: "Camp",
-                allLabel: "Camps",
-                selectedValue: selectedCampId,
-                disabled: noTeamSelected || campFilterOptions.length === 0,
-                controlClassName: "min-w-[9rem]",
-                options: campFilterOptions.map((option) => ({
-                  value: option.campId,
-                  label: option.label,
-                })),
+                value: "yes",
+                label: "Yes",
+                href: buildTeamSessionFiltersHref({
+                  scope,
+                  venueId: selectedVenueId,
+                  campId: selectedCampId,
+                  highlight: "yes",
+                }),
+              },
+              {
+                value: "no",
+                label: "No",
+                href: buildTeamSessionFiltersHref({
+                  scope,
+                  venueId: selectedVenueId,
+                  campId: selectedCampId,
+                  highlight: "no",
+                }),
               },
             ]}
-            embedded
-            autoSubmit
-            className="rounded-none border-0 bg-transparent p-0"
             action={
               <CreateSessionDialog
                 campOptions={campOptions}

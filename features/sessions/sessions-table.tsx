@@ -14,6 +14,7 @@ import {
 } from "@/features/sessions/session-form-dialogs"
 import { buildSessionDetailHref } from "@/features/sessions/navigation"
 import type { NavigationScope } from "@/lib/navigation/types"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
   Pagination,
@@ -139,7 +140,11 @@ export function TeamSessionsTable({
                   key={session.id}
                   role="link"
                   tabIndex={0}
-                  className="cursor-pointer"
+                  className={cn(
+                    "cursor-pointer",
+                    session.highlightedByCoach &&
+                      "bg-emerald-50/40 hover:bg-emerald-100/50 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/30",
+                  )}
                   onClick={() => {
                     router.push(
                       buildSessionDetailHref({

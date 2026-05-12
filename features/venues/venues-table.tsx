@@ -38,7 +38,7 @@ export function VenuesTable({
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold">Venues</h2>
+          <h2 className="text-lg font-semibold">Organization Venues</h2>
         </div>
         {toolbar ? <div className="w-full sm:w-auto">{toolbar}</div> : null}
       </div>
@@ -64,11 +64,16 @@ export function VenuesTable({
               </TableRow>
             ) : (
               venues.map((venue) => {
-                const venueDetailHref = buildVenueDetailHref({
-                  scope,
-                  venueId: venue.id,
-                  tab: "camps",
-                })
+                const teamVenueDetailHref =
+                  venue.teamVenueId !== null
+                    ? buildVenueDetailHref({
+                        scope,
+                        teamVenueId: venue.teamVenueId,
+                        tab: "camps",
+                      })
+                    : null
+                const teamVenuesHref = buildTeamVenuesHref(scope, venue.id)
+                const venueRowHref = teamVenueDetailHref ?? teamVenuesHref
 
                 return (
                   <TableRow
@@ -77,18 +82,18 @@ export function VenuesTable({
                     tabIndex={0}
                     className="cursor-pointer"
                     onClick={() => {
-                      router.push(venueDetailHref)
+                      router.push(venueRowHref)
                     }}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault()
-                        router.push(venueDetailHref)
+                        router.push(venueRowHref)
                       }
                     }}
                   >
                     <TableCell className="font-medium">
                       <Link
-                        href={venueDetailHref}
+                        href={venueRowHref}
                         className="underline-offset-4 hover:underline"
                       >
                         {venue.name}
@@ -109,13 +114,13 @@ export function VenuesTable({
                     </TableCell>
                     <TableCell>
                       <Link
-                        href={buildTeamVenuesHref(scope, venue.id)}
+                        href={teamVenuesHref}
                         className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
                         onClick={(event) => {
                           event.stopPropagation()
                         }}
                       >
-                        View team venues
+                        {teamVenueDetailHref ? "View team venues" : "Link in team venues"}
                       </Link>
                     </TableCell>
                     <TableCell

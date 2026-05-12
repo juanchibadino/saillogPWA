@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GPS Player</title>
+  </head>
+  <body>
+    <script>
+      (function () {
+        const target = '/player.html' + window.location.search + window.location.hash;
+        window.location.replace(target);
+      })();
+    </script>
+    <noscript>Vakaros Player requiere JavaScript.</noscript>
+  </body>
+</html>

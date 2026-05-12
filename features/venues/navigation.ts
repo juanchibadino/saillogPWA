@@ -4,7 +4,7 @@ import {
 } from "@/lib/navigation/constants"
 import type { NavigationScope } from "@/lib/navigation/types"
 
-export const VENUE_DETAIL_TABS = ["camps", "sessions", "metrics", "reports"] as const
+export const VENUE_DETAIL_TABS = ["camps", "sessions", "assessments", "reports"] as const
 
 export type VenueDetailTab = (typeof VENUE_DETAIL_TABS)[number]
 
@@ -24,7 +24,7 @@ export function buildTeamVenuesHref(scope: NavigationScope, venueId: string): st
 
 export function buildVenueDetailHref(input: {
   scope: NavigationScope
-  venueId: string
+  teamVenueId: string
   tab?: VenueDetailTab
   year?: number
 }): string {
@@ -40,6 +40,6 @@ export function buildVenueDetailHref(input: {
   }
 
   const query = params.toString()
-  const basePath = `/venues/${input.venueId}`
+  const basePath = `/venues/${input.teamVenueId}`
   return query.length > 0 ? `${basePath}?${query}` : basePath
 }

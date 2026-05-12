@@ -15,6 +15,25 @@ function getOriginIfValid(value: string | null): string | null {
 }
 
 export async function resolveRequestOrigin(request: Request): Promise<string> {
+  const requestUrl = new URL(request.url);
+  const requestOrigin = requestUrl.origin;
+  const requestHost = requestUrl.hostname.toLowerCase();
+  const isLocalHost =
+    requestHost === "localhost" ||
+    requestHost === "127.0.0.1" ||
+    requestHost === "::1" ||
+    requestHost.endsWith(".localhost");
+
+  // Local requests must stay local regardless of runtime mode.
+  if (isLocalHost) {
+    return requestOrigin;
+  }
+
+  // In local/dev, always keep redirects on the current origin.
+  if (process.env.NODE_ENV !== "production") {
+    return requestOrigin;
+  }
+
   const configuredAppOrigin = getOptionalAppUrlOrigin();
   if (configuredAppOrigin) {
     return configuredAppOrigin;
@@ -36,7 +55,7 @@ export async function resolveRequestOrigin(request: Request): Promise<string> {
     }
   }
 
-  return new URL(request.url).origin;
+  return requestOrigin;
 }
 
 export async function buildRequestUrl(path: string, request: Request): Promise<URL> {

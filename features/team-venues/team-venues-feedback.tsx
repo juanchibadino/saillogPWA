@@ -44,13 +44,13 @@ export function TeamVenuesFeedback({
   }, [activeStatusMessage])
 
   React.useEffect(() => {
-    const status = searchParams.get("status")
-    if (!statusMessage || !status) {
+    const result = searchParams.get("result")
+    if (!statusMessage || !result) {
       return
     }
 
     const nextParams = new URLSearchParams(searchParams.toString())
-    nextParams.delete("status")
+    nextParams.delete("result")
     const nextSearch = nextParams.toString()
     const nextUrl = nextSearch.length > 0 ? `${pathname}?${nextSearch}` : pathname
 

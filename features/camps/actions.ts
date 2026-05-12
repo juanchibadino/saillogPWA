@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
-import { canManageTeamStructure } from "@/lib/auth/capabilities"
+import { canDeleteCamps, canManageTeamStructure } from "@/lib/auth/capabilities"
 import { resolveOrganizationWriteEntitlement } from "@/lib/billing/entitlements"
 import {
   NAVIGATION_SCOPE_ORG_QUERY_KEY,
@@ -14,6 +14,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { scopeFormInputSchema } from "@/lib/validation/navigation"
 import {
   createCampInputSchema,
+  deleteCampInputSchema,
   updateCampGoalsInputSchema,
   updateCampInputSchema,
 } from "@/lib/validation/camps"
@@ -79,12 +80,13 @@ function getScopeFromFormData(formData: FormData): {
 }
 
 function buildTeamCampsRedirectPath(input: {
-  status?: "created" | "updated"
+  status?: "created" | "updated" | "deleted"
   error?:
     | "invalid_input"
     | "forbidden"
     | "create_failed"
     | "update_failed"
+    | "delete_failed"
     | "plan_limit_reached"
     | "payment_required"
   scopeOrgId?: string
@@ -412,6 +414,79 @@ export async function updateCampAction(formData: FormData): Promise<void> {
   redirect(
     buildTeamCampsRedirectPath({
       status: "updated",
+      ...scope,
+    }),
+  )
+}
+
+export async function deleteCampAction(formData: FormData): Promise<void> {
+  const context = await requireAuthenticatedAccessContext()
+  const scope = getScopeFromFormData(formData)
+
+  const parsedInput = deleteCampInputSchema.safeParse({
+    id: getFormString(formData, "id"),
+  })
+
+  if (!parsedInput.success || !scope.scopeOrgId || !scope.scopeTeamId) {
+    redirect(
+      buildTeamCampsRedirectPath({
+        error: "invalid_input",
+        ...scope,
+      }),
+    )
+  }
+
+  if (
+    !canDeleteCamps({
+      context,
+      organizationId: scope.scopeOrgId,
+      teamId: scope.scopeTeamId,
+    })
+  ) {
+    redirect(
+      buildTeamCampsRedirectPath({
+        error: "forbidden",
+        ...scope,
+      }),
+    )
+  }
+
+  const campBelongsToScope = await ensureCampBelongsToScope({
+    campId: parsedInput.data.id,
+    scopeTeamId: scope.scopeTeamId,
+  })
+
+  if (!campBelongsToScope) {
+    redirect(
+      buildTeamCampsRedirectPath({
+        error: "invalid_input",
+        ...scope,
+      }),
+    )
+  }
+
+  const supabase = await createServerSupabaseClient()
+  const { error: deleteError } = await supabase
+    .from("camps")
+    .delete()
+    .eq("id", parsedInput.data.id)
+
+  if (deleteError) {
+    redirect(
+      buildTeamCampsRedirectPath({
+        error: "delete_failed",
+        ...scope,
+      }),
+    )
+  }
+
+  revalidatePath("/team-camps")
+  revalidatePath(`/team-camps/${parsedInput.data.id}`)
+  revalidatePath("/team-sessions")
+
+  redirect(
+    buildTeamCampsRedirectPath({
+      status: "deleted",
       ...scope,
     }),
   )

@@ -71,7 +71,7 @@ function EditCrewDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Edit user</DialogTitle>
+          <DialogTitle>Edit member</DialogTitle>
           <DialogDescription>{crew.fullName}</DialogDescription>
         </DialogHeader>
 
@@ -186,7 +186,7 @@ function DeleteCrewDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Delete user</DialogTitle>
+          <DialogTitle>Delete member</DialogTitle>
           <DialogDescription>
             This removes <strong>{crew.fullName}</strong> from the selected team.
           </DialogDescription>
