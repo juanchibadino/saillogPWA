@@ -74,6 +74,14 @@ function getSectionTitle(pathname: string): string {
     return "Team Sessions"
   }
 
+  if (pathname.startsWith("/team-gear")) {
+    return "Team Gear"
+  }
+
+  if (pathname.startsWith("/team-notes")) {
+    return "Team Notes"
+  }
+
   if (pathname.startsWith("/team-reports")) {
     return "Team Reports"
   }
@@ -176,6 +184,56 @@ function getTeamSessionsTitle(
   return `${activeTeamLabel} > Sessions`
 }
 
+function getTeamNotesTitle(
+  navigation: ResolvedNavigationScope | null,
+  searchParams: ReadonlyURLSearchParams,
+): string {
+  if (!navigation?.scope) {
+    return "Team Notes"
+  }
+
+  const activeOrgId =
+    searchParams.get(NAVIGATION_SCOPE_ORG_QUERY_KEY) ?? navigation.scope.activeOrgId
+  const queryTeamId = searchParams.get(NAVIGATION_SCOPE_TEAM_QUERY_KEY)
+
+  const teamsForOrganization =
+    navigation.catalog.teamsByOrganizationId[activeOrgId] ?? []
+  const activeTeamId =
+    queryTeamId && teamsForOrganization.some((team) => team.id === queryTeamId)
+      ? queryTeamId
+      : navigation.scope.activeTeamId
+  const activeTeamLabel =
+    teamsForOrganization.find((team) => team.id === activeTeamId)?.name ??
+    "No team selected"
+
+  return `${activeTeamLabel} > Notes`
+}
+
+function getTeamGearTitle(
+  navigation: ResolvedNavigationScope | null,
+  searchParams: ReadonlyURLSearchParams,
+): string {
+  if (!navigation?.scope) {
+    return "Team Gear"
+  }
+
+  const activeOrgId =
+    searchParams.get(NAVIGATION_SCOPE_ORG_QUERY_KEY) ?? navigation.scope.activeOrgId
+  const queryTeamId = searchParams.get(NAVIGATION_SCOPE_TEAM_QUERY_KEY)
+
+  const teamsForOrganization =
+    navigation.catalog.teamsByOrganizationId[activeOrgId] ?? []
+  const activeTeamId =
+    queryTeamId && teamsForOrganization.some((team) => team.id === queryTeamId)
+      ? queryTeamId
+      : navigation.scope.activeTeamId
+  const activeTeamLabel =
+    teamsForOrganization.find((team) => team.id === activeTeamId)?.name ??
+    "No team selected"
+
+  return `${activeTeamLabel} > Gear`
+}
+
 function getVenueDetailId(pathname: string): string | null {
   const match = pathname.match(/^\/venues\/([^/]+)$/)
   return match?.[1] ?? null
@@ -267,6 +325,10 @@ export function SiteHeader({
       ? getTeamCampsTitle(navigation, searchParams)
       : pathname.startsWith("/team-sessions")
         ? getTeamSessionsTitle(navigation, searchParams)
+        : pathname.startsWith("/team-gear")
+          ? getTeamGearTitle(navigation, searchParams)
+        : pathname.startsWith("/team-notes")
+          ? getTeamNotesTitle(navigation, searchParams)
         : pathname.startsWith("/team-reports")
           ? "Team Reports"
         : getSectionTitle(pathname)
@@ -277,6 +339,10 @@ export function SiteHeader({
       ? "Camps"
       : pathname.startsWith("/team-sessions")
         ? "Sessions"
+        : pathname.startsWith("/team-gear")
+          ? "Gear"
+        : pathname.startsWith("/team-notes")
+          ? "Notes"
         : pathname.startsWith("/team-reports")
           ? "Reports"
         : null

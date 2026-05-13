@@ -13,7 +13,7 @@ import type {
 import { VenueAssessmentsPanel } from "@/features/venues/venue-assessments-panel";
 import { buildCampDetailHref } from "@/features/camps/navigation";
 import { buildSessionDetailHref } from "@/features/sessions/navigation";
-import { createTeamVenueReportAction } from "@/features/reports/actions";
+import { CreateReportDialog } from "@/features/reports/report-form-dialogs";
 import {
   buildVenueDetailHref,
   VENUE_DETAIL_TABS,
@@ -296,112 +296,69 @@ function renderTabPanel(input: {
     tab: "reports",
     year: input.selectedYear,
   });
+  const reportCampOptions = input.camps.map((camp) => ({
+    campId: camp.id,
+    name: camp.name,
+    dateRangeLabel: camp.dateRangeLabel,
+  }));
 
   return (
-    <div className="space-y-6">
-      <header className="space-y-1">
-        <h3 className="text-base font-semibold">Reports</h3>
-        <p className="text-sm text-muted-foreground">
-          Team venue report records for {input.selectedYear}.
-        </p>
+    <div className="space-y-4">
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1">
+          <h3 className="text-base font-semibold">Reports</h3>
+          <p className="text-sm text-muted-foreground">
+            Team venue report records for {input.selectedYear}.
+          </p>
+        </div>
+
+        {input.canManageReports ? (
+          <CreateReportDialog
+            scope={input.scope}
+            teamVenueId={input.teamVenueId}
+            year={input.selectedYear}
+            redirectTo={reportCreateRedirectTo}
+            campOptions={reportCampOptions}
+            disabled={reportCampOptions.length === 0}
+          />
+        ) : null}
       </header>
 
-      {input.canManageReports ? (
-        <form action={createTeamVenueReportAction} className="space-y-4 rounded-lg border p-4">
-          <input type="hidden" name="scopeOrgId" value={input.scope.activeOrgId} />
-          {input.scope.activeTeamId ? (
-            <input type="hidden" name="scopeTeamId" value={input.scope.activeTeamId} />
-          ) : null}
-          <input type="hidden" name="teamVenueId" value={input.teamVenueId} />
-          <input type="hidden" name="year" value={String(input.selectedYear)} />
-          <input type="hidden" name="redirectTo" value={reportCreateRedirectTo} />
-
-          <div className="space-y-2">
-            <label htmlFor={`venue-report-name-${input.teamVenueId}`} className="text-sm font-medium">
-              Report name (optional)
-            </label>
-            <input
-              id={`venue-report-name-${input.teamVenueId}`}
-              name="reportName"
-              maxLength={200}
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
-              placeholder="Auto: Venue + year + camps"
-            />
-          </div>
-
-          <fieldset className="space-y-3">
-            <legend className="text-sm font-medium">Camps ({input.selectedYear})</legend>
-
-            {input.camps.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No camps available for this year. Create a camp first to generate reports.
-              </p>
-            ) : (
-              <div className="grid gap-2">
-                {input.camps.map((camp) => (
-                  <label
-                    key={camp.id}
-                    className="flex items-start gap-3 rounded-md border px-3 py-2 text-sm"
-                  >
-                    <input
-                      type="checkbox"
-                      name="campIds"
-                      value={camp.id}
-                      className="mt-1 size-4 rounded border-input"
-                    />
-                    <span className="min-w-0">
-                      <span className="block font-medium">{camp.name}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {camp.dateRangeLabel}
-                      </span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-            )}
-          </fieldset>
-
-          <button
-            type="submit"
-            className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground disabled:pointer-events-none disabled:opacity-50"
-            disabled={input.camps.length === 0}
-          >
-            Create report
-          </button>
-        </form>
-      ) : (
+      {!input.canManageReports ? (
         <section className="rounded-lg border border-amber-300 bg-amber-50 p-4">
           <p className="text-sm text-amber-800">
             You have read-only access in this scope. Report creation is limited to team admins and coaches.
           </p>
         </section>
-      )}
+      ) : null}
 
       {input.reports.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No reports created yet for {input.selectedYear}.
         </p>
       ) : (
-        <ul className="divide-y divide-border rounded-lg border">
+        <ul className="divide-y divide-border">
           {input.reports.map((report) => (
-            <li key={report.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
-              <div className="min-w-0 space-y-1">
-                <p className="text-sm font-medium">{report.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {report.campCount} {report.campCount === 1 ? "camp" : "camps"} ·{" "}
-                  {report.campNames.join(", ")}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Created {formatDateTimeLabel(report.createdAt)} UTC
-                </p>
-              </div>
+            <li key={report.id}>
+              <div className="flex flex-wrap items-start justify-between gap-3 rounded-md -mx-2 px-2 py-3">
+                <div className="min-w-0 space-y-1">
+                  <p className="text-sm font-medium">{report.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {report.campCount} {report.campCount === 1 ? "camp" : "camps"} ·{" "}
+                    {report.campNames.join(", ")}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Created {formatDateTimeLabel(report.createdAt)} UTC
+                  </p>
+                </div>
 
-              <a
-                href={`/api/reports/${report.id}/pdf`}
-                className="inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-sm font-medium"
-              >
-                Download PDF
-              </a>
+                <a
+                  href={`/api/reports/${report.id}/pdf`}
+                  className="inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
+                >
+                  Download PDF
+                </a>
+              </div>
             </li>
           ))}
         </ul>

@@ -81,11 +81,15 @@ export type TeamVenueReportsTabData = {
   campOptions: ReportCampOption[]
 }
 
+export type TeamReportCreateCampOption = ReportCampOption & {
+  teamVenueId: string
+  year: number
+}
+
 export type TeamReportsPageData = {
   reports: ReportListItem[]
   venueOptions: TeamReportVenueOption[]
-  selectedVenueId: string | null
-  campOptions: ReportCampOption[]
+  createCampOptions: TeamReportCreateCampOption[]
 }
 
 export type OrganizationReportsPageData = {
@@ -317,8 +321,6 @@ export async function getTeamVenueReportsTabData(input: {
 
 export async function getTeamReportsPageData(input: {
   activeTeamId: string
-  selectedVenueId?: string
-  year: number
 }): Promise<TeamReportsPageData> {
   const supabase = await createServerSupabaseClient()
 
@@ -337,8 +339,7 @@ export async function getTeamReportsPageData(input: {
     return {
       reports: [],
       venueOptions: [],
-      selectedVenueId: null,
-      campOptions: [],
+      createCampOptions: [],
     }
   }
 
@@ -376,21 +377,11 @@ export async function getTeamReportsPageData(input: {
     }))
     .sort((left, right) => left.venueName.localeCompare(right.venueName))
 
-  const selectedVenueId =
-    input.selectedVenueId && venueOptions.some((option) => option.teamVenueId === input.selectedVenueId)
-      ? input.selectedVenueId
-      : null
-
-  let reportsQuery = supabase
+  const reportsQuery = supabase
     .from("team_venue_reports")
     .select(TEAM_VENUE_REPORT_SELECT_COLUMNS)
     .in("team_venue_id", teamVenues.map((row) => row.id))
-    .eq("year", input.year)
     .order("created_at", { ascending: false })
-
-  if (selectedVenueId) {
-    reportsQuery = reportsQuery.eq("team_venue_id", selectedVenueId)
-  }
 
   const { data: reportRows, error: reportsError } = await reportsQuery
 
@@ -398,7 +389,42 @@ export async function getTeamReportsPageData(input: {
     throw new Error(`Could not load team reports: ${reportsError.message}`)
   }
 
+  const { data: createCampRows, error: createCampsError } = await supabase
+    .from("camps")
+    .select(CAMP_SELECT_COLUMNS)
+    .in("team_venue_id", teamVenues.map((row) => row.id))
+    .order("start_date", { ascending: true })
+    .order("name", { ascending: true })
+
+  if (createCampsError) {
+    throw new Error(`Could not load camps for report creation: ${createCampsError.message}`)
+  }
+
   const reports = (reportRows ?? []) as TeamVenueReportRow[]
+  const createCampOptions: TeamReportCreateCampOption[] = ((createCampRows ?? []) as CampRow[])
+    .map((camp) => ({
+      campId: camp.id,
+      teamVenueId: camp.team_venue_id,
+      year: parseYearFromDate(camp.start_date),
+      name: camp.name,
+      startDate: camp.start_date,
+      endDate: camp.end_date,
+    }))
+    .sort((left, right) => {
+      const yearOrder = right.year - left.year
+
+      if (yearOrder !== 0) {
+        return yearOrder
+      }
+
+      const dateOrder = left.startDate.localeCompare(right.startDate)
+
+      if (dateOrder !== 0) {
+        return dateOrder
+      }
+
+      return left.name.localeCompare(right.name)
+    })
 
   return {
     reports: await loadReportListItems({
@@ -410,14 +436,7 @@ export async function getTeamReportsPageData(input: {
       venueNameById,
     }),
     venueOptions,
-    selectedVenueId,
-    campOptions:
-      selectedVenueId === null
-        ? []
-        : await loadCampOptions({
-            teamVenueId: selectedVenueId,
-            year: input.year,
-          }),
+    createCampOptions,
   }
 }
 

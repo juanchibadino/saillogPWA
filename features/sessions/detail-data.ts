@@ -6,6 +6,7 @@ import type {
   SessionDetailAsset,
   SessionDetailCamp,
   SessionDetailData,
+  SessionDetailGearItem,
   SessionDetailInfo,
   SessionDetailResults,
   SessionDetailSession,
@@ -82,6 +83,11 @@ type SessionSetupItemSelectedOptionRow = Pick<
 >
 
 type SessionAssetRow = SessionDetailAsset
+type GearItemRow = SessionDetailGearItem
+type SessionGearUsageRow = Pick<
+  Database["public"]["Tables"]["session_gear_usage"]["Row"],
+  "gear_item_id"
+>
 
 const SESSION_SELECT_COLUMNS =
   "id,camp_id,session_type,session_date,dock_out_at,dock_in_at,net_time_minutes,highlighted_by_coach"
@@ -95,6 +101,8 @@ const SESSION_SETUP_SELECT_COLUMNS = "session_id,free_notes"
 const SESSION_REGATTA_RESULTS_SELECT_COLUMNS = "session_id,result_notes"
 const SESSION_ASSETS_SELECT_COLUMNS =
   "id,asset_type,bucket,storage_path,file_name,mime_type,size_bytes,created_at"
+const GEAR_ITEMS_SELECT_COLUMNS = "id,name,gear_type,status,condition,serial_number,barcode"
+const SESSION_GEAR_USAGE_SELECT_COLUMNS = "gear_item_id"
 const TEAM_SETUP_ITEMS_SELECT_COLUMNS = "id,key,label,input_kind,position,is_active"
 const TEAM_SETUP_ITEM_OPTIONS_SELECT_COLUMNS =
   "id,team_setup_item_id,value,label,position,is_active"
@@ -298,6 +306,8 @@ export async function getSessionDetailData(input: {
     { data: setupRow, error: setupError },
     { data: regattaResultRow, error: regattaResultError },
     { data: assetRows, error: assetsError },
+    { data: gearItemsData, error: gearItemsError },
+    { data: sessionGearUsageData, error: sessionGearUsageError },
     { data: teamSetupItemsData, error: teamSetupItemsError },
   ] = await Promise.all([
     supabase
@@ -333,6 +343,15 @@ export async function getSessionDetailData(input: {
       .eq("session_id", session.id)
       .order("created_at", { ascending: false }),
     supabase
+      .from("gear_items")
+      .select(GEAR_ITEMS_SELECT_COLUMNS)
+      .eq("team_id", teamVenue.team_id)
+      .order("name", { ascending: true }),
+    supabase
+      .from("session_gear_usage")
+      .select(SESSION_GEAR_USAGE_SELECT_COLUMNS)
+      .eq("session_id", session.id),
+    supabase
       .from("team_setup_items")
       .select(TEAM_SETUP_ITEMS_SELECT_COLUMNS)
       .eq("team_id", teamVenue.team_id)
@@ -363,6 +382,16 @@ export async function getSessionDetailData(input: {
     throw new Error(`Could not load assets for session detail: ${assetsError.message}`)
   }
 
+  if (gearItemsError) {
+    throw new Error(`Could not load gear items for session detail: ${gearItemsError.message}`)
+  }
+
+  if (sessionGearUsageError) {
+    throw new Error(
+      `Could not load session gear usage for session detail: ${sessionGearUsageError.message}`,
+    )
+  }
+
   if (teamSetupItemsError) {
     throw new Error(
       `Could not load team setup items for session detail: ${teamSetupItemsError.message}`,
@@ -376,8 +405,15 @@ export async function getSessionDetailData(input: {
   const team: SessionDetailTeam = teamRow as TeamRow
   const venue: SessionDetailVenue = venueRow as VenueRow
   const assets: SessionAssetRow[] = (assetRows ?? []) as SessionAssetRow[]
+  const gearItems: GearItemRow[] = (gearItemsData ?? []) as GearItemRow[]
+  const sessionGearUsageRows: SessionGearUsageRow[] =
+    (sessionGearUsageData ?? []) as SessionGearUsageRow[]
   const teamSetupItems = (teamSetupItemsData ?? []) as TeamSetupItemRow[]
   const teamSetupItemIds = teamSetupItems.map((item) => item.id)
+  const gearItemIds = new Set(gearItems.map((item) => item.id))
+  const linkedGearItemIds = [...new Set(sessionGearUsageRows.map((row) => row.gear_item_id))].filter(
+    (gearItemId) => gearItemIds.has(gearItemId),
+  )
 
   let teamSetupItemOptions: TeamSetupItemOptionRow[] = []
   let sessionSetupValues: SessionSetupItemValueRow[] = []
@@ -450,5 +486,7 @@ export async function getSessionDetailData(input: {
     }),
     images: assets.filter((asset) => asset.asset_type === "photo"),
     analyticsFiles: assets.filter((asset) => asset.asset_type !== "photo"),
+    gearItems,
+    linkedGearItemIds,
   }
 }

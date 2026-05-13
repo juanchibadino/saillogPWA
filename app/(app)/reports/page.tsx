@@ -1,3 +1,4 @@
+import { ReportsTable } from "@/features/reports/reports-table"
 import { getCurrentUtcYear, getOrganizationReportsPageData } from "@/features/reports/data"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageOrganizationOperations } from "@/lib/auth/capabilities"
@@ -21,24 +22,6 @@ function parseRequestedYear(value: string | undefined): number {
   }
 
   return parsed
-}
-
-function formatDateTimeLabel(value: string): string {
-  const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) {
-    return "Unknown date"
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "UTC",
-  }).format(date)
 }
 
 export default async function ReportsPage({
@@ -159,41 +142,13 @@ export default async function ReportsPage({
         </form>
       </section>
 
-      <section className="rounded-xl border bg-card p-4">
-        <h2 className="text-base font-semibold">Reports</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Cross-team reports for {requestedYear}.
-        </p>
-
-        {pageData.reports.length === 0 ? (
-          <p className="mt-4 text-sm text-muted-foreground">No reports found for this filter.</p>
-        ) : (
-          <ul className="mt-4 divide-y divide-border rounded-lg border">
-            {pageData.reports.map((report) => (
-              <li key={report.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
-                <div className="min-w-0 space-y-1">
-                  <p className="text-sm font-medium">{report.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {report.teamName ?? "Unknown team"} · {report.venueName ?? "Unknown venue"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {report.campCount} {report.campCount === 1 ? "camp" : "camps"} · {report.campNames.join(", ")}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Created {formatDateTimeLabel(report.createdAt)} UTC
-                  </p>
-                </div>
-
-                <a
-                  href={`/api/reports/${report.id}/pdf`}
-                  className="inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-sm font-medium"
-                >
-                  Download PDF
-                </a>
-              </li>
-            ))}
-          </ul>
-        )}
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Reports</h2>
+        <ReportsTable
+          reports={pageData.reports}
+          mode="organization"
+          emptyMessage="No reports found for this filter."
+        />
       </section>
     </div>
   )

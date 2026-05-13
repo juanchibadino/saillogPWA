@@ -5,7 +5,6 @@ import { ChevronsUpDownIcon, XIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -317,23 +316,32 @@ export function MultiselectBadge(
 ) {
   const multiselect = useMultiselectContext()
   const { className, children, value, ...badgeProps } = input
+  const label = typeof children === "string" ? children : value
 
   return (
     <Badge variant="secondary" className={cn("h-6 gap-1", className)} {...badgeProps}>
       {children}
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-xs"
-        className="-mr-1 shadow-none"
+      <span
+        role="button"
+        tabIndex={0}
+        className="-mr-1 inline-flex size-6 items-center justify-center rounded-[min(var(--radius-md),10px)] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
         onClick={(event) => {
           event.stopPropagation()
           multiselect.unselect(value)
         }}
-        aria-label={`Unselect ${typeof children === "string" ? children : value}`}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") {
+            return
+          }
+
+          event.preventDefault()
+          event.stopPropagation()
+          multiselect.unselect(value)
+        }}
+        aria-label={`Unselect ${label}`}
       >
         <XIcon className="size-3" />
-      </Button>
+      </span>
     </Badge>
   )
 }

@@ -182,6 +182,106 @@ export function TeamSessionsPageSkeleton() {
   )
 }
 
+export function TeamGearPageSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="rounded-xl border bg-card p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1">
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-9 w-48" />
+          </div>
+          <div className="space-y-1">
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-9 w-48" />
+          </div>
+          <div className="space-y-1">
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-9 w-48" />
+          </div>
+          <div className="space-y-1">
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-9 w-48" />
+          </div>
+          <Skeleton className="h-8 w-20" />
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <Skeleton className="h-6 w-20" />
+          <Skeleton className="h-8 w-24" />
+        </div>
+
+        <div className="rounded-xl border bg-card p-4">
+          <div className="space-y-3">
+            <Skeleton className="h-10 w-full" />
+            {Array.from({ length: 6 }).map((_, index) => (
+              <Skeleton key={`team-gear-row-${index}`} className="h-10 w-full" />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function TeamNotesPageSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <Skeleton className="h-10 w-full sm:w-96" />
+        <Skeleton className="h-9 w-full sm:w-28" />
+      </div>
+
+      <div className="space-y-4">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div key={`team-notes-card-${index}`} className="rounded-2xl border bg-card p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-2">
+                <Skeleton className="h-8 w-48" />
+                <Skeleton className="h-5 w-40" />
+                <Skeleton className="h-4 w-20" />
+              </div>
+              <Skeleton className="h-9 w-28" />
+            </div>
+
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-xl border p-4">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="mt-3 h-10 w-32" />
+                <div className="mt-4 space-y-2">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-full" />
+                </div>
+              </div>
+              <div className="rounded-xl border p-4">
+                <Skeleton className="h-4 w-24" />
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-xl border p-4">
+              <Skeleton className="h-4 w-20" />
+              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-16 w-full" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function TeamReportsPageSkeleton() {
   return (
     <div className="space-y-6">

@@ -5,6 +5,7 @@ type VenueRow = Database["public"]["Tables"]["venues"]["Row"]
 type CampRow = Database["public"]["Tables"]["camps"]["Row"]
 type SessionRow = Database["public"]["Tables"]["sessions"]["Row"]
 type AssetRow = Database["public"]["Tables"]["session_assets"]["Row"]
+type GearItemRow = Database["public"]["Tables"]["gear_items"]["Row"]
 
 export type SessionDetailTeam = Pick<TeamRow, "id" | "name">
 
@@ -57,6 +58,11 @@ export type SessionDetailAsset = Pick<
   "id" | "asset_type" | "bucket" | "storage_path" | "file_name" | "mime_type" | "size_bytes" | "created_at"
 >
 
+export type SessionDetailGearItem = Pick<
+  GearItemRow,
+  "id" | "name" | "gear_type" | "status" | "condition" | "serial_number" | "barcode"
+>
+
 export type SessionDetailData = {
   team: SessionDetailTeam
   venue: SessionDetailVenue
@@ -67,4 +73,6 @@ export type SessionDetailData = {
   setupDialogItems: SessionSetupDialogItem[]
   images: SessionDetailAsset[]
   analyticsFiles: SessionDetailAsset[]
+  gearItems: SessionDetailGearItem[]
+  linkedGearItemIds: string[]
 }

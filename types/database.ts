@@ -666,6 +666,102 @@ export type Database = {
         };
         Relationships: [];
       };
+      gear_items: {
+        Row: {
+          id: string;
+          team_id: string;
+          name: string;
+          gear_type: Database["public"]["Enums"]["gear_type"];
+          serial_number: string | null;
+          barcode: string | null;
+          status: Database["public"]["Enums"]["gear_status"];
+          condition: Database["public"]["Enums"]["gear_condition"];
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          team_id: string;
+          name: string;
+          gear_type: Database["public"]["Enums"]["gear_type"];
+          serial_number?: string | null;
+          barcode?: string | null;
+          status?: Database["public"]["Enums"]["gear_status"];
+          condition?: Database["public"]["Enums"]["gear_condition"];
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          team_id?: string;
+          name?: string;
+          gear_type?: Database["public"]["Enums"]["gear_type"];
+          serial_number?: string | null;
+          barcode?: string | null;
+          status?: Database["public"]["Enums"]["gear_status"];
+          condition?: Database["public"]["Enums"]["gear_condition"];
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      gear_alert_rules: {
+        Row: {
+          id: string;
+          gear_item_id: string;
+          metric: Database["public"]["Enums"]["gear_alert_metric"];
+          severity: Database["public"]["Enums"]["gear_alert_severity"];
+          threshold_value: number;
+          is_refurbished_rule: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          gear_item_id: string;
+          metric: Database["public"]["Enums"]["gear_alert_metric"];
+          severity: Database["public"]["Enums"]["gear_alert_severity"];
+          threshold_value: number;
+          is_refurbished_rule?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          gear_item_id?: string;
+          metric?: Database["public"]["Enums"]["gear_alert_metric"];
+          severity?: Database["public"]["Enums"]["gear_alert_severity"];
+          threshold_value?: number;
+          is_refurbished_rule?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      session_gear_usage: {
+        Row: {
+          id: string;
+          session_id: string;
+          gear_item_id: string;
+          linked_by_profile_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          session_id: string;
+          gear_item_id: string;
+          linked_by_profile_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          session_id?: string;
+          gear_item_id?: string;
+          linked_by_profile_id?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       assessment_templates: {
         Row: {
           id: string;
@@ -1171,6 +1267,19 @@ export type Database = {
       asset_type: "photo" | "analytics_file" | "document";
       billing_cycle: "monthly" | "yearly" | "none";
       camp_type: "training" | "regatta" | "mixed";
+      gear_alert_metric: "usage_count" | "usage_minutes";
+      gear_alert_severity: "warning" | "critical";
+      gear_condition: "new" | "used" | "refurbished";
+      gear_status:
+        | "active_regatta"
+        | "active_training"
+        | "retired_spare"
+        | "on_repair";
+      gear_type:
+        | "sails"
+        | "spars_and_foils"
+        | "running_rigging"
+        | "hardware_and_fittings";
       global_role_type: "super_admin";
       organization_role_type: "organization_admin";
       plan_tier: "free" | "pro" | "olympic";

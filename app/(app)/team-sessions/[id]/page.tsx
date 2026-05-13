@@ -59,6 +59,10 @@ function getStatusMessage(status: string | undefined): string | null {
     return "File uploaded successfully."
   }
 
+  if (status === "gear_updated") {
+    return "Session gear updated successfully."
+  }
+
   return null
 }
 
@@ -322,6 +326,8 @@ export default async function SessionDetailPage({
         resultNotes={detailData.results.resultNotes}
         images={detailData.images}
         analyticsFiles={detailData.analyticsFiles}
+        gearItems={detailData.gearItems}
+        linkedGearItemIds={detailData.linkedGearItemIds}
         canManageSession={canManageSession}
       />
     </div>

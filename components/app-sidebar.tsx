@@ -165,7 +165,7 @@ const teamNavItems = [
     title: "Gear",
     url: "/team-gear",
     icon: WrenchIcon,
-    comingSoon: true,
+    comingSoon: false,
   },
   {
     title: "Expenses",
@@ -183,7 +183,7 @@ const teamNavItems = [
     title: "Notes",
     url: "/team-notes",
     icon: NotebookTextIcon,
-    comingSoon: true,
+    comingSoon: false,
   },
   {
     title: "Calendar",

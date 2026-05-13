@@ -13,6 +13,7 @@ import {
 import { createAdminSupabaseClient } from "@/lib/supabase/admin"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { scopeFormInputSchema } from "@/lib/validation/navigation"
+import { updateSessionGearUsageInputSchema } from "@/lib/validation/gear"
 import {
   createSessionInputSchema,
   updateSessionDetailInputSchema,
@@ -45,6 +46,10 @@ function getFormString(formData: FormData, key: string): string | undefined {
   }
 
   return value
+}
+
+function getFormStringArray(formData: FormData, key: string): string[] {
+  return formData.getAll(key).filter((value): value is string => typeof value === "string")
 }
 
 function getFormFile(formData: FormData, key: string): File | undefined {
@@ -332,7 +337,13 @@ function buildSessionDetailRedirectPath(input: {
   scopeOrgId?: string
   scopeTeamId?: string
   scopeTab?: string
-  status?: "updated" | "info_updated" | "results_updated" | "setup_updated" | "asset_uploaded"
+  status?:
+    | "updated"
+    | "info_updated"
+    | "results_updated"
+    | "setup_updated"
+    | "asset_uploaded"
+    | "gear_updated"
   error?: "invalid_input" | "forbidden" | "update_failed" | "upload_failed"
 }): string {
   const params = new URLSearchParams()
@@ -488,6 +499,7 @@ function revalidateSessionSlices(input: {
 }): void {
   revalidatePath("/team-home")
   revalidatePath("/team-sessions")
+  revalidatePath("/team-gear")
   revalidatePath(`/team-sessions/${input.sessionId}`)
 
   if (input.campId) {
@@ -1326,6 +1338,148 @@ export async function updateSessionSetupAction(formData: FormData): Promise<void
     buildSessionDetailRedirectPath({
       sessionId: parsedInput.data.sessionId,
       status: "setup_updated",
+      ...scope,
+    }),
+  )
+}
+
+export async function updateSessionGearUsageAction(formData: FormData): Promise<void> {
+  const context = await requireAuthenticatedAccessContext()
+  const scope = getScopeFromFormData(formData)
+  const sessionId = getFormString(formData, "sessionId")
+  const uniqueGearItemIds = [...new Set(getFormStringArray(formData, "gearItemIds"))]
+
+  if (!sessionId || !scope.scopeOrgId || !scope.scopeTeamId) {
+    redirect(
+      buildTeamSessionsRedirectPath({
+        error: "invalid_input",
+        ...scope,
+      }),
+    )
+  }
+
+  const parsedInput = updateSessionGearUsageInputSchema.safeParse({
+    sessionId,
+    gearItemIds: uniqueGearItemIds,
+  })
+
+  if (!parsedInput.success) {
+    redirect(
+      buildSessionDetailRedirectPath({
+        sessionId,
+        error: "invalid_input",
+        ...scope,
+      }),
+    )
+  }
+
+  if (
+    !canManageTeamSessions({
+      context,
+      organizationId: scope.scopeOrgId,
+      teamId: scope.scopeTeamId,
+    })
+  ) {
+    redirect(
+      buildSessionDetailRedirectPath({
+        sessionId: parsedInput.data.sessionId,
+        error: "forbidden",
+        ...scope,
+      }),
+    )
+  }
+
+  const scopedSession = await resolveScopedSessionContext({
+    sessionId: parsedInput.data.sessionId,
+    scopeOrgId: scope.scopeOrgId,
+    scopeTeamId: scope.scopeTeamId,
+  })
+
+  if (!scopedSession) {
+    redirect(
+      buildSessionDetailRedirectPath({
+        sessionId: parsedInput.data.sessionId,
+        error: "forbidden",
+        ...scope,
+      }),
+    )
+  }
+
+  const supabase = await createServerSupabaseClient()
+
+  if (parsedInput.data.gearItemIds.length > 0) {
+    const { data: scopedGearRows, error: scopedGearError } = await supabase
+      .from("gear_items")
+      .select("id")
+      .eq("team_id", scope.scopeTeamId)
+      .in("id", parsedInput.data.gearItemIds)
+
+    if (scopedGearError) {
+      redirect(
+        buildSessionDetailRedirectPath({
+          sessionId: parsedInput.data.sessionId,
+          error: "update_failed",
+          ...scope,
+        }),
+      )
+    }
+
+    if (!scopedGearRows || scopedGearRows.length !== parsedInput.data.gearItemIds.length) {
+      redirect(
+        buildSessionDetailRedirectPath({
+          sessionId: parsedInput.data.sessionId,
+          error: "invalid_input",
+          ...scope,
+        }),
+      )
+    }
+  }
+
+  const { error: deleteUsageError } = await supabase
+    .from("session_gear_usage")
+    .delete()
+    .eq("session_id", parsedInput.data.sessionId)
+
+  if (deleteUsageError) {
+    redirect(
+      buildSessionDetailRedirectPath({
+        sessionId: parsedInput.data.sessionId,
+        error: "update_failed",
+        ...scope,
+      }),
+    )
+  }
+
+  if (parsedInput.data.gearItemIds.length > 0) {
+    const { error: insertUsageError } = await supabase.from("session_gear_usage").insert(
+      parsedInput.data.gearItemIds.map((gearItemId) => ({
+        session_id: parsedInput.data.sessionId,
+        gear_item_id: gearItemId,
+        linked_by_profile_id: context.profile?.id ?? null,
+      })),
+    )
+
+    if (insertUsageError) {
+      redirect(
+        buildSessionDetailRedirectPath({
+          sessionId: parsedInput.data.sessionId,
+          error: "update_failed",
+          ...scope,
+        }),
+      )
+    }
+  }
+
+  revalidateSessionSlices({
+    sessionId: parsedInput.data.sessionId,
+    campId: scopedSession.camp.id,
+    teamVenueId: scopedSession.teamVenue.id,
+  })
+
+  redirect(
+    buildSessionDetailRedirectPath({
+      sessionId: parsedInput.data.sessionId,
+      status: "gear_updated",
       ...scope,
     }),
   )
