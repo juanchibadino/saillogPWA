@@ -39,7 +39,17 @@ type SessionSetupRow = Pick<
 
 type SessionReviewRow = Pick<
   Database["public"]["Tables"]["session_reviews"]["Row"],
-  "session_id" | "best_of_session" | "to_work" | "standard_moves" | "wind_patterns"
+  "session_id" | "best_of_session" | "to_work" | "wind_patterns"
+>
+
+type SessionStandardMoveRow = Pick<
+  Database["public"]["Tables"]["session_standard_moves"]["Row"],
+  "session_id" | "team_standard_move_id"
+>
+
+type TeamStandardMoveRow = Pick<
+  Database["public"]["Tables"]["team_standard_moves"]["Row"],
+  "id" | "name"
 >
 
 const CAMP_SELECT_COLUMNS =
@@ -50,7 +60,9 @@ const SESSION_SELECT_COLUMNS =
   "id,camp_id,session_type,session_date,net_time_minutes,highlighted_by_coach,created_at"
 const SESSION_SETUP_SELECT_COLUMNS = "session_id,free_notes"
 const SESSION_REVIEW_SELECT_COLUMNS =
-  "session_id,best_of_session,to_work,standard_moves,wind_patterns"
+  "session_id,best_of_session,to_work,wind_patterns"
+const SESSION_STANDARD_MOVE_SELECT_COLUMNS = "session_id,team_standard_move_id"
+const TEAM_STANDARD_MOVE_SELECT_COLUMNS = "id,name"
 
 const EMPTY_KPIS: CampDetailKpi[] = [
   { label: "Total Sessions", value: "0", note: "Current camp" },
@@ -206,6 +218,7 @@ function buildNotesCards(input: {
   sessions: SessionRow[]
   setupBySessionId: Map<string, SessionSetupRow>
   reviewBySessionId: Map<string, SessionReviewRow>
+  standardMoveNamesBySessionId: Map<string, string[]>
 }): CampDetailNotesCard[] {
   const notesCards: CampDetailNotesCard[] = []
 
@@ -216,7 +229,9 @@ function buildNotesCards(input: {
     const freeNotes = normalizeText(setup?.free_notes)
     const best = normalizeText(review?.best_of_session)
     const toWork = normalizeText(review?.to_work)
-    const standardMoves = formatJsonNote(review?.standard_moves)
+    const standardMoveNames = input.standardMoveNamesBySessionId.get(session.id) ?? []
+    const standardMoves =
+      standardMoveNames.length > 0 ? normalizeText(standardMoveNames.join(", ")) : null
     const windPattern = formatJsonNote(review?.wind_patterns)
 
     if (!freeNotes && !best && !toWork && !standardMoves && !windPattern) {
@@ -351,19 +366,28 @@ export async function getCampDetailPageData(input: {
 
   let setupRows: SessionSetupRow[] = []
   let reviewRows: SessionReviewRow[] = []
+  let sessionStandardMoveRows: SessionStandardMoveRow[] = []
+  let teamStandardMoves: TeamStandardMoveRow[] = []
 
   if (sessionIds.length > 0) {
-    const [{ data: setupData, error: setupError }, { data: reviewData, error: reviewError }] =
-      await Promise.all([
-        supabase
-          .from("session_setups")
-          .select(SESSION_SETUP_SELECT_COLUMNS)
-          .in("session_id", sessionIds),
-        supabase
-          .from("session_reviews")
-          .select(SESSION_REVIEW_SELECT_COLUMNS)
-          .in("session_id", sessionIds),
-      ])
+    const [
+      { data: setupData, error: setupError },
+      { data: reviewData, error: reviewError },
+      { data: sessionStandardMoveData, error: sessionStandardMoveError },
+    ] = await Promise.all([
+      supabase
+        .from("session_setups")
+        .select(SESSION_SETUP_SELECT_COLUMNS)
+        .in("session_id", sessionIds),
+      supabase
+        .from("session_reviews")
+        .select(SESSION_REVIEW_SELECT_COLUMNS)
+        .in("session_id", sessionIds),
+      supabase
+        .from("session_standard_moves")
+        .select(SESSION_STANDARD_MOVE_SELECT_COLUMNS)
+        .in("session_id", sessionIds),
+    ])
 
     if (setupError) {
       throw new Error(`Could not load session setups for camp detail: ${setupError.message}`)
@@ -373,12 +397,58 @@ export async function getCampDetailPageData(input: {
       throw new Error(`Could not load session reviews for camp detail: ${reviewError.message}`)
     }
 
+    if (sessionStandardMoveError) {
+      throw new Error(
+        `Could not load session standard moves for camp detail: ${sessionStandardMoveError.message}`,
+      )
+    }
+
     setupRows = setupData ?? []
     reviewRows = reviewData ?? []
+    sessionStandardMoveRows = sessionStandardMoveData ?? []
+
+    const standardMoveIds = [...new Set(sessionStandardMoveRows.map((row) => row.team_standard_move_id))]
+
+    if (standardMoveIds.length > 0) {
+      const { data: teamStandardMoveData, error: teamStandardMoveError } = await supabase
+        .from("team_standard_moves")
+        .select(TEAM_STANDARD_MOVE_SELECT_COLUMNS)
+        .in("id", standardMoveIds)
+        .eq("team_id", teamVenue.team_id)
+
+      if (teamStandardMoveError) {
+        throw new Error(
+          `Could not load team standard moves for camp detail: ${teamStandardMoveError.message}`,
+        )
+      }
+
+      teamStandardMoves = teamStandardMoveData ?? []
+    }
   }
 
   const setupBySessionId = new Map(setupRows.map((row) => [row.session_id, row]))
   const reviewBySessionId = new Map(reviewRows.map((row) => [row.session_id, row]))
+  const standardMoveNameById = new Map(teamStandardMoves.map((row) => [row.id, row.name]))
+  const standardMoveNamesBySessionId = new Map<string, string[]>()
+
+  for (const row of sessionStandardMoveRows) {
+    const standardMoveName = standardMoveNameById.get(row.team_standard_move_id)
+
+    if (!standardMoveName) {
+      continue
+    }
+
+    const existingNames = standardMoveNamesBySessionId.get(row.session_id) ?? []
+    existingNames.push(standardMoveName)
+    standardMoveNamesBySessionId.set(row.session_id, existingNames)
+  }
+
+  for (const [sessionId, standardMoveNames] of standardMoveNamesBySessionId.entries()) {
+    standardMoveNamesBySessionId.set(
+      sessionId,
+      [...standardMoveNames].sort((left, right) => left.localeCompare(right)),
+    )
+  }
 
   return {
     camp: detailCamp,
@@ -392,6 +462,7 @@ export async function getCampDetailPageData(input: {
       sessions,
       setupBySessionId,
       reviewBySessionId,
+      standardMoveNamesBySessionId,
     }),
   }
 }

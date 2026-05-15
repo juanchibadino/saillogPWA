@@ -47,12 +47,32 @@ function getStatusMessage(status: string | undefined): string | null {
     return "Session info updated successfully."
   }
 
+  if (status === "goals_updated") {
+    return "Session goals updated successfully."
+  }
+
   if (status === "results_updated") {
     return "Session results updated successfully."
   }
 
   if (status === "setup_updated") {
     return "Session setup updated successfully."
+  }
+
+  if (status === "setup_metric_created") {
+    return "Setup metric created successfully."
+  }
+
+  if (status === "setup_metric_updated") {
+    return "Setup metric updated successfully."
+  }
+
+  if (status === "setup_metric_deleted") {
+    return "Setup metric deleted successfully."
+  }
+
+  if (status === "setup_metrics_reordered") {
+    return "Setup metric order updated successfully."
   }
 
   if (status === "asset_uploaded") {
@@ -323,6 +343,9 @@ export default async function SessionDetailPage({
           windPatterns: detailData.info.windPatterns,
           freeNotes: detailData.info.freeNotes,
         }}
+        goals={detailData.session.goals}
+        availableStandardMoves={detailData.availableStandardMoves}
+        linkedStandardMoveIds={detailData.linkedStandardMoveIds}
         resultNotes={detailData.results.resultNotes}
         images={detailData.images}
         analyticsFiles={detailData.analyticsFiles}

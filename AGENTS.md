@@ -165,6 +165,7 @@ These are the expected v1 tables.
 - Prefer simple tables, cards, and segmented detail screens
 - Every new page or major data view must include a matching skeleton loading state using `loading.tsx` (or Suspense fallback when more appropriate)
 - If backend latency cannot be reduced further, apply UX masking (fast skeletons, progressive loading states, immediate feedback) to avoid perceived waiting
+- Every dialog that saves data must include a saving/loading state (pending disabled controls + visible in-progress feedback on the submit action)
 
 ### PWA
 - Make the app installable

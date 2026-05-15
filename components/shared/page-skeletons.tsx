@@ -282,6 +282,35 @@ export function TeamNotesPageSkeleton() {
   )
 }
 
+export function TeamStandardMovesPageSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="rounded-xl border bg-card p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1">
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-9 w-40" />
+          </div>
+          <Skeleton className="h-8 w-20" />
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <Skeleton className="h-6 w-28" />
+          <Skeleton className="h-8 w-24" />
+        </div>
+        <div className="space-y-3">
+          <Skeleton className="h-10 w-full" />
+          {Array.from({ length: 6 }).map((_, index) => (
+            <Skeleton key={`team-standard-moves-row-${index}`} className="h-12 w-full" />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function TeamReportsPageSkeleton() {
   return (
     <div className="space-y-6">
@@ -522,6 +551,28 @@ export function SignInPageSkeleton() {
 
         <Skeleton className="h-4 w-full" />
         <Skeleton className="h-4 w-20" />
+      </div>
+    </main>
+  )
+}
+
+export function OnboardingPageSkeleton() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-black px-4 py-8">
+      <div className="w-full max-w-xl rounded-3xl border border-white/20 bg-white/5 p-6 sm:p-8">
+        <div className="space-y-6">
+          <Skeleton className="h-3 w-28 bg-white/20" />
+          <div className="space-y-3">
+            <Skeleton className="h-10 w-64 bg-white/20" />
+            <Skeleton className="h-4 w-full bg-white/20" />
+            <Skeleton className="h-4 w-5/6 bg-white/20" />
+          </div>
+          <div className="space-y-3">
+            <Skeleton className="h-11 w-full rounded-full bg-white/20" />
+            <Skeleton className="h-11 w-full rounded-full bg-white/20" />
+          </div>
+          <Skeleton className="h-11 w-full rounded-full bg-white/20" />
+        </div>
       </div>
     </main>
   )

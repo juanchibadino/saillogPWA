@@ -56,6 +56,16 @@ type SessionSetupRow = Pick<
   "session_id" | "free_notes"
 >
 
+type SessionStandardMoveRow = Pick<
+  Database["public"]["Tables"]["session_standard_moves"]["Row"],
+  "session_id" | "team_standard_move_id"
+>
+
+type TeamStandardMoveRow = Pick<
+  Database["public"]["Tables"]["team_standard_moves"]["Row"],
+  "id" | "name"
+>
+
 const TEAM_VENUE_SELECT_COLUMNS = "id,team_id,venue_id"
 const VENUE_SELECT_COLUMNS = "id,name,city,country"
 const CAMP_SELECT_COLUMNS = "id,team_venue_id,name"
@@ -69,6 +79,8 @@ const SESSION_SETUP_ITEM_SELECTED_OPTION_SELECT_COLUMNS =
   "session_setup_item_value_id,team_setup_item_option_id"
 const SESSION_REVIEW_SELECT_COLUMNS = "session_id,best_of_session,to_work"
 const SESSION_SETUP_SELECT_COLUMNS = "session_id,free_notes"
+const SESSION_STANDARD_MOVE_SELECT_COLUMNS = "session_id,team_standard_move_id"
+const TEAM_STANDARD_MOVE_SELECT_COLUMNS = "id,name"
 
 export type TeamNoteVenueFilterOption = {
   venueId: string
@@ -102,6 +114,7 @@ export type TeamNoteCard = {
     bestOfSession: string | null
     toWork: string | null
     freeNotes: string | null
+    standardMoves: string[]
   }
 }
 
@@ -209,6 +222,7 @@ function buildSearchIndex(card: TeamNoteCard): string {
     card.notes.bestOfSession ?? "",
     card.notes.toWork ?? "",
     card.notes.freeNotes ?? "",
+    card.notes.standardMoves.join(" "),
   ]
     .join(" ")
     .toLowerCase()
@@ -452,7 +466,11 @@ export async function getTeamNotesPageData(input: {
     }
   }
 
-  const [{ data: reviewData, error: reviewsError }, { data: setupData, error: setupsError }] =
+  const [
+    { data: reviewData, error: reviewsError },
+    { data: setupData, error: setupsError },
+    { data: sessionStandardMoveData, error: sessionStandardMovesError },
+  ] =
     await Promise.all([
       supabase
         .from("session_reviews")
@@ -461,6 +479,10 @@ export async function getTeamNotesPageData(input: {
       supabase
         .from("session_setups")
         .select(SESSION_SETUP_SELECT_COLUMNS)
+        .in("session_id", sessionIds),
+      supabase
+        .from("session_standard_moves")
+        .select(SESSION_STANDARD_MOVE_SELECT_COLUMNS)
         .in("session_id", sessionIds),
     ])
 
@@ -472,12 +494,54 @@ export async function getTeamNotesPageData(input: {
     throw new Error(`Could not load session setups for notes: ${setupsError.message}`)
   }
 
+  if (sessionStandardMovesError) {
+    throw new Error(
+      `Could not load session standard moves for notes: ${sessionStandardMovesError.message}`,
+    )
+  }
+
+  const sessionStandardMoves: SessionStandardMoveRow[] = sessionStandardMoveData ?? []
+  const standardMoveIds = uniqueIds(sessionStandardMoves.map((row) => row.team_standard_move_id))
+  let teamStandardMoves: TeamStandardMoveRow[] = []
+
+  if (standardMoveIds.length > 0) {
+    const { data: standardMoveData, error: standardMovesError } = await supabase
+      .from("team_standard_moves")
+      .select(TEAM_STANDARD_MOVE_SELECT_COLUMNS)
+      .eq("team_id", input.activeTeamId)
+      .in("id", standardMoveIds)
+
+    if (standardMovesError) {
+      throw new Error(`Could not load team standard moves for notes: ${standardMovesError.message}`)
+    }
+
+    teamStandardMoves = standardMoveData ?? []
+  }
+
   const reviewBySessionId = new Map<string, SessionReviewRow>(
     (reviewData ?? []).map((row) => [row.session_id, row]),
   )
   const sessionSetupBySessionId = new Map<string, SessionSetupRow>(
     (setupData ?? []).map((row) => [row.session_id, row]),
   )
+  const standardMoveNameById = new Map(teamStandardMoves.map((row) => [row.id, row.name]))
+  const standardMovesBySessionId = new Map<string, string[]>()
+
+  for (const sessionStandardMove of sessionStandardMoves) {
+    const standardMoveName = standardMoveNameById.get(sessionStandardMove.team_standard_move_id)
+
+    if (!standardMoveName) {
+      continue
+    }
+
+    const existingNames = standardMovesBySessionId.get(sessionStandardMove.session_id) ?? []
+    existingNames.push(standardMoveName)
+    standardMovesBySessionId.set(sessionStandardMove.session_id, existingNames)
+  }
+
+  for (const [sessionId, standardMoveNames] of standardMovesBySessionId.entries()) {
+    standardMovesBySessionId.set(sessionId, [...standardMoveNames].sort((left, right) => left.localeCompare(right)))
+  }
 
   const selectedOptionIdsBySetupValueId = new Map<string, string[]>()
 
@@ -597,7 +661,8 @@ export async function getTeamNotesPageData(input: {
     const bestOfSession = normalizeText(review?.best_of_session)
     const toWork = normalizeText(review?.to_work)
     const freeNotes = normalizeText(sessionSetup?.free_notes)
-    const hasNotesData = Boolean(bestOfSession || toWork || freeNotes)
+    const standardMoves = standardMovesBySessionId.get(session.id) ?? []
+    const hasNotesData = Boolean(bestOfSession || toWork || freeNotes || standardMoves.length > 0)
 
     if (!hasSetupData && !hasNotesData) {
       continue
@@ -634,6 +699,7 @@ export async function getTeamNotesPageData(input: {
         bestOfSession,
         toWork,
         freeNotes,
+        standardMoves,
       },
     }
 

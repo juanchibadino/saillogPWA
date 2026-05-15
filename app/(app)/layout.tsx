@@ -2,6 +2,7 @@ import {
   hasAppAccess,
   requireAuthenticatedAccessContext,
 } from "@/lib/auth/access";
+import { redirect } from "next/navigation";
 import { resolveNavigationScope } from "@/lib/navigation/scope";
 import type { ResolvedNavigationScope } from "@/lib/navigation/types";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -48,7 +49,13 @@ export default async function AppLayout({
 }) {
   const context = await requireAuthenticatedAccessContext();
   const canAccessApp = hasAppAccess(context);
+  const hasNoMemberships =
+    context.organizationMemberships.length === 0 && context.teamMemberships.length === 0;
   let navigation: ResolvedNavigationScope | null = null;
+
+  if (!canAccessApp && hasNoMemberships) {
+    redirect("/onboarding");
+  }
 
   if (canAccessApp) {
     navigation = await resolveNavigationScope({

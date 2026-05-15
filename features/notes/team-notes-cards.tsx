@@ -111,7 +111,7 @@ export function TeamNotesCards(input: {
             <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
               Notes
             </p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div>
                 <p className="text-sm text-muted-foreground">Best</p>
                 <p className="whitespace-pre-wrap font-medium">{renderText(card.notes.bestOfSession)}</p>
@@ -123,6 +123,12 @@ export function TeamNotesCards(input: {
               <div>
                 <p className="text-sm text-muted-foreground">Free Notes</p>
                 <p className="whitespace-pre-wrap font-medium">{renderText(card.notes.freeNotes)}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Std. Moves</p>
+                <p className="whitespace-pre-wrap font-medium">
+                  {renderValues(card.notes.standardMoves)}
+                </p>
               </div>
             </div>
           </section>

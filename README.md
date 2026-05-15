@@ -66,6 +66,17 @@ npm run dev
 - `/dashboard` protected app area
 - `/sign-out` clear session
 
+## PWA Debug Panel (Temporary)
+
+For internal PWA validation, add `?pwaDebug=1` to any signed-in app URL
+(example: `/dashboard?pwaDebug=1`).
+
+This enables a small `PWA` button in the app header with runtime checks for:
+- display mode and standalone detection
+- manifest link detection
+- service worker registration/controller state
+- install lifecycle events (`beforeinstallprompt`, `appinstalled`)
+
 ## Magic Link Redirect Setup
 
 If magic links send users to `localhost` from production, verify both app env

@@ -4,7 +4,14 @@ import {
 } from "@/lib/navigation/constants"
 import type { NavigationScope } from "@/lib/navigation/types"
 
-export const SESSION_DETAIL_TABS = ["info", "results", "images", "analytics", "gear"] as const
+export const SESSION_DETAIL_TABS = [
+  "info",
+  "goals",
+  "results",
+  "images",
+  "analytics",
+  "gear",
+] as const
 
 export type SessionDetailTab = (typeof SESSION_DETAIL_TABS)[number]
 

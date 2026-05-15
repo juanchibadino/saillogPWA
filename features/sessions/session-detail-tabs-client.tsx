@@ -1,8 +1,30 @@
 "use client"
 
 import * as React from "react"
-import { CameraIcon, Loader2Icon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react"
+import {
+  CameraIcon,
+  GripVerticalIcon,
+  Loader2Icon,
+  PencilIcon,
+  PlusIcon,
+  Trash2Icon,
+} from "lucide-react"
 import { useFormStatus } from "react-dom"
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -30,8 +52,12 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  createTeamSetupMetricAction,
+  deleteTeamSetupMetricAction,
+  updateTeamSetupMetricAction,
   updateSessionDetailAction,
   updateSessionGearUsageAction,
+  updateSessionGoalsAction,
   updateSessionInfoAction,
   updateSessionResultsAction,
   updateSessionSetupAction,
@@ -47,6 +73,7 @@ import {
   type SessionDetailTab,
 } from "@/features/sessions/navigation"
 import type { NavigationScope } from "@/lib/navigation/types"
+import { generateStandardMoveNameFromDescription } from "@/lib/standard-moves"
 
 function formatTimeInputValue(iso: string | null): string {
   if (!iso) {
@@ -132,6 +159,14 @@ function renderTextValue(value: string | null): string {
   }
 
   return value
+}
+
+function renderTextList(values: string[]): string {
+  if (values.length === 0) {
+    return "—"
+  }
+
+  return values.join(", ")
 }
 
 function formatGearTypeLabel(value: SessionDetailGearItem["gear_type"]): string {
@@ -444,52 +479,512 @@ function SessionGearBarcodeScannerDialog({
   )
 }
 
-type SetupDraftByItemId = Record<
-  string,
-  {
-    textValue: string
-    selectedOptionIds: string[]
+const WEATHER_METRIC_KEYS = [
+  "twd",
+  "tws",
+  "sea_state",
+  "type_of_day",
+  "currents",
+] as const
+const WEATHER_METRIC_ORDER = new Map<string, number>(
+  WEATHER_METRIC_KEYS.map((key, index) => [key, index]),
+)
+
+type SetupDraftSelectedOption = {
+  optionId: string
+  allocationPercent: number | null
+}
+
+type SetupDraftItem = {
+  textValue: string
+  selectedOptions: SetupDraftSelectedOption[]
+  twsEditedOptionIds: string[]
+}
+
+type SetupDraftByItemId = Record<string, SetupDraftItem>
+
+function clampPercentInteger(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0
   }
->
+
+  const rounded = Math.round(value)
+
+  if (rounded < 0) {
+    return 0
+  }
+
+  if (rounded > 100) {
+    return 100
+  }
+
+  return rounded
+}
+
+function distributeEqualIntegerPercentages(count: number, total = 100): number[] {
+  if (count <= 0) {
+    return []
+  }
+
+  const baseValue = Math.floor(total / count)
+  const remainder = total - baseValue * count
+
+  return Array.from({ length: count }, (_, index) =>
+    index < remainder ? baseValue + 1 : baseValue,
+  )
+}
+
+function enforceTwsAllocationInvariant(input: {
+  selectedOptions: SetupDraftSelectedOption[]
+  preferredAddOptionIds: string[]
+}): SetupDraftSelectedOption[] {
+  if (input.selectedOptions.length === 0) {
+    return []
+  }
+
+  const orderedOptionIds: string[] = []
+  const percentByOptionId = new Map<string, number>()
+
+  for (const selectedOption of input.selectedOptions) {
+    if (!orderedOptionIds.includes(selectedOption.optionId)) {
+      orderedOptionIds.push(selectedOption.optionId)
+    }
+
+    percentByOptionId.set(
+      selectedOption.optionId,
+      clampPercentInteger(selectedOption.allocationPercent ?? 0),
+    )
+  }
+
+  if (orderedOptionIds.length === 1) {
+    return [{ optionId: orderedOptionIds[0], allocationPercent: 100 }]
+  }
+
+  const preferredSet = new Set(
+    input.preferredAddOptionIds.filter((optionId) =>
+      orderedOptionIds.includes(optionId),
+    ),
+  )
+  const addOrder = [
+    ...Array.from(preferredSet),
+    ...orderedOptionIds.filter((optionId) => !preferredSet.has(optionId)),
+  ]
+
+  let sum = orderedOptionIds.reduce(
+    (total, optionId) => total + (percentByOptionId.get(optionId) ?? 0),
+    0,
+  )
+
+  if (sum < 100) {
+    let remainder = 100 - sum
+
+    for (const optionId of addOrder) {
+      if (remainder === 0) {
+        break
+      }
+
+      const currentValue = percentByOptionId.get(optionId) ?? 0
+      const capacity = Math.max(0, 100 - currentValue)
+      const increment = Math.min(capacity, remainder)
+
+      percentByOptionId.set(optionId, currentValue + increment)
+      remainder -= increment
+    }
+  } else if (sum > 100) {
+    let overflow = sum - 100
+
+    for (let index = orderedOptionIds.length - 1; index >= 0; index -= 1) {
+      if (overflow === 0) {
+        break
+      }
+
+      const optionId = orderedOptionIds[index]
+      const currentValue = percentByOptionId.get(optionId) ?? 0
+      const decrement = Math.min(currentValue, overflow)
+
+      percentByOptionId.set(optionId, currentValue - decrement)
+      overflow -= decrement
+    }
+  }
+
+  sum = orderedOptionIds.reduce(
+    (total, optionId) => total + (percentByOptionId.get(optionId) ?? 0),
+    0,
+  )
+
+  if (sum !== 100) {
+    const equalDistribution = distributeEqualIntegerPercentages(orderedOptionIds.length)
+    return orderedOptionIds.map((optionId, index) => ({
+      optionId,
+      allocationPercent: equalDistribution[index] ?? 0,
+    }))
+  }
+
+  return orderedOptionIds.map((optionId) => ({
+    optionId,
+    allocationPercent: percentByOptionId.get(optionId) ?? 0,
+  }))
+}
+
+function sortSelectedOptionIdsByMetricOptions(input: {
+  item: SessionSetupDialogItem
+  selectedOptionIds: string[]
+}): string[] {
+  const optionOrderById = new Map(
+    input.item.options.map((option, index) => [option.id, index]),
+  )
+
+  return [...new Set(input.selectedOptionIds)].sort(
+    (left, right) =>
+      (optionOrderById.get(left) ?? Number.MAX_SAFE_INTEGER) -
+      (optionOrderById.get(right) ?? Number.MAX_SAFE_INTEGER),
+  )
+}
+
+function rebalanceTwsDraftSelection(input: {
+  selectedOptionIds: string[]
+  previousSelectedOptions: SetupDraftSelectedOption[]
+  previousEditedOptionIds: string[]
+  changedOptionId?: string
+  changedOptionPercent?: number
+}): {
+  selectedOptions: SetupDraftSelectedOption[]
+  editedOptionIds: string[]
+} {
+  const selectedOptionIds = [...new Set(input.selectedOptionIds)]
+
+  if (selectedOptionIds.length === 0) {
+    return {
+      selectedOptions: [],
+      editedOptionIds: [],
+    }
+  }
+
+  if (selectedOptionIds.length === 1) {
+    return {
+      selectedOptions: [{ optionId: selectedOptionIds[0], allocationPercent: 100 }],
+      editedOptionIds: [],
+    }
+  }
+
+  const previousPercentByOptionId = new Map(
+    input.previousSelectedOptions.map((selectedOption) => [
+      selectedOption.optionId,
+      typeof selectedOption.allocationPercent === "number"
+        ? clampPercentInteger(selectedOption.allocationPercent)
+        : 0,
+    ]),
+  )
+
+  if (input.changedOptionId && typeof input.changedOptionPercent === "number") {
+    previousPercentByOptionId.set(
+      input.changedOptionId,
+      clampPercentInteger(input.changedOptionPercent),
+    )
+  }
+
+  const editedOptionIds = new Set(
+    input.previousEditedOptionIds.filter((optionId) =>
+      selectedOptionIds.includes(optionId),
+    ),
+  )
+
+  if (input.changedOptionId) {
+    editedOptionIds.add(input.changedOptionId)
+  }
+
+  if (editedOptionIds.size === 0) {
+    const equalDistribution = distributeEqualIntegerPercentages(selectedOptionIds.length)
+    return {
+      selectedOptions: selectedOptionIds.map((optionId, index) => ({
+        optionId,
+        allocationPercent: equalDistribution[index] ?? 0,
+      })),
+      editedOptionIds: [],
+    }
+  }
+
+  const fixedOptionIds = selectedOptionIds.filter((optionId) =>
+    editedOptionIds.has(optionId),
+  )
+  const uneditedOptionIds = selectedOptionIds.filter(
+    (optionId) => !editedOptionIds.has(optionId),
+  )
+  const nextPercentByOptionId = new Map<string, number>()
+
+  for (const fixedOptionId of fixedOptionIds) {
+    nextPercentByOptionId.set(
+      fixedOptionId,
+      clampPercentInteger(previousPercentByOptionId.get(fixedOptionId) ?? 0),
+    )
+  }
+
+  let fixedTotal = fixedOptionIds.reduce(
+    (total, optionId) => total + (nextPercentByOptionId.get(optionId) ?? 0),
+    0,
+  )
+
+  if (input.changedOptionId && fixedTotal > 100) {
+    const changedOptionId = input.changedOptionId
+    const otherFixedTotal =
+      fixedTotal - (nextPercentByOptionId.get(changedOptionId) ?? 0)
+    const cappedChangedValue = Math.max(0, 100 - otherFixedTotal)
+    nextPercentByOptionId.set(changedOptionId, cappedChangedValue)
+    fixedTotal = otherFixedTotal + cappedChangedValue
+  }
+
+  if (fixedTotal > 100 && !input.changedOptionId) {
+    let remaining = 100
+
+    for (const fixedOptionId of fixedOptionIds) {
+      const nextValue = Math.min(
+        clampPercentInteger(nextPercentByOptionId.get(fixedOptionId) ?? 0),
+        remaining,
+      )
+      nextPercentByOptionId.set(fixedOptionId, nextValue)
+      remaining -= nextValue
+    }
+
+    fixedTotal = 100 - remaining
+  }
+
+  let remainder = Math.max(0, 100 - fixedTotal)
+
+  if (uneditedOptionIds.length > 0) {
+    const distribution = distributeEqualIntegerPercentages(
+      uneditedOptionIds.length,
+      remainder,
+    )
+
+    for (let index = 0; index < uneditedOptionIds.length; index += 1) {
+      const optionId = uneditedOptionIds[index]
+      nextPercentByOptionId.set(optionId, distribution[index] ?? 0)
+    }
+
+    remainder = 0
+  } else {
+    const adjustableOptionId =
+      input.changedOptionId ?? fixedOptionIds[fixedOptionIds.length - 1] ?? null
+
+    if (adjustableOptionId) {
+      const adjustedValue = clampPercentInteger(
+        (nextPercentByOptionId.get(adjustableOptionId) ?? 0) + remainder,
+      )
+      nextPercentByOptionId.set(adjustableOptionId, adjustedValue)
+      remainder = 0
+    }
+  }
+
+  if (remainder > 0) {
+    const fallbackOptionId = selectedOptionIds[selectedOptionIds.length - 1]
+    nextPercentByOptionId.set(
+      fallbackOptionId,
+      clampPercentInteger((nextPercentByOptionId.get(fallbackOptionId) ?? 0) + remainder),
+    )
+  }
+
+  const selectedOptions = enforceTwsAllocationInvariant({
+    selectedOptions: selectedOptionIds.map((optionId) => ({
+      optionId,
+      allocationPercent: nextPercentByOptionId.get(optionId) ?? 0,
+    })),
+    preferredAddOptionIds: [
+      ...uneditedOptionIds,
+      ...(input.changedOptionId ? [input.changedOptionId] : []),
+      ...selectedOptionIds,
+    ],
+  })
+
+  return {
+    selectedOptions,
+    editedOptionIds: fixedOptionIds.filter((optionId) => selectedOptionIds.includes(optionId)),
+  }
+}
 
 function buildInitialSetupDraft(items: SessionSetupDialogItem[]): SetupDraftByItemId {
   const draft: SetupDraftByItemId = {}
 
   for (const item of items) {
+    if (item.inputKind === "text") {
+      draft[item.id] = {
+        textValue: item.textValue,
+        selectedOptions: [],
+        twsEditedOptionIds: [],
+      }
+      continue
+    }
+
+    const selectedOptionIds = sortSelectedOptionIdsByMetricOptions({
+      item,
+      selectedOptionIds: item.selectedOptions.map((selectedOption) => selectedOption.optionId),
+    })
+
+    if (item.key !== "tws") {
+      draft[item.id] = {
+        textValue: item.textValue,
+        selectedOptions: selectedOptionIds.map((optionId) => ({
+          optionId,
+          allocationPercent: null,
+        })),
+        twsEditedOptionIds: [],
+      }
+      continue
+    }
+
+    const currentPercentByOptionId = new Map(
+      item.selectedOptions.map((selectedOption) => [
+        selectedOption.optionId,
+        typeof selectedOption.allocationPercent === "number"
+          ? clampPercentInteger(selectedOption.allocationPercent)
+          : null,
+      ]),
+    )
+    const hasAnyMissingPercent = selectedOptionIds.some(
+      (optionId) => currentPercentByOptionId.get(optionId) === null,
+    )
+    const hasAnySelected = selectedOptionIds.length > 0
+    const currentSum = selectedOptionIds.reduce(
+      (total, optionId) => total + (currentPercentByOptionId.get(optionId) ?? 0),
+      0,
+    )
+    const hasValidExistingPercentages = hasAnySelected && !hasAnyMissingPercent && currentSum === 100
+    const selectedOptions = hasValidExistingPercentages
+      ? selectedOptionIds.map((optionId) => {
+          const percent = currentPercentByOptionId.get(optionId)
+          return {
+            optionId,
+            allocationPercent: typeof percent === "number" ? percent : 0,
+          }
+        })
+      : rebalanceTwsDraftSelection({
+          selectedOptionIds,
+          previousSelectedOptions: [],
+          previousEditedOptionIds: [],
+        }).selectedOptions
+
     draft[item.id] = {
       textValue: item.textValue,
-      selectedOptionIds: [...item.selectedOptionIds],
+      selectedOptions,
+      twsEditedOptionIds: [],
     }
   }
 
   return draft
 }
 
+function groupSetupItems(items: SessionSetupDialogItem[]): {
+  weather: SessionSetupDialogItem[]
+  boat: SessionSetupDialogItem[]
+} {
+  const weather = items
+    .filter((item) => item.metricGroup === "weather")
+    .sort((left, right) => {
+      const leftOrder = WEATHER_METRIC_ORDER.get(left.key) ?? Number.MAX_SAFE_INTEGER
+      const rightOrder = WEATHER_METRIC_ORDER.get(right.key) ?? Number.MAX_SAFE_INTEGER
+
+      if (leftOrder !== rightOrder) {
+        return leftOrder - rightOrder
+      }
+
+      return left.position - right.position
+    })
+  const boat = items
+    .filter((item) => item.metricGroup === "boat")
+    .sort((left, right) => left.position - right.position)
+
+  return { weather, boat }
+}
+
+function parseMetricOptionsFromText(value: string): string[] {
+  const uniqueOptions = new Set<string>()
+
+  for (const line of value.split(/\r?\n/)) {
+    const normalized = line.trim().replace(/\s+/g, " ")
+
+    if (normalized.length === 0) {
+      continue
+    }
+
+    uniqueOptions.add(normalized)
+  }
+
+  return [...uniqueOptions]
+}
+
+function SetupScopeHiddenFields(input: {
+  sessionId: string
+  scope: NavigationScope
+}) {
+  return (
+    <>
+      <input type="hidden" name="sessionId" value={input.sessionId} />
+      <input type="hidden" name="scopeOrgId" value={input.scope.activeOrgId} />
+      {input.scope.activeTeamId ? (
+        <input type="hidden" name="scopeTeamId" value={input.scope.activeTeamId} />
+      ) : null}
+      <input type="hidden" name="scopeTab" value="info" />
+    </>
+  )
+}
+
+function SortableBoatSetupRow(input: {
+  itemId: string
+  children: (input: {
+    dragHandleProps: React.HTMLAttributes<HTMLButtonElement>
+    isDragging: boolean
+  }) => React.ReactNode
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: input.itemId,
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+      className={isDragging ? "opacity-70" : undefined}
+    >
+      {input.children({
+        dragHandleProps: {
+          ...attributes,
+          ...listeners,
+        },
+        isDragging,
+      })}
+    </div>
+  )
+}
+
 function SetupDialogFooter(input: {
   isEditMode: boolean
-  onToggleEdit: () => void
+  onEnterEditMode: () => void
 }) {
   const { pending } = useFormStatus()
 
   return (
     <DialogFooter
-      className={
-        input.isEditMode
-          ? "relative z-10 shrink-0 flex-row items-center justify-between border-t bg-popover pt-4"
-          : "relative z-10 shrink-0 flex-row items-center justify-start border-t bg-popover pt-4"
-      }
+      className={input.isEditMode ? "shrink-0 sm:justify-end" : "shrink-0 sm:justify-start"}
     >
-      <Button
-        type="button"
-        variant={input.isEditMode ? "secondary" : "outline"}
-        size="sm"
-        onClick={input.onToggleEdit}
-        disabled={pending}
-      >
-        {input.isEditMode ? "Done editing" : "Edit"}
-      </Button>
-      {input.isEditMode ? (
-        <Button type="submit" disabled={pending}>
+      {!input.isEditMode ? (
+        <Button
+          key="setup-edit"
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            input.onEnterEditMode()
+          }}
+          disabled={pending}
+        >
+          Edit
+        </Button>
+      ) : (
+        <Button key="setup-save" type="submit" disabled={pending}>
           {pending ? (
             <>
               <Loader2Icon className="size-4 animate-spin" />
@@ -499,7 +994,7 @@ function SetupDialogFooter(input: {
             "Save setup"
           )}
         </Button>
-      ) : null}
+      )}
     </DialogFooter>
   )
 }
@@ -512,58 +1007,288 @@ function SetupDialog(input: {
   function SetupDialogFieldset(props: { children: React.ReactNode }) {
     const { pending } = useFormStatus()
 
+    return <fieldset disabled={pending} className="m-0 border-0 p-0">{props.children}</fieldset>
+  }
+
+  function EditSetupMetricFieldset(props: { children: React.ReactNode }) {
+    const { pending } = useFormStatus()
+
+    return <fieldset disabled={pending} className="m-0 border-0 p-0">{props.children}</fieldset>
+  }
+
+  function EditSetupMetricSubmitButton() {
+    const { pending } = useFormStatus()
+
     return (
-      <fieldset
-        disabled={pending}
-        className="m-0 h-full min-h-0 min-w-0 overflow-hidden border-0 p-0"
-      >
-        {props.children}
-      </fieldset>
+      <Button type="submit" disabled={pending}>
+        {pending ? (
+          <>
+            <Loader2Icon className="size-4 animate-spin" />
+            Saving metric...
+          </>
+        ) : (
+          "Save metric"
+        )}
+      </Button>
     )
   }
+
+  const groupedItems = React.useMemo(() => groupSetupItems(input.items), [input.items])
+  const initialBoatOrderIds = React.useMemo(
+    () => groupedItems.boat.map((item) => item.id),
+    [groupedItems.boat],
+  )
+  const boatItemById = React.useMemo(
+    () => new Map(groupedItems.boat.map((item) => [item.id, item])),
+    [groupedItems.boat],
+  )
 
   const [isOpen, setIsOpen] = React.useState(false)
   const [isEditMode, setIsEditMode] = React.useState(false)
   const [draftByItemId, setDraftByItemId] = React.useState<SetupDraftByItemId>(() =>
     buildInitialSetupDraft(input.items),
   )
+  const [boatOrderIds, setBoatOrderIds] = React.useState<string[]>(initialBoatOrderIds)
+
+  const [isCreateMetricDialogOpen, setIsCreateMetricDialogOpen] = React.useState(false)
+  const [createMetricStep, setCreateMetricStep] = React.useState<"kind" | "details">("kind")
+  const [createMetricKind, setCreateMetricKind] = React.useState<
+    "single_select" | "multi_select" | "text" | null
+  >(null)
+  const [createMetricLabel, setCreateMetricLabel] = React.useState("")
+  const [createMetricOptionsText, setCreateMetricOptionsText] = React.useState("")
+
+  const [editingMetricId, setEditingMetricId] = React.useState<string | null>(null)
+  const [editingMetricLabel, setEditingMetricLabel] = React.useState("")
+  const [editingMetricKind, setEditingMetricKind] = React.useState<
+    "single_select" | "multi_select" | "text"
+  >("multi_select")
+  const [editingMetricOptionsText, setEditingMetricOptionsText] = React.useState("")
+
+  const [deletingMetricId, setDeletingMetricId] = React.useState<string | null>(null)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+  )
 
   const payloadValue = React.useMemo(
     () =>
       JSON.stringify(
-        input.items.map((item) => ({
-          itemId: item.id,
-          textValue: draftByItemId[item.id]?.textValue ?? "",
-          selectedOptionIds: draftByItemId[item.id]?.selectedOptionIds ?? [],
-        })),
+        input.items.map((item) => {
+          const draft = draftByItemId[item.id] ?? {
+            textValue: "",
+            selectedOptions: [],
+            twsEditedOptionIds: [],
+          }
+
+          return {
+            itemId: item.id,
+            textValue: draft.textValue,
+            selectedOptions: draft.selectedOptions.map((selectedOption) => ({
+              optionId: selectedOption.optionId,
+              allocationPercent:
+                item.key === "tws" ? selectedOption.allocationPercent : null,
+            })),
+          }
+        }),
       ),
     [draftByItemId, input.items],
   )
+
+  const orderedItemIdsPayload = React.useMemo(
+    () => JSON.stringify(boatOrderIds),
+    [boatOrderIds],
+  )
+
+  const orderedBoatItems = React.useMemo(
+    () =>
+      boatOrderIds
+        .map((itemId) => boatItemById.get(itemId) ?? null)
+        .filter((item): item is SessionSetupDialogItem => item !== null),
+    [boatItemById, boatOrderIds],
+  )
+
+  const editingMetric =
+    editingMetricId !== null ? boatItemById.get(editingMetricId) ?? null : null
+  const deletingMetric =
+    deletingMetricId !== null ? boatItemById.get(deletingMetricId) ?? null : null
+
+  const createMetricOptionsPayload = React.useMemo(
+    () =>
+      JSON.stringify(
+        createMetricKind === "text"
+          ? []
+          : parseMetricOptionsFromText(createMetricOptionsText),
+      ),
+    [createMetricKind, createMetricOptionsText],
+  )
+
+  const updateMetricOptionsPayload = React.useMemo(
+    () =>
+      JSON.stringify(
+        editingMetricKind === "text"
+          ? []
+          : parseMetricOptionsFromText(editingMetricOptionsText),
+      ),
+    [editingMetricKind, editingMetricOptionsText],
+  )
+
+  function resetDialogState() {
+    setDraftByItemId(buildInitialSetupDraft(input.items))
+    setBoatOrderIds(initialBoatOrderIds)
+    setIsEditMode(false)
+    setIsCreateMetricDialogOpen(false)
+    setCreateMetricStep("kind")
+    setCreateMetricKind(null)
+    setCreateMetricLabel("")
+    setCreateMetricOptionsText("")
+    setEditingMetricId(null)
+    setEditingMetricLabel("")
+    setEditingMetricKind("multi_select")
+    setEditingMetricOptionsText("")
+    setDeletingMetricId(null)
+  }
+
+  function handleOpenChange(nextOpen: boolean) {
+    setIsOpen(nextOpen)
+    resetDialogState()
+  }
 
   function updateTextValue(itemId: string, nextValue: string) {
     setDraftByItemId((previousState) => ({
       ...previousState,
       [itemId]: {
         textValue: nextValue,
-        selectedOptionIds: previousState[itemId]?.selectedOptionIds ?? [],
+        selectedOptions: previousState[itemId]?.selectedOptions ?? [],
+        twsEditedOptionIds: previousState[itemId]?.twsEditedOptionIds ?? [],
       },
     }))
   }
 
-  function updateSelectedOptionIds(itemId: string, nextSelectedOptionIds: string[]) {
-    setDraftByItemId((previousState) => ({
-      ...previousState,
-      [itemId]: {
-        textValue: previousState[itemId]?.textValue ?? "",
-        selectedOptionIds: Array.from(new Set(nextSelectedOptionIds)),
-      },
-    }))
+  function updateSelectedOptionIds(item: SessionSetupDialogItem, nextSelectedOptionIds: string[]) {
+    const orderedSelectedOptionIds = sortSelectedOptionIdsByMetricOptions({
+      item,
+      selectedOptionIds: nextSelectedOptionIds,
+    })
+
+    setDraftByItemId((previousState) => {
+      const currentDraft = previousState[item.id] ?? {
+        textValue: "",
+        selectedOptions: [],
+        twsEditedOptionIds: [],
+      }
+
+      if (item.key !== "tws") {
+        return {
+          ...previousState,
+          [item.id]: {
+            ...currentDraft,
+            selectedOptions: orderedSelectedOptionIds.map((optionId) => ({
+              optionId,
+              allocationPercent: null,
+            })),
+            twsEditedOptionIds: [],
+          },
+        }
+      }
+
+      const rebalanced = rebalanceTwsDraftSelection({
+        selectedOptionIds: orderedSelectedOptionIds,
+        previousSelectedOptions: currentDraft.selectedOptions,
+        previousEditedOptionIds: currentDraft.twsEditedOptionIds,
+      })
+
+      return {
+        ...previousState,
+        [item.id]: {
+          ...currentDraft,
+          selectedOptions: rebalanced.selectedOptions,
+          twsEditedOptionIds: rebalanced.editedOptionIds,
+        },
+      }
+    })
   }
 
-  function renderField(item: SessionSetupDialogItem) {
+  function updateTwsPercentValue(item: SessionSetupDialogItem, optionId: string, rawValue: string) {
+    const parsedValue = rawValue.trim().length === 0 ? 0 : Number.parseInt(rawValue, 10)
+    const nextPercent = clampPercentInteger(parsedValue)
+
+    setDraftByItemId((previousState) => {
+      const currentDraft = previousState[item.id] ?? {
+        textValue: "",
+        selectedOptions: [],
+        twsEditedOptionIds: [],
+      }
+      const orderedSelectedOptionIds = sortSelectedOptionIdsByMetricOptions({
+        item,
+        selectedOptionIds: currentDraft.selectedOptions.map(
+          (selectedOption) => selectedOption.optionId,
+        ),
+      })
+      const rebalanced = rebalanceTwsDraftSelection({
+        selectedOptionIds: orderedSelectedOptionIds,
+        previousSelectedOptions: currentDraft.selectedOptions,
+        previousEditedOptionIds: currentDraft.twsEditedOptionIds,
+        changedOptionId: optionId,
+        changedOptionPercent: nextPercent,
+      })
+
+      return {
+        ...previousState,
+        [item.id]: {
+          ...currentDraft,
+          selectedOptions: rebalanced.selectedOptions,
+          twsEditedOptionIds: rebalanced.editedOptionIds,
+        },
+      }
+    })
+  }
+
+  function handleBoatDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+
+    if (!over || active.id === over.id) {
+      return
+    }
+
+    setBoatOrderIds((previousOrder) => {
+      const oldIndex = previousOrder.indexOf(String(active.id))
+      const newIndex = previousOrder.indexOf(String(over.id))
+
+      if (oldIndex < 0 || newIndex < 0) {
+        return previousOrder
+      }
+
+      return arrayMove(previousOrder, oldIndex, newIndex)
+    })
+  }
+
+  function openCreateMetricDialog() {
+    setIsCreateMetricDialogOpen(true)
+    setCreateMetricStep("kind")
+    setCreateMetricKind(null)
+    setCreateMetricLabel("")
+    setCreateMetricOptionsText("")
+  }
+
+  function openEditMetricDialog(item: SessionSetupDialogItem) {
+    if (item.metricGroup !== "boat" || item.isFixed) {
+      return
+    }
+
+    setEditingMetricId(item.id)
+    setEditingMetricLabel(item.label)
+    setEditingMetricKind(item.inputKind)
+    setEditingMetricOptionsText(item.options.map((option) => option.label).join("\n"))
+  }
+
+  function renderField(item: SessionSetupDialogItem): React.ReactNode {
     const draft = draftByItemId[item.id] ?? {
       textValue: "",
-      selectedOptionIds: [],
+      selectedOptions: [],
+      twsEditedOptionIds: [],
     }
     const fieldId = `setup-item-${item.id}`
 
@@ -578,67 +1303,134 @@ function SetupDialog(input: {
       )
     }
 
-    return (
-      <Multiselect
-        value={draft.selectedOptionIds}
-        onValueChange={(nextValues) => updateSelectedOptionIds(item.id, nextValues)}
-      >
-        <MultiselectTrigger
-          id={fieldId}
-          placeholder={item.options.length > 0 ? "Select options" : "No options configured"}
-          disabled={item.options.length === 0}
-        >
-          <MultiselectBadgeList>
-            {draft.selectedOptionIds.map((selectedId) => {
-              const selectedOption = item.options.find((option) => option.id === selectedId)
+    const selectedOptionIds = draft.selectedOptions.map((selectedOption) => selectedOption.optionId)
 
-              if (!selectedOption) {
+    return (
+      <div className="space-y-2">
+        <Multiselect
+          value={selectedOptionIds}
+          onValueChange={(nextValues) => updateSelectedOptionIds(item, nextValues)}
+        >
+          <MultiselectTrigger
+            id={fieldId}
+            placeholder={item.options.length > 0 ? "Select options" : "No options configured"}
+            disabled={item.options.length === 0}
+          >
+            <MultiselectBadgeList>
+              {selectedOptionIds.map((selectedId) => {
+                const selectedOption = item.options.find((option) => option.id === selectedId)
+
+                if (!selectedOption) {
+                  return null
+                }
+
+                const selectedPercent =
+                  item.key === "tws"
+                    ? draft.selectedOptions.find(
+                        (selectedOptionEntry) =>
+                          selectedOptionEntry.optionId === selectedOption.id,
+                      )?.allocationPercent
+                    : null
+
+                const badgeLabel =
+                  item.key === "tws" && typeof selectedPercent === "number"
+                    ? `${selectedOption.label} (${selectedPercent}%)`
+                    : selectedOption.label
+
+                return (
+                  <MultiselectBadge key={selectedOption.id} value={selectedOption.id}>
+                    {badgeLabel}
+                  </MultiselectBadge>
+                )
+              })}
+            </MultiselectBadgeList>
+          </MultiselectTrigger>
+          <MultiselectContent>
+            <MultiselectInput placeholder="Search options..." />
+            <MultiselectEmpty>No options found.</MultiselectEmpty>
+            {item.options.map((option) => (
+              <MultiselectItem key={option.id} value={option.id}>
+                {option.label}
+              </MultiselectItem>
+            ))}
+          </MultiselectContent>
+        </Multiselect>
+
+        {item.key === "tws" && draft.selectedOptions.length > 0 ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {draft.selectedOptions.map((selectedOption) => {
+              const option = item.options.find(
+                (optionRow) => optionRow.id === selectedOption.optionId,
+              )
+
+              if (!option) {
                 return null
               }
 
               return (
-                <MultiselectBadge key={selectedOption.id} value={selectedOption.id}>
-                  {selectedOption.label}
-                </MultiselectBadge>
+                <label
+                  key={selectedOption.optionId}
+                  className="flex items-center justify-between gap-2 rounded-lg border px-2 py-1"
+                >
+                  <span className="truncate text-xs text-muted-foreground">{option.label}</span>
+                  <div className="flex items-center gap-1">
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={1}
+                      inputMode="numeric"
+                      value={selectedOption.allocationPercent ?? 0}
+                      onChange={(event) =>
+                        updateTwsPercentValue(item, selectedOption.optionId, event.target.value)
+                      }
+                      className="h-7 w-20 text-right"
+                    />
+                    <span className="text-xs text-muted-foreground">%</span>
+                  </div>
+                </label>
               )
             })}
-          </MultiselectBadgeList>
-        </MultiselectTrigger>
-        <MultiselectContent>
-          <MultiselectInput placeholder="Search options..." />
-          <MultiselectEmpty>No options found.</MultiselectEmpty>
-          {item.options.map((option) => (
-            <MultiselectItem key={option.id} value={option.id}>
-              {option.label}
-            </MultiselectItem>
-          ))}
-        </MultiselectContent>
-      </Multiselect>
+          </div>
+        ) : null}
+      </div>
     )
   }
 
-  function renderReadOnlyField(item: SessionSetupDialogItem): React.ReactNode | null {
+  function renderReadOnlyField(item: SessionSetupDialogItem): React.ReactNode {
     const draft = draftByItemId[item.id] ?? {
       textValue: "",
-      selectedOptionIds: [],
+      selectedOptions: [],
+      twsEditedOptionIds: [],
     }
 
     if (item.inputKind === "text") {
       const normalized = draft.textValue.trim()
-
-      if (normalized.length === 0) {
-        return null
-      }
-
-      return <p className="text-sm text-foreground whitespace-pre-wrap">{normalized}</p>
+      return (
+        <p className="text-sm text-foreground whitespace-pre-wrap">
+          {normalized.length > 0 ? normalized : "—"}
+        </p>
+      )
     }
 
-    const selectedLabels = draft.selectedOptionIds
-      .map((selectedId) => item.options.find((option) => option.id === selectedId)?.label ?? null)
+    const selectedLabels = draft.selectedOptions
+      .map((selectedOption) => {
+        const option = item.options.find((optionRow) => optionRow.id === selectedOption.optionId)
+
+        if (!option) {
+          return null
+        }
+
+        if (item.key === "tws" && typeof selectedOption.allocationPercent === "number") {
+          return `${option.label} (${selectedOption.allocationPercent}%)`
+        }
+
+        return option.label
+      })
       .filter((label): label is string => label !== null)
 
     if (selectedLabels.length === 0) {
-      return null
+      return <p className="text-sm text-muted-foreground">—</p>
     }
 
     return (
@@ -660,127 +1452,406 @@ function SetupDialog(input: {
     return null
   }
 
-  function handleOpenChange(nextOpen: boolean) {
-    setIsOpen(nextOpen)
+  function renderEditableMetricRow(inputRow: {
+    item: SessionSetupDialogItem
+    showTemplateControls: boolean
+    dragHandleProps?: React.HTMLAttributes<HTMLButtonElement>
+    isDragging?: boolean
+  }) {
+    const hint = renderFieldHint(inputRow.item)
 
-    if (nextOpen) {
-      setDraftByItemId(buildInitialSetupDraft(input.items))
-      setIsEditMode(false)
-      return
-    }
+    return (
+      <div
+        key={inputRow.item.id}
+        className={`rounded-lg border p-3 ${inputRow.isDragging ? "ring-1 ring-foreground/20" : ""}`}
+      >
+        <div className="flex items-center gap-3">
+          <Label
+            htmlFor={`setup-item-${inputRow.item.id}`}
+            className="w-28 shrink-0 text-sm font-medium sm:w-36"
+          >
+            <span className="block truncate">{inputRow.item.label}</span>
+          </Label>
 
-    setDraftByItemId(buildInitialSetupDraft(input.items))
-    setIsEditMode(false)
+          <div className="min-w-0 flex-1">{renderField(inputRow.item)}</div>
+
+          {inputRow.showTemplateControls ? (
+            <div className="flex shrink-0 items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Edit setup metric ${inputRow.item.label}`}
+                onClick={() => openEditMetricDialog(inputRow.item)}
+              >
+                <PencilIcon />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Delete setup metric ${inputRow.item.label}`}
+                onClick={() => setDeletingMetricId(inputRow.item.id)}
+              >
+                <Trash2Icon />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Reorder setup metric ${inputRow.item.label}`}
+                {...inputRow.dragHandleProps}
+              >
+                <GripVerticalIcon />
+              </Button>
+            </div>
+          ) : null}
+        </div>
+
+        {hint ? <p className="mt-2 text-xs text-muted-foreground">{hint}</p> : null}
+      </div>
+    )
   }
 
-  const readOnlyItems = input.items
-    .map((item) => ({
-      item,
-      value: renderReadOnlyField(item),
-    }))
-    .filter((entry): entry is { item: SessionSetupDialogItem; value: React.ReactNode } => entry.value !== null)
+  function renderSection(title: string, children: React.ReactNode) {
+    return (
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold">{title}</h3>
+        {children}
+      </section>
+    )
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger render={<Button type="button" variant="outline" size="sm" />}>
         Setup
       </DialogTrigger>
-      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Boat setup</DialogTitle>
-          <DialogDescription>
-            Review session setup values or switch to edit mode to update them.
-          </DialogDescription>
+      <DialogContent className="sm:max-w-5xl">
+        <DialogHeader className="shrink-0">
+          <DialogTitle>Session setup</DialogTitle>
         </DialogHeader>
 
-        <form
-          action={updateSessionSetupAction}
-          className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] gap-0 overflow-hidden"
-        >
-          <input type="hidden" name="sessionId" value={input.sessionId} />
-          <input type="hidden" name="scopeOrgId" value={input.scope.activeOrgId} />
-          {input.scope.activeTeamId ? (
-            <input type="hidden" name="scopeTeamId" value={input.scope.activeTeamId} />
-          ) : null}
-          <input type="hidden" name="scopeTab" value="info" />
+        <form action={updateSessionSetupAction} className="space-y-4">
+          <SetupScopeHiddenFields sessionId={input.sessionId} scope={input.scope} />
           <input type="hidden" name="setupPayload" value={payloadValue} />
+          <input type="hidden" name="orderedItemIdsPayload" value={orderedItemIdsPayload} />
 
           <SetupDialogFieldset>
-            <div className="no-scrollbar h-full min-h-0 overflow-y-auto pr-1">
-              <div className="space-y-4 pb-4">
-                  {input.items.length === 0 ? (
-                    <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
-                      No setup metrics are configured for this team yet.
-                    </div>
-                  ) : !isEditMode ? (
-                    readOnlyItems.length > 0 ? (
-                      <div className="space-y-3">
-                        {readOnlyItems.map((entry) => (
-                          <div key={entry.item.id} className="rounded-lg border p-3">
-                            <p className="mb-2 text-sm font-medium">{entry.item.label}</p>
-                            {entry.value}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
-                        No setup values have been recorded for this session yet.
-                      </div>
-                    )
-                  ) : (
+            <div className="no-scrollbar max-h-[65vh] space-y-6 overflow-y-auto pb-2 pr-1">
+              {input.items.length === 0 ? (
+                <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
+                  No setup metrics are configured for this team yet.
+                </div>
+              ) : (
+                <>
+                  {renderSection(
+                    "Weather",
                     <div className="space-y-3">
-                      {input.items.map((item) => (
-                        <div key={item.id} className="rounded-lg border p-3">
-                          <div className="flex items-center gap-3">
-                            <Label htmlFor={`setup-item-${item.id}`} className="text-sm font-medium">
-                              <span className="block w-24 truncate sm:w-32">{item.label}</span>
-                            </Label>
-                            <div className="min-w-0 flex-1">{renderField(item)}</div>
-                            <div className="flex shrink-0 items-center gap-1">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                aria-label={`Edit setup metric ${item.label}`}
-                              >
-                                <PencilIcon />
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                aria-label={`Delete setup metric ${item.label}`}
-                              >
-                                <Trash2Icon />
-                              </Button>
+                      {groupedItems.weather.map((item) =>
+                        isEditMode ? (
+                          renderEditableMetricRow({
+                            item,
+                            showTemplateControls: false,
+                          })
+                        ) : (
+                          <div key={item.id} className="rounded-lg border p-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <p className="text-sm font-medium">{item.label}</p>
+                              <div className="min-w-0 flex-1 text-right">
+                                {renderReadOnlyField(item)}
+                              </div>
                             </div>
                           </div>
-                          {renderFieldHint(item) ? (
-                            <p className="mt-2 text-xs text-muted-foreground">{renderFieldHint(item)}</p>
-                          ) : null}
+                        ),
+                      )}
+                    </div>,
+                  )}
+
+                  {renderSection(
+                    "Boat",
+                    <div className="space-y-3">
+                      {groupedItems.boat.length === 0 ? (
+                        <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
+                          No Boat metrics configured for this team yet.
                         </div>
-                      ))}
-                    </div>
+                      ) : isEditMode ? (
+                        <DndContext
+                          sensors={sensors}
+                          collisionDetection={closestCenter}
+                          onDragEnd={handleBoatDragEnd}
+                        >
+                          <SortableContext
+                            items={boatOrderIds}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            <div className="space-y-3">
+                              {orderedBoatItems.map((item) => (
+                                <SortableBoatSetupRow key={item.id} itemId={item.id}>
+                                  {({ dragHandleProps, isDragging }) =>
+                                    renderEditableMetricRow({
+                                      item,
+                                      showTemplateControls: true,
+                                      dragHandleProps,
+                                      isDragging,
+                                    })
+                                  }
+                                </SortableBoatSetupRow>
+                              ))}
+                            </div>
+                          </SortableContext>
+                        </DndContext>
+                      ) : (
+                        <div className="space-y-3">
+                          {groupedItems.boat.map((item) => (
+                            <div key={item.id} className="rounded-lg border p-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <p className="text-sm font-medium">{item.label}</p>
+                                <div className="min-w-0 flex-1 text-right">
+                                  {renderReadOnlyField(item)}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>,
                   )}
 
                   {isEditMode ? (
-                    <button
+                    <Button
                       type="button"
-                      className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-muted-foreground/40 bg-muted/20 p-4 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/30"
+                      variant="outline"
+                      className="w-full border-dashed"
+                      onClick={openCreateMetricDialog}
                     >
                       <PlusIcon className="size-4" />
-                      Add New setup metric
-                    </button>
+                      Add new setup metric
+                    </Button>
                   ) : null}
-              </div>
+                </>
+              )}
             </div>
           </SetupDialogFieldset>
 
           <SetupDialogFooter
             isEditMode={isEditMode}
-            onToggleEdit={() => setIsEditMode((currentMode) => !currentMode)}
+            onEnterEditMode={() => setIsEditMode(true)}
           />
         </form>
+
+        <Dialog
+          open={isCreateMetricDialogOpen}
+          onOpenChange={(nextOpen) => {
+            setIsCreateMetricDialogOpen(nextOpen)
+            if (!nextOpen) {
+              setCreateMetricStep("kind")
+              setCreateMetricKind(null)
+              setCreateMetricLabel("")
+              setCreateMetricOptionsText("")
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Add setup metric</DialogTitle>
+              <DialogDescription>
+                Create a Boat metric. Weather definitions are fixed.
+              </DialogDescription>
+            </DialogHeader>
+
+            {createMetricStep === "kind" ? (
+              <div className="space-y-3">
+                <p className="text-sm font-medium">Choose input kind</p>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setCreateMetricKind("single_select")
+                      setCreateMetricStep("details")
+                    }}
+                  >
+                    Single Select
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setCreateMetricKind("multi_select")
+                      setCreateMetricStep("details")
+                    }}
+                  >
+                    Multi Select
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setCreateMetricKind("text")
+                      setCreateMetricStep("details")
+                    }}
+                  >
+                    Text
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <form action={createTeamSetupMetricAction} className="space-y-4">
+                <SetupScopeHiddenFields sessionId={input.sessionId} scope={input.scope} />
+                <input type="hidden" name="inputKind" value={createMetricKind ?? "text"} />
+                <input type="hidden" name="optionsPayload" value={createMetricOptionsPayload} />
+
+                <div className="space-y-2">
+                  <Label htmlFor="create-setup-metric-label">Metric name</Label>
+                  <Input
+                    id="create-setup-metric-label"
+                    name="label"
+                    value={createMetricLabel}
+                    onChange={(event) => setCreateMetricLabel(event.target.value)}
+                    placeholder="e.g. Mast bend"
+                    maxLength={120}
+                    required
+                  />
+                </div>
+
+                {createMetricKind !== "text" ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="create-setup-metric-options">Options (one per line)</Label>
+                    <Textarea
+                      id="create-setup-metric-options"
+                      value={createMetricOptionsText}
+                      onChange={(event) => setCreateMetricOptionsText(event.target.value)}
+                      rows={6}
+                      placeholder={"Option A\nOption B\nOption C"}
+                    />
+                  </div>
+                ) : null}
+
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setCreateMetricStep("kind")
+                      setCreateMetricKind(null)
+                    }}
+                  >
+                    Back
+                  </Button>
+                  <Button type="submit">Create metric</Button>
+                </DialogFooter>
+              </form>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={editingMetric !== null}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) {
+              setEditingMetricId(null)
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Edit setup metric</DialogTitle>
+              <DialogDescription>
+                Update Boat metric label, input kind, and options.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form action={updateTeamSetupMetricAction} className="space-y-4">
+              <SetupScopeHiddenFields sessionId={input.sessionId} scope={input.scope} />
+              <input type="hidden" name="itemId" value={editingMetric?.id ?? ""} />
+              <input type="hidden" name="optionsPayload" value={updateMetricOptionsPayload} />
+
+              <EditSetupMetricFieldset>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-setup-metric-label">Metric name</Label>
+                  <Input
+                    id="edit-setup-metric-label"
+                    name="label"
+                    value={editingMetricLabel}
+                    onChange={(event) => setEditingMetricLabel(event.target.value)}
+                    maxLength={120}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-setup-metric-kind">Input kind</Label>
+                  <select
+                    id="edit-setup-metric-kind"
+                    name="inputKind"
+                    value={editingMetricKind}
+                    onChange={(event) =>
+                      setEditingMetricKind(
+                        event.target.value as "single_select" | "multi_select" | "text",
+                      )
+                    }
+                    className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none ring-ring/50 focus-visible:ring-[3px]"
+                  >
+                    <option value="single_select">Single Select</option>
+                    <option value="multi_select">Multi Select</option>
+                    <option value="text">Text</option>
+                  </select>
+                </div>
+
+                {editingMetricKind !== "text" ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-setup-metric-options">Options (one per line)</Label>
+                    <Textarea
+                      id="edit-setup-metric-options"
+                      value={editingMetricOptionsText}
+                      onChange={(event) => setEditingMetricOptionsText(event.target.value)}
+                      rows={6}
+                      placeholder={"Option A\nOption B\nOption C"}
+                    />
+                  </div>
+                ) : null}
+
+                <DialogFooter>
+                  <EditSetupMetricSubmitButton />
+                </DialogFooter>
+              </EditSetupMetricFieldset>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={deletingMetric !== null}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) {
+              setDeletingMetricId(null)
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Delete setup metric</DialogTitle>
+              <DialogDescription>
+                This hides the metric for future setup entries and keeps historical session data.
+              </DialogDescription>
+            </DialogHeader>
+
+            <p className="text-sm">
+              Delete <span className="font-semibold">{deletingMetric?.label ?? "this metric"}</span>?
+            </p>
+
+            <form action={deleteTeamSetupMetricAction} className="space-y-4">
+              <SetupScopeHiddenFields sessionId={input.sessionId} scope={input.scope} />
+              <input type="hidden" name="itemId" value={deletingMetric?.id ?? ""} />
+
+              <DialogFooter>
+                <Button type="submit" variant="destructive">
+                  Delete metric
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog>
   )
@@ -921,15 +1992,21 @@ function InfoEditDialog(input: {
   scope: NavigationScope
   bestOfSession: string | null
   toWork: string | null
-  standardMoves: string | null
+  availableStandardMoves: {
+    id: string
+    name: string
+    description: string | null
+    isActive: boolean
+  }[]
+  linkedStandardMoveIds: string[]
   windPatterns: string | null
   freeNotes: string | null
 }) {
-  function InfoDialogSubmitButton() {
+  function InfoDialogSubmitButton(props: { canSubmit: boolean }) {
     const { pending } = useFormStatus()
 
     return (
-      <Button type="submit" disabled={pending}>
+      <Button type="submit" disabled={pending || !props.canSubmit}>
         {pending ? (
           <>
             <Loader2Icon className="size-4 animate-spin" />
@@ -950,16 +2027,34 @@ function InfoEditDialog(input: {
 
   const [bestOfSession, setBestOfSession] = React.useState(input.bestOfSession ?? "")
   const [toWork, setToWork] = React.useState(input.toWork ?? "")
-  const [standardMoves, setStandardMoves] = React.useState(input.standardMoves ?? "")
+  const [standardMoveIds, setStandardMoveIds] = React.useState<string[]>(input.linkedStandardMoveIds)
+  const [newStandardMoveName, setNewStandardMoveName] = React.useState("")
+  const [newStandardMoveDescription, setNewStandardMoveDescription] = React.useState("")
+  const [isQuickCreateDialogOpen, setIsQuickCreateDialogOpen] = React.useState(false)
+  const [isQuickCreateNameManuallyEdited, setIsQuickCreateNameManuallyEdited] =
+    React.useState(false)
   const [windPatterns, setWindPatterns] = React.useState(input.windPatterns ?? "")
   const [freeNotes, setFreeNotes] = React.useState(input.freeNotes ?? "")
+  const hasQuickCreateName = newStandardMoveName.trim().length > 0
+  const hasQuickCreateDescription = newStandardMoveDescription.trim().length > 0
+  const quickCreateDescriptionMissing = hasQuickCreateName && !hasQuickCreateDescription
+  const canSubmitInfo = !quickCreateDescriptionMissing
+  const standardMoveOptions = input.availableStandardMoves.filter(
+    (standardMove) =>
+      standardMove.isActive || input.linkedStandardMoveIds.includes(standardMove.id),
+  )
 
   return (
     <Dialog>
       <DialogTrigger render={<Button type="button" variant="outline" size="sm" />}>
         Edit info
       </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent
+        className={[
+          "sm:max-w-2xl transition-[filter] duration-100",
+          isQuickCreateDialogOpen ? "blur-[2px]" : "",
+        ].join(" ")}
+      >
         <DialogHeader>
           <DialogTitle>Edit session info</DialogTitle>
           <DialogDescription>
@@ -974,6 +2069,12 @@ function InfoEditDialog(input: {
             <input type="hidden" name="scopeTeamId" value={input.scope.activeTeamId} />
           ) : null}
           <input type="hidden" name="scopeTab" value="info" />
+          <input type="hidden" name="newStandardMoveName" value={newStandardMoveName} />
+          <input
+            type="hidden"
+            name="newStandardMoveDescription"
+            value={newStandardMoveDescription}
+          />
 
           <InfoDialogFieldset>
             <div className="space-y-2">
@@ -1002,15 +2103,149 @@ function InfoEditDialog(input: {
 
             <div className="space-y-2">
               <Label htmlFor={`standard-moves-${input.sessionId}`}>Std. Moves</Label>
-              <Textarea
+              <select
                 id={`standard-moves-${input.sessionId}`}
-                name="standardMoves"
-                rows={3}
-                maxLength={4000}
-                value={standardMoves}
-                onChange={(event) => setStandardMoves(event.target.value)}
-                placeholder="Plain text or JSON"
-              />
+                multiple
+                name="standardMoveId"
+                value={standardMoveIds}
+                onChange={(event) => {
+                  const nextSelectedIds = Array.from(event.target.selectedOptions).map(
+                    (option) => option.value,
+                  )
+                  setStandardMoveIds(nextSelectedIds)
+                }}
+                className="min-h-32 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none ring-ring/50 focus-visible:ring-[3px]"
+              >
+                {standardMoveOptions.length === 0 ? (
+                  <option value="" disabled>
+                    No standard moves available yet.
+                  </option>
+                ) : (
+                  standardMoveOptions.map((standardMove) => (
+                    <option key={standardMove.id} value={standardMove.id}>
+                      {standardMove.name}
+                      {standardMove.isActive ? "" : " (Archived)"}
+                    </option>
+                  ))
+                )}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Hold Cmd/Ctrl to select multiple moves.
+              </p>
+            </div>
+
+            <div className="grid gap-3 rounded-lg border p-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Quick Create Std. Move</p>
+                  <p className="text-xs text-muted-foreground">
+                    Create and link a new team standard move without leaving this screen.
+                  </p>
+                </div>
+                <Dialog open={isQuickCreateDialogOpen} onOpenChange={setIsQuickCreateDialogOpen}>
+                  <DialogTrigger render={<Button type="button" variant="outline" size="sm" />}>
+                    <PlusIcon className="size-4" />
+                    Quick create
+                  </DialogTrigger>
+                  <DialogContent
+                    className="sm:max-w-xl"
+                    overlayClassName="bg-black/35 backdrop-blur-md"
+                  >
+                    <DialogHeader>
+                      <DialogTitle>Quick Create Std. Move</DialogTitle>
+                      <DialogDescription>
+                        Description is required. Name is auto-generated and editable.
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor={`quick-standard-move-description-${input.sessionId}`}>
+                          Description
+                        </Label>
+                        <Textarea
+                          id={`quick-standard-move-description-${input.sessionId}`}
+                          rows={3}
+                          maxLength={4000}
+                          value={newStandardMoveDescription}
+                          onChange={(event) => {
+                            const nextDescription = event.target.value
+                            setNewStandardMoveDescription(nextDescription)
+
+                            if (!isQuickCreateNameManuallyEdited) {
+                              if (nextDescription.trim().length === 0) {
+                                setNewStandardMoveName("")
+                              } else {
+                                setNewStandardMoveName(
+                                  generateStandardMoveNameFromDescription(nextDescription),
+                                )
+                              }
+                            }
+                          }}
+                          placeholder="Describe the move in plain language."
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <Label htmlFor={`quick-standard-move-name-${input.sessionId}`}>Name</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={newStandardMoveDescription.trim().length === 0}
+                            onClick={() => {
+                              setNewStandardMoveName(
+                                generateStandardMoveNameFromDescription(newStandardMoveDescription),
+                              )
+                              setIsQuickCreateNameManuallyEdited(false)
+                            }}
+                          >
+                            Use generated
+                          </Button>
+                        </div>
+                        <Input
+                          id={`quick-standard-move-name-${input.sessionId}`}
+                          maxLength={120}
+                          value={newStandardMoveName}
+                          onChange={(event) => {
+                            setNewStandardMoveName(event.target.value)
+                            setIsQuickCreateNameManuallyEdited(true)
+                          }}
+                          placeholder="Auto-generated from the description"
+                        />
+                      </div>
+                    </div>
+
+                    <DialogFooter>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setIsQuickCreateDialogOpen(false)}
+                      >
+                        Done
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+
+              {hasQuickCreateDescription ? (
+                <p className="text-xs text-muted-foreground">
+                  Will create and link:{" "}
+                  <span className="font-medium text-foreground">
+                    {newStandardMoveName.trim().length > 0
+                      ? newStandardMoveName.trim()
+                      : generateStandardMoveNameFromDescription(newStandardMoveDescription)}
+                  </span>
+                </p>
+              ) : null}
+
+              {quickCreateDescriptionMissing ? (
+                <p className="text-xs text-destructive">
+                  Description is required when quick-creating a standard move.
+                </p>
+              ) : null}
             </div>
 
             <div className="space-y-2">
@@ -1040,7 +2275,83 @@ function InfoEditDialog(input: {
           </InfoDialogFieldset>
 
           <DialogFooter>
-            <InfoDialogSubmitButton />
+            <InfoDialogSubmitButton canSubmit={canSubmitInfo} />
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function GoalsEditDialog(input: {
+  sessionId: string
+  scope: NavigationScope
+  goals: string | null
+}) {
+  function GoalsDialogFieldset(props: { children: React.ReactNode }) {
+    const { pending } = useFormStatus()
+
+    return <fieldset disabled={pending}>{props.children}</fieldset>
+  }
+
+  function GoalsDialogSubmitButton() {
+    const { pending } = useFormStatus()
+
+    return (
+      <Button type="submit" disabled={pending}>
+        {pending ? (
+          <>
+            <Loader2Icon className="size-4 animate-spin" />
+            Saving goals...
+          </>
+        ) : (
+          "Save goals"
+        )}
+      </Button>
+    )
+  }
+
+  const [goals, setGoals] = React.useState(input.goals ?? "")
+
+  return (
+    <Dialog>
+      <DialogTrigger render={<Button type="button" variant="outline" size="sm" />}>
+        Edit goals
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Edit session goals</DialogTitle>
+          <DialogDescription>
+            Update the goals and execution focus for this session.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form action={updateSessionGoalsAction} className="space-y-4">
+          <input type="hidden" name="sessionId" value={input.sessionId} />
+          <input type="hidden" name="scopeOrgId" value={input.scope.activeOrgId} />
+          {input.scope.activeTeamId ? (
+            <input type="hidden" name="scopeTeamId" value={input.scope.activeTeamId} />
+          ) : null}
+          <input type="hidden" name="scopeTab" value="goals" />
+
+          <GoalsDialogFieldset>
+            <div className="space-y-2">
+              <Label htmlFor={`session-goals-${input.sessionId}`}>Goals</Label>
+              <Textarea
+                id={`session-goals-${input.sessionId}`}
+                name="goals"
+                rows={12}
+                maxLength={4000}
+                value={goals}
+                onChange={(event) => setGoals(event.target.value)}
+                placeholder="Write session goals, priorities, and execution focus..."
+              />
+              <p className="text-xs text-muted-foreground">{goals.length}/4000</p>
+            </div>
+          </GoalsDialogFieldset>
+
+          <DialogFooter>
+            <GoalsDialogSubmitButton />
           </DialogFooter>
         </form>
       </DialogContent>
@@ -1556,10 +2867,18 @@ export function SessionDetailTabsClient(input: {
   info: {
     bestOfSession: string | null
     toWork: string | null
-    standardMoves: string | null
+    standardMoves: string[]
     windPatterns: string | null
     freeNotes: string | null
   }
+  goals: string | null
+  availableStandardMoves: {
+    id: string
+    name: string
+    description: string | null
+    isActive: boolean
+  }[]
+  linkedStandardMoveIds: string[]
   resultNotes: string | null
   images: SessionDetailAsset[]
   analyticsFiles: SessionDetailAsset[]
@@ -1598,7 +2917,8 @@ export function SessionDetailTabsClient(input: {
                 scope={input.scope}
                 bestOfSession={input.info.bestOfSession}
                 toWork={input.info.toWork}
-                standardMoves={input.info.standardMoves}
+                availableStandardMoves={input.availableStandardMoves}
+                linkedStandardMoveIds={input.linkedStandardMoveIds}
                 windPatterns={input.info.windPatterns}
                 freeNotes={input.info.freeNotes}
               />
@@ -1606,19 +2926,19 @@ export function SessionDetailTabsClient(input: {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-lg border p-4">
+            <div className="rounded-lg bg-muted p-4">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Best</p>
               <p className="mt-2 whitespace-pre-wrap text-sm">{renderTextValue(input.info.bestOfSession)}</p>
             </div>
-            <div className="rounded-lg border p-4">
+            <div className="rounded-lg bg-muted p-4">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">To Work</p>
               <p className="mt-2 whitespace-pre-wrap text-sm">{renderTextValue(input.info.toWork)}</p>
             </div>
-            <div className="rounded-lg border p-4">
+            <div className="rounded-lg bg-muted p-4">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Std. Moves</p>
-              <p className="mt-2 whitespace-pre-wrap text-sm">{renderTextValue(input.info.standardMoves)}</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm">{renderTextList(input.info.standardMoves)}</p>
             </div>
-            <div className="rounded-lg border p-4">
+            <div className="rounded-lg bg-muted p-4">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Wind Patterns</p>
               <p className="mt-2 whitespace-pre-wrap text-sm">{renderTextValue(input.info.windPatterns)}</p>
             </div>
@@ -1627,6 +2947,32 @@ export function SessionDetailTabsClient(input: {
           <div className="rounded-lg border p-4">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Free Notes</p>
             <p className="mt-2 whitespace-pre-wrap text-sm">{renderTextValue(input.info.freeNotes)}</p>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="goals" className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-semibold">Goals</h3>
+              <p className="text-sm text-muted-foreground">
+                Session-level goals and priorities for the crew.
+              </p>
+            </div>
+            {input.canManageSession ? (
+              <GoalsEditDialog
+                sessionId={input.sessionId}
+                scope={input.scope}
+                goals={input.goals}
+              />
+            ) : null}
+          </div>
+
+          <div className="rounded-lg border p-4">
+            {input.goals && input.goals.trim().length > 0 ? (
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">{input.goals}</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">No goals set for this session yet.</p>
+            )}
           </div>
         </TabsContent>
 

@@ -64,23 +64,80 @@ export const updateSessionDetailInputSchema = z
     }
   })
 
-export const updateSessionInfoInputSchema = z.object({
-  sessionId: z.string().uuid(),
-  bestOfSession: optionalTrimmedTextSchema,
-  toWork: optionalTrimmedTextSchema,
-  standardMoves: optionalTrimmedTextSchema,
-  windPatterns: optionalTrimmedTextSchema,
-  freeNotes: optionalTrimmedTextSchema,
-})
+export const updateSessionInfoInputSchema = z
+  .object({
+    sessionId: z.string().uuid(),
+    bestOfSession: optionalTrimmedTextSchema,
+    toWork: optionalTrimmedTextSchema,
+    windPatterns: optionalTrimmedTextSchema,
+    freeNotes: optionalTrimmedTextSchema,
+    standardMoveIds: z.array(z.string().uuid()).max(200).optional().default([]),
+    newStandardMoveName: z
+      .string()
+      .trim()
+      .max(120, "Maximum length is 120 characters")
+      .optional(),
+    newStandardMoveDescription: z
+      .string()
+      .trim()
+      .max(4000, "Maximum length is 4000 characters")
+      .optional(),
+  })
+  .superRefine((value, context) => {
+    const hasQuickCreateName =
+      typeof value.newStandardMoveName === "string" && value.newStandardMoveName.length > 0
+    const hasQuickCreateDescription =
+      typeof value.newStandardMoveDescription === "string" &&
+      value.newStandardMoveDescription.length > 0
+
+    if (hasQuickCreateName && !hasQuickCreateDescription) {
+      context.addIssue({
+        code: "custom",
+        message: "Description is required when creating a standard move",
+        path: ["newStandardMoveDescription"],
+      })
+    }
+  })
 
 export const updateSessionResultsInputSchema = z.object({
   sessionId: z.string().uuid(),
   resultNotes: optionalTrimmedTextSchema,
 })
 
+export const updateSessionGoalsInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  goals: z.string().trim().max(4000, "Maximum length is 4000 characters"),
+})
+
 export const updateSessionSetupInputSchema = z.object({
   sessionId: z.string().uuid(),
   setupPayload: z.string().trim().min(2).max(200000),
+  orderedItemIdsPayload: z.string().trim().min(2).max(200000).optional(),
+})
+
+export const createTeamSetupMetricInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  inputKind: z.enum(["single_select", "multi_select", "text"]),
+  label: z.string().trim().min(1).max(120),
+  options: z.array(z.string().trim().min(1).max(120)).max(200).default([]),
+})
+
+export const updateTeamSetupMetricInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  itemId: z.string().uuid(),
+  inputKind: z.enum(["single_select", "multi_select", "text"]),
+  label: z.string().trim().min(1).max(120),
+  options: z.array(z.string().trim().min(1).max(120)).max(200).default([]),
+})
+
+export const deleteTeamSetupMetricInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  itemId: z.string().uuid(),
+})
+
+export const reorderTeamSetupMetricsInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  orderedItemIds: z.array(z.string().uuid()).min(1).max(500),
 })
 
 export const uploadSessionAssetInputSchema = z.object({
@@ -93,7 +150,12 @@ export type UpdateSessionInput = z.infer<typeof updateSessionInputSchema>
 export type UpdateSessionDetailInput = z.infer<typeof updateSessionDetailInputSchema>
 export type UpdateSessionInfoInput = z.infer<typeof updateSessionInfoInputSchema>
 export type UpdateSessionResultsInput = z.infer<typeof updateSessionResultsInputSchema>
+export type UpdateSessionGoalsInput = z.infer<typeof updateSessionGoalsInputSchema>
 export type UpdateSessionSetupInput = z.infer<typeof updateSessionSetupInputSchema>
+export type CreateTeamSetupMetricInput = z.infer<typeof createTeamSetupMetricInputSchema>
+export type UpdateTeamSetupMetricInput = z.infer<typeof updateTeamSetupMetricInputSchema>
+export type DeleteTeamSetupMetricInput = z.infer<typeof deleteTeamSetupMetricInputSchema>
+export type ReorderTeamSetupMetricsInput = z.infer<typeof reorderTeamSetupMetricsInputSchema>
 export type UploadSessionAssetInput = z.infer<typeof uploadSessionAssetInputSchema>
 
 export type SessionInfoJsonText = Json | null

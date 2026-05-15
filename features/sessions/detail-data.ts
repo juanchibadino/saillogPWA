@@ -25,6 +25,7 @@ type SessionRow = Pick<
   | "dock_in_at"
   | "net_time_minutes"
   | "highlighted_by_coach"
+  | "goals"
 >
 
 type CampRow = Pick<
@@ -49,7 +50,7 @@ type VenueRow = Pick<
 
 type SessionReviewRow = Pick<
   Database["public"]["Tables"]["session_reviews"]["Row"],
-  "session_id" | "best_of_session" | "to_work" | "standard_moves" | "wind_patterns"
+  "session_id" | "best_of_session" | "to_work" | "wind_patterns"
 >
 
 type SessionSetupRow = Pick<
@@ -64,7 +65,14 @@ type SessionRegattaResultRow = Pick<
 
 type TeamSetupItemRow = Pick<
   Database["public"]["Tables"]["team_setup_items"]["Row"],
-  "id" | "key" | "label" | "input_kind" | "position" | "is_active"
+  | "id"
+  | "key"
+  | "label"
+  | "input_kind"
+  | "metric_group"
+  | "is_fixed"
+  | "position"
+  | "is_active"
 >
 
 type TeamSetupItemOptionRow = Pick<
@@ -79,7 +87,7 @@ type SessionSetupItemValueRow = Pick<
 
 type SessionSetupItemSelectedOptionRow = Pick<
   Database["public"]["Tables"]["session_setup_item_selected_options"]["Row"],
-  "session_setup_item_value_id" | "team_setup_item_option_id"
+  "session_setup_item_value_id" | "team_setup_item_option_id" | "allocation_percent"
 >
 
 type SessionAssetRow = SessionDetailAsset
@@ -89,26 +97,38 @@ type SessionGearUsageRow = Pick<
   "gear_item_id"
 >
 
+type TeamStandardMoveRow = Pick<
+  Database["public"]["Tables"]["team_standard_moves"]["Row"],
+  "id" | "name" | "description" | "is_active"
+>
+
+type SessionStandardMoveRow = Pick<
+  Database["public"]["Tables"]["session_standard_moves"]["Row"],
+  "session_id" | "team_standard_move_id"
+>
+
 const SESSION_SELECT_COLUMNS =
-  "id,camp_id,session_type,session_date,dock_out_at,dock_in_at,net_time_minutes,highlighted_by_coach"
+  "id,camp_id,session_type,session_date,dock_out_at,dock_in_at,net_time_minutes,highlighted_by_coach,goals"
 const CAMP_SELECT_COLUMNS = "id,name,team_venue_id"
 const TEAM_VENUE_SELECT_COLUMNS = "id,team_id,venue_id"
 const TEAM_SELECT_COLUMNS = "id,name,organization_id"
 const VENUE_SELECT_COLUMNS = "id,name,city,country,organization_id"
-const SESSION_REVIEW_SELECT_COLUMNS =
-  "session_id,best_of_session,to_work,standard_moves,wind_patterns"
+const SESSION_REVIEW_SELECT_COLUMNS = "session_id,best_of_session,to_work,wind_patterns"
 const SESSION_SETUP_SELECT_COLUMNS = "session_id,free_notes"
 const SESSION_REGATTA_RESULTS_SELECT_COLUMNS = "session_id,result_notes"
 const SESSION_ASSETS_SELECT_COLUMNS =
   "id,asset_type,bucket,storage_path,file_name,mime_type,size_bytes,created_at"
 const GEAR_ITEMS_SELECT_COLUMNS = "id,name,gear_type,status,condition,serial_number,barcode"
 const SESSION_GEAR_USAGE_SELECT_COLUMNS = "gear_item_id"
-const TEAM_SETUP_ITEMS_SELECT_COLUMNS = "id,key,label,input_kind,position,is_active"
+const TEAM_SETUP_ITEMS_SELECT_COLUMNS =
+  "id,key,label,input_kind,metric_group,is_fixed,position,is_active"
 const TEAM_SETUP_ITEM_OPTIONS_SELECT_COLUMNS =
   "id,team_setup_item_id,value,label,position,is_active"
 const SESSION_SETUP_ITEM_VALUES_SELECT_COLUMNS = "id,team_setup_item_id,text_value"
 const SESSION_SETUP_ITEM_SELECTED_OPTIONS_SELECT_COLUMNS =
-  "session_setup_item_value_id,team_setup_item_option_id"
+  "session_setup_item_value_id,team_setup_item_option_id,allocation_percent"
+const TEAM_STANDARD_MOVES_SELECT_COLUMNS = "id,name,description,is_active"
+const SESSION_STANDARD_MOVES_SELECT_COLUMNS = "session_id,team_standard_move_id"
 
 function normalizeText(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
@@ -166,11 +186,12 @@ function formatJsonNote(value: Json | null | undefined): string | null {
 function buildInfo(input: {
   review: SessionReviewRow | null
   setup: SessionSetupRow | null
+  standardMoveNames: string[]
 }): SessionDetailInfo {
   return {
     bestOfSession: normalizeText(input.review?.best_of_session),
     toWork: normalizeText(input.review?.to_work),
-    standardMoves: formatJsonNote(input.review?.standard_moves),
+    standardMoves: input.standardMoveNames,
     windPatterns: formatJsonNote(input.review?.wind_patterns),
     freeNotes: normalizeText(input.setup?.free_notes),
   }
@@ -202,13 +223,22 @@ function buildSetupDialogItems(input: {
     valueByItemId.set(value.team_setup_item_id, value)
   }
 
-  const selectedOptionIdsByValueId = new Map<string, string[]>()
+  const selectedOptionsByValueId = new Map<
+    string,
+    Array<{ optionId: string; allocationPercent: number | null }>
+  >()
 
   for (const selectedOption of input.sessionSetupSelectedOptions) {
-    const existingIds =
-      selectedOptionIdsByValueId.get(selectedOption.session_setup_item_value_id) ?? []
-    existingIds.push(selectedOption.team_setup_item_option_id)
-    selectedOptionIdsByValueId.set(selectedOption.session_setup_item_value_id, existingIds)
+    const existingOptions =
+      selectedOptionsByValueId.get(selectedOption.session_setup_item_value_id) ?? []
+    existingOptions.push({
+      optionId: selectedOption.team_setup_item_option_id,
+      allocationPercent:
+        typeof selectedOption.allocation_percent === "number"
+          ? selectedOption.allocation_percent
+          : null,
+    })
+    selectedOptionsByValueId.set(selectedOption.session_setup_item_value_id, existingOptions)
   }
 
   return input.teamSetupItems
@@ -216,8 +246,8 @@ function buildSetupDialogItems(input: {
     .sort((left, right) => left.position - right.position)
     .map((item) => {
       const currentValue = valueByItemId.get(item.id)
-      const selectedOptionIds = currentValue
-        ? (selectedOptionIdsByValueId.get(currentValue.id) ?? [])
+      const selectedOptions = currentValue
+        ? (selectedOptionsByValueId.get(currentValue.id) ?? [])
         : []
       const textValue = normalizeText(currentValue?.text_value) ?? ""
 
@@ -226,6 +256,9 @@ function buildSetupDialogItems(input: {
         key: item.key,
         label: item.label,
         inputKind: item.input_kind,
+        metricGroup: item.metric_group,
+        isFixed: item.is_fixed,
+        position: item.position,
         options: (optionsByItemId.get(item.id) ?? [])
           .filter((option) => option.is_active)
           .sort((left, right) => left.position - right.position)
@@ -234,7 +267,7 @@ function buildSetupDialogItems(input: {
             value: option.value,
             label: option.label,
           })),
-        selectedOptionIds,
+        selectedOptions,
         textValue,
       }
     })
@@ -309,6 +342,8 @@ export async function getSessionDetailData(input: {
     { data: gearItemsData, error: gearItemsError },
     { data: sessionGearUsageData, error: sessionGearUsageError },
     { data: teamSetupItemsData, error: teamSetupItemsError },
+    { data: teamStandardMovesData, error: teamStandardMovesError },
+    { data: sessionStandardMovesData, error: sessionStandardMovesError },
   ] = await Promise.all([
     supabase
       .from("teams")
@@ -356,6 +391,15 @@ export async function getSessionDetailData(input: {
       .select(TEAM_SETUP_ITEMS_SELECT_COLUMNS)
       .eq("team_id", teamVenue.team_id)
       .order("position", { ascending: true }),
+    supabase
+      .from("team_standard_moves")
+      .select(TEAM_STANDARD_MOVES_SELECT_COLUMNS)
+      .eq("team_id", teamVenue.team_id)
+      .order("name", { ascending: true }),
+    supabase
+      .from("session_standard_moves")
+      .select(SESSION_STANDARD_MOVES_SELECT_COLUMNS)
+      .eq("session_id", session.id),
   ])
 
   if (teamError) {
@@ -398,6 +442,18 @@ export async function getSessionDetailData(input: {
     )
   }
 
+  if (teamStandardMovesError) {
+    throw new Error(
+      `Could not load team standard moves for session detail: ${teamStandardMovesError.message}`,
+    )
+  }
+
+  if (sessionStandardMovesError) {
+    throw new Error(
+      `Could not load session standard move links for session detail: ${sessionStandardMovesError.message}`,
+    )
+  }
+
   if (!teamRow || !venueRow) {
     return null
   }
@@ -410,10 +466,22 @@ export async function getSessionDetailData(input: {
     (sessionGearUsageData ?? []) as SessionGearUsageRow[]
   const teamSetupItems = (teamSetupItemsData ?? []) as TeamSetupItemRow[]
   const teamSetupItemIds = teamSetupItems.map((item) => item.id)
+  const teamStandardMoves = (teamStandardMovesData ?? []) as TeamStandardMoveRow[]
+  const sessionStandardMoves = (sessionStandardMovesData ?? []) as SessionStandardMoveRow[]
   const gearItemIds = new Set(gearItems.map((item) => item.id))
   const linkedGearItemIds = [...new Set(sessionGearUsageRows.map((row) => row.gear_item_id))].filter(
     (gearItemId) => gearItemIds.has(gearItemId),
   )
+  const standardMoveById = new Map(
+    teamStandardMoves.map((standardMove) => [standardMove.id, standardMove]),
+  )
+  const linkedStandardMoveIds = [
+    ...new Set(sessionStandardMoves.map((row) => row.team_standard_move_id)),
+  ].filter((standardMoveId) => standardMoveById.has(standardMoveId))
+  const linkedStandardMoveNames = linkedStandardMoveIds
+    .map((standardMoveId) => standardMoveById.get(standardMoveId)?.name ?? null)
+    .filter((standardMoveName): standardMoveName is string => standardMoveName !== null)
+    .sort((left, right) => left.localeCompare(right))
 
   let teamSetupItemOptions: TeamSetupItemOptionRow[] = []
   let sessionSetupValues: SessionSetupItemValueRow[] = []
@@ -476,7 +544,15 @@ export async function getSessionDetailData(input: {
     info: buildInfo({
       review: (reviewRow as SessionReviewRow | null) ?? null,
       setup: (setupRow as SessionSetupRow | null) ?? null,
+      standardMoveNames: linkedStandardMoveNames,
     }),
+    availableStandardMoves: teamStandardMoves.map((standardMove) => ({
+      id: standardMove.id,
+      name: standardMove.name,
+      description: standardMove.description,
+      isActive: standardMove.is_active,
+    })),
+    linkedStandardMoveIds,
     results: buildResults((regattaResultRow as SessionRegattaResultRow | null) ?? null),
     setupDialogItems: buildSetupDialogItems({
       teamSetupItems,

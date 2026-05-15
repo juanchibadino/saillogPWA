@@ -186,6 +186,12 @@ const teamNavItems = [
     comingSoon: false,
   },
   {
+    title: "Std. Moves",
+    url: "/team-standard-moves",
+    icon: CheckIcon,
+    comingSoon: false,
+  },
+  {
     title: "Calendar",
     url: "/team-calendar",
     icon: CalendarIcon,

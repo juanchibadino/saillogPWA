@@ -18,6 +18,10 @@ export type Database = {
           photo_url: string | null;
           global_role: Database["public"]["Enums"]["global_role_type"] | null;
           is_active: boolean;
+          is_profile_complete: boolean;
+          profile_completed_at: string | null;
+          onboarding_stage: number;
+          onboarding_draft: Json;
           legacy_glide_row_id: string | null;
           created_at: string;
           updated_at: string;
@@ -30,6 +34,10 @@ export type Database = {
           photo_url?: string | null;
           global_role?: Database["public"]["Enums"]["global_role_type"] | null;
           is_active?: boolean;
+          is_profile_complete?: boolean;
+          profile_completed_at?: string | null;
+          onboarding_stage?: number;
+          onboarding_draft?: Json;
           legacy_glide_row_id?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -41,6 +49,10 @@ export type Database = {
           photo_url?: string | null;
           global_role?: Database["public"]["Enums"]["global_role_type"] | null;
           is_active?: boolean;
+          is_profile_complete?: boolean;
+          profile_completed_at?: string | null;
+          onboarding_stage?: number;
+          onboarding_draft?: Json;
           legacy_glide_row_id?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -296,6 +308,7 @@ export type Database = {
           highlighted_by_coach: boolean;
           coach_profile_id: string | null;
           weather_summary: string | null;
+          goals: string | null;
           notes: string | null;
           legacy_glide_row_id: string | null;
           created_at: string;
@@ -312,6 +325,7 @@ export type Database = {
           highlighted_by_coach?: boolean;
           coach_profile_id?: string | null;
           weather_summary?: string | null;
+          goals?: string | null;
           notes?: string | null;
           legacy_glide_row_id?: string | null;
           created_at?: string;
@@ -327,10 +341,35 @@ export type Database = {
           highlighted_by_coach?: boolean;
           coach_profile_id?: string | null;
           weather_summary?: string | null;
+          goals?: string | null;
           notes?: string | null;
           legacy_glide_row_id?: string | null;
           created_at?: string;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+      session_standard_moves: {
+        Row: {
+          id: string;
+          session_id: string;
+          team_standard_move_id: string;
+          created_by_profile_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          session_id: string;
+          team_standard_move_id: string;
+          created_by_profile_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          session_id?: string;
+          team_standard_move_id?: string;
+          created_by_profile_id?: string | null;
+          created_at?: string;
         };
         Relationships: [];
       };
@@ -340,7 +379,6 @@ export type Database = {
           session_id: string;
           best_of_session: string | null;
           to_work: string | null;
-          standard_moves: Json | null;
           wind_patterns: Json | null;
           coach_notes: string | null;
           reviewed_by_profile_id: string | null;
@@ -353,7 +391,6 @@ export type Database = {
           session_id: string;
           best_of_session?: string | null;
           to_work?: string | null;
-          standard_moves?: Json | null;
           wind_patterns?: Json | null;
           coach_notes?: string | null;
           reviewed_by_profile_id?: string | null;
@@ -365,7 +402,6 @@ export type Database = {
           session_id?: string;
           best_of_session?: string | null;
           to_work?: string | null;
-          standard_moves?: Json | null;
           wind_patterns?: Json | null;
           coach_notes?: string | null;
           reviewed_by_profile_id?: string | null;
@@ -442,6 +478,39 @@ export type Database = {
         };
         Relationships: [];
       };
+      team_standard_moves: {
+        Row: {
+          id: string;
+          team_id: string;
+          name: string;
+          description: string | null;
+          is_active: boolean;
+          created_by_profile_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          team_id: string;
+          name: string;
+          description?: string | null;
+          is_active?: boolean;
+          created_by_profile_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          team_id?: string;
+          name?: string;
+          description?: string | null;
+          is_active?: boolean;
+          created_by_profile_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       team_type_setup_items: {
         Row: {
           id: string;
@@ -449,6 +518,8 @@ export type Database = {
           key: string;
           label: string;
           input_kind: Database["public"]["Enums"]["setup_input_kind"];
+          metric_group: Database["public"]["Enums"]["setup_metric_group"];
+          is_fixed: boolean;
           position: number;
           is_active: boolean;
           created_at: string;
@@ -460,6 +531,8 @@ export type Database = {
           key: string;
           label: string;
           input_kind?: Database["public"]["Enums"]["setup_input_kind"];
+          metric_group?: Database["public"]["Enums"]["setup_metric_group"];
+          is_fixed?: boolean;
           position: number;
           is_active?: boolean;
           created_at?: string;
@@ -470,6 +543,8 @@ export type Database = {
           key?: string;
           label?: string;
           input_kind?: Database["public"]["Enums"]["setup_input_kind"];
+          metric_group?: Database["public"]["Enums"]["setup_metric_group"];
+          is_fixed?: boolean;
           position?: number;
           is_active?: boolean;
           created_at?: string;
@@ -517,6 +592,8 @@ export type Database = {
           key: string;
           label: string;
           input_kind: Database["public"]["Enums"]["setup_input_kind"];
+          metric_group: Database["public"]["Enums"]["setup_metric_group"];
+          is_fixed: boolean;
           position: number;
           is_active: boolean;
           created_at: string;
@@ -529,6 +606,8 @@ export type Database = {
           key: string;
           label: string;
           input_kind: Database["public"]["Enums"]["setup_input_kind"];
+          metric_group?: Database["public"]["Enums"]["setup_metric_group"];
+          is_fixed?: boolean;
           position: number;
           is_active?: boolean;
           created_at?: string;
@@ -540,6 +619,8 @@ export type Database = {
           key?: string;
           label?: string;
           input_kind?: Database["public"]["Enums"]["setup_input_kind"];
+          metric_group?: Database["public"]["Enums"]["setup_metric_group"];
+          is_fixed?: boolean;
           position?: number;
           is_active?: boolean;
           created_at?: string;
@@ -613,17 +694,20 @@ export type Database = {
           id: string;
           session_setup_item_value_id: string;
           team_setup_item_option_id: string;
+          allocation_percent: number | null;
           created_at: string;
         };
         Insert: {
           id?: string;
           session_setup_item_value_id: string;
           team_setup_item_option_id: string;
+          allocation_percent?: number | null;
           created_at?: string;
         };
         Update: {
           session_setup_item_value_id?: string;
           team_setup_item_option_id?: string;
+          allocation_percent?: number | null;
           created_at?: string;
         };
         Relationships: [];
@@ -1284,6 +1368,7 @@ export type Database = {
       organization_role_type: "organization_admin";
       plan_tier: "free" | "pro" | "olympic";
       session_type: "training" | "regatta";
+      setup_metric_group: "weather" | "boat";
       setup_input_kind: "single_select" | "multi_select" | "text";
       subscription_status:
         | "active"

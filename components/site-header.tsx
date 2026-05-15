@@ -9,6 +9,8 @@ import {
 } from "next/navigation"
 
 import { ThemeToggle } from "@/components/theme-toggle"
+import { InstallAppButton } from "@/components/pwa/install-app-button"
+import { PwaDebugPanel } from "@/components/pwa/pwa-debug-panel"
 import {
   NAVIGATION_SCOPE_ORG_QUERY_KEY,
   NAVIGATION_SCOPE_TEAM_QUERY_KEY,
@@ -80,6 +82,10 @@ function getSectionTitle(pathname: string): string {
 
   if (pathname.startsWith("/team-notes")) {
     return "Team Notes"
+  }
+
+  if (pathname.startsWith("/team-standard-moves")) {
+    return "Team Std. Moves"
   }
 
   if (pathname.startsWith("/team-reports")) {
@@ -209,6 +215,31 @@ function getTeamNotesTitle(
   return `${activeTeamLabel} > Notes`
 }
 
+function getTeamStandardMovesTitle(
+  navigation: ResolvedNavigationScope | null,
+  searchParams: ReadonlyURLSearchParams,
+): string {
+  if (!navigation?.scope) {
+    return "Team Std. Moves"
+  }
+
+  const activeOrgId =
+    searchParams.get(NAVIGATION_SCOPE_ORG_QUERY_KEY) ?? navigation.scope.activeOrgId
+  const queryTeamId = searchParams.get(NAVIGATION_SCOPE_TEAM_QUERY_KEY)
+
+  const teamsForOrganization =
+    navigation.catalog.teamsByOrganizationId[activeOrgId] ?? []
+  const activeTeamId =
+    queryTeamId && teamsForOrganization.some((team) => team.id === queryTeamId)
+      ? queryTeamId
+      : navigation.scope.activeTeamId
+  const activeTeamLabel =
+    teamsForOrganization.find((team) => team.id === activeTeamId)?.name ??
+    "No team selected"
+
+  return `${activeTeamLabel} > Std. Moves`
+}
+
 function getTeamGearTitle(
   navigation: ResolvedNavigationScope | null,
   searchParams: ReadonlyURLSearchParams,
@@ -309,6 +340,8 @@ export function SiteHeader({
 }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const isPwaDebugEnabled =
+    searchParams.get("pwaDebug") === "1" || searchParams.get("pwaDebug") === "true"
   const [venueNameById, setVenueNameById] = useState<
     Record<string, string | null>
   >({})
@@ -329,6 +362,8 @@ export function SiteHeader({
           ? getTeamGearTitle(navigation, searchParams)
         : pathname.startsWith("/team-notes")
           ? getTeamNotesTitle(navigation, searchParams)
+        : pathname.startsWith("/team-standard-moves")
+          ? getTeamStandardMovesTitle(navigation, searchParams)
         : pathname.startsWith("/team-reports")
           ? "Team Reports"
         : getSectionTitle(pathname)
@@ -343,6 +378,8 @@ export function SiteHeader({
           ? "Gear"
         : pathname.startsWith("/team-notes")
           ? "Notes"
+        : pathname.startsWith("/team-standard-moves")
+          ? "Std. Moves"
         : pathname.startsWith("/team-reports")
           ? "Reports"
         : null
@@ -644,6 +681,8 @@ export function SiteHeader({
           </h1>
         )}
         <div className="ml-auto flex items-center gap-2">
+          <PwaDebugPanel enabled={isPwaDebugEnabled} />
+          <InstallAppButton />
           <Badge variant="secondary">{planBadgeLabel}</Badge>
           <ThemeToggle />
         </div>

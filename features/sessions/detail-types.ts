@@ -23,12 +23,13 @@ export type SessionDetailSession = Pick<
   | "dock_in_at"
   | "net_time_minutes"
   | "highlighted_by_coach"
+  | "goals"
 >
 
 export type SessionDetailInfo = {
   bestOfSession: string | null
   toWork: string | null
-  standardMoves: string | null
+  standardMoves: string[]
   windPatterns: string | null
   freeNotes: string | null
 }
@@ -43,13 +44,21 @@ export type SessionSetupDialogOption = {
   label: string
 }
 
+export type SessionSetupDialogSelectedOption = {
+  optionId: string
+  allocationPercent: number | null
+}
+
 export type SessionSetupDialogItem = {
   id: string
   key: string
   label: string
   inputKind: "single_select" | "multi_select" | "text"
+  metricGroup: "weather" | "boat"
+  isFixed: boolean
+  position: number
   options: SessionSetupDialogOption[]
-  selectedOptionIds: string[]
+  selectedOptions: SessionSetupDialogSelectedOption[]
   textValue: string
 }
 
@@ -69,6 +78,13 @@ export type SessionDetailData = {
   camp: SessionDetailCamp
   session: SessionDetailSession
   info: SessionDetailInfo
+  availableStandardMoves: {
+    id: string
+    name: string
+    description: string | null
+    isActive: boolean
+  }[]
+  linkedStandardMoveIds: string[]
   results: SessionDetailResults
   setupDialogItems: SessionSetupDialogItem[]
   images: SessionDetailAsset[]
