@@ -2,6 +2,7 @@ import { CreateSessionDialog } from "@/features/sessions/session-form-dialogs"
 import { SessionsFeedback } from "@/features/sessions/sessions-feedback"
 import { TeamSessionsTable } from "@/features/sessions/sessions-table"
 import { TeamSessionsToolbar } from "@/features/sessions/team-sessions-toolbar"
+import { buildTeamSessionsHref } from "@/features/sessions/navigation"
 import {
   getTeamSessionsPageData,
   type TeamSessionCampOption,
@@ -11,10 +12,6 @@ import {
 } from "@/features/sessions/data"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageTeamSessions } from "@/lib/auth/capabilities"
-import {
-  NAVIGATION_SCOPE_ORG_QUERY_KEY,
-  NAVIGATION_SCOPE_TEAM_QUERY_KEY,
-} from "@/lib/navigation/constants"
 import {
   getSingleSearchParamValue,
   resolveNavigationScope,
@@ -78,6 +75,10 @@ function parseRequestedPage(value: string | undefined): number {
   return Math.floor(parsed)
 }
 
+function parseLoadMoreMode(value: string | undefined): boolean {
+  return value === "1"
+}
+
 function resolveHighlightFilter(
   value: string | undefined,
 ): TeamSessionHighlightFilter | undefined {
@@ -86,37 +87,6 @@ function resolveHighlightFilter(
   }
 
   return undefined
-}
-
-function buildTeamSessionFiltersHref(input: {
-  scope: {
-    activeOrgId: string
-    activeTeamId: string | null
-  }
-  venueId?: string
-  campId?: string
-  highlight?: TeamSessionHighlightFilter
-}): string {
-  const params = new URLSearchParams()
-  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.scope.activeOrgId)
-
-  if (input.scope.activeTeamId) {
-    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scope.activeTeamId)
-  }
-
-  if (input.venueId) {
-    params.set("venue", input.venueId)
-  }
-
-  if (input.campId) {
-    params.set("camp", input.campId)
-  }
-
-  if (input.highlight) {
-    params.set("highlight", input.highlight)
-  }
-
-  return `/team-sessions?${params.toString()}`
 }
 
 export default async function TeamSessionsPage({
@@ -136,6 +106,9 @@ export default async function TeamSessionsPage({
   )
   const requestedPage = parseRequestedPage(
     getSingleSearchParamValue(resolvedSearchParams.page),
+  )
+  const requestedLoadMoreMode = parseLoadMoreMode(
+    getSingleSearchParamValue(resolvedSearchParams.loadMore),
   )
 
   const statusMessage = getStatusMessage(status)
@@ -187,6 +160,7 @@ export default async function TeamSessionsPage({
       selectedCampId: requestedCampId,
       selectedHighlight: requestedHighlight,
       page: requestedPage,
+      accumulatePages: requestedLoadMoreMode,
     })
 
     sessions = pageData.sessions
@@ -237,6 +211,7 @@ export default async function TeamSessionsPage({
         noTeamSelected={noTeamSelected}
         toolbar={
           <TeamSessionsToolbar
+            scope={scope}
             selectedVenueId={selectedVenueId ?? ""}
             selectedCampId={selectedCampId ?? ""}
             selectedHighlight={selectedHighlight ?? ""}
@@ -246,7 +221,7 @@ export default async function TeamSessionsPage({
               {
                 value: "",
                 label: "Venues",
-                href: buildTeamSessionFiltersHref({
+                href: buildTeamSessionsHref({
                   scope,
                   highlight: selectedHighlight,
                 }),
@@ -254,7 +229,7 @@ export default async function TeamSessionsPage({
               ...venueFilterOptions.map((option) => ({
                 value: option.venueId,
                 label: `${option.venueName} — ${option.venueLocation}`,
-                href: buildTeamSessionFiltersHref({
+                href: buildTeamSessionsHref({
                   scope,
                   venueId: option.venueId,
                   highlight: selectedHighlight,
@@ -265,7 +240,7 @@ export default async function TeamSessionsPage({
               {
                 value: "",
                 label: "Camps",
-                href: buildTeamSessionFiltersHref({
+                href: buildTeamSessionsHref({
                   scope,
                   venueId: selectedVenueId,
                   highlight: selectedHighlight,
@@ -274,7 +249,7 @@ export default async function TeamSessionsPage({
               ...campFilterOptions.map((option) => ({
                 value: option.campId,
                 label: option.label,
-                href: buildTeamSessionFiltersHref({
+                href: buildTeamSessionsHref({
                   scope,
                   venueId: selectedVenueId,
                   campId: option.campId,
@@ -286,7 +261,7 @@ export default async function TeamSessionsPage({
               {
                 value: "",
                 label: "All",
-                href: buildTeamSessionFiltersHref({
+                href: buildTeamSessionsHref({
                   scope,
                   venueId: selectedVenueId,
                   campId: selectedCampId,
@@ -295,7 +270,7 @@ export default async function TeamSessionsPage({
               {
                 value: "yes",
                 label: "Yes",
-                href: buildTeamSessionFiltersHref({
+                href: buildTeamSessionsHref({
                   scope,
                   venueId: selectedVenueId,
                   campId: selectedCampId,
@@ -305,7 +280,7 @@ export default async function TeamSessionsPage({
               {
                 value: "no",
                 label: "No",
-                href: buildTeamSessionFiltersHref({
+                href: buildTeamSessionsHref({
                   scope,
                   venueId: selectedVenueId,
                   campId: selectedCampId,

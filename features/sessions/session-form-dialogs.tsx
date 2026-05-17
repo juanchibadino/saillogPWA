@@ -11,6 +11,7 @@ import type {
   TeamSessionCampOption,
   TeamSessionListItem,
 } from "@/features/sessions/data"
+import { useIsMobile } from "@/hooks/use-mobile"
 import type { NavigationScope } from "@/lib/navigation/types"
 import { Button } from "@/components/ui/button"
 import {
@@ -22,6 +23,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
@@ -191,6 +200,51 @@ export function CreateSessionDialog({
     campOptions.find((option) => option.campId === selectedCampId)?.campId ??
     campOptions[0]?.campId ??
     ""
+  const isMobile = useIsMobile()
+
+  if (isMobile) {
+    return (
+      <Drawer>
+        <DrawerTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="default"
+            disabled={disabled}
+            className="h-9 px-3"
+          >
+            <PlusIcon className="size-4" />
+            New
+          </Button>
+        </DrawerTrigger>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Create session</DrawerTitle>
+            <DrawerDescription>Add a session record to the selected camp.</DrawerDescription>
+          </DrawerHeader>
+          <div className="px-4 pb-4">
+            <SessionDialogForm
+              campOptions={campOptions}
+              initialValues={{
+                campId: defaultCampId,
+                sessionType: "training",
+                sessionDate: "",
+                netTimeMinutes: "",
+                highlightedByCoach: false,
+              }}
+              idPrefix="create-session"
+              submitLabel="Create session"
+              scope={scope}
+              selectedVenueId={selectedVenueId}
+              selectedCampId={selectedCampId}
+              currentPage={currentPage}
+              action={createSessionAction}
+            />
+          </div>
+        </DrawerContent>
+      </Drawer>
+    )
+  }
 
   return (
     <Dialog>
@@ -237,6 +291,7 @@ export function EditSessionDialog({
   selectedVenueId,
   selectedCampId,
   currentPage,
+  iconOnly = false,
 }: {
   session: EditableSession
   campOptions: TeamSessionCampOption[]
@@ -244,12 +299,72 @@ export function EditSessionDialog({
   selectedVenueId?: string
   selectedCampId?: string
   currentPage: number
+  iconOnly?: boolean
 }) {
+  const isMobile = useIsMobile()
+
+  if (isMobile) {
+    return (
+      <Drawer>
+        <DrawerTrigger asChild>
+          {iconOnly ? (
+            <Button variant="outline" size="icon-sm" aria-label="Edit session">
+              <PencilIcon className="size-4" />
+              <span className="sr-only">Edit</span>
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm">
+              <PencilIcon className="size-4" />
+              Edit
+            </Button>
+          )}
+        </DrawerTrigger>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Edit session</DrawerTitle>
+            <DrawerDescription>{session.sessionDate}</DrawerDescription>
+          </DrawerHeader>
+          <div className="px-4 pb-4">
+            <SessionDialogForm
+              campOptions={campOptions}
+              initialValues={{
+                id: session.id,
+                campId: session.campId,
+                sessionType: session.sessionType,
+                sessionDate: session.sessionDate,
+                netTimeMinutes:
+                  typeof session.netTimeMinutes === "number"
+                    ? String(session.netTimeMinutes)
+                    : "",
+                highlightedByCoach: session.highlightedByCoach,
+              }}
+              idPrefix={`edit-session-${session.id}`}
+              submitLabel="Save changes"
+              scope={scope}
+              selectedVenueId={selectedVenueId}
+              selectedCampId={selectedCampId}
+              currentPage={currentPage}
+              action={updateSessionAction}
+            />
+          </div>
+        </DrawerContent>
+      </Drawer>
+    )
+  }
+
   return (
     <Dialog>
-      <DialogTrigger render={<Button variant="outline" size="sm" />}>
+      <DialogTrigger
+        render={
+          iconOnly ? (
+            <Button variant="outline" size="icon-sm" aria-label="Edit session" />
+          ) : (
+            <Button variant="outline" size="sm" />
+          )
+        }
+      >
         <PencilIcon className="size-4" />
-        Edit
+        {iconOnly ? <span className="sr-only">Edit</span> : "Edit"}
       </DialogTrigger>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>

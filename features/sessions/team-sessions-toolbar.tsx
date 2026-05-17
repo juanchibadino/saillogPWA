@@ -1,16 +1,28 @@
 "use client"
 
-import type { ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import { CheckIcon, ChevronDownIcon, FilterIcon } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 import { Button } from "@/components/ui/button"
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { buildTeamSessionsHref } from "@/features/sessions/navigation"
+import { useIsMobile } from "@/hooks/use-mobile"
+import type { NavigationScope } from "@/lib/navigation/types"
 import { cn } from "@/lib/utils"
 
 type TeamSessionsToolbarOption = {
@@ -78,7 +90,16 @@ function SessionsFilterDropdown({
   )
 }
 
+function normalizeHighlightValue(value: string): "yes" | "no" | undefined {
+  if (value === "yes" || value === "no") {
+    return value
+  }
+
+  return undefined
+}
+
 export function TeamSessionsToolbar({
+  scope,
   venueOptions,
   campOptions,
   highlightOptions,
@@ -89,6 +110,7 @@ export function TeamSessionsToolbar({
   campDisabled = false,
   action,
 }: {
+  scope: NavigationScope
   venueOptions: TeamSessionsToolbarOption[]
   campOptions: TeamSessionsToolbarOption[]
   highlightOptions: TeamSessionsToolbarOption[]
@@ -99,8 +121,169 @@ export function TeamSessionsToolbar({
   campDisabled?: boolean
   action?: ReactNode
 }) {
+  const router = useRouter()
+  const isMobile = useIsMobile()
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+  const [draftVenueId, setDraftVenueId] = useState(selectedVenueId)
+  const [draftCampId, setDraftCampId] = useState(selectedCampId)
+  const [draftHighlight, setDraftHighlight] = useState(selectedHighlight)
+
+  const hasActiveFilter =
+    selectedVenueId.length > 0 ||
+    selectedCampId.length > 0 ||
+    selectedHighlight.length > 0
+  const hasVenueDraftChanged = draftVenueId !== selectedVenueId
+  const isCampSelectDisabled = campDisabled || hasVenueDraftChanged
+
+  function applyDraftFilters(): void {
+    router.push(
+      buildTeamSessionsHref({
+        scope,
+        venueId: draftVenueId || undefined,
+        campId: hasVenueDraftChanged ? undefined : draftCampId || undefined,
+        highlight: normalizeHighlightValue(draftHighlight),
+      }),
+    )
+    setIsDrawerOpen(false)
+  }
+
+  function clearFilters(): void {
+    router.push(
+      buildTeamSessionsHref({
+        scope,
+      }),
+    )
+    setIsDrawerOpen(false)
+  }
+
+  if (isMobile) {
+    return (
+      <section className="flex w-full items-center justify-between gap-2">
+        <Drawer
+          open={isDrawerOpen}
+          onOpenChange={(open) => {
+            setIsDrawerOpen(open)
+
+            if (open) {
+              setDraftVenueId(selectedVenueId)
+              setDraftCampId(selectedCampId)
+              setDraftHighlight(selectedHighlight)
+            }
+          }}
+        >
+          <DrawerTrigger asChild>
+            <Button
+              type="button"
+              variant="secondary"
+              size="default"
+              className={cn(
+                "h-9 px-3",
+                hasActiveFilter &&
+                  "border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 aria-expanded:bg-emerald-100 dark:border-emerald-600/50 dark:bg-emerald-900/20 dark:text-emerald-100 dark:hover:bg-emerald-900/30",
+              )}
+            >
+              <FilterIcon className="size-4" />
+            </Button>
+          </DrawerTrigger>
+          <DrawerContent>
+            <DrawerHeader>
+              <DrawerTitle>Filters</DrawerTitle>
+              <DrawerDescription>Set filters and apply.</DrawerDescription>
+            </DrawerHeader>
+
+            <div className="space-y-3 px-4 pb-2">
+              <div className="space-y-2">
+                <label
+                  htmlFor="mobile-sessions-venue-filter"
+                  className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                >
+                  Venue
+                </label>
+                <select
+                  id="mobile-sessions-venue-filter"
+                  value={draftVenueId}
+                  onChange={(event) => {
+                    setDraftVenueId(event.target.value)
+                    setDraftCampId("")
+                  }}
+                  disabled={venueDisabled}
+                  className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none ring-ring/50 transition-colors focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {venueOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label
+                  htmlFor="mobile-sessions-camp-filter"
+                  className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                >
+                  Camp
+                </label>
+                <select
+                  id="mobile-sessions-camp-filter"
+                  value={draftCampId}
+                  onChange={(event) => setDraftCampId(event.target.value)}
+                  disabled={isCampSelectDisabled}
+                  className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none ring-ring/50 transition-colors focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {campOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                {hasVenueDraftChanged ? (
+                  <p className="text-xs text-muted-foreground">
+                    Apply venue first to refresh camp options.
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="space-y-2">
+                <label
+                  htmlFor="mobile-sessions-highlight-filter"
+                  className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                >
+                  Highlight
+                </label>
+                <select
+                  id="mobile-sessions-highlight-filter"
+                  value={draftHighlight}
+                  onChange={(event) => setDraftHighlight(event.target.value)}
+                  className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none ring-ring/50 transition-colors focus-visible:ring-[3px]"
+                >
+                  {highlightOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <DrawerFooter>
+              <Button type="button" variant="outline" onClick={clearFilters}>
+                Clear
+              </Button>
+              <Button type="button" onClick={applyDraftFilters}>
+                Apply
+              </Button>
+            </DrawerFooter>
+          </DrawerContent>
+        </Drawer>
+
+        {action ? <div className="flex justify-end">{action}</div> : null}
+      </section>
+    )
+  }
+
   return (
-    <section className="flex w-full items-center justify-end gap-2">
+    <section className="flex items-center justify-end gap-2">
       <SessionsFilterDropdown
         label="Venue"
         options={venueOptions}

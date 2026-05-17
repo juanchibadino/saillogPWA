@@ -78,7 +78,7 @@ export default async function SignInPage({
   const context = await getCurrentAccessContext();
 
   if (context.user) {
-    redirect("/dashboard");
+    redirect("/post-auth");
   }
 
   const resolvedSearchParams = await searchParams;

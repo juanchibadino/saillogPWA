@@ -10,7 +10,7 @@ const CAMP_SELECT_COLUMNS =
 const SESSION_SELECT_COLUMNS =
   "id,camp_id,session_type,session_date,net_time_minutes,highlighted_by_coach,created_at"
 
-export const TEAM_SESSIONS_PAGE_SIZE = 25
+export const TEAM_SESSIONS_PAGE_SIZE = 10
 
 type TeamVenueRow = Pick<
   Database["public"]["Tables"]["team_venues"]["Row"],
@@ -133,9 +133,12 @@ export async function getTeamSessionsPageData(input: {
   selectedCampId?: string
   selectedHighlight?: TeamSessionHighlightFilter
   page: number
+  accumulatePages?: boolean
 }): Promise<TeamSessionsPageData> {
   const supabase = await createServerSupabaseClient()
   const currentPage = normalizePage(input.page)
+  const accumulatePages = input.accumulatePages === true
+  const hasPreviousPage = accumulatePages ? false : currentPage > 1
 
   const { data: teamVenueData, error: teamVenueError } = await supabase
     .from("team_venues")
@@ -205,7 +208,7 @@ export async function getTeamSessionsPageData(input: {
       selectedVenueId,
       selectedHighlight: input.selectedHighlight,
       currentPage,
-      hasPreviousPage: currentPage > 1,
+      hasPreviousPage,
       hasNextPage: false,
     }
   }
@@ -280,13 +283,18 @@ export async function getTeamSessionsPageData(input: {
       selectedCampId,
       selectedHighlight,
       currentPage,
-      hasPreviousPage: currentPage > 1,
+      hasPreviousPage,
       hasNextPage: false,
     }
   }
 
-  const offset = (currentPage - 1) * TEAM_SESSIONS_PAGE_SIZE
-  const rangeEnd = offset + TEAM_SESSIONS_PAGE_SIZE
+  const visibleCount = accumulatePages
+    ? currentPage * TEAM_SESSIONS_PAGE_SIZE
+    : TEAM_SESSIONS_PAGE_SIZE
+  const rangeStart = accumulatePages
+    ? 0
+    : (currentPage - 1) * TEAM_SESSIONS_PAGE_SIZE
+  const rangeEnd = rangeStart + visibleCount
 
   let sessionQuery = supabase
     .from("sessions")
@@ -303,18 +311,15 @@ export async function getTeamSessionsPageData(input: {
     sessionQuery = sessionQuery.eq("highlighted_by_coach", false)
   }
 
-  const { data: sessionData, error: sessionError } = await sessionQuery.range(
-    offset,
-    rangeEnd,
-  )
+  const { data: sessionData, error: sessionError } = await sessionQuery.range(rangeStart, rangeEnd)
 
   if (sessionError) {
     throw new Error(`Could not load sessions: ${sessionError.message}`)
   }
 
   const paginatedSessionRows: SessionRow[] = sessionData ?? []
-  const hasNextPage = paginatedSessionRows.length > TEAM_SESSIONS_PAGE_SIZE
-  const visibleSessionRows = paginatedSessionRows.slice(0, TEAM_SESSIONS_PAGE_SIZE)
+  const hasNextPage = paginatedSessionRows.length > visibleCount
+  const visibleSessionRows = paginatedSessionRows.slice(0, visibleCount)
 
   const sessions: TeamSessionListItem[] = visibleSessionRows
     .map((session) => {
@@ -362,7 +367,7 @@ export async function getTeamSessionsPageData(input: {
     selectedCampId,
     selectedHighlight,
     currentPage,
-    hasPreviousPage: currentPage > 1,
+    hasPreviousPage,
     hasNextPage,
   }
 }

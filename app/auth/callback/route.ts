@@ -5,11 +5,11 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 function normalizeNextPath(nextValue: string | null): string {
   if (!nextValue) {
-    return "/dashboard";
+    return "/post-auth";
   }
 
   if (!nextValue.startsWith("/") || nextValue.startsWith("//")) {
-    return "/dashboard";
+    return "/post-auth";
   }
 
   return nextValue;

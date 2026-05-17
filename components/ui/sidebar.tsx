@@ -10,13 +10,6 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Tooltip,
@@ -181,27 +174,57 @@ function Sidebar({
 
   if (isMobile) {
     return (
-      <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
-        <SheetContent
-          dir={dir}
-          data-sidebar="sidebar"
+      <>
+        {openMobile ? (
+          <button
+            type="button"
+            aria-label="Close sidebar"
+            className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm"
+            onClick={() => setOpenMobile(false)}
+          />
+        ) : null}
+        <div
+          className="group peer text-sidebar-foreground md:hidden"
+          data-state={openMobile ? "expanded" : "collapsed"}
+          data-collapsible={openMobile ? "" : "offcanvas"}
+          data-variant={variant}
+          data-side={side}
           data-slot="sidebar"
-          data-mobile="true"
-          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
           style={
             {
               "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
             } as React.CSSProperties
           }
-          side={side}
         >
-          <SheetHeader className="sr-only">
-            <SheetTitle>Sidebar</SheetTitle>
-            <SheetDescription>Displays the mobile sidebar.</SheetDescription>
-          </SheetHeader>
-          <div className="flex h-full w-full flex-col">{children}</div>
-        </SheetContent>
-      </Sheet>
+          <div
+            dir={dir}
+            data-sidebar="sidebar"
+            data-slot="sidebar-container"
+            data-mobile="true"
+            data-side={side}
+            className={cn(
+              "fixed inset-y-0 z-50 flex h-svh w-(--sidebar-width) transition-[left,right] duration-200 ease-linear",
+              side === "left"
+                ? openMobile
+                  ? "left-0"
+                  : "left-[calc(var(--sidebar-width)*-1)]"
+                : openMobile
+                  ? "right-0"
+                  : "right-[calc(var(--sidebar-width)*-1)]",
+              className
+            )}
+            {...props}
+          >
+            <div
+              data-sidebar="sidebar"
+              data-slot="sidebar-inner"
+              className="flex size-full flex-col bg-sidebar text-sidebar-foreground"
+            >
+              {children}
+            </div>
+          </div>
+        </div>
+      </>
     )
   }
 
@@ -256,7 +279,7 @@ function SidebarTrigger({
   onClick,
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { toggleSidebar } = useSidebar()
+  const { isMobile, openMobile, toggleSidebar } = useSidebar()
 
   return (
     <Button
@@ -266,6 +289,10 @@ function SidebarTrigger({
       size="icon-sm"
       className={cn(className)}
       onClick={(event) => {
+        if (isMobile && !openMobile) {
+          event.currentTarget.blur()
+        }
+
         onClick?.(event)
         toggleSidebar()
       }}

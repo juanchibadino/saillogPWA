@@ -57,7 +57,7 @@ export default async function Home() {
   const context = await getCurrentAccessContext();
 
   if (context.user) {
-    redirect("/dashboard");
+    redirect("/post-auth");
   }
 
   return (

@@ -27,6 +27,7 @@ export function buildTeamSessionsHref(input: {
   scope: NavigationScope
   venueId?: string
   campId?: string
+  highlight?: "yes" | "no"
   page?: number
   status?: string
   error?: string
@@ -40,6 +41,10 @@ export function buildTeamSessionsHref(input: {
 
   if (input.campId) {
     params.set("camp", input.campId)
+  }
+
+  if (input.highlight) {
+    params.set("highlight", input.highlight)
   }
 
   if (typeof input.page === "number" && Number.isFinite(input.page) && input.page > 1) {

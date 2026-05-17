@@ -222,6 +222,7 @@ export default async function TeamCampsPage({
             filterLabel="Venue"
             selectedValue={selectedVenueId ?? ""}
             disabled={noTeamSelected || venueFilterOptions.length === 0}
+            clearHref={buildTeamCampVenueFilterHref({ scope })}
             options={[
               {
                 value: "",

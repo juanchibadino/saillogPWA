@@ -6,7 +6,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   BarChart3Icon,
   Building2Icon,
-  CalendarIcon,
   CheckIcon,
   CircleIcon,
   CreditCardIcon,
@@ -16,7 +15,6 @@ import {
   KeyIcon,
   LogOutIcon,
   MapPinIcon,
-  ReceiptTextIcon,
   SailboatIcon,
   UserIcon,
   UsersIcon,
@@ -24,6 +22,7 @@ import {
 } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -86,10 +85,16 @@ type PendingScopeSwitch = {
   toLabel: string
 }
 
+type BillingPlanTier = "free" | "pro" | "olympic"
+
+type BillingPlanResponse = {
+  planTier: BillingPlanTier | null
+}
+
 const NAVIGATION_SCOPE_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
 
 const homeNavItem = {
-  title: "Dashboard",
+  title: "Home",
   url: "/dashboard",
   icon: HomeIcon,
 }
@@ -102,28 +107,6 @@ const organizationsNavItem = {
 
 const organizationNavItems = [
   {
-    title: "Venues",
-    url: "/venues",
-    icon: MapPinIcon,
-  },
-  {
-    title: "Billing",
-    url: "/billing",
-    icon: CreditCardIcon,
-  },
-  {
-    title: "Expenses",
-    url: "/expenses",
-    icon: ReceiptTextIcon,
-    comingSoon: true,
-  },
-  {
-    title: "Reports",
-    url: "/reports",
-    icon: BarChart3Icon,
-    comingSoon: false,
-  },
-  {
     title: "Teams",
     url: "/teams",
     icon: UsersIcon,
@@ -133,6 +116,22 @@ const organizationNavItems = [
     url: "/users",
     icon: UserIcon,
     comingSoon: false,
+  },
+  {
+    title: "Venues",
+    url: "/venues",
+    icon: MapPinIcon,
+  },
+  {
+    title: "Reports",
+    url: "/reports",
+    icon: BarChart3Icon,
+    comingSoon: false,
+  },
+  {
+    title: "Billing",
+    url: "/billing",
+    icon: CreditCardIcon,
   },
 ]
 
@@ -168,12 +167,6 @@ const teamNavItems = [
     comingSoon: false,
   },
   {
-    title: "Expenses",
-    url: "/team-expenses",
-    icon: ReceiptTextIcon,
-    comingSoon: true,
-  },
-  {
     title: "Reports",
     url: "/team-reports",
     icon: BarChart3Icon,
@@ -190,12 +183,6 @@ const teamNavItems = [
     url: "/team-standard-moves",
     icon: CheckIcon,
     comingSoon: false,
-  },
-  {
-    title: "Calendar",
-    url: "/team-calendar",
-    icon: CalendarIcon,
-    comingSoon: true,
   },
 ]
 
@@ -339,10 +326,15 @@ export function AppSidebar({
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { isMobile } = useSidebar()
+  const { isMobile, setOpenMobile } = useSidebar()
   const [pendingScopeSwitch, setPendingScopeSwitch] =
     React.useState<PendingScopeSwitch | null>(null)
   const [isScopeSwitchPending, startScopeSwitchTransition] = React.useTransition()
+  const [planTierByOrganizationId, setPlanTierByOrganizationId] = React.useState<
+    Record<string, BillingPlanTier | null>
+  >({})
+  const [isScopeMenuOpen, setIsScopeMenuOpen] = React.useState(false)
+  const [isUserMenuOpen, setIsUserMenuOpen] = React.useState(false)
 
   const organizations = navigation?.catalog.organizations ?? []
   const teamsByOrganizationId = navigation?.catalog.teamsByOrganizationId
@@ -410,6 +402,89 @@ export function AppSidebar({
     }
   }, [isScopeSwitchPending])
 
+  React.useEffect(() => {
+    if (!activeOrgId) {
+      return
+    }
+
+    if (activeOrgId in planTierByOrganizationId) {
+      return
+    }
+
+    const controller = new AbortController()
+
+    const loadPlanTier = async () => {
+      try {
+        const response = await fetch(
+          `/api/billing/plan?org=${encodeURIComponent(activeOrgId)}`,
+          {
+            cache: "no-store",
+            signal: controller.signal,
+          },
+        )
+
+        if (!response.ok) {
+          setPlanTierByOrganizationId((currentValue) => ({
+            ...currentValue,
+            [activeOrgId]: "free",
+          }))
+          return
+        }
+
+        const payload = (await response.json()) as BillingPlanResponse
+        setPlanTierByOrganizationId((currentValue) => ({
+          ...currentValue,
+          [activeOrgId]: payload.planTier,
+        }))
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return
+        }
+
+        setPlanTierByOrganizationId((currentValue) => ({
+          ...currentValue,
+          [activeOrgId]: "free",
+        }))
+      }
+    }
+
+    void loadPlanTier()
+
+    return () => {
+      controller.abort()
+    }
+  }, [activeOrgId, planTierByOrganizationId])
+
+  const activePlanTier = activeOrgId ? planTierByOrganizationId[activeOrgId] : null
+  const planBadgeLabel =
+    activePlanTier === "pro"
+      ? "Pro Plan"
+      : activePlanTier === "olympic"
+        ? "Olympic Plan"
+        : "Free Plan"
+
+  const handleSidebarNavigationClick = React.useCallback(() => {
+    setIsScopeMenuOpen(false)
+    setIsUserMenuOpen(false)
+
+    if (isMobile) {
+      setOpenMobile(false)
+    }
+  }, [isMobile, setOpenMobile])
+
+  function handleMobileMenuPointerDown(
+    event: React.PointerEvent<HTMLElement>,
+    action: () => void,
+  ): void {
+    if (!isMobile) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    action()
+  }
+
   function updateScope(nextOrgId: string, nextTeamId: NavigationTeamId): void {
     if (!pathname) {
       return
@@ -456,9 +531,14 @@ export function AppSidebar({
           }
 
     setPendingScopeSwitch(pendingSwitch)
+    setIsScopeMenuOpen(false)
+    setIsUserMenuOpen(false)
 
     startScopeSwitchTransition(() => {
       persistScopeSelection(nextOrgId, nextTeamId)
+      if (isMobile) {
+        setOpenMobile(false)
+      }
       router.push(href)
     })
   }
@@ -496,7 +576,11 @@ export function AppSidebar({
         <SidebarMenu>
           <SidebarMenuItem>
             {canShowScopePicker ? (
-              <DropdownMenu>
+              <DropdownMenu
+                modal={false}
+                open={isScopeMenuOpen}
+                onOpenChange={setIsScopeMenuOpen}
+              >
                 <DropdownMenuTrigger
                   render={
                     <SidebarMenuButton
@@ -535,8 +619,15 @@ export function AppSidebar({
                       {organizations.map((organization) => (
                         <DropdownMenuItem
                           key={organization.id}
+                          nativeButton
+                          render={<button type="button" />}
                           onClick={() => handleOrganizationSelect(organization.id)}
-                          className="gap-2 p-2"
+                          onPointerDownCapture={(event) =>
+                            handleMobileMenuPointerDown(event, () =>
+                              handleOrganizationSelect(organization.id),
+                            )
+                          }
+                          className="w-full gap-2 p-2 text-left"
                         >
                           <Avatar className="size-6 rounded-md">
                             {organization.avatarUrl ? (
@@ -571,8 +662,15 @@ export function AppSidebar({
                         ? teamsForActiveOrganization.map((team) => (
                             <DropdownMenuItem
                               key={team.id}
+                              nativeButton
+                              render={<button type="button" />}
                               onClick={() => handleTeamSelect(team.id)}
-                              className="gap-2 p-2"
+                              onPointerDownCapture={(event) =>
+                                handleMobileMenuPointerDown(event, () =>
+                                  handleTeamSelect(team.id),
+                                )
+                              }
+                              className="w-full gap-2 p-2 text-left"
                             >
                               <div className="flex size-6 items-center justify-center rounded-md border">
                                 <UsersIcon className="size-3.5" />
@@ -586,8 +684,15 @@ export function AppSidebar({
                         : teamPickerOptions.map((team) => (
                             <DropdownMenuItem
                               key={team.id}
+                              nativeButton
+                              render={<button type="button" />}
                               onClick={() => handleTeamSelect(team.id, team.organizationId)}
-                              className="gap-2 p-2"
+                              onPointerDownCapture={(event) =>
+                                handleMobileMenuPointerDown(event, () =>
+                                  handleTeamSelect(team.id, team.organizationId),
+                                )
+                              }
+                              className="w-full gap-2 p-2 text-left"
                             >
                               <div className="flex size-6 items-center justify-center rounded-md border">
                                 <UsersIcon className="size-3.5" />
@@ -621,7 +726,15 @@ export function AppSidebar({
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <SidebarMenuButton size="lg" render={<Link href={scopedDefaultHomeHref} />}>
+              <SidebarMenuButton
+                size="lg"
+                render={
+                  <Link
+                    href={scopedDefaultHomeHref}
+                    onClick={handleSidebarNavigationClick}
+                  />
+                }
+              >
                 <Avatar className="size-8 rounded-lg">
                   {organizationAvatarUrl ? (
                     <AvatarImage src={organizationAvatarUrl} alt={organizationName} />
@@ -661,6 +774,7 @@ export function AppSidebar({
                               activeOrgId,
                               activeTeamId,
                             )}
+                            onClick={handleSidebarNavigationClick}
                           />
                         }
                       >
@@ -681,6 +795,7 @@ export function AppSidebar({
                                 activeOrgId,
                                 activeTeamId,
                               )}
+                              onClick={handleSidebarNavigationClick}
                             />
                           }
                         >
@@ -706,6 +821,7 @@ export function AppSidebar({
                                       activeOrgId,
                                       activeTeamId,
                                     )}
+                                    onClick={handleSidebarNavigationClick}
                                   />
                                 )
                               : undefined
@@ -753,6 +869,7 @@ export function AppSidebar({
                                       activeOrgId,
                                       activeTeamId,
                                     )}
+                                    onClick={handleSidebarNavigationClick}
                                   />
                                 )
                               : undefined
@@ -792,7 +909,11 @@ export function AppSidebar({
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <DropdownMenu>
+            <DropdownMenu
+              modal={false}
+              open={isUserMenuOpen}
+              onOpenChange={setIsUserMenuOpen}
+            >
               <DropdownMenuTrigger
                 render={
                   <SidebarMenuButton
@@ -837,26 +958,50 @@ export function AppSidebar({
                         <span className="truncate text-xs text-muted-foreground/80">
                           {user.role}
                         </span>
+                        <Badge
+                          variant="secondary"
+                          className="mt-1 inline-flex w-fit text-[10px] font-medium"
+                        >
+                          {planBadgeLabel}
+                        </Badge>
                       </div>
                     </div>
                   </DropdownMenuLabel>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
+                  nativeButton
+                  render={<button type="button" />}
                   onClick={() => {
+                    setIsUserMenuOpen(false)
                     router.push("/set-password")
                   }}
+                  onPointerDownCapture={(event) =>
+                    handleMobileMenuPointerDown(event, () => {
+                      setIsUserMenuOpen(false)
+                      setOpenMobile(false)
+                      router.push("/set-password")
+                    })
+                  }
+                  className="w-full text-left"
                 >
                   <KeyIcon className="size-4" />
                   <span>Set password</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
+                  nativeButton
+                  render={<button type="button" />}
                   onClick={() => {
-                    const form = document.getElementById(
-                      "sidebar-sign-out-form",
-                    ) as HTMLFormElement | null
-                    form?.requestSubmit()
+                    setIsUserMenuOpen(false)
+                    window.location.assign("/sign-out")
                   }}
+                  onPointerDownCapture={(event) =>
+                    handleMobileMenuPointerDown(event, () => {
+                      setIsUserMenuOpen(false)
+                      window.location.assign("/sign-out")
+                    })
+                  }
+                  className="w-full text-left"
                 >
                   <LogOutIcon className="size-4" />
                   <span>Sign out</span>
@@ -865,7 +1010,6 @@ export function AppSidebar({
             </DropdownMenu>
           </SidebarMenuItem>
         </SidebarMenu>
-        <form id="sidebar-sign-out-form" action="/sign-out" method="post" className="hidden" />
       </SidebarFooter>
 
         <SidebarRail />

@@ -1,5 +1,5 @@
-import { InAppContentSkeleton } from "@/components/shared/page-skeletons"
+import { TeamVenuesPageSkeleton } from "@/components/shared/page-skeletons"
 
 export default function Loading() {
-  return <InAppContentSkeleton />
+  return <TeamVenuesPageSkeleton />
 }

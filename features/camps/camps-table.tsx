@@ -64,6 +64,21 @@ function formatCampTypeLabel(value: TeamCampListItem["campType"]): string {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
+function resolveEmptyMessage(input: {
+  noTeamSelected: boolean
+  selectedVenueId?: string
+}): string {
+  if (input.noTeamSelected) {
+    return "No team selected. Choose a team to view camps."
+  }
+
+  if (input.selectedVenueId) {
+    return "No camps found for the selected venue."
+  }
+
+  return "No camps found for this team yet."
+}
+
 export function TeamCampsTable({
   camps,
   teamVenueOptions,
@@ -80,6 +95,10 @@ export function TeamCampsTable({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const emptyMessage = resolveEmptyMessage({
+    noTeamSelected,
+    selectedVenueId,
+  })
 
   function buildPageHref(nextPage: number): string {
     const params = new URLSearchParams(searchParams.toString())
@@ -101,7 +120,95 @@ export function TeamCampsTable({
         {toolbar ? <div className="w-full sm:w-auto">{toolbar}</div> : null}
       </div>
 
-      <div className="overflow-hidden rounded-xl border bg-card">
+      <div className="space-y-2 md:hidden">
+        {camps.length === 0 ? (
+          <div className="rounded-xl border bg-card px-4 py-6 text-sm text-muted-foreground">
+            {emptyMessage}
+          </div>
+        ) : (
+          camps.map((camp) => {
+            const detailHref = buildCampDetailHref({
+              scope,
+              campId: camp.id,
+              tab: "sessions",
+            })
+
+            return (
+              <article
+                key={camp.id}
+                role="link"
+                tabIndex={0}
+                className="cursor-pointer rounded-xl border bg-card px-3 py-3 transition-colors hover:bg-muted/30"
+                onClick={() => {
+                  router.push(detailHref)
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault()
+                    router.push(detailHref)
+                  }
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{camp.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {camp.venueName}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {formatCampTypeLabel(camp.campType)} ·{" "}
+                      {formatDateRange(camp.startDate, camp.endDate)}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Sessions:{" "}
+                      <span className="font-semibold text-foreground">
+                        {camp.sessionCount}
+                      </span>
+                      {" · "}
+                      <span className={camp.isActive ? "text-emerald-700" : "text-muted-foreground"}>
+                        {camp.isActive ? "Active" : "Inactive"}
+                      </span>
+                    </p>
+                  </div>
+
+                  <div
+                    className="shrink-0"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                    }}
+                    onKeyDown={(event) => {
+                      event.stopPropagation()
+                    }}
+                  >
+                    {canManageCamps || canDeleteCamps ? (
+                      <CampActionsMenu
+                        camp={camp}
+                        teamVenueOptions={teamVenueOptions}
+                        scope={scope}
+                        selectedVenueId={selectedVenueId}
+                        currentPage={currentPage}
+                        canEditCamp={canManageCamps}
+                        canDeleteCamp={canDeleteCamps}
+                      />
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled
+                        aria-label="More actions unavailable"
+                      >
+                        <MoreHorizontalIcon className="size-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </article>
+            )
+          })
+        )}
+      </div>
+
+      <div className="hidden overflow-hidden rounded-xl border bg-card md:block">
         <Table>
           <TableHeader className="bg-muted/40">
             <TableRow className="hover:bg-transparent">
@@ -118,11 +225,7 @@ export function TeamCampsTable({
             {camps.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="py-6 text-sm text-muted-foreground">
-                  {noTeamSelected
-                    ? "No team selected. Choose a team to view camps."
-                    : selectedVenueId
-                      ? "No camps found for the selected venue."
-                      : "No camps found for this team yet."}
+                  {emptyMessage}
                 </TableCell>
               </TableRow>
             ) : (

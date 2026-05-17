@@ -117,23 +117,29 @@ export function TeamHomePageSkeleton() {
 export function TeamCampsPageSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border bg-card p-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="space-y-1">
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-9 w-64" />
-          </div>
-          <Skeleton className="h-8 w-20" />
-        </div>
+      <div className="flex items-center justify-end gap-2">
+        <Skeleton className="h-8 w-20" />
+        <Skeleton className="h-8 w-20" />
       </div>
 
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-3">
           <Skeleton className="h-6 w-20" />
-          <Skeleton className="h-8 w-24" />
         </div>
 
-        <div className="rounded-xl border bg-card p-4">
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div key={`team-camps-mobile-row-${index}`} className="rounded-xl border bg-card p-3">
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-3 w-28" />
+                <Skeleton className="h-3 w-52" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="hidden rounded-xl border bg-card p-4 md:block">
           <div className="space-y-3">
             <Skeleton className="h-10 w-full" />
             {Array.from({ length: 6 }).map((_, index) => (
@@ -149,31 +155,71 @@ export function TeamCampsPageSkeleton() {
 export function TeamSessionsPageSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border bg-card p-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="space-y-1">
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-9 w-64" />
-          </div>
-          <div className="space-y-1">
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-9 w-64" />
-          </div>
-          <Skeleton className="h-8 w-20" />
-        </div>
+      <div className="flex items-center justify-end gap-2">
+        <Skeleton className="h-8 w-20" />
+        <Skeleton className="h-8 w-20" />
       </div>
 
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-3">
-          <Skeleton className="h-6 w-24" />
-          <Skeleton className="h-8 w-24" />
+          <Skeleton className="hidden h-6 w-24 md:block" />
         </div>
 
-        <div className="rounded-xl border bg-card p-4">
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div key={`team-sessions-mobile-row-${index}`} className="rounded-xl border bg-card p-3">
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-36" />
+                <Skeleton className="h-3 w-44" />
+                <Skeleton className="h-3 w-52" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="hidden rounded-xl border bg-card p-4 md:block">
           <div className="space-y-3">
             <Skeleton className="h-10 w-full" />
             {Array.from({ length: 6 }).map((_, index) => (
               <Skeleton key={`team-sessions-row-${index}`} className="h-10 w-full" />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function TeamVenuesPageSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-end gap-2">
+        <Skeleton className="h-8 w-20" />
+        <Skeleton className="h-8 w-20" />
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <Skeleton className="h-6 w-20" />
+        </div>
+
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div key={`team-venues-mobile-row-${index}`} className="rounded-xl border bg-card p-3">
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-3 w-32" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="hidden rounded-xl border bg-card p-4 md:block">
+          <div className="space-y-3">
+            <Skeleton className="h-10 w-full" />
+            {Array.from({ length: 6 }).map((_, index) => (
+              <Skeleton key={`team-venues-row-${index}`} className="h-10 w-full" />
             ))}
           </div>
         </div>

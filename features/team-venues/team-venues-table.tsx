@@ -16,6 +16,7 @@ import type {
   TeamVenueListItem,
   TeamVenueStatusFilter,
 } from "@/features/team-venues/data"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { buildVenueDetailHref } from "@/features/venues/navigation"
 import type { NavigationScope } from "@/lib/navigation/types"
 import { Button } from "@/components/ui/button"
@@ -28,6 +29,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -73,6 +82,21 @@ function normalizeText(value: string): string {
   return value.trim()
 }
 
+function resolveEmptyMessage(input: {
+  noTeamSelected: boolean
+  selectedStatusFilter: TeamVenueStatusFilter
+}): string {
+  if (input.noTeamSelected) {
+    return "No team selected. Choose a team to view linked venues."
+  }
+
+  if (input.selectedStatusFilter === "active") {
+    return "No active venues linked to this team yet."
+  }
+
+  return "No deprecated venues linked to this team."
+}
+
 export function CreateTeamVenueDialog({
   availableVenueOptions,
   scope,
@@ -96,6 +120,7 @@ export function CreateTeamVenueDialog({
   const canLinkExisting = venueId.length > 0 && !disabled
   const canCreateAndLink =
     venueName.trim().length > 0 && Boolean(selectedLocation) && !disabled
+  const isMobile = useIsMobile()
 
   React.useEffect(() => {
     const query = locationQuery.trim()
@@ -174,6 +199,166 @@ export function CreateTeamVenueDialog({
     }
   }
 
+  const createTeamVenueContent = (
+    <div className="space-y-5">
+      <div className="space-y-2">
+        <form action={createTeamVenueLinkAction} className="space-y-3">
+          <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
+          {scope.activeTeamId ? (
+            <input type="hidden" name="scopeTeamId" value={scope.activeTeamId} />
+          ) : null}
+          <input type="hidden" name="scopeStatus" value={selectedStatusFilter} />
+
+          <div className="space-y-2">
+            <Label htmlFor="venueId">Organization venue</Label>
+            <select
+              id="venueId"
+              name="venueId"
+              required
+              value={venueId}
+              onChange={(event) => setVenueId(event.target.value)}
+              className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none ring-ring/50 transition-colors focus-visible:ring-[3px]"
+            >
+              <option value="">Select venue</option>
+              {availableVenueOptions.map((venueOption) => (
+                <option key={venueOption.venueId} value={venueOption.venueId}>
+                  {venueOption.name} — {formatLocation(venueOption.city, venueOption.country)} (
+                  {venueOption.isActive ? "Active" : "Deprecated"})
+                </option>
+              ))}
+            </select>
+
+            {availableVenueOptions.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                No unlinked organization venues are available for this team.
+              </p>
+            ) : null}
+          </div>
+
+          <div className="flex justify-end">
+            <Button type="submit" disabled={!canLinkExisting}>
+              Bind venue
+            </Button>
+          </div>
+        </form>
+      </div>
+
+      <Separator />
+
+      <div className="space-y-2">
+        <p className="text-sm font-medium">Create new venue and bind</p>
+        <form
+          action={createAndLinkTeamVenueAction}
+          className="space-y-3"
+          onSubmit={handleCreateAndBindSubmit}
+        >
+          <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
+          {scope.activeTeamId ? (
+            <input type="hidden" name="scopeTeamId" value={scope.activeTeamId} />
+          ) : null}
+          <input type="hidden" name="scopeStatus" value={selectedStatusFilter} />
+
+          <div className="space-y-2">
+            <Label htmlFor="newVenueName">Name</Label>
+            <Input
+              id="newVenueName"
+              name="name"
+              required
+              value={venueName}
+              onChange={(event) => setVenueName(event.target.value)}
+              maxLength={120}
+              placeholder="Venue name"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="newVenueLocation">Location</Label>
+            <div className="relative">
+              <Input
+                id="newVenueLocation"
+                type="text"
+                autoComplete="off"
+                placeholder="Search city and country"
+                value={locationQuery}
+                onChange={handleLocationInputChange}
+              />
+
+              {suggestions.length > 0 ? (
+                <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-md border bg-popover p-1 shadow-sm">
+                  {suggestions.map((suggestion) => (
+                    <button
+                      key={suggestion.placeId}
+                      type="button"
+                      onMouseDown={(event) => {
+                        event.preventDefault()
+                        handleLocationSelect(suggestion)
+                      }}
+                      className="w-full rounded-sm px-3 py-2 text-left text-sm hover:bg-muted"
+                    >
+                      {suggestion.displayName}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            {isSearching ? (
+              <p className="text-xs text-muted-foreground">Searching locations...</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Choose a location from suggestions to set city and country.
+              </p>
+            )}
+
+            {locationTouched && !selectedLocation ? (
+              <p className="text-xs text-destructive">
+                Select a valid location from the suggestion list.
+              </p>
+            ) : null}
+          </div>
+
+          <input type="hidden" name="city" value={selectedLocation?.city ?? ""} />
+          <input type="hidden" name="country" value={selectedLocation?.country ?? ""} />
+
+          <div className="flex justify-end">
+            <Button type="submit" disabled={!canCreateAndLink}>
+              Create and bind
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+
+  if (isMobile) {
+    return (
+      <Drawer>
+        <DrawerTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="default"
+            disabled={disabled}
+            className="h-9 px-3"
+          >
+            <PlusIcon className="size-4" />
+            New
+          </Button>
+        </DrawerTrigger>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>New team venue</DrawerTitle>
+            <DrawerDescription>
+              Bind an existing organization venue or create a new venue and bind it
+              immediately to this team.
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="px-4 pb-4">{createTeamVenueContent}</div>
+        </DrawerContent>
+      </Drawer>
+    )
+  }
+
   return (
     <Dialog>
       <DialogTrigger
@@ -191,139 +376,7 @@ export function CreateTeamVenueDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5">
-          <div className="space-y-2">
-            <form action={createTeamVenueLinkAction} className="space-y-3">
-              <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
-              {scope.activeTeamId ? (
-                <input type="hidden" name="scopeTeamId" value={scope.activeTeamId} />
-              ) : null}
-              <input type="hidden" name="scopeStatus" value={selectedStatusFilter} />
-
-              <div className="space-y-2">
-                <Label htmlFor="venueId">Organization venue</Label>
-                <select
-                  id="venueId"
-                  name="venueId"
-                  required
-                  value={venueId}
-                  onChange={(event) => setVenueId(event.target.value)}
-                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none ring-ring/50 transition-colors focus-visible:ring-[3px]"
-                >
-                  <option value="">Select venue</option>
-                  {availableVenueOptions.map((venueOption) => (
-                    <option key={venueOption.venueId} value={venueOption.venueId}>
-                      {venueOption.name} —{" "}
-                      {formatLocation(venueOption.city, venueOption.country)} (
-                      {venueOption.isActive ? "Active" : "Deprecated"})
-                    </option>
-                  ))}
-                </select>
-
-                {availableVenueOptions.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    No unlinked organization venues are available for this team.
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="flex justify-end">
-                <Button type="submit" disabled={!canLinkExisting}>
-                  Bind venue
-                </Button>
-              </div>
-            </form>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Create new venue and bind</p>
-            <form
-              action={createAndLinkTeamVenueAction}
-              className="space-y-3"
-              onSubmit={handleCreateAndBindSubmit}
-            >
-              <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
-              {scope.activeTeamId ? (
-                <input type="hidden" name="scopeTeamId" value={scope.activeTeamId} />
-              ) : null}
-              <input type="hidden" name="scopeStatus" value={selectedStatusFilter} />
-
-              <div className="space-y-2">
-                <Label htmlFor="newVenueName">Name</Label>
-                <Input
-                  id="newVenueName"
-                  name="name"
-                  required
-                  value={venueName}
-                  onChange={(event) => setVenueName(event.target.value)}
-                  maxLength={120}
-                  placeholder="Venue name"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="newVenueLocation">Location</Label>
-                <div className="relative">
-                  <Input
-                    id="newVenueLocation"
-                    type="text"
-                    autoComplete="off"
-                    placeholder="Search city and country"
-                    value={locationQuery}
-                    onChange={handleLocationInputChange}
-                  />
-
-                  {suggestions.length > 0 ? (
-                    <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-md border bg-popover p-1 shadow-sm">
-                      {suggestions.map((suggestion) => (
-                        <button
-                          key={suggestion.placeId}
-                          type="button"
-                          onMouseDown={(event) => {
-                            event.preventDefault()
-                            handleLocationSelect(suggestion)
-                          }}
-                          className="w-full rounded-sm px-3 py-2 text-left text-sm hover:bg-muted"
-                        >
-                          {suggestion.displayName}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-
-                {isSearching ? (
-                  <p className="text-xs text-muted-foreground">Searching locations...</p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Choose a location from suggestions to set city and country.
-                  </p>
-                )}
-
-                {locationTouched && !selectedLocation ? (
-                  <p className="text-xs text-destructive">
-                    Select a valid location from the suggestion list.
-                  </p>
-                ) : null}
-              </div>
-
-              <input type="hidden" name="city" value={selectedLocation?.city ?? ""} />
-              <input
-                type="hidden"
-                name="country"
-                value={selectedLocation?.country ?? ""}
-              />
-
-              <div className="flex justify-end">
-                <Button type="submit" disabled={!canCreateAndLink}>
-                  Create and bind
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
+        {createTeamVenueContent}
       </DialogContent>
     </Dialog>
   )
@@ -342,6 +395,7 @@ function EditTeamVenueDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const isMobile = useIsMobile()
   const [name, setName] = React.useState(teamVenue.venueName)
   const [city, setCity] = React.useState(teamVenue.city)
   const [country, setCountry] = React.useState(teamVenue.country)
@@ -361,6 +415,77 @@ function EditTeamVenueDialog({
     normalizeText(city).length > 0 &&
     normalizeText(country).length > 0
 
+  const editTeamVenueForm = (
+    <form action={updateTeamVenueAction} className="space-y-4">
+      <input type="hidden" name="teamVenueId" value={teamVenue.id} />
+      <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
+      {scope.activeTeamId ? (
+        <input type="hidden" name="scopeTeamId" value={scope.activeTeamId} />
+      ) : null}
+      <input type="hidden" name="scopeStatus" value={selectedStatusFilter} />
+
+      <div className="space-y-2">
+        <Label htmlFor={`edit-team-venue-name-${teamVenue.id}`}>Name</Label>
+        <Input
+          id={`edit-team-venue-name-${teamVenue.id}`}
+          name="name"
+          required
+          maxLength={120}
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor={`edit-team-venue-city-${teamVenue.id}`}>City</Label>
+          <Input
+            id={`edit-team-venue-city-${teamVenue.id}`}
+            name="city"
+            required
+            maxLength={120}
+            value={city}
+            onChange={(event) => setCity(event.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor={`edit-team-venue-country-${teamVenue.id}`}>Country</Label>
+          <Input
+            id={`edit-team-venue-country-${teamVenue.id}`}
+            name="country"
+            required
+            maxLength={120}
+            value={country}
+            onChange={(event) => setCountry(event.target.value)}
+          />
+        </div>
+      </div>
+
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={!canSubmit}>
+          Save changes
+        </Button>
+      </DialogFooter>
+    </form>
+  )
+
+  if (isMobile) {
+    return (
+      <Drawer open={open} onOpenChange={onOpenChange}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Edit team venue</DrawerTitle>
+            <DrawerDescription>{teamVenue.venueName}</DrawerDescription>
+          </DrawerHeader>
+          <div className="px-4 pb-4">{editTeamVenueForm}</div>
+        </DrawerContent>
+      </Drawer>
+    )
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
@@ -369,60 +494,7 @@ function EditTeamVenueDialog({
           <DialogDescription>{teamVenue.venueName}</DialogDescription>
         </DialogHeader>
 
-        <form action={updateTeamVenueAction} className="space-y-4">
-          <input type="hidden" name="teamVenueId" value={teamVenue.id} />
-          <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
-          {scope.activeTeamId ? (
-            <input type="hidden" name="scopeTeamId" value={scope.activeTeamId} />
-          ) : null}
-          <input type="hidden" name="scopeStatus" value={selectedStatusFilter} />
-
-          <div className="space-y-2">
-            <Label htmlFor={`edit-team-venue-name-${teamVenue.id}`}>Name</Label>
-            <Input
-              id={`edit-team-venue-name-${teamVenue.id}`}
-              name="name"
-              required
-              maxLength={120}
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-            />
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor={`edit-team-venue-city-${teamVenue.id}`}>City</Label>
-              <Input
-                id={`edit-team-venue-city-${teamVenue.id}`}
-                name="city"
-                required
-                maxLength={120}
-                value={city}
-                onChange={(event) => setCity(event.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor={`edit-team-venue-country-${teamVenue.id}`}>Country</Label>
-              <Input
-                id={`edit-team-venue-country-${teamVenue.id}`}
-                name="country"
-                required
-                maxLength={120}
-                value={country}
-                onChange={(event) => setCountry(event.target.value)}
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={!canSubmit}>
-              Save changes
-            </Button>
-          </DialogFooter>
-        </form>
+        {editTeamVenueForm}
       </DialogContent>
     </Dialog>
   )
@@ -557,15 +629,89 @@ export function TeamVenuesTable({
   currentYear,
 }: TeamVenuesTableProps) {
   const router = useRouter()
+  const emptyMessage = resolveEmptyMessage({
+    noTeamSelected,
+    selectedStatusFilter,
+  })
 
   return (
     <section className="space-y-4">
-      <header className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">Venues</h2>
-        {toolbar}
+      <header className="flex items-center justify-end gap-2 md:justify-between">
+        <h2 className="hidden text-lg font-semibold md:block">Venues</h2>
+        {toolbar ? <div className="w-full md:w-auto">{toolbar}</div> : null}
       </header>
 
-      <div className="overflow-hidden rounded-xl border bg-card">
+      <div className="space-y-2 md:hidden">
+        {linkedVenues.length === 0 ? (
+          <div className="rounded-xl border bg-card px-4 py-6 text-sm text-muted-foreground">
+            {emptyMessage}
+          </div>
+        ) : (
+          linkedVenues.map((item) => {
+            const venueDetailHref = buildVenueDetailHref({
+              scope,
+              teamVenueId: item.id,
+              tab: "camps",
+            })
+
+            return (
+              <article
+                key={item.id}
+                role="link"
+                tabIndex={0}
+                className="cursor-pointer rounded-xl border bg-card px-3 py-3 transition-colors hover:bg-muted/30"
+                onClick={() => {
+                  router.push(venueDetailHref)
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault()
+                    router.push(venueDetailHref)
+                  }
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{item.venueName}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {formatLocation(item.city, item.country)}
+                    </p>
+                  </div>
+
+                  <div
+                    className="shrink-0"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                    }}
+                    onKeyDown={(event) => {
+                      event.stopPropagation()
+                    }}
+                  >
+                    {canManageVenueRows ? (
+                      <TeamVenueRowActionsMenu
+                        teamVenue={item}
+                        scope={scope}
+                        selectedStatusFilter={selectedStatusFilter}
+                      />
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled
+                        aria-label="More actions unavailable"
+                      >
+                        <MoreHorizontalIcon className="size-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </article>
+            )
+          })
+        )}
+      </div>
+
+      <div className="hidden overflow-hidden rounded-xl border bg-card md:block">
         <Table>
           <TableHeader className="bg-muted/40">
             <TableRow className="hover:bg-transparent">
@@ -579,11 +725,7 @@ export function TeamVenuesTable({
             {linkedVenues.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={4} className="py-6 text-sm text-muted-foreground">
-                  {noTeamSelected
-                    ? "No team selected. Choose a team to view linked venues."
-                    : selectedStatusFilter === "active"
-                      ? "No active venues linked to this team yet."
-                      : "No deprecated venues linked to this team."}
+                  {emptyMessage}
                 </TableCell>
               </TableRow>
             ) : (

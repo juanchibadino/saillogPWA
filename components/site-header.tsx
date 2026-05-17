@@ -5,12 +5,15 @@ import { useEffect, useState } from "react"
 import {
   type ReadonlyURLSearchParams,
   usePathname,
+  useRouter,
   useSearchParams,
 } from "next/navigation"
+import { ArrowLeftIcon } from "lucide-react"
 
 import { ThemeToggle } from "@/components/theme-toggle"
 import { InstallAppButton } from "@/components/pwa/install-app-button"
 import { PwaDebugPanel } from "@/components/pwa/pwa-debug-panel"
+import { useIsMobile } from "@/hooks/use-mobile"
 import {
   NAVIGATION_SCOPE_ORG_QUERY_KEY,
   NAVIGATION_SCOPE_TEAM_QUERY_KEY,
@@ -24,7 +27,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 
@@ -43,12 +46,6 @@ type SessionBreadcrumbResponse = {
   venue_name: string | null
   camp_id: string | null
   camp_name: string | null
-}
-
-type BillingPlanTier = "free" | "pro" | "olympic"
-
-type BillingPlanResponse = {
-  planTier: BillingPlanTier | null
 }
 
 function getSectionTitle(pathname: string): string {
@@ -333,13 +330,55 @@ function buildScopedHrefWithTab(
   return baseHref.includes("?") ? `${baseHref}&tab=${tab}` : `${baseHref}?tab=${tab}`
 }
 
+function shouldUsePhaseOneMobileHeader(pathname: string): boolean {
+  if (pathname.startsWith("/team-venues")) {
+    return true
+  }
+
+  if (pathname.startsWith("/team-camps")) {
+    return true
+  }
+
+  if (pathname.startsWith("/team-sessions")) {
+    return true
+  }
+
+  return false
+}
+
+function resolveMobileBackFallbackPath(pathname: string): string {
+  if (/^\/team-camps\/[^/]+$/.test(pathname)) {
+    return "/team-camps"
+  }
+
+  if (/^\/team-sessions\/[^/]+$/.test(pathname)) {
+    return "/team-sessions"
+  }
+
+  if (pathname.startsWith("/team-venues")) {
+    return "/team-home"
+  }
+
+  if (pathname.startsWith("/team-camps")) {
+    return "/team-home"
+  }
+
+  if (pathname.startsWith("/team-sessions")) {
+    return "/team-home"
+  }
+
+  return "/team-home"
+}
+
 export function SiteHeader({
   navigation,
 }: {
   navigation: ResolvedNavigationScope | null
 }) {
   const pathname = usePathname()
+  const router = useRouter()
   const searchParams = useSearchParams()
+  const isMobile = useIsMobile()
   const isPwaDebugEnabled =
     searchParams.get("pwaDebug") === "1" || searchParams.get("pwaDebug") === "true"
   const [venueNameById, setVenueNameById] = useState<
@@ -347,9 +386,6 @@ export function SiteHeader({
   >({})
   const [sessionBreadcrumbById, setSessionBreadcrumbById] = useState<
     Record<string, SessionBreadcrumbResponse | null>
-  >({})
-  const [planTierByOrganizationId, setPlanTierByOrganizationId] = useState<
-    Record<string, BillingPlanTier | null>
   >({})
 
   const sectionTitle = pathname.startsWith("/team-venues")
@@ -395,6 +431,13 @@ export function SiteHeader({
       ?.name ?? "No team selected"
   const teamHomeHref = buildScopedHref("/team-home", activeScope)
   const venuesHref = buildScopedHref("/venues", activeScope)
+  const phaseOneMobileHeaderEnabled =
+    isMobile && shouldUsePhaseOneMobileHeader(pathname)
+  const mobileHeaderTitle = getSectionTitle(pathname)
+  const mobileBackFallbackHref = buildScopedHref(
+    resolveMobileBackFallbackPath(pathname),
+    activeScope,
+  )
 
   useEffect(() => {
     if (!venueDetailId) {
@@ -525,61 +568,6 @@ export function SiteHeader({
     }
   }, [activeScope.activeOrgId, activeScope.activeTeamId, sessionDetailId])
 
-  useEffect(() => {
-    if (!activeScope.activeOrgId) {
-      return
-    }
-
-    const organizationId = activeScope.activeOrgId
-
-    if (organizationId in planTierByOrganizationId) {
-      return
-    }
-
-    const controller = new AbortController()
-
-    const loadPlanTier = async () => {
-      try {
-        const response = await fetch(
-          `/api/billing/plan?org=${encodeURIComponent(organizationId)}`,
-          {
-            cache: "no-store",
-            signal: controller.signal,
-          },
-        )
-
-        if (!response.ok) {
-          setPlanTierByOrganizationId((currentValue) => ({
-            ...currentValue,
-            [organizationId]: "free",
-          }))
-          return
-        }
-
-        const payload = (await response.json()) as BillingPlanResponse
-        setPlanTierByOrganizationId((currentValue) => ({
-          ...currentValue,
-          [organizationId]: payload.planTier,
-        }))
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          return
-        }
-
-        setPlanTierByOrganizationId((currentValue) => ({
-          ...currentValue,
-          [organizationId]: "free",
-        }))
-      }
-    }
-
-    void loadPlanTier()
-
-    return () => {
-      controller.abort()
-    }
-  }, [activeScope.activeOrgId, planTierByOrganizationId])
-
   const venueName = venueDetailId ? venueNameById[venueDetailId] ?? null : null
   const sessionBreadcrumb = sessionDetailId
     ? sessionBreadcrumbById[sessionDetailId] ?? null
@@ -599,15 +587,37 @@ export function SiteHeader({
           "sessions",
         )
       : buildScopedHref("/team-camps", activeScope)
-  const activePlanTier = activeScope.activeOrgId
-    ? planTierByOrganizationId[activeScope.activeOrgId]
-    : null
-  const planBadgeLabel =
-    activePlanTier === "pro"
-      ? "Pro Plan"
-      : activePlanTier === "olympic"
-        ? "Olympic Plan"
-        : "Free Plan"
+
+  function handleMobileBack(): void {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back()
+      return
+    }
+
+    router.push(mobileBackFallbackHref)
+  }
+
+  if (phaseOneMobileHeaderEnabled) {
+    const showMobileSidebarTrigger =
+      pathname === "/team-sessions" || pathname === "/team-venues"
+
+    return (
+      <header className="flex h-12 shrink-0 items-center border-b bg-background px-4">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={handleMobileBack}
+          aria-label="Go back"
+          className="-ml-1"
+        >
+          <ArrowLeftIcon className="size-4" />
+        </Button>
+        <h1 className="ml-2 flex-1 truncate text-base font-medium">{mobileHeaderTitle}</h1>
+        {showMobileSidebarTrigger ? <SidebarTrigger className="ml-1" /> : null}
+      </header>
+    )
+  }
 
   return (
     <header className="group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 flex h-12 shrink-0 items-center gap-2 border-b bg-background transition-[width,height] ease-linear">
@@ -683,7 +693,6 @@ export function SiteHeader({
         <div className="ml-auto flex items-center gap-2">
           <PwaDebugPanel enabled={isPwaDebugEnabled} />
           <InstallAppButton />
-          <Badge variant="secondary">{planBadgeLabel}</Badge>
           <ThemeToggle />
         </div>
       </div>

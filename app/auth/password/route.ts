@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const dashboardUrl = await buildRequestUrl("/dashboard", request);
+  const postAuthUrl = await buildRequestUrl("/post-auth", request);
   const passwordErrorUrl = await buildRequestUrl("/sign-in?error=password_failed", request);
 
   const supabase = await createServerSupabaseClient();
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     });
   }
 
-  return NextResponse.redirect(dashboardUrl, {
+  return NextResponse.redirect(postAuthUrl, {
     status: 303,
   });
 }

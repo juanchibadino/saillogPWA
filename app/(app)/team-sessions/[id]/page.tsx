@@ -294,7 +294,6 @@ export default async function SessionDetailPage({
               <CardDescription>Date</CardDescription>
               <CardTitle className="text-xl font-semibold">{sessionDateLabel}</CardTitle>
             </CardHeader>
-            <CardContent className="text-xs text-muted-foreground">Session calendar date</CardContent>
           </Card>
 
           <Card>
@@ -304,7 +303,6 @@ export default async function SessionDetailPage({
                 {formatTimeLabel(detailData.session.dock_out_at)}
               </CardTitle>
             </CardHeader>
-            <CardContent className="text-xs text-muted-foreground">UTC</CardContent>
           </Card>
 
           <Card>
@@ -314,7 +312,6 @@ export default async function SessionDetailPage({
                 {formatTimeLabel(detailData.session.dock_in_at)}
               </CardTitle>
             </CardHeader>
-            <CardContent className="text-xs text-muted-foreground">UTC</CardContent>
           </Card>
 
           <Card>
@@ -324,9 +321,6 @@ export default async function SessionDetailPage({
                 {formatDurationLabel(durationMinutes)}
               </CardTitle>
             </CardHeader>
-            <CardContent className="text-xs text-muted-foreground">
-              Computed from start/end when available
-            </CardContent>
           </Card>
         </div>
       </section>

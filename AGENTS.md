@@ -490,3 +490,43 @@ Recommended setup:
 - place this content in the repo root as `AGENTS.md`
 - archive or remove older overlapping planning docs
 - if you keep a `PLAN.md`, make it a short pointer back to this document instead of a second source of truth
+
+
+---
+
+# Mobile PWA UI Rules
+
+## Navigation
+- Desktop uses sidebar.
+- Mobile uses bottom navigation.
+- Secondary navigation goes inside Sheet/Drawer.
+
+## Lists
+- Desktop can use DataTable.
+- Mobile uses Card/List views.
+- Each row/card must be tappable.
+
+## Forms
+- One column on mobile.
+- Sticky save action at bottom when needed.
+- Inputs minimum h-11.
+- Avoid tiny icon-only actions.
+
+## Filters
+- Desktop filters can be inline.
+- Mobile filters open in a Sheet.
+
+## Detail Screens
+- Mobile detail pages should have clear header, primary action, and sections.
+- Avoid showing too many panels at once.
+
+## Touch
+- Minimum target: 44px / preferably 48px.
+- Icon buttons use h-11 w-11 or larger.
+
+## PWA
+- Use manifest.
+- Use service worker.
+- Cache app shell.
+- Show offline state.
+- Preserve unsaved form state.

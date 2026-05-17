@@ -192,6 +192,10 @@ export default async function TeamVenuesPage({
         toolbar={
           <TeamVenuesToolbar
             selectedValue={selectedStatusFilter}
+            clearHref={buildTeamVenueStatusHref({
+              statusFilter: "active",
+              scope,
+            })}
             options={[
               {
                 label: "Active",
