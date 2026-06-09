@@ -7,6 +7,8 @@ It is the single source of truth for:
 - development workflow
 - execution order
 
+Read `PROJECT_STATE.md` only when the task depends on current progress, backlog, or recent decisions.
+
 ---
 
 ## 1. Mission
@@ -489,7 +491,6 @@ Use this file as the canonical project instruction document.
 Recommended setup:
 - place this content in the repo root as `AGENTS.md`
 - archive or remove older overlapping planning docs
-- if you keep a `PLAN.md`, make it a short pointer back to this document instead of a second source of truth
 
 
 ---

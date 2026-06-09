@@ -22,6 +22,8 @@ export async function GET(request: Request, context: RouteContext) {
         venue_name: null,
         camp_id: null,
         camp_name: null,
+        session_date: null,
+        dock_out_at: null,
       },
       { status: 400 },
     )
@@ -40,6 +42,8 @@ export async function GET(request: Request, context: RouteContext) {
         venue_name: null,
         camp_id: null,
         camp_name: null,
+        session_date: null,
+        dock_out_at: null,
       },
       { status: 401 },
     )
@@ -51,7 +55,7 @@ export async function GET(request: Request, context: RouteContext) {
 
   const { data: sessionRow, error: sessionError } = await supabase
     .from("sessions")
-    .select("id,camp_id")
+    .select("id,camp_id,session_date,dock_out_at")
     .eq("id", sessionId)
     .maybeSingle()
 
@@ -62,6 +66,8 @@ export async function GET(request: Request, context: RouteContext) {
       venue_name: null,
       camp_id: null,
       camp_name: null,
+      session_date: null,
+      dock_out_at: null,
     })
   }
 
@@ -78,6 +84,8 @@ export async function GET(request: Request, context: RouteContext) {
       venue_name: null,
       camp_id: null,
       camp_name: null,
+      session_date: null,
+      dock_out_at: null,
     })
   }
 
@@ -99,6 +107,8 @@ export async function GET(request: Request, context: RouteContext) {
       venue_name: null,
       camp_id: null,
       camp_name: null,
+      session_date: null,
+      dock_out_at: null,
     })
   }
 
@@ -130,6 +140,8 @@ export async function GET(request: Request, context: RouteContext) {
       venue_name: null,
       camp_id: null,
       camp_name: null,
+      session_date: null,
+      dock_out_at: null,
     })
   }
 
@@ -140,6 +152,8 @@ export async function GET(request: Request, context: RouteContext) {
       venue_name: null,
       camp_id: null,
       camp_name: null,
+      session_date: null,
+      dock_out_at: null,
     })
   }
 
@@ -149,5 +163,7 @@ export async function GET(request: Request, context: RouteContext) {
     venue_name: venueRow.name ?? null,
     camp_id: campRow.id ?? null,
     camp_name: campRow.name ?? null,
+    session_date: sessionRow.session_date ?? null,
+    dock_out_at: sessionRow.dock_out_at ?? null,
   })
 }

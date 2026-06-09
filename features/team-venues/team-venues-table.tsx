@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { MoreHorizontalIcon, PlusIcon } from "lucide-react"
+import { MoreVerticalIcon, PlusIcon } from "lucide-react"
 import { useRouter } from "next/navigation"
 import type { ReactNode } from "react"
 
@@ -500,58 +500,89 @@ function EditTeamVenueDialog({
   )
 }
 
-function DeleteTeamVenueDialog({
+function UnlinkTeamVenueDialog({
   teamVenue,
   scope,
   selectedStatusFilter,
-  deleteDisabled,
+  unlinkDisabled,
   open,
   onOpenChange,
 }: {
   teamVenue: TeamVenueListItem
   scope: NavigationScope
   selectedStatusFilter: TeamVenueStatusFilter
-  deleteDisabled: boolean
+  unlinkDisabled: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const isMobile = useIsMobile()
+
+  const confirmationContent = (
+    <form action={deleteTeamVenueAction} className="space-y-4">
+      <input type="hidden" name="teamVenueId" value={teamVenue.id} />
+      <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
+      {scope.activeTeamId ? (
+        <input type="hidden" name="scopeTeamId" value={scope.activeTeamId} />
+      ) : null}
+      <input type="hidden" name="scopeStatus" value={selectedStatusFilter} />
+
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          Cancel
+        </Button>
+        <Button type="submit" variant="destructive" disabled={unlinkDisabled}>
+          Unlink
+        </Button>
+      </DialogFooter>
+    </form>
+  )
+
+  if (isMobile) {
+    return (
+      <Drawer open={open} onOpenChange={onOpenChange}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Unlink team venue</DrawerTitle>
+            <DrawerDescription>
+              {unlinkDisabled ? (
+                <>
+                  <strong>{teamVenue.venueName}</strong> has linked camps and cannot be
+                  unlinked.
+                </>
+              ) : (
+                <>
+                  This will unlink <strong>{teamVenue.venueName}</strong> from the selected
+                  team.
+                </>
+              )}
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="px-4 pb-4">{confirmationContent}</div>
+        </DrawerContent>
+      </Drawer>
+    )
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Delete team venue</DialogTitle>
+          <DialogTitle>Unlink team venue</DialogTitle>
           <DialogDescription>
-            {deleteDisabled ? (
+            {unlinkDisabled ? (
               <>
-                <strong>{teamVenue.venueName}</strong> has linked camps or sessions and
-                cannot be deleted.
+                <strong>{teamVenue.venueName}</strong> has linked camps and cannot be
+                unlinked.
               </>
             ) : (
               <>
-                This will remove <strong>{teamVenue.venueName}</strong> from the selected
+                This will unlink <strong>{teamVenue.venueName}</strong> from the selected
                 team.
               </>
             )}
           </DialogDescription>
         </DialogHeader>
-
-        <form action={deleteTeamVenueAction} className="space-y-4">
-          <input type="hidden" name="teamVenueId" value={teamVenue.id} />
-          <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
-          {scope.activeTeamId ? (
-            <input type="hidden" name="scopeTeamId" value={scope.activeTeamId} />
-          ) : null}
-          <input type="hidden" name="scopeStatus" value={selectedStatusFilter} />
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="destructive" disabled={deleteDisabled}>
-              Delete
-            </Button>
-          </DialogFooter>
-        </form>
+        {confirmationContent}
       </DialogContent>
     </Dialog>
   )
@@ -561,14 +592,16 @@ function TeamVenueRowActionsMenu({
   teamVenue,
   scope,
   selectedStatusFilter,
+  canManageVenueRows,
 }: {
   teamVenue: TeamVenueListItem
   scope: NavigationScope
   selectedStatusFilter: TeamVenueStatusFilter
+  canManageVenueRows: boolean
 }) {
   const [isEditOpen, setIsEditOpen] = React.useState(false)
-  const [isDeleteOpen, setIsDeleteOpen] = React.useState(false)
-  const canDeleteTeamVenue = teamVenue.totalCampCount === 0
+  const [isUnlinkOpen, setIsUnlinkOpen] = React.useState(false)
+  const canUnlinkTeamVenue = canManageVenueRows && teamVenue.totalCampCount === 0
 
   return (
     <>
@@ -577,10 +610,11 @@ function TeamVenueRowActionsMenu({
           render={<Button type="button" variant="ghost" size="icon" />}
           aria-label={`Open actions for ${teamVenue.venueName}`}
         >
-          <MoreHorizontalIcon className="size-4" />
+          <MoreVerticalIcon className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem
+            disabled={!canManageVenueRows}
             onClick={() => {
               setIsEditOpen(true)
             }}
@@ -589,12 +623,12 @@ function TeamVenueRowActionsMenu({
           </DropdownMenuItem>
           <DropdownMenuItem
             variant="destructive"
-            disabled={!canDeleteTeamVenue}
+            disabled={!canUnlinkTeamVenue}
             onClick={() => {
-              setIsDeleteOpen(true)
+              setIsUnlinkOpen(true)
             }}
           >
-            Delete
+            Unlink
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -607,13 +641,13 @@ function TeamVenueRowActionsMenu({
         onOpenChange={setIsEditOpen}
       />
 
-      <DeleteTeamVenueDialog
+      <UnlinkTeamVenueDialog
         teamVenue={teamVenue}
         scope={scope}
         selectedStatusFilter={selectedStatusFilter}
-        deleteDisabled={!canDeleteTeamVenue}
-        open={isDeleteOpen}
-        onOpenChange={setIsDeleteOpen}
+        unlinkDisabled={!canUnlinkTeamVenue}
+        open={isUnlinkOpen}
+        onOpenChange={setIsUnlinkOpen}
       />
     </>
   )
@@ -652,6 +686,7 @@ export function TeamVenuesTable({
               scope,
               teamVenueId: item.id,
               tab: "camps",
+              from: "team_home",
             })
 
             return (
@@ -687,22 +722,12 @@ export function TeamVenuesTable({
                       event.stopPropagation()
                     }}
                   >
-                    {canManageVenueRows ? (
-                      <TeamVenueRowActionsMenu
-                        teamVenue={item}
-                        scope={scope}
-                        selectedStatusFilter={selectedStatusFilter}
-                      />
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled
-                        aria-label="More actions unavailable"
-                      >
-                        <MoreHorizontalIcon className="size-4" />
-                      </Button>
-                    )}
+                    <TeamVenueRowActionsMenu
+                      teamVenue={item}
+                      scope={scope}
+                      selectedStatusFilter={selectedStatusFilter}
+                      canManageVenueRows={canManageVenueRows}
+                    />
                   </div>
                 </div>
               </article>
@@ -734,6 +759,7 @@ export function TeamVenuesTable({
                   scope,
                   teamVenueId: item.id,
                   tab: "camps",
+                  from: "team_home",
                 })
 
                 return (
@@ -764,22 +790,12 @@ export function TeamVenuesTable({
                         event.stopPropagation()
                       }}
                     >
-                      {canManageVenueRows ? (
-                        <TeamVenueRowActionsMenu
-                          teamVenue={item}
-                          scope={scope}
-                          selectedStatusFilter={selectedStatusFilter}
-                        />
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          disabled
-                          aria-label="More actions unavailable"
-                        >
-                          <MoreHorizontalIcon className="size-4" />
-                        </Button>
-                      )}
+                      <TeamVenueRowActionsMenu
+                        teamVenue={item}
+                        scope={scope}
+                        selectedStatusFilter={selectedStatusFilter}
+                        canManageVenueRows={canManageVenueRows}
+                      />
                     </TableCell>
                   </TableRow>
                 )

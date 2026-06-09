@@ -1,6 +1,5 @@
 import {
   Card,
-  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -10,6 +9,7 @@ import {
   SessionDetailTabsClient,
   SessionHeaderActions,
 } from "@/features/sessions/session-detail-tabs-client"
+import { SessionMobileSummary } from "@/features/sessions/session-mobile-summary"
 import { SessionsFeedback } from "@/features/sessions/sessions-feedback"
 import {
   SESSION_DETAIL_TABS,
@@ -127,10 +127,9 @@ function formatTimeLabel(value: string | null): string {
   }
 
   return new Intl.DateTimeFormat("en-US", {
-    hour: "2-digit",
+    hour: "numeric",
     minute: "2-digit",
-    hour12: false,
-    timeZone: "UTC",
+    hour12: true,
   }).format(date)
 }
 
@@ -288,7 +287,15 @@ export default async function SessionDetailPage({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="md:hidden">
+          <SessionMobileSummary
+            startTime={formatTimeLabel(detailData.session.dock_out_at)}
+            endTime={formatTimeLabel(detailData.session.dock_in_at)}
+            totalDuration={formatDurationLabel(durationMinutes)}
+          />
+        </div>
+
+        <div className="hidden grid-cols-2 gap-4 md:grid lg:grid-cols-4">
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Date</CardDescription>

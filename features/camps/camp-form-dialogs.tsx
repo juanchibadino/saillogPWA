@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { MoreHorizontalIcon, PencilIcon, PlusIcon } from "lucide-react"
+import { MoreVerticalIcon, PencilIcon, PlusIcon } from "lucide-react"
 
 import {
   createCampAction,
@@ -21,11 +21,20 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer"
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
@@ -200,10 +209,55 @@ export function CreateCampDialog({
   currentPage: number
   disabled: boolean
 }) {
+  const isMobile = useIsMobile()
   const defaultTeamVenueId =
     teamVenueOptions.find((option) => option.venueId === selectedVenueId)?.teamVenueId ??
     teamVenueOptions[0]?.teamVenueId ??
     ""
+
+  if (isMobile) {
+    return (
+      <Drawer>
+        <DrawerTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="default"
+            disabled={disabled}
+            className="h-9 px-3"
+          >
+            <PlusIcon className="size-4" />
+            New
+          </Button>
+        </DrawerTrigger>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Create camp</DrawerTitle>
+            <DrawerDescription>Add a camp to one of the active team venues.</DrawerDescription>
+          </DrawerHeader>
+          <div className="px-4 pb-4">
+            <CampDialogForm
+              teamVenueOptions={teamVenueOptions}
+              initialValues={{
+                teamVenueId: defaultTeamVenueId,
+                name: "",
+                campType: "training",
+                startDate: "",
+                endDate: "",
+              }}
+              includeIsActive={false}
+              idPrefix="create-camp"
+              submitLabel="Create camp"
+              scope={scope}
+              selectedVenueId={selectedVenueId}
+              currentPage={currentPage}
+              action={createCampAction}
+            />
+          </div>
+        </DrawerContent>
+      </Drawer>
+    )
+  }
 
   return (
     <Dialog>
@@ -262,7 +316,50 @@ export function EditCampDialog({
   onOpenChange?: (open: boolean) => void
   hideTrigger?: boolean
 }) {
+  const isMobile = useIsMobile()
   const isOpenControlled = typeof open === "boolean" && typeof onOpenChange === "function"
+
+  if (isMobile) {
+    return (
+      <Drawer open={open} onOpenChange={onOpenChange}>
+        {!hideTrigger && !isOpenControlled ? (
+          <DrawerTrigger asChild>
+            <Button variant="outline" size="default" className="h-9 px-3">
+              <PencilIcon className="size-4" />
+              Edit
+            </Button>
+          </DrawerTrigger>
+        ) : null}
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Edit camp</DrawerTitle>
+            <DrawerDescription>{camp.name}</DrawerDescription>
+          </DrawerHeader>
+          <div className="px-4 pb-4">
+            <CampDialogForm
+              teamVenueOptions={teamVenueOptions}
+              initialValues={{
+                id: camp.id,
+                teamVenueId: camp.teamVenueId,
+                name: camp.name,
+                campType: camp.campType,
+                startDate: camp.startDate,
+                endDate: camp.endDate,
+                isActive: camp.isActive,
+              }}
+              includeIsActive
+              idPrefix={`edit-camp-${camp.id}`}
+              submitLabel="Save changes"
+              scope={scope}
+              selectedVenueId={selectedVenueId}
+              currentPage={currentPage}
+              action={updateCampAction}
+            />
+          </div>
+        </DrawerContent>
+      </Drawer>
+    )
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -317,39 +414,61 @@ function DeleteCampDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const isMobile = useIsMobile()
+
+  const deleteCampContent = (
+    <form action={deleteCampAction} className="space-y-4">
+      <input type="hidden" name="id" value={camp.id} />
+      <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
+      {scope.activeTeamId ? (
+        <input type="hidden" name="scopeTeamId" value={scope.activeTeamId} />
+      ) : null}
+      {selectedVenueId ? (
+        <input type="hidden" name="scopeVenueId" value={selectedVenueId} />
+      ) : null}
+      {currentPage > 1 ? (
+        <input type="hidden" name="scopePage" value={String(currentPage)} />
+      ) : null}
+
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          Cancel
+        </Button>
+        <Button type="submit" variant="destructive">
+          Remove
+        </Button>
+      </DialogFooter>
+    </form>
+  )
+
+  if (isMobile) {
+    return (
+      <Drawer open={open} onOpenChange={onOpenChange}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Remove camp</DrawerTitle>
+            <DrawerDescription>
+              This will permanently remove <strong>{camp.name}</strong> and all sessions
+              linked to it.
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="px-4 pb-4">{deleteCampContent}</div>
+        </DrawerContent>
+      </Drawer>
+    )
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Delete camp</DialogTitle>
+          <DialogTitle>Remove camp</DialogTitle>
           <DialogDescription>
-            This will permanently delete <strong>{camp.name}</strong> and all sessions
+            This will permanently remove <strong>{camp.name}</strong> and all sessions
             linked to it.
           </DialogDescription>
         </DialogHeader>
-
-        <form action={deleteCampAction} className="space-y-4">
-          <input type="hidden" name="id" value={camp.id} />
-          <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
-          {scope.activeTeamId ? (
-            <input type="hidden" name="scopeTeamId" value={scope.activeTeamId} />
-          ) : null}
-          {selectedVenueId ? (
-            <input type="hidden" name="scopeVenueId" value={selectedVenueId} />
-          ) : null}
-          {currentPage > 1 ? (
-            <input type="hidden" name="scopePage" value={String(currentPage)} />
-          ) : null}
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="destructive">
-              Delete
-            </Button>
-          </DialogFooter>
-        </form>
+        {deleteCampContent}
       </DialogContent>
     </Dialog>
   )
@@ -375,14 +494,6 @@ export function CampActionsMenu({
   const [isEditOpen, setIsEditOpen] = React.useState(false)
   const [isDeleteOpen, setIsDeleteOpen] = React.useState(false)
 
-  if (!canEditCamp && !canDeleteCamp) {
-    return (
-      <Button variant="ghost" size="icon" disabled aria-label="More actions unavailable">
-        <MoreHorizontalIcon className="size-4" />
-      </Button>
-    )
-  }
-
   return (
     <>
       <DropdownMenu>
@@ -390,28 +501,26 @@ export function CampActionsMenu({
           render={<Button type="button" variant="ghost" size="icon" />}
           aria-label={`Open actions for ${camp.name}`}
         >
-          <MoreHorizontalIcon className="size-4" />
+          <MoreVerticalIcon className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          {canEditCamp ? (
-            <DropdownMenuItem
-              onClick={() => {
-                setIsEditOpen(true)
-              }}
-            >
-              Edit
-            </DropdownMenuItem>
-          ) : null}
-          {canDeleteCamp ? (
-            <DropdownMenuItem
-              variant="destructive"
-              onClick={() => {
-                setIsDeleteOpen(true)
-              }}
-            >
-              Delete
-            </DropdownMenuItem>
-          ) : null}
+          <DropdownMenuItem
+            disabled={!canEditCamp}
+            onClick={() => {
+              setIsEditOpen(true)
+            }}
+          >
+            Edit
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            variant="destructive"
+            disabled={!canDeleteCamp}
+            onClick={() => {
+              setIsDeleteOpen(true)
+            }}
+          >
+            Remove
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 

@@ -19,6 +19,8 @@ export function buildCampDetailHref(input: {
   campId: string
   tab?: CampDetailTab
   page?: number
+  from?: "team_home" | "venue"
+  fromVenueId?: string
 }): string {
   const params = new URLSearchParams()
   appendScopeParams(params, input.scope)
@@ -29,6 +31,14 @@ export function buildCampDetailHref(input: {
 
   if (typeof input.page === "number" && Number.isFinite(input.page) && input.page > 1) {
     params.set("page", String(Math.floor(input.page)))
+  }
+
+  if (input.from) {
+    params.set("from", input.from)
+  }
+
+  if (input.fromVenueId) {
+    params.set("fromVenueId", input.fromVenueId)
   }
 
   const query = params.toString()

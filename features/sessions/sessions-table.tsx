@@ -151,6 +151,7 @@ export function TeamSessionsTable({
             const detailHref = buildSessionDetailHref({
               scope,
               sessionId: session.id,
+              from: "team_home",
             })
 
             return (
@@ -279,6 +280,7 @@ export function TeamSessionsTable({
                       buildSessionDetailHref({
                         scope,
                         sessionId: session.id,
+                        from: "team_home",
                       }),
                     )
                   }}
@@ -289,6 +291,7 @@ export function TeamSessionsTable({
                         buildSessionDetailHref({
                           scope,
                           sessionId: session.id,
+                          from: "team_home",
                         }),
                       )
                     }
@@ -299,6 +302,7 @@ export function TeamSessionsTable({
                       href={buildSessionDetailHref({
                         scope,
                         sessionId: session.id,
+                        from: "team_home",
                       })}
                       className="underline-offset-4 hover:underline"
                     >

@@ -236,6 +236,8 @@ export function CampDetailTabsClient({
                         href={buildSessionDetailHref({
                           scope,
                           sessionId: session.id,
+                          from: "camp",
+                          fromCampId: campId,
                         })}
                         className="grid grid-cols-[minmax(0,1fr)_minmax(7rem,1fr)_auto] items-center gap-3 py-3"
                       >

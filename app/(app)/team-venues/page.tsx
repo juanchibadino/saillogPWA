@@ -40,7 +40,7 @@ function getStatusMessage(status: string | undefined): string | null {
   }
 
   if (status === "deleted") {
-    return "Team venue deleted successfully."
+    return "Team venue unlinked successfully."
   }
 
   return null
@@ -100,11 +100,11 @@ function getErrorMessage(error: string | undefined): string | null {
   }
 
   if (error === "delete_failed") {
-    return "Could not delete the team venue. Try again."
+    return "Could not unlink the team venue. Try again."
   }
 
   if (error === "has_linked_operations") {
-    return "This team venue has linked camps or sessions and cannot be deleted."
+    return "This team venue has linked camps and cannot be unlinked."
   }
 
   return null

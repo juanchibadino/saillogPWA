@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { FeedbackToast } from "@/components/shared/feedback-toast";
 import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
@@ -91,6 +92,7 @@ export default async function SignInPage({
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-muted/30 px-4 py-10">
+      <FeedbackToast statusMessage={statusMessage} errorMessage={errorMessage} />
       <Card className="w-full max-w-md border-border/70 bg-card/95 shadow-sm">
         <CardHeader className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
@@ -111,18 +113,6 @@ export default async function SignInPage({
             <p className="rounded-lg border border-sky-300 bg-sky-50 px-4 py-3 text-sm text-sky-800">
               New to Sailog? Enter your email below and we will send a secure sign-in
               link to create your account.
-            </p>
-          ) : null}
-
-          {statusMessage ? (
-            <p className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-              {statusMessage}
-            </p>
-          ) : null}
-
-          {errorMessage ? (
-            <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-              {errorMessage}
             </p>
           ) : null}
 

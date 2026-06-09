@@ -153,25 +153,22 @@ function buildKpis(input: {
     {
       label: "Total Camps",
       value: String(input.campCount),
-      note: "Current team",
+      note: "",
     },
     {
       label: "Total Sessions",
       value: String(input.sessionCount),
-      note: "Current team",
+      note: "",
     },
     {
       label: "Avg. Session",
       value: formatHoursAndMinutes(input.averageNetTimeMinutes),
-      note:
-        input.sessionsWithNetTime > 0
-          ? `${input.sessionsWithNetTime} sessions with net time`
-          : "No net time recorded",
+      note: "",
     },
     {
       label: "Net Time Sailed",
       value: formatTotalNetTime(input.totalNetTimeMinutes),
-      note: "Sum of net time for team",
+      note: "",
     },
   ]
 }

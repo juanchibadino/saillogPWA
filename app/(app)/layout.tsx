@@ -90,7 +90,7 @@ export default async function AppLayout({
       />
       <SidebarInset>
         <SiteHeader navigation={navigation} />
-        <div className="flex flex-1 flex-col">
+        <div className="flex flex-1 flex-col pt-12 md:pt-0">
           <div className="@container/main flex flex-1 flex-col gap-4 p-4 md:gap-6 md:p-6">
             {canAccessApp ? (
               children

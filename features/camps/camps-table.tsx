@@ -1,6 +1,5 @@
 "use client"
 
-import { MoreHorizontalIcon } from "lucide-react"
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import type { ReactNode } from "react"
@@ -14,7 +13,6 @@ import {
   CampActionsMenu,
 } from "@/features/camps/camp-form-dialogs"
 import type { NavigationScope } from "@/lib/navigation/types"
-import { Button } from "@/components/ui/button"
 import {
   Pagination,
   PaginationContent,
@@ -115,10 +113,10 @@ export function TeamCampsTable({
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">Camps</h2>
-        {toolbar ? <div className="w-full sm:w-auto">{toolbar}</div> : null}
-      </div>
+      <header className="flex items-center justify-end gap-2 md:justify-between">
+        <h2 className="hidden text-lg font-semibold md:block">Camps</h2>
+        {toolbar ? <div className="w-full md:w-auto">{toolbar}</div> : null}
+      </header>
 
       <div className="space-y-2 md:hidden">
         {camps.length === 0 ? (
@@ -131,6 +129,7 @@ export function TeamCampsTable({
               scope,
               campId: camp.id,
               tab: "sessions",
+              from: "team_home",
             })
 
             return (
@@ -159,16 +158,6 @@ export function TeamCampsTable({
                       {formatCampTypeLabel(camp.campType)} ·{" "}
                       {formatDateRange(camp.startDate, camp.endDate)}
                     </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Sessions:{" "}
-                      <span className="font-semibold text-foreground">
-                        {camp.sessionCount}
-                      </span>
-                      {" · "}
-                      <span className={camp.isActive ? "text-emerald-700" : "text-muted-foreground"}>
-                        {camp.isActive ? "Active" : "Inactive"}
-                      </span>
-                    </p>
                   </div>
 
                   <div
@@ -180,26 +169,15 @@ export function TeamCampsTable({
                       event.stopPropagation()
                     }}
                   >
-                    {canManageCamps || canDeleteCamps ? (
-                      <CampActionsMenu
-                        camp={camp}
-                        teamVenueOptions={teamVenueOptions}
-                        scope={scope}
-                        selectedVenueId={selectedVenueId}
-                        currentPage={currentPage}
-                        canEditCamp={canManageCamps}
-                        canDeleteCamp={canDeleteCamps}
-                      />
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled
-                        aria-label="More actions unavailable"
-                      >
-                        <MoreHorizontalIcon className="size-4" />
-                      </Button>
-                    )}
+                    <CampActionsMenu
+                      camp={camp}
+                      teamVenueOptions={teamVenueOptions}
+                      scope={scope}
+                      selectedVenueId={selectedVenueId}
+                      currentPage={currentPage}
+                      canEditCamp={canManageCamps}
+                      canDeleteCamp={canDeleteCamps}
+                    />
                   </div>
                 </div>
               </article>
@@ -241,6 +219,7 @@ export function TeamCampsTable({
                         scope,
                         campId: camp.id,
                         tab: "sessions",
+                        from: "team_home",
                       }),
                     )
                   }}
@@ -252,6 +231,7 @@ export function TeamCampsTable({
                           scope,
                           campId: camp.id,
                           tab: "sessions",
+                          from: "team_home",
                         }),
                       )
                     }
@@ -263,6 +243,7 @@ export function TeamCampsTable({
                         scope,
                         campId: camp.id,
                         tab: "sessions",
+                        from: "team_home",
                       })}
                       className="underline-offset-4 hover:underline"
                     >
@@ -287,26 +268,15 @@ export function TeamCampsTable({
                       event.stopPropagation()
                     }}
                   >
-                    {canManageCamps || canDeleteCamps ? (
-                      <CampActionsMenu
-                        camp={camp}
-                        teamVenueOptions={teamVenueOptions}
-                        scope={scope}
-                        selectedVenueId={selectedVenueId}
-                        currentPage={currentPage}
-                        canEditCamp={canManageCamps}
-                        canDeleteCamp={canDeleteCamps}
-                      />
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled
-                        aria-label="More actions unavailable"
-                      >
-                        <MoreHorizontalIcon className="size-4" />
-                      </Button>
-                    )}
+                    <CampActionsMenu
+                      camp={camp}
+                      teamVenueOptions={teamVenueOptions}
+                      scope={scope}
+                      selectedVenueId={selectedVenueId}
+                      currentPage={currentPage}
+                      canEditCamp={canManageCamps}
+                      canDeleteCamp={canDeleteCamps}
+                    />
                   </TableCell>
                 </TableRow>
               ))

@@ -46,6 +46,8 @@ type SessionBreadcrumbResponse = {
   venue_name: string | null
   camp_id: string | null
   camp_name: string | null
+  session_date: string | null
+  dock_out_at: string | null
 }
 
 function getSectionTitle(pathname: string): string {
@@ -272,6 +274,43 @@ function getSessionDetailId(pathname: string): string | null {
   return match?.[1] ?? null
 }
 
+function getCampDetailId(pathname: string): string | null {
+  const match = pathname.match(/^\/team-camps\/([^/]+)$/)
+  return match?.[1] ?? null
+}
+
+function formatSessionMobileHeaderTitle(
+  sessionDate: string | null,
+  dockOutAt: string | null,
+): string | null {
+  if (!sessionDate || !dockOutAt) {
+    return null
+  }
+
+  const sessionDateValue = new Date(`${sessionDate}T00:00:00`)
+  const dockOutDateValue = new Date(dockOutAt)
+
+  if (
+    Number.isNaN(sessionDateValue.getTime()) ||
+    Number.isNaN(dockOutDateValue.getTime())
+  ) {
+    return null
+  }
+
+  const dateLabel = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(sessionDateValue)
+  const timeLabel = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(dockOutDateValue)
+
+  return `${dateLabel} ${timeLabel}`
+}
+
 function resolveActiveScope(
   navigation: ResolvedNavigationScope | null,
   searchParams: ReadonlyURLSearchParams,
@@ -347,14 +386,6 @@ function shouldUsePhaseOneMobileHeader(pathname: string): boolean {
 }
 
 function resolveMobileBackFallbackPath(pathname: string): string {
-  if (/^\/team-camps\/[^/]+$/.test(pathname)) {
-    return "/team-camps"
-  }
-
-  if (/^\/team-sessions\/[^/]+$/.test(pathname)) {
-    return "/team-sessions"
-  }
-
   if (pathname.startsWith("/team-venues")) {
     return "/team-home"
   }
@@ -421,6 +452,7 @@ export function SiteHeader({
         : null
   const venueDetailId = getVenueDetailId(pathname)
   const sessionDetailId = getSessionDetailId(pathname)
+  const campDetailId = getCampDetailId(pathname)
   const activeScope = resolveActiveScope(navigation, searchParams)
   const teamsForActiveOrganization =
     activeScope.activeOrgId && navigation
@@ -433,7 +465,6 @@ export function SiteHeader({
   const venuesHref = buildScopedHref("/venues", activeScope)
   const phaseOneMobileHeaderEnabled =
     isMobile && shouldUsePhaseOneMobileHeader(pathname)
-  const mobileHeaderTitle = getSectionTitle(pathname)
   const mobileBackFallbackHref = buildScopedHref(
     resolveMobileBackFallbackPath(pathname),
     activeScope,
@@ -572,6 +603,14 @@ export function SiteHeader({
   const sessionBreadcrumb = sessionDetailId
     ? sessionBreadcrumbById[sessionDetailId] ?? null
     : null
+  const sessionMobileHeaderTitle = formatSessionMobileHeaderTitle(
+    sessionBreadcrumb?.session_date ?? null,
+    sessionBreadcrumb?.dock_out_at ?? null,
+  )
+  const mobileHeaderTitle =
+    sessionDetailId && sessionMobileHeaderTitle
+      ? sessionMobileHeaderTitle
+      : getSectionTitle(pathname)
   const sessionTeamLabel = sessionBreadcrumb?.team_name ?? activeTeamLabel
   const sessionVenueLabel = sessionBreadcrumb?.venue_name ?? "Venue"
   const sessionCampLabel = sessionBreadcrumb?.camp_name ?? "Camp"
@@ -588,21 +627,81 @@ export function SiteHeader({
         )
       : buildScopedHref("/team-camps", activeScope)
 
-  function handleMobileBack(): void {
-    if (typeof window !== "undefined" && window.history.length > 1) {
-      router.back()
-      return
+  function resolveMobileBackHref(): string {
+    if (pathname === "/team-sessions") {
+      return teamHomeHref
     }
 
-    router.push(mobileBackFallbackHref)
+    if (pathname === "/team-venues") {
+      return teamHomeHref
+    }
+
+    if (pathname === "/team-camps") {
+      return teamHomeHref
+    }
+
+    const from = searchParams.get("from")
+    const fromCampId = searchParams.get("fromCampId")
+    const fromVenueId = searchParams.get("fromVenueId")
+
+    if (sessionDetailId) {
+      if (from === "camp" && fromCampId) {
+        return buildScopedHrefWithTab(
+          `/team-camps/${fromCampId}`,
+          activeScope,
+          "sessions",
+        )
+      }
+
+      if (from === "venue" && fromVenueId) {
+        return buildScopedHrefWithTab(`/venues/${fromVenueId}`, activeScope, "sessions")
+      }
+
+      if (
+        sessionBreadcrumb?.camp_id !== null &&
+        sessionBreadcrumb?.camp_id !== undefined
+      ) {
+        return buildScopedHrefWithTab(
+          `/team-camps/${sessionBreadcrumb.camp_id}`,
+          activeScope,
+          "sessions",
+        )
+      }
+
+      return teamHomeHref
+    }
+
+    if (campDetailId) {
+      if (from === "venue" && fromVenueId) {
+        return buildScopedHrefWithTab(`/venues/${fromVenueId}`, activeScope, "camps")
+      }
+
+      return teamHomeHref
+    }
+
+    if (venueDetailId) {
+      if (from === "camp" && fromCampId) {
+        return buildScopedHrefWithTab(`/team-camps/${fromCampId}`, activeScope, "sessions")
+      }
+
+      return teamHomeHref
+    }
+
+    return mobileBackFallbackHref
+  }
+
+  function handleMobileBack(): void {
+    router.push(resolveMobileBackHref())
   }
 
   if (phaseOneMobileHeaderEnabled) {
-    const showMobileSidebarTrigger =
-      pathname === "/team-sessions" || pathname === "/team-venues"
+    const showMobileSidebarTriggerRight =
+      pathname === "/team-sessions" ||
+      pathname === "/team-venues" ||
+      sessionDetailId !== null
 
     return (
-      <header className="flex h-12 shrink-0 items-center border-b bg-background px-4">
+      <header className="fixed inset-x-0 top-0 z-40 flex h-12 shrink-0 items-center border-b bg-background px-4 md:static">
         <Button
           type="button"
           variant="ghost"
@@ -614,13 +713,13 @@ export function SiteHeader({
           <ArrowLeftIcon className="size-4" />
         </Button>
         <h1 className="ml-2 flex-1 truncate text-base font-medium">{mobileHeaderTitle}</h1>
-        {showMobileSidebarTrigger ? <SidebarTrigger className="ml-1" /> : null}
+        {showMobileSidebarTriggerRight ? <SidebarTrigger className="ml-1" /> : null}
       </header>
     )
   }
 
   return (
-    <header className="group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 flex h-12 shrink-0 items-center gap-2 border-b bg-background transition-[width,height] ease-linear">
+    <header className="group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 fixed inset-x-0 top-0 z-40 flex h-12 shrink-0 items-center gap-2 border-b bg-background transition-[width,height] ease-linear md:static">
       <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">
         <SidebarTrigger className="-ml-1" />
         <Separator

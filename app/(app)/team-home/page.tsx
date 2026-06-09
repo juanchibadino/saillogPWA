@@ -1,5 +1,6 @@
 import Link from "next/link"
 import Image from "next/image"
+import { FeedbackToast } from "@/components/shared/feedback-toast"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { buttonVariants } from "@/components/ui/button"
 import {
@@ -268,11 +269,7 @@ export default async function TeamHomePage({
 
   return (
     <div className="space-y-6">
-      {teamHomeErrorMessage ? (
-        <p className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-          {teamHomeErrorMessage}
-        </p>
-      ) : null}
+      <FeedbackToast errorMessage={teamHomeErrorMessage} />
 
       {scope.activeTeamId === null ? (
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
@@ -288,15 +285,12 @@ export default async function TeamHomePage({
               <GradientCard
                 key={kpi.label}
               >
-                <CardHeader className="pb-2">
+                <CardHeader>
                   <CardDescription>{kpi.label}</CardDescription>
-                  <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
+                  <CardTitle className="text-xl font-semibold tabular-nums @[250px]/card:text-3xl">
                     {kpi.value}
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  {kpi.note}
-                </CardContent>
               </GradientCard>
             ))}
           </div>
@@ -326,6 +320,7 @@ export default async function TeamHomePage({
                           href={buildSessionDetailHref({
                             scope,
                             sessionId: session.id,
+                            from: "team_home",
                           })}
                           className="grid grid-cols-[minmax(0,1fr)_minmax(7rem,1fr)_auto] items-center gap-3 rounded-md -mx-2 px-2 py-3 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40"
                         >
@@ -376,6 +371,7 @@ export default async function TeamHomePage({
                             scope,
                             campId: camp.id,
                             tab: "sessions",
+                            from: "team_home",
                           })}
                           className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-md -mx-2 px-2 py-3 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40"
                         >
@@ -426,6 +422,7 @@ export default async function TeamHomePage({
                           href={buildVenueDetailHref({
                             scope,
                             teamVenueId: venue.teamVenueId,
+                            from: "team_home",
                           })}
                           className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-md -mx-2 px-2 py-3 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40"
                         >

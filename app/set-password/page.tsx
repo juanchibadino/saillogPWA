@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { FeedbackToast } from "@/components/shared/feedback-toast";
 import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
@@ -74,6 +75,7 @@ export default async function SetPasswordPage({
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-muted/30 px-4 py-10">
+      <FeedbackToast statusMessage={statusMessage} errorMessage={errorMessage} />
       <Card className="w-full max-w-md border-border/70 bg-card/95 shadow-sm">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl">Set password</CardTitle>
@@ -83,18 +85,6 @@ export default async function SetPasswordPage({
         </CardHeader>
 
         <CardContent className="space-y-5">
-          {statusMessage ? (
-            <p className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-              {statusMessage}
-            </p>
-          ) : null}
-
-          {errorMessage ? (
-            <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-              {errorMessage}
-            </p>
-          ) : null}
-
           <form action="/auth/update-password" method="post" className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="set-password-new">New password</Label>

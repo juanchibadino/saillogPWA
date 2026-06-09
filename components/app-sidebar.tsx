@@ -85,6 +85,11 @@ type PendingScopeSwitch = {
   toLabel: string
 }
 
+type PendingScopeRefresh = {
+  orgId: string
+  teamId: NavigationTeamId
+}
+
 type BillingPlanTier = "free" | "pro" | "olympic"
 
 type BillingPlanResponse = {
@@ -244,6 +249,17 @@ function persistScopeSelection(orgId: string, teamId: NavigationTeamId): void {
   document.cookie = `${NAVIGATION_SCOPE_TEAM_COOKIE}=; path=/; max-age=0; samesite=lax`
 }
 
+function buildTeamHomeScopeHref(orgId: string, teamId: NavigationTeamId): string {
+  const params = new URLSearchParams()
+  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, orgId)
+
+  if (teamId) {
+    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, teamId)
+  }
+
+  return `/team-home?${params.toString()}`
+}
+
 function findActiveOrganization(
   organizations: ScopeOrganizationOption[],
   preferredOrgId: string | null,
@@ -329,6 +345,8 @@ export function AppSidebar({
   const { isMobile, setOpenMobile } = useSidebar()
   const [pendingScopeSwitch, setPendingScopeSwitch] =
     React.useState<PendingScopeSwitch | null>(null)
+  const [pendingScopeRefresh, setPendingScopeRefresh] =
+    React.useState<PendingScopeRefresh | null>(null)
   const [isScopeSwitchPending, startScopeSwitchTransition] = React.useTransition()
   const [planTierByOrganizationId, setPlanTierByOrganizationId] = React.useState<
     Record<string, BillingPlanTier | null>
@@ -401,6 +419,29 @@ export function AppSidebar({
       setPendingScopeSwitch(null)
     }
   }, [isScopeSwitchPending])
+
+  React.useEffect(() => {
+    if (!pendingScopeRefresh) {
+      return
+    }
+
+    if (pathname !== "/team-home") {
+      return
+    }
+
+    const currentOrgId = searchParams.get(NAVIGATION_SCOPE_ORG_QUERY_KEY)
+    const currentTeamId = searchParams.get(NAVIGATION_SCOPE_TEAM_QUERY_KEY)
+
+    if (
+      currentOrgId !== pendingScopeRefresh.orgId ||
+      (currentTeamId ?? null) !== pendingScopeRefresh.teamId
+    ) {
+      return
+    }
+
+    setPendingScopeRefresh(null)
+    router.refresh()
+  }, [pathname, pendingScopeRefresh, router, searchParams])
 
   React.useEffect(() => {
     if (!activeOrgId) {
@@ -490,21 +531,15 @@ export function AppSidebar({
       return
     }
 
-    if (nextOrgId === activeOrgId && nextTeamId === activeTeamId) {
+    if (
+      nextOrgId === activeOrgId &&
+      nextTeamId === activeTeamId &&
+      pathname === "/team-home"
+    ) {
       return
     }
 
-    const params = new URLSearchParams(searchParams.toString())
-    params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, nextOrgId)
-
-    if (nextTeamId) {
-      params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, nextTeamId)
-    } else {
-      params.delete(NAVIGATION_SCOPE_TEAM_QUERY_KEY)
-    }
-
-    const href =
-      params.toString().length > 0 ? `${pathname}?${params.toString()}` : pathname
+    const href = buildTeamHomeScopeHref(nextOrgId, nextTeamId)
 
     const nextOrganizationName =
       organizations.find((organization) => organization.id === nextOrgId)?.name ??
@@ -531,14 +566,18 @@ export function AppSidebar({
           }
 
     setPendingScopeSwitch(pendingSwitch)
+    setPendingScopeRefresh({
+      orgId: nextOrgId,
+      teamId: nextTeamId,
+    })
+    persistScopeSelection(nextOrgId, nextTeamId)
     setIsScopeMenuOpen(false)
     setIsUserMenuOpen(false)
+    if (isMobile) {
+      setOpenMobile(false)
+    }
 
     startScopeSwitchTransition(() => {
-      persistScopeSelection(nextOrgId, nextTeamId)
-      if (isMobile) {
-        setOpenMobile(false)
-      }
       router.push(href)
     })
   }
@@ -622,11 +661,6 @@ export function AppSidebar({
                           nativeButton
                           render={<button type="button" />}
                           onClick={() => handleOrganizationSelect(organization.id)}
-                          onPointerDownCapture={(event) =>
-                            handleMobileMenuPointerDown(event, () =>
-                              handleOrganizationSelect(organization.id),
-                            )
-                          }
                           className="w-full gap-2 p-2 text-left"
                         >
                           <Avatar className="size-6 rounded-md">
@@ -665,11 +699,6 @@ export function AppSidebar({
                               nativeButton
                               render={<button type="button" />}
                               onClick={() => handleTeamSelect(team.id)}
-                              onPointerDownCapture={(event) =>
-                                handleMobileMenuPointerDown(event, () =>
-                                  handleTeamSelect(team.id),
-                                )
-                              }
                               className="w-full gap-2 p-2 text-left"
                             >
                               <div className="flex size-6 items-center justify-center rounded-md border">
@@ -687,11 +716,6 @@ export function AppSidebar({
                               nativeButton
                               render={<button type="button" />}
                               onClick={() => handleTeamSelect(team.id, team.organizationId)}
-                              onPointerDownCapture={(event) =>
-                                handleMobileMenuPointerDown(event, () =>
-                                  handleTeamSelect(team.id, team.organizationId),
-                                )
-                              }
                               className="w-full gap-2 p-2 text-left"
                             >
                               <div className="flex size-6 items-center justify-center rounded-md border">

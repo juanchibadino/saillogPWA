@@ -68,6 +68,9 @@ export function buildSessionDetailHref(input: {
   tab?: SessionDetailTab
   status?: string
   error?: string
+  from?: "team_home" | "camp" | "venue"
+  fromCampId?: string
+  fromVenueId?: string
 }): string {
   const params = new URLSearchParams()
   appendScopeParams(params, input.scope)
@@ -82,6 +85,18 @@ export function buildSessionDetailHref(input: {
 
   if (input.error) {
     params.set("error", input.error)
+  }
+
+  if (input.from) {
+    params.set("from", input.from)
+  }
+
+  if (input.fromCampId) {
+    params.set("fromCampId", input.fromCampId)
+  }
+
+  if (input.fromVenueId) {
+    params.set("fromVenueId", input.fromVenueId)
   }
 
   const query = params.toString()
