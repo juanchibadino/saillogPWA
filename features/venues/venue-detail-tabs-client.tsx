@@ -160,8 +160,6 @@ function renderTabPanel(input: {
                   href={buildCampDetailHref({
                     scope: input.scope,
                     campId: camp.id,
-                    from: "venue",
-                    fromVenueId: input.teamVenueId,
                   })}
                   className="block rounded-md px-2 py-3 -mx-2 transition-colors hover:bg-muted/40"
                 >
@@ -203,8 +201,6 @@ function renderTabPanel(input: {
                   href={buildSessionDetailHref({
                     scope: input.scope,
                     sessionId: session.id,
-                    from: "venue",
-                    fromVenueId: input.teamVenueId,
                   })}
                   className="grid grid-cols-[minmax(0,1fr)_minmax(7rem,1fr)_auto] items-center gap-3 rounded-md px-2 py-3 -mx-2 transition-colors hover:bg-muted/40"
                 >

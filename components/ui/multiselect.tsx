@@ -1,10 +1,16 @@
 "use client"
 
 import * as React from "react"
-import { CheckIcon, ChevronsUpDownIcon, XIcon } from "lucide-react"
+import { ChevronsUpDownIcon, XIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 
 type MultiselectContextValue = {
@@ -19,7 +25,6 @@ type MultiselectContextValue = {
   registerItem: (value: string, label: string) => void
   unregisterItem: (value: string) => void
   hasMatchingItems: boolean
-  contentId: string
 }
 
 const MultiselectContext = React.createContext<MultiselectContextValue | null>(null)
@@ -151,8 +156,6 @@ export function Multiselect(input: {
   })
   const [query, setQuery] = React.useState("")
   const [itemsByValue, setItemsByValue] = React.useState<Record<string, string>>({})
-  const contentId = React.useId()
-  const rootRef = React.useRef<HTMLDivElement>(null)
 
   const selectionSet = React.useMemo(() => new Set(selection), [selection])
 
@@ -223,38 +226,6 @@ export function Multiselect(input: {
     }
   }, [open])
 
-  React.useEffect(() => {
-    if (!open) {
-      return
-    }
-
-    function handleDocumentPointerDown(event: PointerEvent): void {
-      const rootElement = rootRef.current
-
-      if (!rootElement || !(event.target instanceof Node)) {
-        return
-      }
-
-      if (!rootElement.contains(event.target)) {
-        setOpen(false)
-      }
-    }
-
-    function handleDocumentKeyDown(event: KeyboardEvent): void {
-      if (event.key === "Escape") {
-        setOpen(false)
-      }
-    }
-
-    document.addEventListener("pointerdown", handleDocumentPointerDown)
-    document.addEventListener("keydown", handleDocumentKeyDown)
-
-    return () => {
-      document.removeEventListener("pointerdown", handleDocumentPointerDown)
-      document.removeEventListener("keydown", handleDocumentKeyDown)
-    }
-  }, [open, setOpen])
-
   return (
     <MultiselectContext.Provider
       value={{
@@ -269,12 +240,11 @@ export function Multiselect(input: {
         registerItem,
         unregisterItem,
         hasMatchingItems,
-        contentId,
       }}
     >
-      <div ref={rootRef} className="relative">
+      <DropdownMenu open={open} onOpenChange={setOpen}>
         {input.children}
-      </div>
+      </DropdownMenu>
     </MultiselectContext.Provider>
   )
 }
@@ -292,9 +262,6 @@ export function MultiselectTrigger(
     placeholder = "Select...",
     grow = false,
     type,
-    disabled,
-    onClick,
-    onKeyDown,
     ...buttonProps
   } = input
   const mask = grow
@@ -302,36 +269,17 @@ export function MultiselectTrigger(
     : "linear-gradient(90deg, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 1) calc(100% - 20px), rgba(255, 255, 255, 0) 100%)"
 
   return (
-    <button
-      type={type ?? "button"}
-      aria-expanded={multiselect.open}
-      aria-controls={multiselect.contentId}
-      aria-haspopup="listbox"
-      disabled={disabled}
-      className={cn(
-        "relative flex min-h-9 w-full items-center overflow-hidden rounded-lg border border-input bg-background text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
-        className,
-      )}
-      onClick={(event) => {
-        onClick?.(event)
-
-        if (!event.defaultPrevented) {
-          multiselect.setOpen(!multiselect.open)
-        }
-      }}
-      onKeyDown={(event) => {
-        onKeyDown?.(event)
-
-        if (event.defaultPrevented) {
-          return
-        }
-
-        if (event.key === "ArrowDown") {
-          event.preventDefault()
-          multiselect.setOpen(true)
-        }
-      }}
-      {...buttonProps}
+    <DropdownMenuTrigger
+      render={
+        <button
+          type={type ?? "button"}
+          className={cn(
+            "relative flex min-h-9 w-full items-center overflow-hidden rounded-lg border border-input bg-background text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
+            className,
+          )}
+          {...buttonProps}
+        />
+      }
     >
       <div
         className="min-w-0 flex-1 overflow-x-auto px-2 py-1.5"
@@ -349,7 +297,7 @@ export function MultiselectTrigger(
       <div className="pr-2 text-muted-foreground">
         <ChevronsUpDownIcon className="size-4" />
       </div>
-    </button>
+    </DropdownMenuTrigger>
   )
 }
 
@@ -399,33 +347,19 @@ export function MultiselectBadge(
 }
 
 export function MultiselectContent(
-  input: React.ComponentPropsWithoutRef<"div"> & {
-    align?: "start" | "center" | "end"
-    sideOffset?: number
-  },
+  input: React.ComponentPropsWithoutRef<typeof DropdownMenuContent>,
 ) {
-  const multiselect = useMultiselectContext()
-  const { className, children, align, sideOffset, ...contentProps } = input
-  void align
-  void sideOffset
-
-  if (!multiselect.open) {
-    return null
-  }
+  const { className, children, ...contentProps } = input
 
   return (
-    <div
-      id={multiselect.contentId}
-      role="listbox"
-      aria-multiselectable="true"
-      className={cn(
-        "mt-1 max-h-72 w-full overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10",
-        className,
-      )}
+    <DropdownMenuContent
+      className={cn("max-h-72 w-[var(--anchor-width)] overflow-y-auto p-1", className)}
+      align="start"
+      sideOffset={6}
       {...contentProps}
     >
       {children}
-    </div>
+    </DropdownMenuContent>
   )
 }
 
@@ -442,18 +376,6 @@ export function MultiselectInput(
         onChange={(event) => multiselect.setQuery(event.target.value)}
         placeholder={placeholder}
         className={cn("h-8", className)}
-        onPointerDownCapture={(event) => {
-          event.stopPropagation()
-        }}
-        onClickCapture={(event) => {
-          event.stopPropagation()
-        }}
-        onKeyDownCapture={(event) => {
-          event.stopPropagation()
-        }}
-        onKeyUpCapture={(event) => {
-          event.stopPropagation()
-        }}
         onKeyDown={(event) => {
           event.stopPropagation()
         }}
@@ -464,22 +386,12 @@ export function MultiselectInput(
 }
 
 export function MultiselectItem(
-  input: React.ComponentPropsWithoutRef<"button"> & {
+  input: Omit<React.ComponentPropsWithoutRef<typeof DropdownMenuCheckboxItem>, "checked"> & {
     value: string
-    onCheckedChange?: (checked: boolean) => void
   },
 ) {
   const multiselect = useMultiselectContext()
-  const {
-    className,
-    value,
-    children,
-    disabled,
-    type,
-    onClick,
-    onCheckedChange,
-    ...itemProps
-  } = input
+  const { className, value, children, onCheckedChange, ...itemProps } = input
   const registerItem = multiselect.registerItem
   const unregisterItem = multiselect.unregisterItem
   const label = React.useMemo(() => {
@@ -505,39 +417,30 @@ export function MultiselectItem(
     return null
   }
 
-  const isSelected = multiselect.selectionSet.has(value)
+  const checked = multiselect.selectionSet.has(value)
 
   return (
-    <button
-      type={type ?? "button"}
-      role="option"
-      aria-selected={isSelected}
-      disabled={disabled}
-      data-slot="multiselect-item"
-      data-checked={isSelected ? "" : undefined}
-      className={cn(
-        "relative flex w-full cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-left text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className,
-      )}
-      onClick={(event) => {
-        event.preventDefault()
-        event.stopPropagation()
-        multiselect.toggle(value)
-        onCheckedChange?.(!isSelected)
-        onClick?.(event)
+    <DropdownMenuCheckboxItem
+      checked={checked}
+      closeOnClick={false}
+      onCheckedChange={(nextChecked, eventDetails) => {
+        const shouldSelect = Boolean(nextChecked)
+
+        if (shouldSelect && !checked) {
+          multiselect.toggle(value)
+        }
+
+        if (!shouldSelect && checked) {
+          multiselect.toggle(value)
+        }
+
+        onCheckedChange?.(nextChecked, eventDetails)
       }}
+      className={cn("pr-2", className)}
       {...itemProps}
     >
-      <span
-        className={cn(
-          "pointer-events-none absolute right-2 flex items-center justify-center",
-          isSelected ? "opacity-100" : "opacity-0",
-        )}
-      >
-        <CheckIcon className="size-4" />
-      </span>
       {children}
-    </button>
+    </DropdownMenuCheckboxItem>
   )
 }
 

@@ -27,8 +27,6 @@ export function buildVenueDetailHref(input: {
   teamVenueId: string
   tab?: VenueDetailTab
   year?: number
-  from?: "team_home" | "camp"
-  fromCampId?: string
 }): string {
   const params = new URLSearchParams()
   appendScopeParams(params, input.scope)
@@ -39,14 +37,6 @@ export function buildVenueDetailHref(input: {
 
   if (typeof input.year === "number" && Number.isFinite(input.year)) {
     params.set("year", String(input.year))
-  }
-
-  if (input.from) {
-    params.set("from", input.from)
-  }
-
-  if (input.fromCampId) {
-    params.set("fromCampId", input.fromCampId)
   }
 
   const query = params.toString()

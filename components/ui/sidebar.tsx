@@ -8,8 +8,6 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer"
-import { DropdownMenuPortalContainerProvider } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -158,8 +156,6 @@ function Sidebar({
   collapsible?: "offcanvas" | "icon" | "none"
 }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
-  const [mobileDropdownPortalContainer, setMobileDropdownPortalContainer] =
-    React.useState<HTMLDivElement | null>(null)
 
   if (collapsible === "none") {
     return (
@@ -178,54 +174,57 @@ function Sidebar({
 
   if (isMobile) {
     return (
-      <Drawer open={openMobile} onOpenChange={setOpenMobile} direction={side}>
-        <DrawerContent
-          className="bg-sidebar p-0 text-sidebar-foreground"
-          style={{
-            width: SIDEBAR_WIDTH_MOBILE,
-            maxWidth: "none",
-            borderRadius: 0,
-          }}
+      <>
+        {openMobile ? (
+          <button
+            type="button"
+            aria-label="Close sidebar"
+            className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm"
+            onClick={() => setOpenMobile(false)}
+          />
+        ) : null}
+        <div
+          className="group peer text-sidebar-foreground md:hidden"
+          data-state={openMobile ? "expanded" : "collapsed"}
+          data-collapsible={openMobile ? "" : "offcanvas"}
+          data-variant={variant}
+          data-side={side}
+          data-slot="sidebar"
+          style={
+            {
+              "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
+            } as React.CSSProperties
+          }
         >
-          <DrawerTitle className="sr-only">Navigation</DrawerTitle>
-          <DropdownMenuPortalContainerProvider
-            container={mobileDropdownPortalContainer}
+          <div
+            dir={dir}
+            data-sidebar="sidebar"
+            data-slot="sidebar-container"
+            data-mobile="true"
+            data-side={side}
+            className={cn(
+              "fixed inset-y-0 z-50 flex h-svh w-(--sidebar-width) transition-[left,right] duration-200 ease-linear",
+              side === "left"
+                ? openMobile
+                  ? "left-0"
+                  : "left-[calc(var(--sidebar-width)*-1)]"
+                : openMobile
+                  ? "right-0"
+                  : "right-[calc(var(--sidebar-width)*-1)]",
+              className
+            )}
+            {...props}
           >
             <div
-              ref={setMobileDropdownPortalContainer}
-              className="group peer flex size-full text-sidebar-foreground md:hidden"
-              data-state={openMobile ? "expanded" : "collapsed"}
-              data-collapsible={openMobile ? "" : "offcanvas"}
-              data-variant={variant}
-              data-side={side}
-              data-slot="sidebar"
-              style={
-                {
-                  "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
-                } as React.CSSProperties
-              }
+              data-sidebar="sidebar"
+              data-slot="sidebar-inner"
+              className="flex size-full flex-col bg-sidebar text-sidebar-foreground"
             >
-              <div
-                dir={dir}
-                data-sidebar="sidebar"
-                data-slot="sidebar-container"
-                data-mobile="true"
-                data-side={side}
-                className={cn("flex size-full", className)}
-                {...props}
-              >
-                <div
-                  data-sidebar="sidebar"
-                  data-slot="sidebar-inner"
-                  className="flex size-full flex-col bg-sidebar text-sidebar-foreground"
-                >
-                  {children}
-                </div>
-              </div>
+              {children}
             </div>
-          </DropdownMenuPortalContainerProvider>
-        </DrawerContent>
-      </Drawer>
+          </div>
+        </div>
+      </>
     )
   }
 

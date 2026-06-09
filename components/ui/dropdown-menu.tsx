@@ -6,23 +6,6 @@ import { Menu as MenuPrimitive } from "@base-ui/react/menu"
 import { cn } from "@/lib/utils"
 import { ChevronRightIcon, CheckIcon } from "lucide-react"
 
-const DropdownMenuPortalContainerContext =
-  React.createContext<HTMLElement | null>(null)
-
-function DropdownMenuPortalContainerProvider({
-  container,
-  children,
-}: {
-  container: HTMLElement | null
-  children: React.ReactNode
-}) {
-  return (
-    <DropdownMenuPortalContainerContext.Provider value={container}>
-      {children}
-    </DropdownMenuPortalContainerContext.Provider>
-  )
-}
-
 function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
   return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />
 }
@@ -40,25 +23,15 @@ function DropdownMenuContent({
   alignOffset = 0,
   side = "bottom",
   sideOffset = 4,
-  portalContainer,
   className,
   ...props
 }: MenuPrimitive.Popup.Props &
   Pick<
     MenuPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset"
-  > & {
-    portalContainer?: React.ComponentProps<
-      typeof MenuPrimitive.Portal
-    >["container"]
-  }) {
-  const contextPortalContainer = React.useContext(
-    DropdownMenuPortalContainerContext
-  )
-  const resolvedPortalContainer = portalContainer ?? contextPortalContainer
-
+  >) {
   return (
-    <MenuPrimitive.Portal container={resolvedPortalContainer}>
+    <MenuPrimitive.Portal>
       <MenuPrimitive.Positioner
         className="isolate z-50 outline-none"
         align={align}
@@ -301,7 +274,6 @@ function DropdownMenuShortcut({
 
 export {
   DropdownMenu,
-  DropdownMenuPortalContainerProvider,
   DropdownMenuPortal,
   DropdownMenuTrigger,
   DropdownMenuContent,

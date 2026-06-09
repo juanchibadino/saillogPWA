@@ -5,8 +5,6 @@ import {
   CameraIcon,
   GripVerticalIcon,
   Loader2Icon,
-  MoreHorizontalIcon,
-  MoreVerticalIcon,
   PencilIcon,
   PlusIcon,
   Trash2Icon,
@@ -31,18 +29,6 @@ import { CSS } from "@dnd-kit/utilities"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -51,15 +37,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from "@/components/ui/drawer"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -97,7 +74,6 @@ import {
 } from "@/features/sessions/navigation"
 import type { NavigationScope } from "@/lib/navigation/types"
 import { generateStandardMoveNameFromDescription } from "@/lib/standard-moves"
-import { useIsMobile } from "@/hooks/use-mobile"
 
 function formatTimeInputValue(iso: string | null): string {
   if (!iso) {
@@ -215,17 +191,7 @@ const GEAR_TYPE_TAB_ORDER: SessionDetailGearItem["gear_type"][] = [
   "running_rigging",
   "hardware_and_fittings",
 ]
-const MOBILE_VISIBLE_SESSION_TABS_COUNT = 4
 type SessionGearSelectorTab = "all" | "linked" | SessionDetailGearItem["gear_type"]
-
-type SetupRowActionsProps = {
-  item: SessionSetupDialogItem
-  showTemplateControls: boolean
-  dragHandleProps?: React.HTMLAttributes<HTMLButtonElement>
-  isMobile: boolean
-  onEditMetric: (item: SessionSetupDialogItem) => void
-  onDeleteMetric: (itemId: string) => void
-}
 
 type DetectedBarcodeLike = {
   rawValue?: string
@@ -961,68 +927,6 @@ function SetupScopeHiddenFields(input: {
   )
 }
 
-function SetupRowActions(input: SetupRowActionsProps) {
-  if (!input.showTemplateControls) {
-    return null
-  }
-
-  if (input.isMobile) {
-    return (
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={<Button type="button" variant="ghost" size="icon-sm" />}
-          aria-label={`More actions for setup metric ${input.item.label}`}
-        >
-          <MoreVerticalIcon />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => input.onEditMetric(input.item)}>
-            Edit
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            variant="destructive"
-            onClick={() => input.onDeleteMetric(input.item.id)}
-          >
-            Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    )
-  }
-
-  return (
-    <div className="flex shrink-0 items-center gap-1">
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label={`Edit setup metric ${input.item.label}`}
-        onClick={() => input.onEditMetric(input.item)}
-      >
-        <PencilIcon />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label={`Delete setup metric ${input.item.label}`}
-        onClick={() => input.onDeleteMetric(input.item.id)}
-      >
-        <Trash2Icon />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label={`Reorder setup metric ${input.item.label}`}
-        {...input.dragHandleProps}
-      >
-        <GripVerticalIcon />
-      </Button>
-    </div>
-  )
-}
-
 function SortableBoatSetupRow(input: {
   itemId: string
   children: (input: {
@@ -1057,19 +961,12 @@ function SortableBoatSetupRow(input: {
 function SetupDialogFooter(input: {
   isEditMode: boolean
   onEnterEditMode: () => void
-  isMobile?: boolean
 }) {
   const { pending } = useFormStatus()
 
   return (
     <DialogFooter
-      className={
-        input.isMobile
-          ? "sticky bottom-0 z-10 -mx-4 border-t bg-background px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:justify-end"
-          : input.isEditMode
-            ? "shrink-0 sm:justify-end"
-            : "shrink-0 sm:justify-start"
-      }
+      className={input.isEditMode ? "shrink-0 sm:justify-end" : "shrink-0 sm:justify-start"}
     >
       {!input.isEditMode ? (
         <Button
@@ -1102,49 +999,39 @@ function SetupDialogFooter(input: {
   )
 }
 
-function SetupDialogFieldset(props: { children: React.ReactNode }) {
-  const { pending } = useFormStatus()
-
-  return (
-    <fieldset disabled={pending} className="m-0 border-0 p-0">
-      {props.children}
-    </fieldset>
-  )
-}
-
-function EditSetupMetricFieldset(props: { children: React.ReactNode }) {
-  const { pending } = useFormStatus()
-
-  return (
-    <fieldset disabled={pending} className="m-0 border-0 p-0">
-      {props.children}
-    </fieldset>
-  )
-}
-
-function EditSetupMetricSubmitButton() {
-  const { pending } = useFormStatus()
-
-  return (
-    <Button type="submit" disabled={pending}>
-      {pending ? (
-        <>
-          <Loader2Icon className="size-4 animate-spin" />
-          Saving metric...
-        </>
-      ) : (
-        "Save metric"
-      )}
-    </Button>
-  )
-}
-
 function SetupDialog(input: {
   sessionId: string
   scope: NavigationScope
   items: SessionSetupDialogItem[]
 }) {
-  const isMobile = useIsMobile()
+  function SetupDialogFieldset(props: { children: React.ReactNode }) {
+    const { pending } = useFormStatus()
+
+    return <fieldset disabled={pending} className="m-0 border-0 p-0">{props.children}</fieldset>
+  }
+
+  function EditSetupMetricFieldset(props: { children: React.ReactNode }) {
+    const { pending } = useFormStatus()
+
+    return <fieldset disabled={pending} className="m-0 border-0 p-0">{props.children}</fieldset>
+  }
+
+  function EditSetupMetricSubmitButton() {
+    const { pending } = useFormStatus()
+
+    return (
+      <Button type="submit" disabled={pending}>
+        {pending ? (
+          <>
+            <Loader2Icon className="size-4 animate-spin" />
+            Saving metric...
+          </>
+        ) : (
+          "Save metric"
+        )}
+      </Button>
+    )
+  }
 
   const groupedItems = React.useMemo(() => groupSetupItems(input.items), [input.items])
   const initialBoatOrderIds = React.useMemo(
@@ -1292,31 +1179,13 @@ function SetupDialog(input: {
         selectedOptions: [],
         twsEditedOptionIds: [],
       }
-      let normalizedSelectedOptionIds = orderedSelectedOptionIds
-
-      if (item.inputKind === "single_select") {
-        const currentSelectedOptionIds = new Set(
-          currentDraft.selectedOptions.map((selectedOption) => selectedOption.optionId),
-        )
-        const newlySelectedOptionId =
-          nextSelectedOptionIds.find((optionId) => !currentSelectedOptionIds.has(optionId)) ??
-          nextSelectedOptionIds[0] ??
-          null
-
-        normalizedSelectedOptionIds = newlySelectedOptionId
-          ? sortSelectedOptionIdsByMetricOptions({
-              item,
-              selectedOptionIds: [newlySelectedOptionId],
-            })
-          : []
-      }
 
       if (item.key !== "tws") {
         return {
           ...previousState,
           [item.id]: {
             ...currentDraft,
-            selectedOptions: normalizedSelectedOptionIds.map((optionId) => ({
+            selectedOptions: orderedSelectedOptionIds.map((optionId) => ({
               optionId,
               allocationPercent: null,
             })),
@@ -1326,7 +1195,7 @@ function SetupDialog(input: {
       }
 
       const rebalanced = rebalanceTwsDraftSelection({
-        selectedOptionIds: normalizedSelectedOptionIds,
+        selectedOptionIds: orderedSelectedOptionIds,
         previousSelectedOptions: currentDraft.selectedOptions,
         previousEditedOptionIds: currentDraft.twsEditedOptionIds,
       })
@@ -1599,21 +1468,44 @@ function SetupDialog(input: {
         <div className="flex items-center gap-3">
           <Label
             htmlFor={`setup-item-${inputRow.item.id}`}
-            className="text-sm font-medium"
+            className="w-28 shrink-0 text-sm font-medium sm:w-36"
           >
             <span className="block truncate">{inputRow.item.label}</span>
           </Label>
 
           <div className="min-w-0 flex-1">{renderField(inputRow.item)}</div>
 
-          <SetupRowActions
-            item={inputRow.item}
-            showTemplateControls={inputRow.showTemplateControls}
-            dragHandleProps={inputRow.dragHandleProps}
-            isMobile={isMobile}
-            onEditMetric={openEditMetricDialog}
-            onDeleteMetric={setDeletingMetricId}
-          />
+          {inputRow.showTemplateControls ? (
+            <div className="flex shrink-0 items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Edit setup metric ${inputRow.item.label}`}
+                onClick={() => openEditMetricDialog(inputRow.item)}
+              >
+                <PencilIcon />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Delete setup metric ${inputRow.item.label}`}
+                onClick={() => setDeletingMetricId(inputRow.item.id)}
+              >
+                <Trash2Icon />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Reorder setup metric ${inputRow.item.label}`}
+                {...inputRow.dragHandleProps}
+              >
+                <GripVerticalIcon />
+              </Button>
+            </div>
+          ) : null}
         </div>
 
         {hint ? <p className="mt-2 text-xs text-muted-foreground">{hint}</p> : null}
@@ -1624,368 +1516,9 @@ function SetupDialog(input: {
   function renderSection(title: string, children: React.ReactNode) {
     return (
       <section className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          {title}
-        </h3>
+        <h3 className="text-sm font-semibold">{title}</h3>
         {children}
       </section>
-    )
-  }
-
-  const setupContent = (
-    <>
-      <form action={updateSessionSetupAction} className="space-y-4">
-        <SetupScopeHiddenFields sessionId={input.sessionId} scope={input.scope} />
-        <input type="hidden" name="setupPayload" value={payloadValue} />
-        <input type="hidden" name="orderedItemIdsPayload" value={orderedItemIdsPayload} />
-
-        <SetupDialogFieldset>
-        <div
-          className={`no-scrollbar max-h-[65vh] space-y-6 overflow-y-auto pr-1 ${
-            isMobile ? "pb-24" : "pb-2"
-          }`}
-        >
-            {input.items.length === 0 ? (
-              <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
-                No setup metrics are configured for this team yet.
-              </div>
-            ) : (
-              <>
-                {renderSection(
-                  "Weather",
-                  <div className="space-y-2">
-                    {groupedItems.weather.map((item) =>
-                      isEditMode ? (
-                        renderEditableMetricRow({
-                          item,
-                          showTemplateControls: false,
-                        })
-                      ) : (
-                        <div key={item.id} className="rounded-lg border p-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <p className="text-sm font-medium">{item.label}</p>
-                            <div className="min-w-0 flex-1 text-right">
-                              {renderReadOnlyField(item)}
-                            </div>
-                          </div>
-                        </div>
-                      ),
-                    )}
-                  </div>,
-                )}
-
-                {renderSection(
-                  "Boat",
-                  <div className="space-y-3">
-                    {groupedItems.boat.length === 0 ? (
-                      <div className="rounded-lg border bg-muted/20 p-4 text-xs text-muted-foreground">
-                        No Boat metrics configured for this team yet.
-                      </div>
-                      ) : isEditMode && !isMobile ? (
-                        <DndContext
-                          sensors={sensors}
-                          collisionDetection={closestCenter}
-                        onDragEnd={handleBoatDragEnd}
-                      >
-                        <SortableContext
-                          items={boatOrderIds}
-                          strategy={verticalListSortingStrategy}
-                        >
-                          <div className="space-y-3">
-                            {orderedBoatItems.map((item) => (
-                              <SortableBoatSetupRow key={item.id} itemId={item.id}>
-                                {({ dragHandleProps, isDragging }) =>
-                                  renderEditableMetricRow({
-                                    item,
-                                    showTemplateControls: true,
-                                    dragHandleProps,
-                                    isDragging,
-                                  })
-                                }
-                              </SortableBoatSetupRow>
-                            ))}
-                          </div>
-                        </SortableContext>
-                      </DndContext>
-                      ) : isEditMode && isMobile ? (
-                        <div className="space-y-3">
-                          {groupedItems.boat.map((item) =>
-                            renderEditableMetricRow({
-                              item,
-                              showTemplateControls: true,
-                            }),
-                          )}
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          {groupedItems.boat.map((item) => (
-                          <div key={item.id} className="rounded-lg border p-3">
-                            <div className="flex items-start justify-between gap-3">
-                              <p className="text-sm font-medium">{item.label}</p>
-                              <div className="min-w-0 flex-1 text-right">
-                                {renderReadOnlyField(item)}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>,
-                )}
-
-                {isEditMode ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full border-dashed"
-                    onClick={openCreateMetricDialog}
-                  >
-                    <PlusIcon className="size-4" />
-                    Add new setup metric
-                  </Button>
-                ) : null}
-              </>
-            )}
-          </div>
-        </SetupDialogFieldset>
-
-        <SetupDialogFooter
-          isEditMode={isEditMode}
-          onEnterEditMode={() => setIsEditMode(true)}
-          isMobile={isMobile}
-        />
-      </form>
-
-      <Dialog
-        open={isCreateMetricDialogOpen}
-        onOpenChange={(nextOpen) => {
-          setIsCreateMetricDialogOpen(nextOpen)
-          if (!nextOpen) {
-            setCreateMetricStep("kind")
-            setCreateMetricKind(null)
-            setCreateMetricLabel("")
-            setCreateMetricOptionsText("")
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Add setup metric</DialogTitle>
-            <DialogDescription>
-              Create a Boat metric. Weather definitions are fixed.
-            </DialogDescription>
-          </DialogHeader>
-
-          {createMetricStep === "kind" ? (
-            <div className="space-y-3">
-              <p className="text-sm font-medium">Choose input kind</p>
-              <div className="grid gap-2 sm:grid-cols-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setCreateMetricKind("single_select")
-                    setCreateMetricStep("details")
-                  }}
-                >
-                  Single Select
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setCreateMetricKind("multi_select")
-                    setCreateMetricStep("details")
-                  }}
-                >
-                  Multi Select
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setCreateMetricKind("text")
-                    setCreateMetricStep("details")
-                  }}
-                >
-                  Text
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <form action={createTeamSetupMetricAction} className="space-y-4">
-              <SetupScopeHiddenFields sessionId={input.sessionId} scope={input.scope} />
-              <input type="hidden" name="inputKind" value={createMetricKind ?? "text"} />
-              <input type="hidden" name="optionsPayload" value={createMetricOptionsPayload} />
-
-              <div className="space-y-2">
-                <Label htmlFor="create-setup-metric-label">Metric name</Label>
-                <Input
-                  id="create-setup-metric-label"
-                  name="label"
-                  value={createMetricLabel}
-                  onChange={(event) => setCreateMetricLabel(event.target.value)}
-                  placeholder="e.g. Mast bend"
-                  maxLength={120}
-                  required
-                />
-              </div>
-
-              {createMetricKind !== "text" ? (
-                <div className="space-y-2">
-                  <Label htmlFor="create-setup-metric-options">Options (one per line)</Label>
-                  <Textarea
-                    id="create-setup-metric-options"
-                    value={createMetricOptionsText}
-                    onChange={(event) => setCreateMetricOptionsText(event.target.value)}
-                    rows={6}
-                    placeholder={"Option A\nOption B\nOption C"}
-                  />
-                </div>
-              ) : null}
-
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setCreateMetricStep("kind")
-                    setCreateMetricKind(null)
-                  }}
-                >
-                  Back
-                </Button>
-                <Button type="submit">Create metric</Button>
-              </DialogFooter>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={editingMetric !== null}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) {
-            setEditingMetricId(null)
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Edit setup metric</DialogTitle>
-            <DialogDescription>
-              Update Boat metric label, input kind, and options.
-            </DialogDescription>
-          </DialogHeader>
-
-          <form action={updateTeamSetupMetricAction} className="space-y-4">
-            <SetupScopeHiddenFields sessionId={input.sessionId} scope={input.scope} />
-            <input type="hidden" name="itemId" value={editingMetric?.id ?? ""} />
-            <input type="hidden" name="optionsPayload" value={updateMetricOptionsPayload} />
-
-            <EditSetupMetricFieldset>
-              <div className="space-y-2">
-                <Label htmlFor="edit-setup-metric-label">Metric name</Label>
-                <Input
-                  id="edit-setup-metric-label"
-                  name="label"
-                  value={editingMetricLabel}
-                  onChange={(event) => setEditingMetricLabel(event.target.value)}
-                  maxLength={120}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="edit-setup-metric-kind">Input kind</Label>
-                <select
-                  id="edit-setup-metric-kind"
-                  name="inputKind"
-                  value={editingMetricKind}
-                  onChange={(event) =>
-                    setEditingMetricKind(
-                      event.target.value as "single_select" | "multi_select" | "text",
-                    )
-                  }
-                  className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none ring-ring/50 focus-visible:ring-[3px]"
-                >
-                  <option value="single_select">Single Select</option>
-                  <option value="multi_select">Multi Select</option>
-                  <option value="text">Text</option>
-                </select>
-              </div>
-
-              {editingMetricKind !== "text" ? (
-                <div className="space-y-2">
-                  <Label htmlFor="edit-setup-metric-options">Options (one per line)</Label>
-                  <Textarea
-                    id="edit-setup-metric-options"
-                    value={editingMetricOptionsText}
-                    onChange={(event) => setEditingMetricOptionsText(event.target.value)}
-                    rows={6}
-                    placeholder={"Option A\nOption B\nOption C"}
-                  />
-                </div>
-              ) : null}
-
-              <DialogFooter>
-                <EditSetupMetricSubmitButton />
-              </DialogFooter>
-            </EditSetupMetricFieldset>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={deletingMetric !== null}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) {
-            setDeletingMetricId(null)
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete setup metric</DialogTitle>
-            <DialogDescription>
-              This hides the metric for future setup entries and keeps historical session data.
-            </DialogDescription>
-          </DialogHeader>
-
-          <p className="text-sm">
-            Delete <span className="font-semibold">{deletingMetric?.label ?? "this metric"}</span>?
-          </p>
-
-          <form action={deleteTeamSetupMetricAction} className="space-y-4">
-            <SetupScopeHiddenFields sessionId={input.sessionId} scope={input.scope} />
-            <input type="hidden" name="itemId" value={deletingMetric?.id ?? ""} />
-
-            <DialogFooter>
-              <Button type="submit" variant="destructive">
-                Delete metric
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </>
-  )
-
-  if (isMobile) {
-    return (
-      <Drawer open={isOpen} onOpenChange={handleOpenChange}>
-        <DrawerTrigger asChild>
-          <Button type="button" variant="outline" size="default" className="h-9 px-3">
-            Setup
-          </Button>
-        </DrawerTrigger>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>Session setup</DrawerTitle>
-          </DrawerHeader>
-          <div className="px-4 pb-4">{setupContent}</div>
-        </DrawerContent>
-      </Drawer>
     )
   }
 
@@ -1999,7 +1532,326 @@ function SetupDialog(input: {
           <DialogTitle>Session setup</DialogTitle>
         </DialogHeader>
 
-        {setupContent}
+        <form action={updateSessionSetupAction} className="space-y-4">
+          <SetupScopeHiddenFields sessionId={input.sessionId} scope={input.scope} />
+          <input type="hidden" name="setupPayload" value={payloadValue} />
+          <input type="hidden" name="orderedItemIdsPayload" value={orderedItemIdsPayload} />
+
+          <SetupDialogFieldset>
+            <div className="no-scrollbar max-h-[65vh] space-y-6 overflow-y-auto pb-2 pr-1">
+              {input.items.length === 0 ? (
+                <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
+                  No setup metrics are configured for this team yet.
+                </div>
+              ) : (
+                <>
+                  {renderSection(
+                    "Weather",
+                    <div className="space-y-3">
+                      {groupedItems.weather.map((item) =>
+                        isEditMode ? (
+                          renderEditableMetricRow({
+                            item,
+                            showTemplateControls: false,
+                          })
+                        ) : (
+                          <div key={item.id} className="rounded-lg border p-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <p className="text-sm font-medium">{item.label}</p>
+                              <div className="min-w-0 flex-1 text-right">
+                                {renderReadOnlyField(item)}
+                              </div>
+                            </div>
+                          </div>
+                        ),
+                      )}
+                    </div>,
+                  )}
+
+                  {renderSection(
+                    "Boat",
+                    <div className="space-y-3">
+                      {groupedItems.boat.length === 0 ? (
+                        <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
+                          No Boat metrics configured for this team yet.
+                        </div>
+                      ) : isEditMode ? (
+                        <DndContext
+                          sensors={sensors}
+                          collisionDetection={closestCenter}
+                          onDragEnd={handleBoatDragEnd}
+                        >
+                          <SortableContext
+                            items={boatOrderIds}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            <div className="space-y-3">
+                              {orderedBoatItems.map((item) => (
+                                <SortableBoatSetupRow key={item.id} itemId={item.id}>
+                                  {({ dragHandleProps, isDragging }) =>
+                                    renderEditableMetricRow({
+                                      item,
+                                      showTemplateControls: true,
+                                      dragHandleProps,
+                                      isDragging,
+                                    })
+                                  }
+                                </SortableBoatSetupRow>
+                              ))}
+                            </div>
+                          </SortableContext>
+                        </DndContext>
+                      ) : (
+                        <div className="space-y-3">
+                          {groupedItems.boat.map((item) => (
+                            <div key={item.id} className="rounded-lg border p-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <p className="text-sm font-medium">{item.label}</p>
+                                <div className="min-w-0 flex-1 text-right">
+                                  {renderReadOnlyField(item)}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>,
+                  )}
+
+                  {isEditMode ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full border-dashed"
+                      onClick={openCreateMetricDialog}
+                    >
+                      <PlusIcon className="size-4" />
+                      Add new setup metric
+                    </Button>
+                  ) : null}
+                </>
+              )}
+            </div>
+          </SetupDialogFieldset>
+
+          <SetupDialogFooter
+            isEditMode={isEditMode}
+            onEnterEditMode={() => setIsEditMode(true)}
+          />
+        </form>
+
+        <Dialog
+          open={isCreateMetricDialogOpen}
+          onOpenChange={(nextOpen) => {
+            setIsCreateMetricDialogOpen(nextOpen)
+            if (!nextOpen) {
+              setCreateMetricStep("kind")
+              setCreateMetricKind(null)
+              setCreateMetricLabel("")
+              setCreateMetricOptionsText("")
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Add setup metric</DialogTitle>
+              <DialogDescription>
+                Create a Boat metric. Weather definitions are fixed.
+              </DialogDescription>
+            </DialogHeader>
+
+            {createMetricStep === "kind" ? (
+              <div className="space-y-3">
+                <p className="text-sm font-medium">Choose input kind</p>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setCreateMetricKind("single_select")
+                      setCreateMetricStep("details")
+                    }}
+                  >
+                    Single Select
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setCreateMetricKind("multi_select")
+                      setCreateMetricStep("details")
+                    }}
+                  >
+                    Multi Select
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setCreateMetricKind("text")
+                      setCreateMetricStep("details")
+                    }}
+                  >
+                    Text
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <form action={createTeamSetupMetricAction} className="space-y-4">
+                <SetupScopeHiddenFields sessionId={input.sessionId} scope={input.scope} />
+                <input type="hidden" name="inputKind" value={createMetricKind ?? "text"} />
+                <input type="hidden" name="optionsPayload" value={createMetricOptionsPayload} />
+
+                <div className="space-y-2">
+                  <Label htmlFor="create-setup-metric-label">Metric name</Label>
+                  <Input
+                    id="create-setup-metric-label"
+                    name="label"
+                    value={createMetricLabel}
+                    onChange={(event) => setCreateMetricLabel(event.target.value)}
+                    placeholder="e.g. Mast bend"
+                    maxLength={120}
+                    required
+                  />
+                </div>
+
+                {createMetricKind !== "text" ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="create-setup-metric-options">Options (one per line)</Label>
+                    <Textarea
+                      id="create-setup-metric-options"
+                      value={createMetricOptionsText}
+                      onChange={(event) => setCreateMetricOptionsText(event.target.value)}
+                      rows={6}
+                      placeholder={"Option A\nOption B\nOption C"}
+                    />
+                  </div>
+                ) : null}
+
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setCreateMetricStep("kind")
+                      setCreateMetricKind(null)
+                    }}
+                  >
+                    Back
+                  </Button>
+                  <Button type="submit">Create metric</Button>
+                </DialogFooter>
+              </form>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={editingMetric !== null}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) {
+              setEditingMetricId(null)
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Edit setup metric</DialogTitle>
+              <DialogDescription>
+                Update Boat metric label, input kind, and options.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form action={updateTeamSetupMetricAction} className="space-y-4">
+              <SetupScopeHiddenFields sessionId={input.sessionId} scope={input.scope} />
+              <input type="hidden" name="itemId" value={editingMetric?.id ?? ""} />
+              <input type="hidden" name="optionsPayload" value={updateMetricOptionsPayload} />
+
+              <EditSetupMetricFieldset>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-setup-metric-label">Metric name</Label>
+                  <Input
+                    id="edit-setup-metric-label"
+                    name="label"
+                    value={editingMetricLabel}
+                    onChange={(event) => setEditingMetricLabel(event.target.value)}
+                    maxLength={120}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="edit-setup-metric-kind">Input kind</Label>
+                  <select
+                    id="edit-setup-metric-kind"
+                    name="inputKind"
+                    value={editingMetricKind}
+                    onChange={(event) =>
+                      setEditingMetricKind(
+                        event.target.value as "single_select" | "multi_select" | "text",
+                      )
+                    }
+                    className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none ring-ring/50 focus-visible:ring-[3px]"
+                  >
+                    <option value="single_select">Single Select</option>
+                    <option value="multi_select">Multi Select</option>
+                    <option value="text">Text</option>
+                  </select>
+                </div>
+
+                {editingMetricKind !== "text" ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-setup-metric-options">Options (one per line)</Label>
+                    <Textarea
+                      id="edit-setup-metric-options"
+                      value={editingMetricOptionsText}
+                      onChange={(event) => setEditingMetricOptionsText(event.target.value)}
+                      rows={6}
+                      placeholder={"Option A\nOption B\nOption C"}
+                    />
+                  </div>
+                ) : null}
+
+                <DialogFooter>
+                  <EditSetupMetricSubmitButton />
+                </DialogFooter>
+              </EditSetupMetricFieldset>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={deletingMetric !== null}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) {
+              setDeletingMetricId(null)
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Delete setup metric</DialogTitle>
+              <DialogDescription>
+                This hides the metric for future setup entries and keeps historical session data.
+              </DialogDescription>
+            </DialogHeader>
+
+            <p className="text-sm">
+              Delete <span className="font-semibold">{deletingMetric?.label ?? "this metric"}</span>?
+            </p>
+
+            <form action={deleteTeamSetupMetricAction} className="space-y-4">
+              <SetupScopeHiddenFields sessionId={input.sessionId} scope={input.scope} />
+              <input type="hidden" name="itemId" value={deletingMetric?.id ?? ""} />
+
+              <DialogFooter>
+                <Button type="submit" variant="destructive">
+                  Delete metric
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog>
   )
@@ -2014,8 +1866,6 @@ function EditSessionMetadataDialog(input: {
   dockInAt: string | null
   netTimeMinutes: number | null
 }) {
-  const isMobile = useIsMobile()
-
   function EditSessionDialogSubmitButton() {
     const { pending } = useFormStatus()
 
@@ -2050,99 +1900,6 @@ function EditSessionMetadataDialog(input: {
     }),
   )
 
-  const editSessionContent = (
-    <form action={updateSessionDetailAction} className="space-y-4">
-      <input type="hidden" name="id" value={input.sessionId} />
-      <input type="hidden" name="scopeOrgId" value={input.scope.activeOrgId} />
-      {input.scope.activeTeamId ? (
-        <input type="hidden" name="scopeTeamId" value={input.scope.activeTeamId} />
-      ) : null}
-      <input type="hidden" name="scopeTab" value="info" />
-
-      <EditSessionDialogFieldset>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor={`session-type-${input.sessionId}`}>Type</Label>
-            <select
-              id={`session-type-${input.sessionId}`}
-              name="sessionType"
-              required
-              value={nextSessionType}
-              onChange={(event) => setNextSessionType(event.target.value as "training" | "regatta")}
-              className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none ring-ring/50 focus-visible:ring-[3px]"
-            >
-              <option value="training">Training</option>
-              <option value="regatta">Regatta</option>
-            </select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor={`session-date-${input.sessionId}`}>Date</Label>
-            <Input
-              id={`session-date-${input.sessionId}`}
-              name="sessionDate"
-              type="date"
-              required
-              value={nextSessionDate}
-              onChange={(event) => setNextSessionDate(event.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor={`session-start-${input.sessionId}`}>Start Time (UTC)</Label>
-            <Input
-              id={`session-start-${input.sessionId}`}
-              name="startTime"
-              type="time"
-              value={nextStartTime}
-              onChange={(event) => setNextStartTime(event.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor={`session-duration-${input.sessionId}`}>
-              Total Duration (hours, optional)
-            </Label>
-            <Input
-              id={`session-duration-${input.sessionId}`}
-              name="totalDurationHours"
-              type="number"
-              min="0.25"
-              max="24"
-              step="0.25"
-              placeholder="e.g. 2"
-              value={nextTotalDurationHours}
-              onChange={(event) => setNextTotalDurationHours(event.target.value)}
-            />
-          </div>
-        </div>
-      </EditSessionDialogFieldset>
-
-      <DialogFooter>
-        <EditSessionDialogSubmitButton />
-      </DialogFooter>
-    </form>
-  )
-
-  if (isMobile) {
-    return (
-      <Drawer>
-        <DrawerTrigger asChild>
-          <Button type="button" variant="outline" size="default" className="h-9 px-3">
-            Edit
-          </Button>
-        </DrawerTrigger>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>Edit session</DrawerTitle>
-            <DrawerDescription>Update type, date, and session timing.</DrawerDescription>
-          </DrawerHeader>
-          <div className="px-4 pb-4">{editSessionContent}</div>
-        </DrawerContent>
-      </Drawer>
-    )
-  }
-
   return (
     <Dialog>
       <DialogTrigger render={<Button type="button" variant="outline" size="sm" />}>
@@ -2154,169 +1911,75 @@ function EditSessionMetadataDialog(input: {
           <DialogDescription>Update type, date, and session timing.</DialogDescription>
         </DialogHeader>
 
-        {editSessionContent}
-      </DialogContent>
-    </Dialog>
-  )
-}
+        <form action={updateSessionDetailAction} className="space-y-4">
+          <input type="hidden" name="id" value={input.sessionId} />
+          <input type="hidden" name="scopeOrgId" value={input.scope.activeOrgId} />
+          {input.scope.activeTeamId ? (
+            <input type="hidden" name="scopeTeamId" value={input.scope.activeTeamId} />
+          ) : null}
+          <input type="hidden" name="scopeTab" value="info" />
 
-type SessionInfoSnapshot = {
-  bestOfSession: string | null
-  toWork: string | null
-  windPatterns: string | null
-  freeNotes: string | null
-  linkedStandardMoveIds: string[]
-}
+          <EditSessionDialogFieldset>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor={`session-type-${input.sessionId}`}>Type</Label>
+                <select
+                  id={`session-type-${input.sessionId}`}
+                  name="sessionType"
+                  required
+                  value={nextSessionType}
+                  onChange={(event) => setNextSessionType(event.target.value as "training" | "regatta")}
+                  className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none ring-ring/50 focus-visible:ring-[3px]"
+                >
+                  <option value="training">Training</option>
+                  <option value="regatta">Regatta</option>
+                </select>
+              </div>
 
-function InfoTextFieldEditDialog(input: {
-  sessionId: string
-  scope: NavigationScope
-  snapshot: SessionInfoSnapshot
-  fieldName: "bestOfSession" | "toWork" | "windPatterns" | "freeNotes"
-  fieldLabel: string
-  dialogTitle: string
-  dialogDescription: string
-}) {
-  function InfoFieldSubmitButton() {
-    const { pending } = useFormStatus()
+              <div className="space-y-2">
+                <Label htmlFor={`session-date-${input.sessionId}`}>Date</Label>
+                <Input
+                  id={`session-date-${input.sessionId}`}
+                  name="sessionDate"
+                  type="date"
+                  required
+                  value={nextSessionDate}
+                  onChange={(event) => setNextSessionDate(event.target.value)}
+                />
+              </div>
 
-    return (
-      <Button type="submit" disabled={pending}>
-        {pending ? (
-          <>
-            <Loader2Icon className="size-4 animate-spin" />
-            Saving...
-          </>
-        ) : (
-          "Save"
-        )}
-      </Button>
-    )
-  }
+              <div className="space-y-2">
+                <Label htmlFor={`session-start-${input.sessionId}`}>Start Time (UTC)</Label>
+                <Input
+                  id={`session-start-${input.sessionId}`}
+                  name="startTime"
+                  type="time"
+                  value={nextStartTime}
+                  onChange={(event) => setNextStartTime(event.target.value)}
+                />
+              </div>
 
-  const isMobile = useIsMobile()
-  const [nextValue, setNextValue] = React.useState(
-    (() => {
-      if (input.fieldName === "bestOfSession") {
-        return input.snapshot.bestOfSession ?? ""
-      }
+              <div className="space-y-2">
+                <Label htmlFor={`session-duration-${input.sessionId}`}>
+                  Total Duration (hours, optional)
+                </Label>
+                <Input
+                  id={`session-duration-${input.sessionId}`}
+                  name="totalDurationHours"
+                  type="number"
+                  min="0.25"
+                  max="24"
+                  step="0.25"
+                  placeholder="e.g. 2"
+                  value={nextTotalDurationHours}
+                  onChange={(event) => setNextTotalDurationHours(event.target.value)}
+                />
+              </div>
+            </div>
+          </EditSessionDialogFieldset>
 
-      if (input.fieldName === "toWork") {
-        return input.snapshot.toWork ?? ""
-      }
-
-      if (input.fieldName === "windPatterns") {
-        return input.snapshot.windPatterns ?? ""
-      }
-
-      return input.snapshot.freeNotes ?? ""
-    })(),
-  )
-  const infoFieldLabelClassName =
-    "text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-  const textAreaRows = input.fieldName === "freeNotes" ? 6 : 4
-  const editActionLabel = `Edit ${input.fieldLabel.toLowerCase()}`
-
-  const formFields = (
-    <>
-      <input type="hidden" name="sessionId" value={input.sessionId} />
-      <input type="hidden" name="scopeOrgId" value={input.scope.activeOrgId} />
-      {input.scope.activeTeamId ? (
-        <input type="hidden" name="scopeTeamId" value={input.scope.activeTeamId} />
-      ) : null}
-      <input type="hidden" name="scopeTab" value="info" />
-      {input.fieldName !== "bestOfSession" ? (
-        <input
-          type="hidden"
-          name="bestOfSession"
-          value={input.snapshot.bestOfSession ?? ""}
-        />
-      ) : null}
-      {input.fieldName !== "toWork" ? (
-        <input
-          type="hidden"
-          name="toWork"
-          value={input.snapshot.toWork ?? ""}
-        />
-      ) : null}
-      {input.fieldName !== "windPatterns" ? (
-        <input
-          type="hidden"
-          name="windPatterns"
-          value={input.snapshot.windPatterns ?? ""}
-        />
-      ) : null}
-      {input.fieldName !== "freeNotes" ? (
-        <input
-          type="hidden"
-          name="freeNotes"
-          value={input.snapshot.freeNotes ?? ""}
-        />
-      ) : null}
-      {input.snapshot.linkedStandardMoveIds.map((standardMoveId) => (
-        <input key={standardMoveId} type="hidden" name="standardMoveId" value={standardMoveId} />
-      ))}
-      <input type="hidden" name="newStandardMoveName" value="" />
-      <input type="hidden" name="newStandardMoveDescription" value="" />
-
-      <div className="space-y-2">
-        <Label
-          htmlFor={`${input.fieldName}-${input.sessionId}`}
-          className={infoFieldLabelClassName}
-        >
-          {input.fieldLabel}
-        </Label>
-        <Textarea
-          id={`${input.fieldName}-${input.sessionId}`}
-          name={input.fieldName}
-          rows={textAreaRows}
-          maxLength={4000}
-          value={nextValue}
-          onChange={(event) => setNextValue(event.target.value)}
-        />
-      </div>
-    </>
-  )
-
-  if (isMobile) {
-    return (
-      <Drawer>
-        <DrawerTrigger asChild>
-          <Button type="button" variant="outline" size="icon" className="h-8 w-8">
-            <PencilIcon className="size-4" />
-            <span className="sr-only">{editActionLabel}</span>
-          </Button>
-        </DrawerTrigger>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>{input.dialogTitle}</DrawerTitle>
-            <DrawerDescription>{input.dialogDescription}</DrawerDescription>
-          </DrawerHeader>
-          <form action={updateSessionInfoAction} className="flex max-h-[calc(80vh-10rem)] flex-col">
-            <div className="overflow-y-auto px-4 pb-4">{formFields}</div>
-            <DrawerFooter className="border-t bg-background pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
-              <InfoFieldSubmitButton />
-            </DrawerFooter>
-          </form>
-        </DrawerContent>
-      </Drawer>
-    )
-  }
-
-  return (
-    <Dialog>
-      <DialogTrigger render={<Button type="button" variant="outline" size="sm" />}>
-        Edit
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>{input.dialogTitle}</DialogTitle>
-          <DialogDescription>{input.dialogDescription}</DialogDescription>
-        </DialogHeader>
-        <form action={updateSessionInfoAction} className="space-y-4">
-          {formFields}
           <DialogFooter>
-            <InfoFieldSubmitButton />
+            <EditSessionDialogSubmitButton />
           </DialogFooter>
         </form>
       </DialogContent>
@@ -2324,18 +1987,22 @@ function InfoTextFieldEditDialog(input: {
   )
 }
 
-function InfoStandardMovesEditDialog(input: {
+function InfoEditDialog(input: {
   sessionId: string
   scope: NavigationScope
-  snapshot: SessionInfoSnapshot
+  bestOfSession: string | null
+  toWork: string | null
   availableStandardMoves: {
     id: string
     name: string
     description: string | null
     isActive: boolean
   }[]
+  linkedStandardMoveIds: string[]
+  windPatterns: string | null
+  freeNotes: string | null
 }) {
-  function StandardMovesSubmitButton(props: { canSubmit: boolean }) {
+  function InfoDialogSubmitButton(props: { canSubmit: boolean }) {
     const { pending } = useFormStatus()
 
     return (
@@ -2343,339 +2010,272 @@ function InfoStandardMovesEditDialog(input: {
         {pending ? (
           <>
             <Loader2Icon className="size-4 animate-spin" />
-            Saving...
+            Saving info...
           </>
         ) : (
-          "Save"
+          "Save info"
         )}
       </Button>
     )
   }
 
-  function StandardMovesFieldset(props: { children: React.ReactNode }) {
+  function InfoDialogFieldset(props: { children: React.ReactNode }) {
     const { pending } = useFormStatus()
 
     return <fieldset disabled={pending} className="space-y-4">{props.children}</fieldset>
   }
 
-  const isMobile = useIsMobile()
-  const [standardMoveIds, setStandardMoveIds] = React.useState<string[]>(input.snapshot.linkedStandardMoveIds)
+  const [bestOfSession, setBestOfSession] = React.useState(input.bestOfSession ?? "")
+  const [toWork, setToWork] = React.useState(input.toWork ?? "")
+  const [standardMoveIds, setStandardMoveIds] = React.useState<string[]>(input.linkedStandardMoveIds)
   const [newStandardMoveName, setNewStandardMoveName] = React.useState("")
   const [newStandardMoveDescription, setNewStandardMoveDescription] = React.useState("")
-  const [isQuickCreateOpen, setIsQuickCreateOpen] = React.useState(false)
+  const [isQuickCreateDialogOpen, setIsQuickCreateDialogOpen] = React.useState(false)
   const [isQuickCreateNameManuallyEdited, setIsQuickCreateNameManuallyEdited] =
     React.useState(false)
+  const [windPatterns, setWindPatterns] = React.useState(input.windPatterns ?? "")
+  const [freeNotes, setFreeNotes] = React.useState(input.freeNotes ?? "")
   const hasQuickCreateName = newStandardMoveName.trim().length > 0
   const hasQuickCreateDescription = newStandardMoveDescription.trim().length > 0
   const quickCreateDescriptionMissing = hasQuickCreateName && !hasQuickCreateDescription
   const canSubmitInfo = !quickCreateDescriptionMissing
-  const infoFieldLabelClassName = "text-xs font-semibold uppercase tracking-wide text-muted-foreground"
   const standardMoveOptions = input.availableStandardMoves.filter(
     (standardMove) =>
-      standardMove.isActive || input.snapshot.linkedStandardMoveIds.includes(standardMove.id),
+      standardMove.isActive || input.linkedStandardMoveIds.includes(standardMove.id),
   )
-  const selectedStandardMoveMap = React.useMemo(
-    () => new Map(standardMoveOptions.map((standardMove) => [standardMove.id, standardMove])),
-    [standardMoveOptions],
-  )
-  const selectedStandardMoves = React.useMemo(
-    () =>
-      standardMoveIds
-        .map((standardMoveId) => selectedStandardMoveMap.get(standardMoveId))
-        .filter(
-          (standardMove): standardMove is (typeof standardMoveOptions)[number] =>
-            standardMove !== undefined,
-        ),
-    [selectedStandardMoveMap, standardMoveIds],
-  )
-  const quickCreateContent = (
-    <>
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor={`quick-standard-move-description-${input.sessionId}`}>
-            Description
-          </Label>
-          <Textarea
-            id={`quick-standard-move-description-${input.sessionId}`}
-            rows={3}
-            maxLength={4000}
-            value={newStandardMoveDescription}
-            onChange={(event) => {
-              const nextDescription = event.target.value
-              setNewStandardMoveDescription(nextDescription)
-
-              if (!isQuickCreateNameManuallyEdited) {
-                if (nextDescription.trim().length === 0) {
-                  setNewStandardMoveName("")
-                } else {
-                  setNewStandardMoveName(
-                    generateStandardMoveNameFromDescription(nextDescription),
-                  )
-                }
-              }
-            }}
-            placeholder="Describe the move in plain language."
-          />
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <Label htmlFor={`quick-standard-move-name-${input.sessionId}`}>Name</Label>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={newStandardMoveDescription.trim().length === 0}
-              onClick={() => {
-                setNewStandardMoveName(
-                  generateStandardMoveNameFromDescription(newStandardMoveDescription),
-                )
-                setIsQuickCreateNameManuallyEdited(false)
-              }}
-            >
-              Use generated
-            </Button>
-          </div>
-          <Input
-            id={`quick-standard-move-name-${input.sessionId}`}
-            maxLength={120}
-            value={newStandardMoveName}
-            onChange={(event) => {
-              setNewStandardMoveName(event.target.value)
-              setIsQuickCreateNameManuallyEdited(true)
-            }}
-            placeholder="Auto-generated from the description"
-          />
-        </div>
-      </div>
-    </>
-  )
-
-  const standardMovesFormFields = (
-    <>
-      <input type="hidden" name="sessionId" value={input.sessionId} />
-      <input type="hidden" name="scopeOrgId" value={input.scope.activeOrgId} />
-      {input.scope.activeTeamId ? (
-        <input type="hidden" name="scopeTeamId" value={input.scope.activeTeamId} />
-      ) : null}
-      <input type="hidden" name="scopeTab" value="info" />
-      <input type="hidden" name="bestOfSession" value={input.snapshot.bestOfSession ?? ""} />
-      <input type="hidden" name="toWork" value={input.snapshot.toWork ?? ""} />
-      <input type="hidden" name="windPatterns" value={input.snapshot.windPatterns ?? ""} />
-      <input type="hidden" name="freeNotes" value={input.snapshot.freeNotes ?? ""} />
-      <input type="hidden" name="newStandardMoveName" value={newStandardMoveName} />
-      <input
-        type="hidden"
-        name="newStandardMoveDescription"
-        value={newStandardMoveDescription}
-      />
-      {standardMoveIds.map((standardMoveId) => (
-        <input key={standardMoveId} type="hidden" name="standardMoveId" value={standardMoveId} />
-      ))}
-
-      <StandardMovesFieldset>
-        <div className="space-y-2">
-          <Label
-            htmlFor={`standard-moves-${input.sessionId}`}
-            className={infoFieldLabelClassName}
-          >
-            Std. Moves
-          </Label>
-          <Multiselect
-            value={standardMoveIds}
-            onValueChange={(nextStandardMoveIds) => setStandardMoveIds(nextStandardMoveIds)}
-          >
-            <MultiselectTrigger
-              id={`standard-moves-${input.sessionId}`}
-              placeholder={
-                standardMoveOptions.length > 0 ? "Select standard moves" : "No standard moves available yet"
-              }
-              disabled={standardMoveOptions.length === 0}
-            >
-              <MultiselectBadgeList>
-                {standardMoveIds.map((standardMoveId) => {
-                  const standardMove = selectedStandardMoveMap.get(standardMoveId)
-
-                  if (!standardMove) {
-                    return null
-                  }
-
-                  return (
-                    <MultiselectBadge key={standardMove.id} value={standardMove.id}>
-                      {standardMove.name}
-                      {standardMove.isActive ? "" : " (Archived)"}
-                    </MultiselectBadge>
-                  )
-                })}
-              </MultiselectBadgeList>
-            </MultiselectTrigger>
-            <MultiselectContent>
-              <MultiselectInput placeholder="Search standard moves..." />
-              <MultiselectEmpty>No standard moves found.</MultiselectEmpty>
-              {standardMoveOptions.map((standardMove) => (
-                <MultiselectItem key={standardMove.id} value={standardMove.id}>
-                  {standardMove.name}
-                  {standardMove.isActive ? "" : " (Archived)"}
-                </MultiselectItem>
-              ))}
-            </MultiselectContent>
-          </Multiselect>
-        </div>
-
-        <div className="space-y-2">
-          <p className={infoFieldLabelClassName}>Descriptions</p>
-          {selectedStandardMoves.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No standard moves selected.</p>
-          ) : (
-            <Accordion>
-              {selectedStandardMoves.map((standardMove) => (
-                <AccordionItem key={standardMove.id} value={standardMove.id}>
-                  <AccordionTrigger className="py-2 text-sm font-medium">
-                    {standardMove.name}
-                  </AccordionTrigger>
-                  <AccordionContent>
-                    <p className="text-sm text-muted-foreground">
-                      {standardMove.description && standardMove.description.trim().length > 0
-                        ? standardMove.description
-                        : "No description"}
-                    </p>
-                  </AccordionContent>
-                </AccordionItem>
-              ))}
-            </Accordion>
-          )}
-        </div>
-
-        <div className="grid gap-3 rounded-lg border p-3">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="space-y-1">
-              <p className="text-sm font-medium">Quick Create Std. Move</p>
-              <p className="text-xs text-muted-foreground">
-                Create and link a new team standard move without leaving this screen.
-              </p>
-            </div>
-            {isMobile ? (
-              <Drawer open={isQuickCreateOpen} onOpenChange={setIsQuickCreateOpen}>
-                <DrawerTrigger asChild>
-                  <Button type="button" variant="outline" size="sm">
-                    <PlusIcon className="size-4" />
-                    Quick create
-                  </Button>
-                </DrawerTrigger>
-                <DrawerContent>
-                  <DrawerHeader>
-                    <DrawerTitle>Quick Create Std. Move</DrawerTitle>
-                    <DrawerDescription>
-                      Description is required. Name is auto-generated and editable.
-                    </DrawerDescription>
-                  </DrawerHeader>
-                  <div className="max-h-[calc(80vh-10rem)] overflow-y-auto px-4 pb-4">
-                    {quickCreateContent}
-                  </div>
-                  <DrawerFooter className="border-t bg-background pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setIsQuickCreateOpen(false)}
-                    >
-                      Done
-                    </Button>
-                  </DrawerFooter>
-                </DrawerContent>
-              </Drawer>
-            ) : (
-              <Dialog open={isQuickCreateOpen} onOpenChange={setIsQuickCreateOpen}>
-                <DialogTrigger render={<Button type="button" variant="outline" size="sm" />}>
-                  <PlusIcon className="size-4" />
-                  Quick create
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-xl" overlayClassName="bg-black/35 backdrop-blur-md">
-                  <DialogHeader>
-                    <DialogTitle>Quick Create Std. Move</DialogTitle>
-                    <DialogDescription>
-                      Description is required. Name is auto-generated and editable.
-                    </DialogDescription>
-                  </DialogHeader>
-                  {quickCreateContent}
-                  <DialogFooter>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setIsQuickCreateOpen(false)}
-                    >
-                      Done
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            )}
-          </div>
-
-          {hasQuickCreateDescription ? (
-            <p className="text-xs text-muted-foreground">
-              Will create and link:{" "}
-              <span className="font-medium text-foreground">
-                {newStandardMoveName.trim().length > 0
-                  ? newStandardMoveName.trim()
-                  : generateStandardMoveNameFromDescription(newStandardMoveDescription)}
-              </span>
-            </p>
-          ) : null}
-
-        {quickCreateDescriptionMissing ? (
-          <p className="text-xs text-destructive">
-            Description is required when quick-creating a standard move.
-          </p>
-        ) : null}
-      </div>
-      </StandardMovesFieldset>
-    </>
-  )
-
-  if (isMobile) {
-    return (
-      <Drawer>
-        <DrawerTrigger asChild>
-          <Button type="button" variant="outline" size="icon" className="h-8 w-8">
-            <PencilIcon className="size-4" />
-            <span className="sr-only">Edit standard moves</span>
-          </Button>
-        </DrawerTrigger>
-        <DrawerContent className="sm:max-w-2xl transition-[filter] duration-100">
-          <DrawerHeader>
-            <DrawerTitle>Edit standard moves</DrawerTitle>
-          </DrawerHeader>
-          <form action={updateSessionInfoAction} className="flex max-h-[calc(80vh-10rem)] flex-col">
-            <div className="overflow-y-auto px-4 pb-4">
-              {standardMovesFormFields}
-            </div>
-            <DrawerFooter className="border-t bg-background pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
-              <StandardMovesSubmitButton canSubmit={canSubmitInfo} />
-            </DrawerFooter>
-          </form>
-        </DrawerContent>
-      </Drawer>
-    )
-  }
 
   return (
     <Dialog>
       <DialogTrigger render={<Button type="button" variant="outline" size="sm" />}>
-        Edit
+        Edit info
       </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl transition-[filter] duration-100">
+      <DialogContent
+        className={[
+          "sm:max-w-2xl transition-[filter] duration-100",
+          isQuickCreateDialogOpen ? "blur-[2px]" : "",
+        ].join(" ")}
+      >
         <DialogHeader>
-          <DialogTitle>Edit standard moves</DialogTitle>
+          <DialogTitle>Edit session info</DialogTitle>
           <DialogDescription>
-            Manage linked standard moves for this session.
+            Update the coaching notes fields for this session.
           </DialogDescription>
         </DialogHeader>
+
         <form action={updateSessionInfoAction} className="space-y-4">
-          <div className="max-h-[65vh] overflow-y-auto pr-1">
-            {standardMovesFormFields}
-          </div>
+          <input type="hidden" name="sessionId" value={input.sessionId} />
+          <input type="hidden" name="scopeOrgId" value={input.scope.activeOrgId} />
+          {input.scope.activeTeamId ? (
+            <input type="hidden" name="scopeTeamId" value={input.scope.activeTeamId} />
+          ) : null}
+          <input type="hidden" name="scopeTab" value="info" />
+          <input type="hidden" name="newStandardMoveName" value={newStandardMoveName} />
+          <input
+            type="hidden"
+            name="newStandardMoveDescription"
+            value={newStandardMoveDescription}
+          />
+
+          <InfoDialogFieldset>
+            <div className="space-y-2">
+              <Label htmlFor={`best-of-session-${input.sessionId}`}>Best</Label>
+              <Textarea
+                id={`best-of-session-${input.sessionId}`}
+                name="bestOfSession"
+                rows={3}
+                maxLength={4000}
+                value={bestOfSession}
+                onChange={(event) => setBestOfSession(event.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor={`to-work-${input.sessionId}`}>To Work</Label>
+              <Textarea
+                id={`to-work-${input.sessionId}`}
+                name="toWork"
+                rows={3}
+                maxLength={4000}
+                value={toWork}
+                onChange={(event) => setToWork(event.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor={`standard-moves-${input.sessionId}`}>Std. Moves</Label>
+              <select
+                id={`standard-moves-${input.sessionId}`}
+                multiple
+                name="standardMoveId"
+                value={standardMoveIds}
+                onChange={(event) => {
+                  const nextSelectedIds = Array.from(event.target.selectedOptions).map(
+                    (option) => option.value,
+                  )
+                  setStandardMoveIds(nextSelectedIds)
+                }}
+                className="min-h-32 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none ring-ring/50 focus-visible:ring-[3px]"
+              >
+                {standardMoveOptions.length === 0 ? (
+                  <option value="" disabled>
+                    No standard moves available yet.
+                  </option>
+                ) : (
+                  standardMoveOptions.map((standardMove) => (
+                    <option key={standardMove.id} value={standardMove.id}>
+                      {standardMove.name}
+                      {standardMove.isActive ? "" : " (Archived)"}
+                    </option>
+                  ))
+                )}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Hold Cmd/Ctrl to select multiple moves.
+              </p>
+            </div>
+
+            <div className="grid gap-3 rounded-lg border p-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Quick Create Std. Move</p>
+                  <p className="text-xs text-muted-foreground">
+                    Create and link a new team standard move without leaving this screen.
+                  </p>
+                </div>
+                <Dialog open={isQuickCreateDialogOpen} onOpenChange={setIsQuickCreateDialogOpen}>
+                  <DialogTrigger render={<Button type="button" variant="outline" size="sm" />}>
+                    <PlusIcon className="size-4" />
+                    Quick create
+                  </DialogTrigger>
+                  <DialogContent
+                    className="sm:max-w-xl"
+                    overlayClassName="bg-black/35 backdrop-blur-md"
+                  >
+                    <DialogHeader>
+                      <DialogTitle>Quick Create Std. Move</DialogTitle>
+                      <DialogDescription>
+                        Description is required. Name is auto-generated and editable.
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor={`quick-standard-move-description-${input.sessionId}`}>
+                          Description
+                        </Label>
+                        <Textarea
+                          id={`quick-standard-move-description-${input.sessionId}`}
+                          rows={3}
+                          maxLength={4000}
+                          value={newStandardMoveDescription}
+                          onChange={(event) => {
+                            const nextDescription = event.target.value
+                            setNewStandardMoveDescription(nextDescription)
+
+                            if (!isQuickCreateNameManuallyEdited) {
+                              if (nextDescription.trim().length === 0) {
+                                setNewStandardMoveName("")
+                              } else {
+                                setNewStandardMoveName(
+                                  generateStandardMoveNameFromDescription(nextDescription),
+                                )
+                              }
+                            }
+                          }}
+                          placeholder="Describe the move in plain language."
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <Label htmlFor={`quick-standard-move-name-${input.sessionId}`}>Name</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={newStandardMoveDescription.trim().length === 0}
+                            onClick={() => {
+                              setNewStandardMoveName(
+                                generateStandardMoveNameFromDescription(newStandardMoveDescription),
+                              )
+                              setIsQuickCreateNameManuallyEdited(false)
+                            }}
+                          >
+                            Use generated
+                          </Button>
+                        </div>
+                        <Input
+                          id={`quick-standard-move-name-${input.sessionId}`}
+                          maxLength={120}
+                          value={newStandardMoveName}
+                          onChange={(event) => {
+                            setNewStandardMoveName(event.target.value)
+                            setIsQuickCreateNameManuallyEdited(true)
+                          }}
+                          placeholder="Auto-generated from the description"
+                        />
+                      </div>
+                    </div>
+
+                    <DialogFooter>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setIsQuickCreateDialogOpen(false)}
+                      >
+                        Done
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+
+              {hasQuickCreateDescription ? (
+                <p className="text-xs text-muted-foreground">
+                  Will create and link:{" "}
+                  <span className="font-medium text-foreground">
+                    {newStandardMoveName.trim().length > 0
+                      ? newStandardMoveName.trim()
+                      : generateStandardMoveNameFromDescription(newStandardMoveDescription)}
+                  </span>
+                </p>
+              ) : null}
+
+              {quickCreateDescriptionMissing ? (
+                <p className="text-xs text-destructive">
+                  Description is required when quick-creating a standard move.
+                </p>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor={`wind-patterns-${input.sessionId}`}>Wind Patterns</Label>
+              <Textarea
+                id={`wind-patterns-${input.sessionId}`}
+                name="windPatterns"
+                rows={3}
+                maxLength={4000}
+                value={windPatterns}
+                onChange={(event) => setWindPatterns(event.target.value)}
+                placeholder="Plain text or JSON"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor={`free-notes-${input.sessionId}`}>Free Notes</Label>
+              <Textarea
+                id={`free-notes-${input.sessionId}`}
+                name="freeNotes"
+                rows={4}
+                maxLength={4000}
+                value={freeNotes}
+                onChange={(event) => setFreeNotes(event.target.value)}
+              />
+            </div>
+          </InfoDialogFieldset>
+
           <DialogFooter>
-            <StandardMovesSubmitButton canSubmit={canSubmitInfo} />
+            <InfoDialogSubmitButton canSubmit={canSubmitInfo} />
           </DialogFooter>
         </form>
       </DialogContent>
@@ -3240,7 +2840,7 @@ export function SessionHeaderActions(input: {
   }
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2">
       <SetupDialog
         sessionId={input.sessionId}
         scope={input.scope}
@@ -3286,30 +2886,7 @@ export function SessionDetailTabsClient(input: {
   linkedGearItemIds: string[]
   canManageSession: boolean
 }) {
-  const availableTabs = React.useMemo<SessionDetailTab[]>(
-    () =>
-      input.sessionType === "regatta"
-        ? [...SESSION_DETAIL_TABS]
-        : SESSION_DETAIL_TABS.filter((tab): tab is SessionDetailTab => tab !== "results"),
-    [input.sessionType],
-  )
-  const [selectedTab, setSelectedTab] = React.useState<SessionDetailTab>(() =>
-    availableTabs.includes(input.initialTab) ? input.initialTab : "info",
-  )
-  const isMobile = useIsMobile()
-  const visibleTabs = isMobile
-    ? availableTabs.slice(0, MOBILE_VISIBLE_SESSION_TABS_COUNT)
-    : availableTabs
-  const overflowTabs = isMobile
-    ? availableTabs.slice(MOBILE_VISIBLE_SESSION_TABS_COUNT)
-    : []
-  const activeOverflowTab = overflowTabs.includes(selectedTab) ? selectedTab : null
-
-  React.useEffect(() => {
-    if (!availableTabs.includes(selectedTab)) {
-      setSelectedTab("info")
-    }
-  }, [availableTabs, selectedTab])
+  const [selectedTab, setSelectedTab] = React.useState<SessionDetailTab>(input.initialTab)
 
   return (
     <Tabs
@@ -3317,169 +2894,58 @@ export function SessionDetailTabsClient(input: {
       onValueChange={(value) => setSelectedTab(resolveTab(value))}
       className="space-y-4"
     >
-      <TabsList className={isMobile ? "h-10 w-full" : "h-10"}>
-        {visibleTabs.map((tab) => (
-          <TabsTrigger
-            key={tab}
-            value={tab}
-            className={
-              isMobile
-                ? "min-w-0 flex-1 capitalize"
-                : "min-w-fit capitalize"
-            }
-          >
+      <TabsList className="h-10">
+        {SESSION_DETAIL_TABS.map((tab) => (
+          <TabsTrigger key={tab} value={tab} className="min-w-fit capitalize">
             {tab}
           </TabsTrigger>
         ))}
-
-        {overflowTabs.length > 0 ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={<Button type="button" variant="ghost" size="sm" />}
-              className={
-                isMobile
-                  ? `shrink-0 px-2 ${activeOverflowTab ? "bg-background" : ""}`
-                  : activeOverflowTab
-                    ? "bg-background"
-                    : undefined
-              }
-              aria-label="More tabs"
-            >
-              <MoreHorizontalIcon className="size-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {overflowTabs.map((tab) => (
-                <DropdownMenuItem
-                  key={tab}
-                  onClick={() => {
-                    setSelectedTab(tab)
-                  }}
-                  className="capitalize"
-                >
-                  {tab}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
       </TabsList>
 
-      <section>
+      <section className="rounded-xl border bg-card p-4 sm:p-6">
         <TabsContent value="info" className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-semibold">Session Info</h3>
+              <p className="text-sm text-muted-foreground">
+                Coaching summary and tactical observations.
+              </p>
+            </div>
+            {input.canManageSession ? (
+              <InfoEditDialog
+                sessionId={input.sessionId}
+                scope={input.scope}
+                bestOfSession={input.info.bestOfSession}
+                toWork={input.info.toWork}
+                availableStandardMoves={input.availableStandardMoves}
+                linkedStandardMoveIds={input.linkedStandardMoveIds}
+                windPatterns={input.info.windPatterns}
+                freeNotes={input.info.freeNotes}
+              />
+            ) : null}
+          </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-lg bg-muted p-4">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Best</p>
-                {input.canManageSession ? (
-                  <InfoTextFieldEditDialog
-                    sessionId={input.sessionId}
-                    scope={input.scope}
-                    snapshot={{
-                      bestOfSession: input.info.bestOfSession,
-                      toWork: input.info.toWork,
-                      windPatterns: input.info.windPatterns,
-                      freeNotes: input.info.freeNotes,
-                      linkedStandardMoveIds: input.linkedStandardMoveIds,
-                    }}
-                    fieldName="bestOfSession"
-                    fieldLabel="Best"
-                    dialogTitle="Edit Best"
-                    dialogDescription="Update the best notes for this session."
-                  />
-                ) : null}
-              </div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Best</p>
               <p className="mt-2 whitespace-pre-wrap text-sm">{renderTextValue(input.info.bestOfSession)}</p>
             </div>
             <div className="rounded-lg bg-muted p-4">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">To Work</p>
-                {input.canManageSession ? (
-                  <InfoTextFieldEditDialog
-                    sessionId={input.sessionId}
-                    scope={input.scope}
-                    snapshot={{
-                      bestOfSession: input.info.bestOfSession,
-                      toWork: input.info.toWork,
-                      windPatterns: input.info.windPatterns,
-                      freeNotes: input.info.freeNotes,
-                      linkedStandardMoveIds: input.linkedStandardMoveIds,
-                    }}
-                    fieldName="toWork"
-                    fieldLabel="To Work"
-                    dialogTitle="Edit To Work"
-                    dialogDescription="Update what to work on for this session."
-                  />
-                ) : null}
-              </div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">To Work</p>
               <p className="mt-2 whitespace-pre-wrap text-sm">{renderTextValue(input.info.toWork)}</p>
             </div>
             <div className="rounded-lg bg-muted p-4">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Std. Moves</p>
-                {input.canManageSession ? (
-                  <InfoStandardMovesEditDialog
-                    sessionId={input.sessionId}
-                    scope={input.scope}
-                    snapshot={{
-                      bestOfSession: input.info.bestOfSession,
-                      toWork: input.info.toWork,
-                      windPatterns: input.info.windPatterns,
-                      freeNotes: input.info.freeNotes,
-                      linkedStandardMoveIds: input.linkedStandardMoveIds,
-                    }}
-                    availableStandardMoves={input.availableStandardMoves}
-                  />
-                ) : null}
-              </div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Std. Moves</p>
               <p className="mt-2 whitespace-pre-wrap text-sm">{renderTextList(input.info.standardMoves)}</p>
             </div>
             <div className="rounded-lg bg-muted p-4">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Wind Patterns</p>
-                {input.canManageSession ? (
-                  <InfoTextFieldEditDialog
-                    sessionId={input.sessionId}
-                    scope={input.scope}
-                    snapshot={{
-                      bestOfSession: input.info.bestOfSession,
-                      toWork: input.info.toWork,
-                      windPatterns: input.info.windPatterns,
-                      freeNotes: input.info.freeNotes,
-                      linkedStandardMoveIds: input.linkedStandardMoveIds,
-                    }}
-                    fieldName="windPatterns"
-                    fieldLabel="Wind Patterns"
-                    dialogTitle="Edit Wind Patterns"
-                    dialogDescription="Update wind patterns notes for this session."
-                  />
-                ) : null}
-              </div>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Wind Patterns</p>
               <p className="mt-2 whitespace-pre-wrap text-sm">{renderTextValue(input.info.windPatterns)}</p>
             </div>
           </div>
 
           <div className="rounded-lg border p-4">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Free Notes</p>
-              {input.canManageSession ? (
-                <InfoTextFieldEditDialog
-                  sessionId={input.sessionId}
-                  scope={input.scope}
-                  snapshot={{
-                    bestOfSession: input.info.bestOfSession,
-                    toWork: input.info.toWork,
-                    windPatterns: input.info.windPatterns,
-                    freeNotes: input.info.freeNotes,
-                    linkedStandardMoveIds: input.linkedStandardMoveIds,
-                  }}
-                  fieldName="freeNotes"
-                  fieldLabel="Free Notes"
-                  dialogTitle="Edit Free Notes"
-                  dialogDescription="Update free notes for this session."
-                />
-              ) : null}
-            </div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Free Notes</p>
             <p className="mt-2 whitespace-pre-wrap text-sm">{renderTextValue(input.info.freeNotes)}</p>
           </div>
         </TabsContent>
@@ -3488,6 +2954,9 @@ export function SessionDetailTabsClient(input: {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-base font-semibold">Goals</h3>
+              <p className="text-sm text-muted-foreground">
+                Session-level goals and priorities for the crew.
+              </p>
             </div>
             {input.canManageSession ? (
               <GoalsEditDialog
@@ -3511,6 +2980,11 @@ export function SessionDetailTabsClient(input: {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-base font-semibold">Results</h3>
+              <p className="text-sm text-muted-foreground">
+                {input.sessionType === "regatta"
+                  ? "Regatta race outcomes and summary notes."
+                  : "Training sessions can keep optional result-style notes here."}
+              </p>
             </div>
             {input.canManageSession ? (
               <ResultsEditDialog

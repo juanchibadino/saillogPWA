@@ -105,16 +105,13 @@ export function TeamVenuesToolbar({
               variant="secondary"
               size="default"
               disabled={disabled}
-              className="relative h-9 px-3"
-              aria-label={`${filterLabel} filters`}
+              className={cn(
+                "h-9 px-3",
+                hasActiveFilter &&
+                  "border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 aria-expanded:bg-emerald-100 dark:border-emerald-600/50 dark:bg-emerald-900/20 dark:text-emerald-100 dark:hover:bg-emerald-900/30",
+              )}
             >
               <FilterIcon className="size-4" />
-              {hasActiveFilter ? (
-                <span
-                  aria-hidden="true"
-                  className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary ring-2 ring-secondary"
-                />
-              ) : null}
             </Button>
           </DrawerTrigger>
           <DrawerContent>

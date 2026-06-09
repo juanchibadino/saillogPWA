@@ -2,7 +2,6 @@ import {
   CreateTeamReportDialog,
 } from "@/features/reports/report-form-dialogs"
 import { ReportsTable } from "@/features/reports/reports-table"
-import { FeedbackToast } from "@/components/shared/feedback-toast"
 import {
   formatCampDateRange,
   getTeamReportsPageData,
@@ -132,7 +131,17 @@ export default async function TeamReportsPage({
 
   return (
     <div className="space-y-6">
-      <FeedbackToast statusMessage={statusMessage} errorMessage={errorMessage} />
+      {statusMessage ? (
+        <section className="rounded-xl border border-emerald-300 bg-emerald-50 p-4">
+          <p className="text-sm text-emerald-800">{statusMessage}</p>
+        </section>
+      ) : null}
+
+      {errorMessage ? (
+        <section className="rounded-xl border border-rose-300 bg-rose-50 p-4">
+          <p className="text-sm text-rose-800">{errorMessage}</p>
+        </section>
+      ) : null}
 
       {!canManageReports ? (
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-4">

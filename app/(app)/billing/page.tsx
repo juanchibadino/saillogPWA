@@ -1,6 +1,5 @@
 import Link from "next/link"
 
-import { FeedbackToast } from "@/components/shared/feedback-toast"
 import { buttonVariants } from "@/components/ui/button"
 import {
   Card,
@@ -158,13 +157,24 @@ export default async function BillingPage({
 
   return (
     <div className="space-y-6">
-      <FeedbackToast statusMessage={statusMessage} errorMessage={errorMessage} />
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">Billing</h1>
         <p className="text-sm text-muted-foreground">
           Organization billing for <strong>{activeOrganization.name}</strong>.
         </p>
       </header>
+
+      {statusMessage ? (
+        <p className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {statusMessage}
+        </p>
+      ) : null}
+
+      {errorMessage ? (
+        <p className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          {errorMessage}
+        </p>
+      ) : null}
 
       {!canManageBilling ? (
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
