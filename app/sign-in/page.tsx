@@ -1,18 +1,13 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { getCurrentAccessContext } from "@/lib/auth/access";
+import { SignInAuthContent } from "./sign-in-content";
 
 type SignInSearchParams = Promise<
   Record<string, string | string[] | undefined>
@@ -99,123 +94,14 @@ export default async function SignInPage({
           <CardTitle className="text-2xl">
             {isRegisterMode ? "Create your account" : "Sign in"}
           </CardTitle>
-          <CardDescription>
-            {isRegisterMode
-              ? "Start with a magic link. You can set a password after your first access."
-              : "Use email + password or request a magic link."}
-          </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-5">
-          {isRegisterMode ? (
-            <p className="rounded-lg border border-sky-300 bg-sky-50 px-4 py-3 text-sm text-sky-800">
-              New to Sailog? Enter your email below and we will send a secure sign-in
-              link to create your account.
-            </p>
-          ) : null}
-
-          {statusMessage ? (
-            <p className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-              {statusMessage}
-            </p>
-          ) : null}
-
-          {errorMessage ? (
-            <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-              {errorMessage}
-            </p>
-          ) : null}
-
-          <form action="/auth/password" method="post" className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="sign-in-email-password">Email</Label>
-              <Input
-                id="sign-in-email-password"
-                type="email"
-                name="email"
-                required
-                autoComplete="email"
-                placeholder="you@team.com"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="sign-in-password">Password</Label>
-              <Input
-                id="sign-in-password"
-                type="password"
-                name="password"
-                required
-                autoComplete="current-password"
-                placeholder="••••••••"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className={buttonVariants({ className: "w-full" })}
-            >
-              {isRegisterMode ? "Sign in with existing password" : "Sign in with password"}
-            </button>
-          </form>
-
-          <div className="relative">
-            <Separator />
-            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
-              OR
-            </span>
-          </div>
-
-          <form action="/auth/otp" method="post" className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="sign-in-email-magic-link">Email</Label>
-              <Input
-                id="sign-in-email-magic-link"
-                type="email"
-                name="email"
-                required
-                autoComplete="email"
-                placeholder="you@team.com"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className={buttonVariants({ variant: "outline", className: "w-full" })}
-            >
-              {isRegisterMode ? "Create account with magic link" : "Send magic link"}
-            </button>
-          </form>
-
-          <p className="text-xs text-muted-foreground">
-            Your access is granted by organization and team memberships. If this is
-            your first login, ask an admin to assign your membership.
-          </p>
-
-          <p className="text-xs text-muted-foreground">
-            Signed in with magic link only?{" "}
-            <Link
-              href="/set-password"
-              className={buttonVariants({
-                variant: "link",
-                size: "sm",
-                className: "h-auto px-0 text-xs",
-              })}
-            >
-              Set password
-            </Link>
-          </p>
-
-          <Link
-            href="/"
-            className={buttonVariants({
-              variant: "link",
-              size: "sm",
-              className: "h-auto px-0 text-xs",
-            })}
-          >
-            Back to home
-          </Link>
+          <SignInAuthContent
+            isRegisterMode={isRegisterMode}
+            statusMessage={statusMessage}
+            errorMessage={errorMessage}
+          />
         </CardContent>
       </Card>
     </main>
