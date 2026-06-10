@@ -12,6 +12,22 @@ function SkeletonCard() {
   )
 }
 
+export function RootTransitionLoading() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-background px-6 py-12 text-foreground">
+      <div className="flex flex-col items-center gap-4 text-center">
+        <span
+          aria-hidden="true"
+          className="size-8 animate-spin rounded-full border-2 border-muted-foreground/25 border-t-foreground"
+        />
+        <p className="text-sm font-medium text-muted-foreground">
+          Loading Sailog...
+        </p>
+      </div>
+    </main>
+  )
+}
+
 export function GlobalPageSkeleton() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-12">

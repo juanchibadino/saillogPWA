@@ -4,6 +4,13 @@ Last updated: 2026-06-09
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
 
+## 2026-06-09 - Root auth-transition loading state
+
+- Replaced the root `app/loading.tsx` fallback with a centered, theme-aware Sailog spinner for refresh/re-entry and auth transition states.
+- Added `RootTransitionLoading` in `components/shared/page-skeletons.tsx` using theme tokens so dark mode is respected.
+- Kept route-specific skeletons unchanged for `/sign-in`, `/onboarding`, and authenticated app pages.
+- Validation: `git diff --check` and `npm run build`.
+
 ## 2026-06-09 - Rollback sidebar/dropdown regression
 
 - Reverted commit `b52f4b0b288d0c1799e9d15acd057f6717aee1d6` after it broke the desktop sidebar Team/Org switcher and user dropdown.

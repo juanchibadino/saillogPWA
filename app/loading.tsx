@@ -1,5 +1,5 @@
-import { GlobalPageSkeleton } from "@/components/shared/page-skeletons"
+import { RootTransitionLoading } from "@/components/shared/page-skeletons"
 
 export default function Loading() {
-  return <GlobalPageSkeleton />
+  return <RootTransitionLoading />
 }
