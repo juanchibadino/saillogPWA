@@ -1,8 +1,15 @@
 # PROGRESS.md
 
-Last updated: 2026-06-10
+Last updated: 2026-06-19
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
+
+## 2026-06-19 - Session coaching note corrector
+
+- Updated `/team-sessions/[id]` Info edit in `features/sessions/session-detail-tabs-client.tsx` with a local Correct action for `Best` and `To Work`.
+- Added native spelling/autocorrect/autocapitalize support plus deterministic cleanup for capitalization, spacing, common typos, contractions, and sailing acronyms.
+- Kept the form-status and correction controls as stable components so typing in edit textareas does not remount the input and drop focus.
+- Validation: `npm run lint`, `git diff --check`, and `npm run build`.
 
 ## 2026-06-10 - Password sign-in pending state
 

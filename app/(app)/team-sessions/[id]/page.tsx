@@ -390,14 +390,14 @@ export default async function SessionDetailPage({
 
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <Card>
-            <CardHeader className="pb-2">
+            <CardHeader>
               <CardDescription>Date</CardDescription>
               <CardTitle className="text-xl font-semibold">{sessionDateLabel}</CardTitle>
             </CardHeader>
           </Card>
 
           <Card>
-            <CardHeader className="pb-2">
+            <CardHeader>
               <CardDescription>Start Time</CardDescription>
               <CardTitle className="text-xl font-semibold tabular-nums">
                 {formatTimeLabel(detailData.session.dock_out_at)}
@@ -406,7 +406,7 @@ export default async function SessionDetailPage({
           </Card>
 
           <Card>
-            <CardHeader className="pb-2">
+            <CardHeader>
               <CardDescription>End Time</CardDescription>
               <CardTitle className="text-xl font-semibold tabular-nums">
                 {formatTimeLabel(detailData.session.dock_in_at)}
@@ -415,7 +415,7 @@ export default async function SessionDetailPage({
           </Card>
 
           <Card>
-            <CardHeader className="pb-2">
+            <CardHeader>
               <CardDescription>Total duration</CardDescription>
               <CardTitle className="text-xl font-semibold tabular-nums">
                 {formatDurationLabel(durationMinutes)}

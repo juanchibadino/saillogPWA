@@ -7,6 +7,7 @@ import {
   Loader2Icon,
   PencilIcon,
   PlusIcon,
+  SpellCheckIcon,
   Trash2Icon,
 } from "lucide-react"
 import { useFormStatus } from "react-dom"
@@ -37,6 +38,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -49,6 +59,15 @@ import {
   MultiselectItem,
   MultiselectTrigger,
 } from "@/components/ui/multiselect"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -74,6 +93,7 @@ import {
 } from "@/features/sessions/navigation"
 import type { NavigationScope } from "@/lib/navigation/types"
 import { generateStandardMoveNameFromDescription } from "@/lib/standard-moves"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 function formatTimeInputValue(iso: string | null): string {
   if (!iso) {
@@ -167,6 +187,109 @@ function renderTextList(values: string[]): string {
   }
 
   return values.join(", ")
+}
+
+type SessionNoteTextReplacement = {
+  pattern: RegExp
+  replacement: string
+  preserveCapitalization?: boolean
+}
+
+const SESSION_NOTE_TEXT_REPLACEMENTS: SessionNoteTextReplacement[] = [
+  { pattern: /\btwd\b/gi, replacement: "TWD" },
+  { pattern: /\btws\b/gi, replacement: "TWS" },
+  { pattern: /\bvmg\b/gi, replacement: "VMG" },
+  { pattern: /\bgps\b/gi, replacement: "GPS" },
+  { pattern: /\brib\b/gi, replacement: "RIB" },
+  { pattern: /\bi\b/g, replacement: "I" },
+  { pattern: /\bteh\b/gi, replacement: "the", preserveCapitalization: true },
+  { pattern: /\badn\b/gi, replacement: "and", preserveCapitalization: true },
+  { pattern: /\bwich\b/gi, replacement: "which", preserveCapitalization: true },
+  { pattern: /\brecieve\b/gi, replacement: "receive", preserveCapitalization: true },
+  { pattern: /\brecieved\b/gi, replacement: "received", preserveCapitalization: true },
+  { pattern: /\brecieving\b/gi, replacement: "receiving", preserveCapitalization: true },
+  { pattern: /\bseperate\b/gi, replacement: "separate", preserveCapitalization: true },
+  { pattern: /\boccured\b/gi, replacement: "occurred", preserveCapitalization: true },
+  { pattern: /\bbecuase\b/gi, replacement: "because", preserveCapitalization: true },
+  { pattern: /\bdefinately\b/gi, replacement: "definitely", preserveCapitalization: true },
+  { pattern: /\buntill\b/gi, replacement: "until", preserveCapitalization: true },
+  { pattern: /\balot\b/gi, replacement: "a lot", preserveCapitalization: true },
+  { pattern: /\bdont\b/gi, replacement: "don't", preserveCapitalization: true },
+  { pattern: /\bdidnt\b/gi, replacement: "didn't", preserveCapitalization: true },
+  { pattern: /\bwasnt\b/gi, replacement: "wasn't", preserveCapitalization: true },
+  { pattern: /\bcant\b/gi, replacement: "can't", preserveCapitalization: true },
+  { pattern: /\bwont\b/gi, replacement: "won't", preserveCapitalization: true },
+  { pattern: /\bcouldnt\b/gi, replacement: "couldn't", preserveCapitalization: true },
+  { pattern: /\bshouldnt\b/gi, replacement: "shouldn't", preserveCapitalization: true },
+  { pattern: /\bwouldnt\b/gi, replacement: "wouldn't", preserveCapitalization: true },
+]
+
+function applyMatchedCapitalization(replacement: string, matchedValue: string): string {
+  const firstCharacter = matchedValue.at(0)
+
+  if (!firstCharacter || firstCharacter !== firstCharacter.toUpperCase()) {
+    return replacement
+  }
+
+  return `${replacement.at(0)?.toUpperCase() ?? ""}${replacement.slice(1)}`
+}
+
+function capitalizeSessionNoteSentences(value: string): string {
+  let shouldCapitalize = true
+  let result = ""
+
+  for (const character of value) {
+    if (shouldCapitalize && /[a-z]/.test(character)) {
+      result += character.toUpperCase()
+      shouldCapitalize = false
+      continue
+    }
+
+    result += character
+
+    if (/[A-Za-z0-9]/.test(character)) {
+      shouldCapitalize = false
+      continue
+    }
+
+    if (/[.!?]/.test(character) || character === "\n") {
+      shouldCapitalize = true
+    }
+  }
+
+  return result
+}
+
+function correctSessionNoteText(value: string): string {
+  let correctedValue = value
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) =>
+      line
+        .replace(/[ \t]+/g, " ")
+        .replace(/\s+([,.;:!?])/g, "$1")
+        .replace(/([,.;:!?])(?=\S)/g, "$1 ")
+        .trim(),
+    )
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+
+  for (const replacement of SESSION_NOTE_TEXT_REPLACEMENTS) {
+    correctedValue = correctedValue.replace(replacement.pattern, (matchedValue) =>
+      replacement.preserveCapitalization
+        ? applyMatchedCapitalization(replacement.replacement, matchedValue)
+        : replacement.replacement,
+    )
+  }
+
+  correctedValue = correctedValue.replace(
+    /\b(could|should|would) of\b/gi,
+    (matchedValue, modalVerb: string) =>
+      `${applyMatchedCapitalization(modalVerb.toLowerCase(), matchedValue)} have`,
+  )
+
+  return capitalizeSessionNoteSentences(correctedValue)
 }
 
 function formatGearTypeLabel(value: SessionDetailGearItem["gear_type"]): string {
@@ -988,10 +1111,10 @@ function SetupDialogFooter(input: {
           {pending ? (
             <>
               <Loader2Icon className="size-4 animate-spin" />
-              Saving setup...
+              Saving...
             </>
           ) : (
-            "Save setup"
+            "Save"
           )}
         </Button>
       )}
@@ -1024,10 +1147,10 @@ function SetupDialog(input: {
         {pending ? (
           <>
             <Loader2Icon className="size-4 animate-spin" />
-            Saving metric...
+            Saving...
           </>
         ) : (
-          "Save metric"
+          "Save"
         )}
       </Button>
     )
@@ -1987,7 +2110,94 @@ function EditSessionMetadataDialog(input: {
   )
 }
 
+type InfoEditSection = "coaching" | "standardMoves" | "windPatterns"
+
+function resolveInfoEditCopy(section: InfoEditSection): {
+  triggerLabel: string
+  title: string
+  description: string
+  submitLabel: string
+} {
+  if (section === "coaching") {
+    return {
+      triggerLabel: "Edit",
+      title: "Edit Coaching Notes",
+      description: "",
+      submitLabel: "Save",
+    }
+  }
+
+  if (section === "standardMoves") {
+    return {
+      triggerLabel: "Edit",
+      title: "Edit Standard Moves",
+      description: "",
+      submitLabel: "Save",
+    }
+  }
+
+  return {
+    triggerLabel: "Edit",
+    title: "Edit Wind Patterns",
+    description: "",
+    submitLabel: "Save",
+  }
+}
+
+function InfoDialogSubmitButton(props: {
+  canSubmit: boolean
+  className?: string
+  label: string
+}) {
+  const { pending } = useFormStatus()
+
+  return (
+    <Button type="submit" disabled={pending || !props.canSubmit} className={props.className}>
+      {pending ? (
+        <>
+          <Loader2Icon className="size-4 animate-spin" />
+          Saving...
+        </>
+      ) : (
+        props.label
+      )}
+    </Button>
+  )
+}
+
+function InfoDialogFieldset(props: { children: React.ReactNode }) {
+  const { pending } = useFormStatus()
+
+  return (
+    <fieldset disabled={pending} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-4">
+      {props.children}
+    </fieldset>
+  )
+}
+
+function NoteCorrectButton(props: {
+  value: string
+  onCorrect: (correctedValue: string) => void
+}) {
+  const correctedValue = correctSessionNoteText(props.value)
+  const canCorrect = correctedValue.length > 0 && correctedValue !== props.value
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      disabled={!canCorrect}
+      onClick={() => props.onCorrect(correctedValue)}
+    >
+      <SpellCheckIcon className="size-4" />
+      Correct
+    </Button>
+  )
+}
+
 function InfoEditDialog(input: {
+  section: InfoEditSection
   sessionId: string
   scope: NavigationScope
   bestOfSession: string | null
@@ -2002,29 +2212,6 @@ function InfoEditDialog(input: {
   windPatterns: string | null
   freeNotes: string | null
 }) {
-  function InfoDialogSubmitButton(props: { canSubmit: boolean }) {
-    const { pending } = useFormStatus()
-
-    return (
-      <Button type="submit" disabled={pending || !props.canSubmit}>
-        {pending ? (
-          <>
-            <Loader2Icon className="size-4 animate-spin" />
-            Saving info...
-          </>
-        ) : (
-          "Save info"
-        )}
-      </Button>
-    )
-  }
-
-  function InfoDialogFieldset(props: { children: React.ReactNode }) {
-    const { pending } = useFormStatus()
-
-    return <fieldset disabled={pending} className="space-y-4">{props.children}</fieldset>
-  }
-
   const [bestOfSession, setBestOfSession] = React.useState(input.bestOfSession ?? "")
   const [toWork, setToWork] = React.useState(input.toWork ?? "")
   const [standardMoveIds, setStandardMoveIds] = React.useState<string[]>(input.linkedStandardMoveIds)
@@ -2035,72 +2222,108 @@ function InfoEditDialog(input: {
     React.useState(false)
   const [windPatterns, setWindPatterns] = React.useState(input.windPatterns ?? "")
   const [freeNotes, setFreeNotes] = React.useState(input.freeNotes ?? "")
+  const isMobile = useIsMobile()
   const hasQuickCreateName = newStandardMoveName.trim().length > 0
   const hasQuickCreateDescription = newStandardMoveDescription.trim().length > 0
   const quickCreateDescriptionMissing = hasQuickCreateName && !hasQuickCreateDescription
-  const canSubmitInfo = !quickCreateDescriptionMissing
   const standardMoveOptions = input.availableStandardMoves.filter(
     (standardMove) =>
       standardMove.isActive || input.linkedStandardMoveIds.includes(standardMove.id),
   )
+  const copy = resolveInfoEditCopy(input.section)
+  const canSubmitInfo =
+    input.section === "standardMoves" ? !quickCreateDescriptionMissing : true
 
-  return (
-    <Dialog>
-      <DialogTrigger render={<Button type="button" variant="outline" size="sm" />}>
-        Edit info
-      </DialogTrigger>
-      <DialogContent
-        className={[
-          "sm:max-w-2xl transition-[filter] duration-100",
-          isQuickCreateDialogOpen ? "blur-[2px]" : "",
-        ].join(" ")}
-      >
-        <DialogHeader>
-          <DialogTitle>Edit session info</DialogTitle>
-          <DialogDescription>
-            Update the coaching notes fields for this session.
-          </DialogDescription>
-        </DialogHeader>
+  const infoForm = (
+    <form action={updateSessionInfoAction} className="flex min-h-0 flex-1 flex-col">
+      <input type="hidden" name="sessionId" value={input.sessionId} />
+      <input type="hidden" name="scopeOrgId" value={input.scope.activeOrgId} />
+      {input.scope.activeTeamId ? (
+        <input type="hidden" name="scopeTeamId" value={input.scope.activeTeamId} />
+      ) : null}
+      <input type="hidden" name="scopeTab" value="info" />
+      <input type="hidden" name="newStandardMoveName" value={newStandardMoveName} />
+      <input
+        type="hidden"
+        name="newStandardMoveDescription"
+        value={newStandardMoveDescription}
+      />
+      {input.section !== "coaching" ? (
+        <>
+          <input type="hidden" name="bestOfSession" value={bestOfSession} />
+          <input type="hidden" name="toWork" value={toWork} />
+          <input type="hidden" name="freeNotes" value={freeNotes} />
+        </>
+      ) : null}
+      {input.section !== "standardMoves"
+        ? standardMoveIds.map((standardMoveId) => (
+            <input
+              key={standardMoveId}
+              type="hidden"
+              name="standardMoveId"
+              value={standardMoveId}
+            />
+          ))
+        : null}
+      {input.section !== "windPatterns" ? (
+        <input type="hidden" name="windPatterns" value={windPatterns} />
+      ) : null}
 
-        <form action={updateSessionInfoAction} className="space-y-4">
-          <input type="hidden" name="sessionId" value={input.sessionId} />
-          <input type="hidden" name="scopeOrgId" value={input.scope.activeOrgId} />
-          {input.scope.activeTeamId ? (
-            <input type="hidden" name="scopeTeamId" value={input.scope.activeTeamId} />
-          ) : null}
-          <input type="hidden" name="scopeTab" value="info" />
-          <input type="hidden" name="newStandardMoveName" value={newStandardMoveName} />
-          <input
-            type="hidden"
-            name="newStandardMoveDescription"
-            value={newStandardMoveDescription}
-          />
-
-          <InfoDialogFieldset>
+      <InfoDialogFieldset>
+        {input.section === "coaching" ? (
+          <>
             <div className="space-y-2">
-              <Label htmlFor={`best-of-session-${input.sessionId}`}>Best</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor={`best-of-session-${input.sessionId}`}>Best</Label>
+                <NoteCorrectButton value={bestOfSession} onCorrect={setBestOfSession} />
+              </div>
               <Textarea
                 id={`best-of-session-${input.sessionId}`}
                 name="bestOfSession"
                 rows={3}
                 maxLength={4000}
+                autoCapitalize="sentences"
+                autoCorrect="on"
+                spellCheck
                 value={bestOfSession}
                 onChange={(event) => setBestOfSession(event.target.value)}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor={`to-work-${input.sessionId}`}>To Work</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor={`to-work-${input.sessionId}`}>To Work</Label>
+                <NoteCorrectButton value={toWork} onCorrect={setToWork} />
+              </div>
               <Textarea
                 id={`to-work-${input.sessionId}`}
                 name="toWork"
                 rows={3}
                 maxLength={4000}
+                autoCapitalize="sentences"
+                autoCorrect="on"
+                spellCheck
                 value={toWork}
                 onChange={(event) => setToWork(event.target.value)}
               />
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor={`free-notes-${input.sessionId}`}>Free Notes</Label>
+              <Textarea
+                id={`free-notes-${input.sessionId}`}
+                name="freeNotes"
+                rows={4}
+                maxLength={4000}
+                value={freeNotes}
+                onChange={(event) => setFreeNotes(event.target.value)}
+              />
+            </div>
+          </>
+        ) : null}
+
+        {input.section === "standardMoves" ? (
+          <>
             <div className="space-y-2">
               <Label htmlFor={`standard-moves-${input.sessionId}`}>Std. Moves</Label>
               <select
@@ -2247,39 +2470,84 @@ function InfoEditDialog(input: {
                 </p>
               ) : null}
             </div>
+          </>
+        ) : null}
 
-            <div className="space-y-2">
-              <Label htmlFor={`wind-patterns-${input.sessionId}`}>Wind Patterns</Label>
-              <Textarea
-                id={`wind-patterns-${input.sessionId}`}
-                name="windPatterns"
-                rows={3}
-                maxLength={4000}
-                value={windPatterns}
-                onChange={(event) => setWindPatterns(event.target.value)}
-                placeholder="Plain text or JSON"
-              />
-            </div>
+        {input.section === "windPatterns" ? (
+          <div className="space-y-2">
+            <Label htmlFor={`wind-patterns-${input.sessionId}`}>Wind Patterns</Label>
+            <Textarea
+              id={`wind-patterns-${input.sessionId}`}
+              name="windPatterns"
+              rows={6}
+              maxLength={4000}
+              value={windPatterns}
+              onChange={(event) => setWindPatterns(event.target.value)}
+              placeholder="Plain text or JSON"
+            />
+          </div>
+        ) : null}
+      </InfoDialogFieldset>
 
-            <div className="space-y-2">
-              <Label htmlFor={`free-notes-${input.sessionId}`}>Free Notes</Label>
-              <Textarea
-                id={`free-notes-${input.sessionId}`}
-                name="freeNotes"
-                rows={4}
-                maxLength={4000}
-                value={freeNotes}
-                onChange={(event) => setFreeNotes(event.target.value)}
-              />
-            </div>
-          </InfoDialogFieldset>
+      {isMobile ? (
+        <DrawerFooter className="shrink-0">
+          <InfoDialogSubmitButton
+            canSubmit={canSubmitInfo}
+            className="w-full"
+            label={copy.submitLabel}
+          />
+        </DrawerFooter>
+      ) : (
+        <SheetFooter className="shrink-0">
+          <InfoDialogSubmitButton
+            canSubmit={canSubmitInfo}
+            className="w-full"
+            label={copy.submitLabel}
+          />
+        </SheetFooter>
+      )}
+    </form>
+  )
+  const surfaceClassName = [
+    "transition-[filter] duration-100",
+    isQuickCreateDialogOpen ? "blur-[2px]" : "",
+  ].join(" ")
 
-          <DialogFooter>
-            <InfoDialogSubmitButton canSubmit={canSubmitInfo} />
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+  if (isMobile) {
+    return (
+      <Drawer>
+        <DrawerTrigger asChild>
+          <Button type="button" variant="outline" size="default" className="h-9 px-3">
+            {copy.triggerLabel}
+          </Button>
+        </DrawerTrigger>
+        <DrawerContent
+          className={`h-[85dvh] overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh] ${surfaceClassName}`}
+        >
+          <DrawerHeader className="shrink-0">
+            <DrawerTitle>{copy.title}</DrawerTitle>
+            <DrawerDescription>{copy.description}</DrawerDescription>
+          </DrawerHeader>
+          {infoForm}
+        </DrawerContent>
+      </Drawer>
+    )
+  }
+
+  return (
+    <Sheet>
+      <SheetTrigger render={<Button type="button" variant="outline" size="sm" />}>
+        {copy.triggerLabel}
+      </SheetTrigger>
+      <SheetContent side="right" className={`h-full overflow-hidden sm:max-w-2xl ${surfaceClassName}`}>
+        <SheetHeader className="shrink-0">
+          <SheetTitle>{copy.title}</SheetTitle>
+          <SheetDescription>{copy.description}</SheetDescription>
+        </SheetHeader>
+
+        {infoForm}
+      </SheetContent>
+    </Sheet>
   )
 }
 
@@ -2905,49 +3173,114 @@ export function SessionDetailTabsClient(input: {
       <section className="rounded-xl border bg-card p-4 sm:p-6">
         {selectedTab === "info" ? (
         <TabsContent value="info" className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-base font-semibold">Session Info</h3>
-              <p className="text-sm text-muted-foreground">
-                Coaching summary and tactical observations.
-              </p>
-            </div>
-            {input.canManageSession ? (
-              <InfoEditDialog
-                sessionId={input.sessionId}
-                scope={input.scope}
-                bestOfSession={input.info.bestOfSession}
-                toWork={input.info.toWork}
-                availableStandardMoves={input.availableStandardMoves}
-                linkedStandardMoveIds={input.linkedStandardMoveIds}
-                windPatterns={input.info.windPatterns}
-                freeNotes={input.info.freeNotes}
-              />
-            ) : null}
-          </div>
+          <div className="space-y-4">
+            <section>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-base font-semibold">Coaching Notes</h4>
+                </div>
+                {input.canManageSession ? (
+                  <InfoEditDialog
+                    section="coaching"
+                    sessionId={input.sessionId}
+                    scope={input.scope}
+                    bestOfSession={input.info.bestOfSession}
+                    toWork={input.info.toWork}
+                    availableStandardMoves={input.availableStandardMoves}
+                    linkedStandardMoveIds={input.linkedStandardMoveIds}
+                    windPatterns={input.info.windPatterns}
+                    freeNotes={input.info.freeNotes}
+                  />
+                ) : null}
+              </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-lg bg-muted p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Best</p>
-              <p className="mt-2 whitespace-pre-wrap text-sm">{renderTextValue(input.info.bestOfSession)}</p>
-            </div>
-            <div className="rounded-lg bg-muted p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">To Work</p>
-              <p className="mt-2 whitespace-pre-wrap text-sm">{renderTextValue(input.info.toWork)}</p>
-            </div>
-            <div className="rounded-lg bg-muted p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Std. Moves</p>
-              <p className="mt-2 whitespace-pre-wrap text-sm">{renderTextList(input.info.standardMoves)}</p>
-            </div>
-            <div className="rounded-lg bg-muted p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Wind Patterns</p>
-              <p className="mt-2 whitespace-pre-wrap text-sm">{renderTextValue(input.info.windPatterns)}</p>
-            </div>
-          </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg bg-muted p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Best
+                  </p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm">
+                    {renderTextValue(input.info.bestOfSession)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-muted p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    To Work
+                  </p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm">
+                    {renderTextValue(input.info.toWork)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-muted p-4 sm:col-span-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Free Notes
+                  </p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm">
+                    {renderTextValue(input.info.freeNotes)}
+                  </p>
+                </div>
+              </div>
+            </section>
 
-          <div className="rounded-lg border p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Free Notes</p>
-            <p className="mt-2 whitespace-pre-wrap text-sm">{renderTextValue(input.info.freeNotes)}</p>
+            <section>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-base font-semibold">Standard Moves</h4>
+                </div>
+                {input.canManageSession ? (
+                  <InfoEditDialog
+                    section="standardMoves"
+                    sessionId={input.sessionId}
+                    scope={input.scope}
+                    bestOfSession={input.info.bestOfSession}
+                    toWork={input.info.toWork}
+                    availableStandardMoves={input.availableStandardMoves}
+                    linkedStandardMoveIds={input.linkedStandardMoveIds}
+                    windPatterns={input.info.windPatterns}
+                    freeNotes={input.info.freeNotes}
+                  />
+                ) : null}
+              </div>
+
+              <div className="rounded-lg bg-muted p-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Std. Moves
+                </p>
+                <p className="mt-2 whitespace-pre-wrap text-sm">
+                  {renderTextList(input.info.standardMoves)}
+                </p>
+              </div>
+            </section>
+
+            <section>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-base font-semibold">Wind Patterns</h4>
+                </div>
+                {input.canManageSession ? (
+                  <InfoEditDialog
+                    section="windPatterns"
+                    sessionId={input.sessionId}
+                    scope={input.scope}
+                    bestOfSession={input.info.bestOfSession}
+                    toWork={input.info.toWork}
+                    availableStandardMoves={input.availableStandardMoves}
+                    linkedStandardMoveIds={input.linkedStandardMoveIds}
+                    windPatterns={input.info.windPatterns}
+                    freeNotes={input.info.freeNotes}
+                  />
+                ) : null}
+              </div>
+
+              <div className="rounded-lg bg-muted p-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Wind Patterns
+                </p>
+                <p className="mt-2 whitespace-pre-wrap text-sm">
+                  {renderTextValue(input.info.windPatterns)}
+                </p>
+              </div>
+            </section>
           </div>
         </TabsContent>
         ) : null}
