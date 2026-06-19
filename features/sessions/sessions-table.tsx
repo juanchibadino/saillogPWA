@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { Loader2Icon, MoreHorizontalIcon } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { useTransition, type ReactNode } from "react"
+import { useState, useTransition, type ReactNode } from "react"
 
 import type {
   TeamSessionCampOption,
@@ -108,6 +108,8 @@ export function TeamSessionsTable({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [isLoadingMore, startLoadMoreTransition] = useTransition()
+  const [navigatingSessionId, setNavigatingSessionId] = useState<string | null>(null)
+  const [, startSessionNavigationTransition] = useTransition()
   const emptyMessage = resolveEmptyMessage({
     noTeamSelected,
     selectedVenueId,
@@ -134,6 +136,17 @@ export function TeamSessionsTable({
     return nextSearch.length > 0 ? `${pathname}?${nextSearch}` : pathname
   }
 
+  function navigateToSession(sessionId: string, detailHref: string): void {
+    setNavigatingSessionId(sessionId)
+    startSessionNavigationTransition(() => {
+      router.push(detailHref)
+    })
+  }
+
+  function prefetchSession(detailHref: string): void {
+    router.prefetch(detailHref)
+  }
+
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-end gap-2 md:justify-between">
@@ -152,24 +165,29 @@ export function TeamSessionsTable({
               scope,
               sessionId: session.id,
             })
+            const isNavigatingToSession = navigatingSessionId === session.id
 
             return (
               <article
                 key={session.id}
                 role="link"
                 tabIndex={0}
+                aria-busy={isNavigatingToSession}
                 className={cn(
                   "cursor-pointer rounded-xl border bg-card px-3 py-3 transition-colors hover:bg-muted/30",
+                  isNavigatingToSession && "opacity-80",
                   session.highlightedByCoach &&
                     "border-emerald-400/70 bg-emerald-50/40 hover:bg-emerald-100/50 dark:border-emerald-500/70 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/30",
                 )}
+                onMouseEnter={() => prefetchSession(detailHref)}
+                onFocus={() => prefetchSession(detailHref)}
                 onClick={() => {
-                  router.push(detailHref)
+                  navigateToSession(session.id, detailHref)
                 }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault()
-                    router.push(detailHref)
+                    navigateToSession(session.id, detailHref)
                   }
                 }}
               >
@@ -196,7 +214,11 @@ export function TeamSessionsTable({
                       event.stopPropagation()
                     }}
                   >
-                    {canManageSessions ? (
+                    {isNavigatingToSession ? (
+                      <div className="flex size-8 items-center justify-center text-muted-foreground">
+                        <Loader2Icon className="size-4 animate-spin" />
+                      </div>
+                    ) : canManageSessions ? (
                       <EditSessionDialog
                         session={session}
                         campOptions={campOptions}
@@ -264,91 +286,101 @@ export function TeamSessionsTable({
                 </TableCell>
               </TableRow>
             ) : (
-              sessions.map((session) => (
-                <TableRow
-                  key={session.id}
-                  role="link"
-                  tabIndex={0}
-                  className={cn(
-                    "cursor-pointer",
-                    session.highlightedByCoach &&
-                      "bg-emerald-50/40 hover:bg-emerald-100/50 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/30",
-                  )}
-                  onClick={() => {
-                    router.push(
-                      buildSessionDetailHref({
-                        scope,
-                        sessionId: session.id,
-                      }),
-                    )
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault()
-                      router.push(
-                        buildSessionDetailHref({
-                          scope,
-                          sessionId: session.id,
-                        }),
-                      )
-                    }
-                  }}
-                >
-                  <TableCell className="font-medium">
-                    <Link
-                      href={buildSessionDetailHref({
-                        scope,
-                        sessionId: session.id,
-                      })}
-                      className="underline-offset-4 hover:underline"
-                    >
-                      {formatDateLabel(session.sessionDate)}
-                    </Link>
-                  </TableCell>
-                  <TableCell>{formatSessionTypeLabel(session.sessionType)}</TableCell>
-                  <TableCell>{session.campName}</TableCell>
-                  <TableCell>{session.venueName}</TableCell>
-                  <TableCell className="tabular-nums">
-                    {formatNetTime(session.netTimeMinutes)}
-                  </TableCell>
-                  <TableCell>
-                    {session.highlightedByCoach ? (
-                      <span className="text-emerald-700">Yes</span>
-                    ) : (
-                      <span className="text-muted-foreground">No</span>
+              sessions.map((session) => {
+                const detailHref = buildSessionDetailHref({
+                  scope,
+                  sessionId: session.id,
+                })
+                const isNavigatingToSession = navigatingSessionId === session.id
+
+                return (
+                  <TableRow
+                    key={session.id}
+                    role="link"
+                    tabIndex={0}
+                    aria-busy={isNavigatingToSession}
+                    className={cn(
+                      "cursor-pointer",
+                      isNavigatingToSession && "opacity-80",
+                      session.highlightedByCoach &&
+                        "bg-emerald-50/40 hover:bg-emerald-100/50 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/30",
                     )}
-                  </TableCell>
-                  <TableCell
-                    className="text-right"
-                    onClick={(event) => {
-                      event.stopPropagation()
+                    onMouseEnter={() => prefetchSession(detailHref)}
+                    onFocus={() => prefetchSession(detailHref)}
+                    onClick={() => {
+                      navigateToSession(session.id, detailHref)
                     }}
                     onKeyDown={(event) => {
-                      event.stopPropagation()
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault()
+                        navigateToSession(session.id, detailHref)
+                      }
                     }}
                   >
-                    {canManageSessions ? (
-                      <EditSessionDialog
-                        session={session}
-                        campOptions={campOptions}
-                        scope={scope}
-                        selectedVenueId={selectedVenueId}
-                        selectedCampId={selectedCampId}
-                        currentPage={currentPage}
-                      />
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled
-                        aria-label="More actions unavailable"
+                    <TableCell className="font-medium">
+                      <Link
+                        href={detailHref}
+                        className="underline-offset-4 hover:underline"
+                        onClick={(event) => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          navigateToSession(session.id, detailHref)
+                        }}
+                        onMouseEnter={() => prefetchSession(detailHref)}
+                        onFocus={() => prefetchSession(detailHref)}
                       >
-                        <MoreHorizontalIcon className="size-4" />
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))
+                        {formatDateLabel(session.sessionDate)}
+                      </Link>
+                    </TableCell>
+                    <TableCell>{formatSessionTypeLabel(session.sessionType)}</TableCell>
+                    <TableCell>{session.campName}</TableCell>
+                    <TableCell>{session.venueName}</TableCell>
+                    <TableCell className="tabular-nums">
+                      {formatNetTime(session.netTimeMinutes)}
+                    </TableCell>
+                    <TableCell>
+                      {session.highlightedByCoach ? (
+                        <span className="text-emerald-700">Yes</span>
+                      ) : (
+                        <span className="text-muted-foreground">No</span>
+                      )}
+                    </TableCell>
+                    <TableCell
+                      className="text-right"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                      }}
+                      onKeyDown={(event) => {
+                        event.stopPropagation()
+                      }}
+                    >
+                      {isNavigatingToSession ? (
+                        <div className="flex justify-end text-muted-foreground">
+                          <Loader2Icon className="size-4 animate-spin" />
+                        </div>
+                      ) : canManageSessions ? (
+                        <EditSessionDialog
+                          session={session}
+                          campOptions={campOptions}
+                          scope={scope}
+                          selectedVenueId={selectedVenueId}
+                          selectedCampId={selectedCampId}
+                          currentPage={currentPage}
+                        />
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled
+                          aria-label="More actions unavailable"
+                        >
+                          <MoreHorizontalIcon className="size-4" />
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                )
+              })
             )}
           </TableBody>
         </Table>

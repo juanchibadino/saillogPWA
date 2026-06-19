@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { PencilIcon, PlusIcon } from "lucide-react"
+import { MinusIcon, PencilIcon, PlusIcon } from "lucide-react"
 
 import {
   createSessionAction,
@@ -23,6 +23,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
 import {
   Drawer,
   DrawerContent,
@@ -48,6 +56,42 @@ type EditableSession = Pick<
   "id" | "campId" | "sessionType" | "sessionDate" | "netTimeMinutes" | "highlightedByCoach"
 >
 
+const NET_TIME_STEP_MINUTES = 15
+const MAX_NET_TIME_MINUTES = 24 * 60
+
+function clampNetTimeMinutes(minutes: number): number {
+  return Math.min(Math.max(minutes, 0), MAX_NET_TIME_MINUTES)
+}
+
+function formatMinutesAsHoursInput(minutesValue: string): string {
+  const minutes = Number.parseInt(minutesValue, 10)
+
+  if (!Number.isFinite(minutes)) {
+    return ""
+  }
+
+  return String(Number.parseFloat((minutes / 60).toFixed(2)))
+}
+
+function parseHoursInputToMinutes(hoursValue: string): string {
+  const normalized = hoursValue.trim().replace(",", ".")
+
+  if (normalized.length === 0) {
+    return ""
+  }
+
+  const hours = Number.parseFloat(normalized)
+
+  if (!Number.isFinite(hours)) {
+    return ""
+  }
+
+  const roundedMinutes =
+    Math.round((hours * 60) / NET_TIME_STEP_MINUTES) * NET_TIME_STEP_MINUTES
+
+  return String(clampNetTimeMinutes(roundedMinutes))
+}
+
 function SessionDialogForm({
   campOptions,
   initialValues,
@@ -58,6 +102,9 @@ function SessionDialogForm({
   selectedCampId,
   currentPage,
   action,
+  formId,
+  onCanSubmitChange,
+  showSubmitFooter = true,
 }: {
   campOptions: TeamSessionCampOption[]
   initialValues: SessionFormInitialValues
@@ -68,19 +115,43 @@ function SessionDialogForm({
   selectedCampId?: string
   currentPage: number
   action: (formData: FormData) => Promise<void>
+  formId?: string
+  onCanSubmitChange?: (canSubmit: boolean) => void
+  showSubmitFooter?: boolean
 }) {
   const [campId, setCampId] = React.useState(initialValues.campId)
   const [sessionType, setSessionType] = React.useState(initialValues.sessionType)
   const [sessionDate, setSessionDate] = React.useState(initialValues.sessionDate)
-  const [netTimeMinutes, setNetTimeMinutes] = React.useState(initialValues.netTimeMinutes)
+  const [netTimeHours, setNetTimeHours] = React.useState(() =>
+    formatMinutesAsHoursInput(initialValues.netTimeMinutes),
+  )
   const [highlightedByCoach, setHighlightedByCoach] = React.useState(
     initialValues.highlightedByCoach,
   )
 
+  const netTimeMinutes = parseHoursInputToMinutes(netTimeHours)
+  const currentNetTimeMinutes =
+    netTimeMinutes.length > 0 ? Number.parseInt(netTimeMinutes, 10) : 0
   const canSubmit = campId.length > 0 && sessionDate.length > 0
+  React.useEffect(() => {
+    onCanSubmitChange?.(canSubmit)
+  }, [canSubmit, onCanSubmitChange])
+
+  function adjustNetTimeMinutes(deltaMinutes: number): void {
+    const nextMinutes = clampNetTimeMinutes(currentNetTimeMinutes + deltaMinutes)
+    setNetTimeHours(formatMinutesAsHoursInput(String(nextMinutes)))
+  }
+
+  function normalizeNetTimeHours(): void {
+    if (netTimeHours.trim().length === 0) {
+      return
+    }
+
+    setNetTimeHours(formatMinutesAsHoursInput(netTimeMinutes))
+  }
 
   return (
-    <form action={action} className="space-y-4">
+    <form id={formId} action={action} className="space-y-4">
       {initialValues.id ? <input type="hidden" name="id" value={initialValues.id} /> : null}
       <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
       {scope.activeTeamId ? (
@@ -146,18 +217,42 @@ function SessionDialogForm({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}-netTimeMinutes`}>Net time (minutes)</Label>
-          <Input
-            id={`${idPrefix}-netTimeMinutes`}
-            name="netTimeMinutes"
-            type="number"
-            min={0}
-            max={24 * 60}
-            step={1}
-            value={netTimeMinutes}
-            onChange={(event) => setNetTimeMinutes(event.target.value)}
-            placeholder="Optional"
-          />
+          <Label htmlFor={`${idPrefix}-netTimeHours`}>Net time (hours)</Label>
+          <input type="hidden" name="netTimeMinutes" value={netTimeMinutes} />
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              aria-label="Decrease net time by 15 minutes"
+              disabled={currentNetTimeMinutes <= 0}
+              onClick={() => adjustNetTimeMinutes(-NET_TIME_STEP_MINUTES)}
+            >
+              <MinusIcon className="size-4" />
+            </Button>
+            <Input
+              id={`${idPrefix}-netTimeHours`}
+              type="number"
+              min={0}
+              max={24}
+              step={0.25}
+              inputMode="decimal"
+              value={netTimeHours}
+              onChange={(event) => setNetTimeHours(event.target.value)}
+              onBlur={normalizeNetTimeHours}
+              className="text-center tabular-nums"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              aria-label="Increase net time by 15 minutes"
+              disabled={currentNetTimeMinutes >= MAX_NET_TIME_MINUTES}
+              onClick={() => adjustNetTimeMinutes(NET_TIME_STEP_MINUTES)}
+            >
+              <PlusIcon className="size-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -172,11 +267,13 @@ function SessionDialogForm({
         Highlighted by coach
       </label>
 
-      <DialogFooter>
-        <Button type="submit" disabled={!canSubmit}>
-          {submitLabel}
-        </Button>
-      </DialogFooter>
+      {showSubmitFooter ? (
+        <DialogFooter>
+          <Button type="submit" disabled={!canSubmit}>
+            {submitLabel}
+          </Button>
+        </DialogFooter>
+      ) : null}
     </form>
   )
 }
@@ -196,11 +293,13 @@ export function CreateSessionDialog({
   currentPage: number
   disabled: boolean
 }) {
+  const [canSubmitCreate, setCanSubmitCreate] = React.useState(false)
   const defaultCampId =
     campOptions.find((option) => option.campId === selectedCampId)?.campId ??
     campOptions[0]?.campId ??
     ""
   const isMobile = useIsMobile()
+  const createFormId = "create-session-form"
 
   if (isMobile) {
     return (
@@ -247,40 +346,57 @@ export function CreateSessionDialog({
   }
 
   return (
-    <Dialog>
-      <DialogTrigger
-        render={<Button type="button" variant="outline" size="sm" disabled={disabled} />}
+    <Sheet>
+      <SheetTrigger
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={disabled}
+          />
+        }
       >
         <PlusIcon className="size-4" />
         New
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Create session</DialogTitle>
-          <DialogDescription>
-            Add a session record to the selected camp.
-          </DialogDescription>
-        </DialogHeader>
+      </SheetTrigger>
+      <SheetContent side="right" className="flex h-full flex-col overflow-hidden sm:max-w-xl">
+        <SheetHeader>
+          <SheetTitle>Create session</SheetTitle>
+          <SheetDescription>Add a session record to the selected camp.</SheetDescription>
+        </SheetHeader>
 
-        <SessionDialogForm
-          campOptions={campOptions}
-          initialValues={{
-            campId: defaultCampId,
-            sessionType: "training",
-            sessionDate: "",
-            netTimeMinutes: "",
-            highlightedByCoach: false,
-          }}
-          idPrefix="create-session"
-          submitLabel="Create session"
-          scope={scope}
-          selectedVenueId={selectedVenueId}
-          selectedCampId={selectedCampId}
-          currentPage={currentPage}
-          action={createSessionAction}
-        />
-      </DialogContent>
-    </Dialog>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+          <SessionDialogForm
+            campOptions={campOptions}
+            initialValues={{
+              campId: defaultCampId,
+              sessionType: "training",
+              sessionDate: "",
+              netTimeMinutes: "",
+              highlightedByCoach: false,
+            }}
+            idPrefix="create-session"
+            submitLabel="Create session"
+            scope={scope}
+            selectedVenueId={selectedVenueId}
+            selectedCampId={selectedCampId}
+            currentPage={currentPage}
+            formId={createFormId}
+            action={createSessionAction}
+            onCanSubmitChange={setCanSubmitCreate}
+            showSubmitFooter={false}
+          />
+        </div>
+        <div className="border-t border-border/60 bg-background px-4 pb-4">
+          <DialogFooter>
+            <Button type="submit" form={createFormId} disabled={!canSubmitCreate}>
+              Create session
+            </Button>
+          </DialogFooter>
+        </div>
+      </SheetContent>
+    </Sheet>
   )
 }
 

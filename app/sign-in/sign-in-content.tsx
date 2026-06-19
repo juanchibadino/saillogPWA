@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { type FormEvent, useState } from "react";
+import { Loader2 } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,15 @@ export function SignInAuthContent({
   errorMessage,
 }: SignInAccessCodeProps) {
   const [isAccessCodeMode, setIsAccessCodeMode] = useState(false);
+  const [isPasswordSubmitting, setIsPasswordSubmitting] = useState(false);
+
+  const handlePasswordSubmit = (event: FormEvent<HTMLFormElement>) => {
+    if (!event.currentTarget.checkValidity()) {
+      return;
+    }
+
+    setIsPasswordSubmitting(true);
+  };
 
   const handleAccessCodeRequest = () => {
     setIsAccessCodeMode(true);
@@ -46,39 +56,55 @@ export function SignInAuthContent({
 
       {!isAccessCodeMode ? (
         <>
-          <form action="/auth/password" method="post" className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="sign-in-email-password">Email</Label>
-              <Input
-                id="sign-in-email-password"
-                type="email"
-                name="email"
-                required
-                autoComplete="email"
-                placeholder="you@team.com"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="sign-in-password">Password</Label>
-              <Input
-                id="sign-in-password"
-                type="password"
-                name="password"
-                required
-                autoComplete="current-password"
-                placeholder="••••••••"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className={buttonVariants({ className: "w-full" })}
+          <form
+            action="/auth/password"
+            method="post"
+            className="space-y-4"
+            onSubmit={handlePasswordSubmit}
+          >
+            <fieldset
+              aria-disabled={isPasswordSubmitting}
+              className="space-y-4 data-[pending=true]:opacity-60"
+              data-pending={isPasswordSubmitting}
             >
-              {isRegisterMode
-                ? "Sign in with existing password"
-                : "Sign in with password"}
-            </button>
+              <div className="space-y-2">
+                <Label htmlFor="sign-in-email-password">Email</Label>
+                <Input
+                  id="sign-in-email-password"
+                  type="email"
+                  name="email"
+                  required
+                  autoComplete="email"
+                  placeholder="you@team.com"
+                  readOnly={isPasswordSubmitting}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="sign-in-password">Password</Label>
+                <Input
+                  id="sign-in-password"
+                  type="password"
+                  name="password"
+                  required
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  readOnly={isPasswordSubmitting}
+                />
+              </div>
+
+              <button
+                type="submit"
+                className={buttonVariants({ className: "w-full" })}
+                disabled={isPasswordSubmitting}
+                aria-busy={isPasswordSubmitting}
+              >
+                {isPasswordSubmitting ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : null}
+                Sign In
+              </button>
+            </fieldset>
           </form>
 
           <div className="relative">

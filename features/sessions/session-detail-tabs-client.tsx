@@ -2903,6 +2903,7 @@ export function SessionDetailTabsClient(input: {
       </TabsList>
 
       <section className="rounded-xl border bg-card p-4 sm:p-6">
+        {selectedTab === "info" ? (
         <TabsContent value="info" className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -2949,7 +2950,9 @@ export function SessionDetailTabsClient(input: {
             <p className="mt-2 whitespace-pre-wrap text-sm">{renderTextValue(input.info.freeNotes)}</p>
           </div>
         </TabsContent>
+        ) : null}
 
+        {selectedTab === "goals" ? (
         <TabsContent value="goals" className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -2975,7 +2978,9 @@ export function SessionDetailTabsClient(input: {
             )}
           </div>
         </TabsContent>
+        ) : null}
 
+        {selectedTab === "results" ? (
         <TabsContent value="results" className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -2999,7 +3004,9 @@ export function SessionDetailTabsClient(input: {
             <p className="whitespace-pre-wrap text-sm">{renderTextValue(input.resultNotes)}</p>
           </div>
         </TabsContent>
+        ) : null}
 
+        {selectedTab === "images" ? (
         <TabsContent value="images" className="space-y-4">
           <div>
             <h3 className="text-base font-semibold">Images</h3>
@@ -3024,7 +3031,9 @@ export function SessionDetailTabsClient(input: {
             emptyMessage="No images uploaded for this session yet."
           />
         </TabsContent>
+        ) : null}
 
+        {selectedTab === "analytics" ? (
         <TabsContent value="analytics" className="space-y-4">
           <div>
             <h3 className="text-base font-semibold">Analytics</h3>
@@ -3049,7 +3058,9 @@ export function SessionDetailTabsClient(input: {
             emptyMessage="No analytics files uploaded for this session yet."
           />
         </TabsContent>
+        ) : null}
 
+        {selectedTab === "gear" ? (
         <TabsContent value="gear" className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -3079,6 +3090,7 @@ export function SessionDetailTabsClient(input: {
             linkedGearItemIds={input.linkedGearItemIds}
           />
         </TabsContent>
+        ) : null}
       </section>
     </Tabs>
   )

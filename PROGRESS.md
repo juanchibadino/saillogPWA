@@ -1,8 +1,14 @@
 # PROGRESS.md
 
-Last updated: 2026-06-09
+Last updated: 2026-06-10
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
+
+## 2026-06-10 - Password sign-in pending state
+
+- Updated `/sign-in` password submit action in `app/sign-in/sign-in-content.tsx` so the button label is `Sign In`.
+- Added a disabled pending state with a spinner on the password sign-in button while `/auth/password` processes and redirects to the next page.
+- Validation: `git diff --check` and `npm run build`.
 
 ## 2026-06-09 - Root auth-transition loading state
 

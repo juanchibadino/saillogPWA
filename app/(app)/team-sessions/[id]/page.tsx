@@ -1,11 +1,16 @@
+import { Suspense } from "react"
+
 import {
   Card,
-  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { getSessionDetailData } from "@/features/sessions/detail-data"
+import {
+  getSessionDetailDeferredData,
+  getSessionDetailShellData,
+  type SessionDetailDeferredData,
+} from "@/features/sessions/detail-data"
 import {
   SessionDetailTabsClient,
   SessionHeaderActions,
@@ -173,6 +178,93 @@ function formatSessionTypeLabel(value: "training" | "regatta"): string {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
+function SessionHeaderActionsFallback() {
+  return <div className="h-8 w-36 rounded-lg bg-muted" />
+}
+
+function SessionDetailTabsFallback() {
+  return (
+    <div className="space-y-4">
+      <div className="h-10 w-80 max-w-full rounded-lg bg-muted" />
+      <section className="rounded-xl border bg-card p-4 sm:p-6">
+        <div className="space-y-3">
+          <div className="h-5 w-40 rounded bg-muted" />
+          <div className="h-4 w-72 max-w-full rounded bg-muted" />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="h-28 rounded-lg bg-muted" />
+            <div className="h-28 rounded-lg bg-muted" />
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+async function SessionHeaderActionsSlot(input: {
+  deferredDataPromise: Promise<SessionDetailDeferredData>
+  sessionId: string
+  scope: NonNullable<Awaited<ReturnType<typeof resolveNavigationScope>>["scope"]>
+  sessionType: "training" | "regatta"
+  sessionDate: string
+  dockOutAt: string | null
+  dockInAt: string | null
+  netTimeMinutes: number | null
+  canManageSession: boolean
+}) {
+  const deferredData = await input.deferredDataPromise
+
+  return (
+    <SessionHeaderActions
+      sessionId={input.sessionId}
+      scope={input.scope}
+      setupDialogItems={deferredData.setupDialogItems}
+      sessionType={input.sessionType}
+      sessionDate={input.sessionDate}
+      dockOutAt={input.dockOutAt}
+      dockInAt={input.dockInAt}
+      netTimeMinutes={input.netTimeMinutes}
+      canManageSession={input.canManageSession}
+    />
+  )
+}
+
+async function SessionDetailTabsSlot(input: {
+  deferredDataPromise: Promise<SessionDetailDeferredData>
+  initialTab: SessionDetailTab
+  scope: NonNullable<Awaited<ReturnType<typeof resolveNavigationScope>>["scope"]>
+  sessionId: string
+  sessionType: "training" | "regatta"
+  goals: string | null
+  canManageSession: boolean
+}) {
+  const deferredData = await input.deferredDataPromise
+
+  return (
+    <SessionDetailTabsClient
+      initialTab={input.initialTab}
+      scope={input.scope}
+      sessionId={input.sessionId}
+      sessionType={input.sessionType}
+      info={{
+        bestOfSession: deferredData.info.bestOfSession,
+        toWork: deferredData.info.toWork,
+        standardMoves: deferredData.info.standardMoves,
+        windPatterns: deferredData.info.windPatterns,
+        freeNotes: deferredData.info.freeNotes,
+      }}
+      goals={input.goals}
+      availableStandardMoves={deferredData.availableStandardMoves}
+      linkedStandardMoveIds={deferredData.linkedStandardMoveIds}
+      resultNotes={deferredData.results.resultNotes}
+      images={deferredData.images}
+      analyticsFiles={deferredData.analyticsFiles}
+      gearItems={deferredData.gearItems}
+      linkedGearItemIds={deferredData.linkedGearItemIds}
+      canManageSession={input.canManageSession}
+    />
+  )
+}
+
 export default async function SessionDetailPage({
   params,
   searchParams,
@@ -223,7 +315,7 @@ export default async function SessionDetailPage({
     )
   }
 
-  const detailData = await getSessionDetailData({
+  const detailData = await getSessionDetailShellData({
     activeOrganizationId: scope.activeOrgId,
     activeTeamId: scope.activeTeamId,
     sessionId: resolvedParams.id,
@@ -247,6 +339,10 @@ export default async function SessionDetailPage({
     context,
     organizationId: scope.activeOrgId,
     teamId: scope.activeTeamId,
+  })
+  const deferredDataPromise = getSessionDetailDeferredData({
+    activeTeamId: detailData.team.id,
+    sessionId: detailData.session.id,
   })
 
   const sessionTypeLabel = formatSessionTypeLabel(detailData.session.session_type)
@@ -275,17 +371,21 @@ export default async function SessionDetailPage({
             <h1 className="text-2xl font-semibold tracking-tight">{sessionTypeLabel}</h1>
           </div>
 
-          <SessionHeaderActions
-            sessionId={detailData.session.id}
-            scope={scope}
-            setupDialogItems={detailData.setupDialogItems}
-            sessionType={detailData.session.session_type}
-            sessionDate={detailData.session.session_date}
-            dockOutAt={detailData.session.dock_out_at}
-            dockInAt={detailData.session.dock_in_at}
-            netTimeMinutes={detailData.session.net_time_minutes}
-            canManageSession={canManageSession}
-          />
+          {canManageSession ? (
+            <Suspense fallback={<SessionHeaderActionsFallback />}>
+              <SessionHeaderActionsSlot
+                deferredDataPromise={deferredDataPromise}
+                sessionId={detailData.session.id}
+                scope={scope}
+                sessionType={detailData.session.session_type}
+                sessionDate={detailData.session.session_date}
+                dockOutAt={detailData.session.dock_out_at}
+                dockInAt={detailData.session.dock_in_at}
+                netTimeMinutes={detailData.session.net_time_minutes}
+                canManageSession={canManageSession}
+              />
+            </Suspense>
+          ) : null}
         </div>
 
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -325,28 +425,17 @@ export default async function SessionDetailPage({
         </div>
       </section>
 
-      <SessionDetailTabsClient
-        initialTab={selectedTab}
-        scope={scope}
-        sessionId={detailData.session.id}
-        sessionType={detailData.session.session_type}
-        info={{
-          bestOfSession: detailData.info.bestOfSession,
-          toWork: detailData.info.toWork,
-          standardMoves: detailData.info.standardMoves,
-          windPatterns: detailData.info.windPatterns,
-          freeNotes: detailData.info.freeNotes,
-        }}
-        goals={detailData.session.goals}
-        availableStandardMoves={detailData.availableStandardMoves}
-        linkedStandardMoveIds={detailData.linkedStandardMoveIds}
-        resultNotes={detailData.results.resultNotes}
-        images={detailData.images}
-        analyticsFiles={detailData.analyticsFiles}
-        gearItems={detailData.gearItems}
-        linkedGearItemIds={detailData.linkedGearItemIds}
-        canManageSession={canManageSession}
-      />
+      <Suspense fallback={<SessionDetailTabsFallback />}>
+        <SessionDetailTabsSlot
+          deferredDataPromise={deferredDataPromise}
+          initialTab={selectedTab}
+          scope={scope}
+          sessionId={detailData.session.id}
+          sessionType={detailData.session.session_type}
+          goals={detailData.session.goals}
+          canManageSession={canManageSession}
+        />
+      </Suspense>
     </div>
   )
 }

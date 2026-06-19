@@ -130,6 +130,16 @@ const SESSION_SETUP_ITEM_SELECTED_OPTIONS_SELECT_COLUMNS =
 const TEAM_STANDARD_MOVES_SELECT_COLUMNS = "id,name,description,is_active"
 const SESSION_STANDARD_MOVES_SELECT_COLUMNS = "session_id,team_standard_move_id"
 
+export type SessionDetailShellData = Pick<
+  SessionDetailData,
+  "team" | "venue" | "camp" | "session"
+>
+
+export type SessionDetailDeferredData = Omit<
+  SessionDetailData,
+  "team" | "venue" | "camp" | "session"
+>
+
 function normalizeText(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
     return null
@@ -273,11 +283,11 @@ function buildSetupDialogItems(input: {
     })
 }
 
-export async function getSessionDetailData(input: {
+export async function getSessionDetailShellData(input: {
   activeOrganizationId: string
   activeTeamId: string | null
   sessionId: string
-}): Promise<SessionDetailData | null> {
+}): Promise<SessionDetailShellData | null> {
   if (!input.activeTeamId) {
     return null
   }
@@ -335,15 +345,6 @@ export async function getSessionDetailData(input: {
   const [
     { data: teamRow, error: teamError },
     { data: venueRow, error: venueError },
-    { data: reviewRow, error: reviewError },
-    { data: setupRow, error: setupError },
-    { data: regattaResultRow, error: regattaResultError },
-    { data: assetRows, error: assetsError },
-    { data: gearItemsData, error: gearItemsError },
-    { data: sessionGearUsageData, error: sessionGearUsageError },
-    { data: teamSetupItemsData, error: teamSetupItemsError },
-    { data: teamStandardMovesData, error: teamStandardMovesError },
-    { data: sessionStandardMovesData, error: sessionStandardMovesError },
   ] = await Promise.all([
     supabase
       .from("teams")
@@ -357,49 +358,6 @@ export async function getSessionDetailData(input: {
       .eq("id", teamVenue.venue_id)
       .eq("organization_id", input.activeOrganizationId)
       .maybeSingle(),
-    supabase
-      .from("session_reviews")
-      .select(SESSION_REVIEW_SELECT_COLUMNS)
-      .eq("session_id", session.id)
-      .maybeSingle(),
-    supabase
-      .from("session_setups")
-      .select(SESSION_SETUP_SELECT_COLUMNS)
-      .eq("session_id", session.id)
-      .maybeSingle(),
-    supabase
-      .from("session_regatta_results")
-      .select(SESSION_REGATTA_RESULTS_SELECT_COLUMNS)
-      .eq("session_id", session.id)
-      .maybeSingle(),
-    supabase
-      .from("session_assets")
-      .select(SESSION_ASSETS_SELECT_COLUMNS)
-      .eq("session_id", session.id)
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("gear_items")
-      .select(GEAR_ITEMS_SELECT_COLUMNS)
-      .eq("team_id", teamVenue.team_id)
-      .order("name", { ascending: true }),
-    supabase
-      .from("session_gear_usage")
-      .select(SESSION_GEAR_USAGE_SELECT_COLUMNS)
-      .eq("session_id", session.id),
-    supabase
-      .from("team_setup_items")
-      .select(TEAM_SETUP_ITEMS_SELECT_COLUMNS)
-      .eq("team_id", teamVenue.team_id)
-      .order("position", { ascending: true }),
-    supabase
-      .from("team_standard_moves")
-      .select(TEAM_STANDARD_MOVES_SELECT_COLUMNS)
-      .eq("team_id", teamVenue.team_id)
-      .order("name", { ascending: true }),
-    supabase
-      .from("session_standard_moves")
-      .select(SESSION_STANDARD_MOVES_SELECT_COLUMNS)
-      .eq("session_id", session.id),
   ])
 
   if (teamError) {
@@ -409,6 +367,83 @@ export async function getSessionDetailData(input: {
   if (venueError) {
     throw new Error(`Could not load venue for session detail: ${venueError.message}`)
   }
+
+  if (!teamRow || !venueRow) {
+    return null
+  }
+
+  const team: SessionDetailTeam = teamRow as TeamRow
+  const venue: SessionDetailVenue = venueRow as VenueRow
+
+  return {
+    team,
+    venue,
+    camp,
+    session,
+  }
+}
+
+export async function getSessionDetailDeferredData(input: {
+  activeTeamId: string
+  sessionId: string
+}): Promise<SessionDetailDeferredData> {
+  const supabase = await createServerSupabaseClient()
+
+  const [
+    { data: reviewRow, error: reviewError },
+    { data: setupRow, error: setupError },
+    { data: regattaResultRow, error: regattaResultError },
+    { data: assetRows, error: assetsError },
+    { data: gearItemsData, error: gearItemsError },
+    { data: sessionGearUsageData, error: sessionGearUsageError },
+    { data: teamSetupItemsData, error: teamSetupItemsError },
+    { data: teamStandardMovesData, error: teamStandardMovesError },
+    { data: sessionStandardMovesData, error: sessionStandardMovesError },
+  ] = await Promise.all([
+    supabase
+      .from("session_reviews")
+      .select(SESSION_REVIEW_SELECT_COLUMNS)
+      .eq("session_id", input.sessionId)
+      .maybeSingle(),
+    supabase
+      .from("session_setups")
+      .select(SESSION_SETUP_SELECT_COLUMNS)
+      .eq("session_id", input.sessionId)
+      .maybeSingle(),
+    supabase
+      .from("session_regatta_results")
+      .select(SESSION_REGATTA_RESULTS_SELECT_COLUMNS)
+      .eq("session_id", input.sessionId)
+      .maybeSingle(),
+    supabase
+      .from("session_assets")
+      .select(SESSION_ASSETS_SELECT_COLUMNS)
+      .eq("session_id", input.sessionId)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("gear_items")
+      .select(GEAR_ITEMS_SELECT_COLUMNS)
+      .eq("team_id", input.activeTeamId)
+      .order("name", { ascending: true }),
+    supabase
+      .from("session_gear_usage")
+      .select(SESSION_GEAR_USAGE_SELECT_COLUMNS)
+      .eq("session_id", input.sessionId),
+    supabase
+      .from("team_setup_items")
+      .select(TEAM_SETUP_ITEMS_SELECT_COLUMNS)
+      .eq("team_id", input.activeTeamId)
+      .order("position", { ascending: true }),
+    supabase
+      .from("team_standard_moves")
+      .select(TEAM_STANDARD_MOVES_SELECT_COLUMNS)
+      .eq("team_id", input.activeTeamId)
+      .order("name", { ascending: true }),
+    supabase
+      .from("session_standard_moves")
+      .select(SESSION_STANDARD_MOVES_SELECT_COLUMNS)
+      .eq("session_id", input.sessionId),
+  ])
 
   if (reviewError) {
     throw new Error(`Could not load review for session detail: ${reviewError.message}`)
@@ -454,12 +489,6 @@ export async function getSessionDetailData(input: {
     )
   }
 
-  if (!teamRow || !venueRow) {
-    return null
-  }
-
-  const team: SessionDetailTeam = teamRow as TeamRow
-  const venue: SessionDetailVenue = venueRow as VenueRow
   const assets: SessionAssetRow[] = (assetRows ?? []) as SessionAssetRow[]
   const gearItems: GearItemRow[] = (gearItemsData ?? []) as GearItemRow[]
   const sessionGearUsageRows: SessionGearUsageRow[] =
@@ -498,7 +527,7 @@ export async function getSessionDetailData(input: {
         supabase
           .from("session_setup_item_values")
           .select(SESSION_SETUP_ITEM_VALUES_SELECT_COLUMNS)
-          .eq("session_id", session.id)
+          .eq("session_id", input.sessionId)
           .in("team_setup_item_id", teamSetupItemIds),
       ])
 
@@ -537,10 +566,6 @@ export async function getSessionDetailData(input: {
   }
 
   return {
-    team,
-    venue,
-    camp,
-    session,
     info: buildInfo({
       review: (reviewRow as SessionReviewRow | null) ?? null,
       setup: (setupRow as SessionSetupRow | null) ?? null,
@@ -564,5 +589,27 @@ export async function getSessionDetailData(input: {
     analyticsFiles: assets.filter((asset) => asset.asset_type !== "photo"),
     gearItems,
     linkedGearItemIds,
+  }
+}
+
+export async function getSessionDetailData(input: {
+  activeOrganizationId: string
+  activeTeamId: string | null
+  sessionId: string
+}): Promise<SessionDetailData | null> {
+  const shellData = await getSessionDetailShellData(input)
+
+  if (!shellData) {
+    return null
+  }
+
+  const deferredData = await getSessionDetailDeferredData({
+    activeTeamId: shellData.team.id,
+    sessionId: shellData.session.id,
+  })
+
+  return {
+    ...shellData,
+    ...deferredData,
   }
 }
