@@ -304,7 +304,7 @@ export default async function SessionDetailPage({
   if (scope.activeTeamId === null) {
     return (
       <div className="space-y-6">
-        <SessionsFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
+        <SessionsFeedback mode="toast" statusMessage={statusMessage} errorMessage={errorMessage} />
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
           <h2 className="text-lg font-semibold text-amber-900">Team selection required</h2>
           <p className="mt-2 text-sm text-amber-800">
@@ -324,7 +324,7 @@ export default async function SessionDetailPage({
   if (!detailData) {
     return (
       <div className="space-y-6">
-        <SessionsFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
+        <SessionsFeedback mode="toast" statusMessage={statusMessage} errorMessage={errorMessage} />
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
           <h2 className="text-lg font-semibold text-amber-900">Session unavailable</h2>
           <p className="mt-2 text-sm text-amber-800">
@@ -355,7 +355,7 @@ export default async function SessionDetailPage({
 
   return (
     <div className="space-y-6">
-      <SessionsFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
+      <SessionsFeedback mode="toast" statusMessage={statusMessage} errorMessage={errorMessage} />
 
       {!canManageSession ? (
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-4">

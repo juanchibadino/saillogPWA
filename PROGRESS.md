@@ -4,6 +4,13 @@ Last updated: 2026-06-19
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
 
+## 2026-06-19 - Optimistic session info saves and bottom toasts
+
+- Updated `/team-sessions/[id]` Info edits in `features/sessions/session-detail-tabs-client.tsx` with optimistic card updates, rollback on failed saves, and server snapshot reconciliation for Standard Moves and Wind Patterns.
+- Added a result-returning session info save action in `features/sessions/actions.ts` while keeping the existing redirecting action as the fallback.
+- Mounted the shadcn/Sonner toaster at bottom center and switched the session detail page from top inline save feedback to toast-only feedback.
+- Validation: `git diff --check` and `npm run build`.
+
 ## 2026-06-19 - Session coaching note corrector
 
 - Updated `/team-sessions/[id]` Info edit in `features/sessions/session-detail-tabs-client.tsx` with a local Correct action for `Best` and `To Work`.

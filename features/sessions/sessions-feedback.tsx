@@ -2,15 +2,19 @@
 
 import * as React from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { toast } from "sonner"
 
 const STATUS_AUTO_DISMISS_MS = 15_000
+type SessionsFeedbackMode = "inline" | "toast"
 
 export function SessionsFeedback({
   statusMessage,
   errorMessage,
+  mode = "inline",
 }: {
   statusMessage: string | null
   errorMessage: string | null
+  mode?: SessionsFeedbackMode
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -21,15 +25,23 @@ export function SessionsFeedback({
   const [isStatusVisible, setIsStatusVisible] = React.useState(Boolean(statusMessage))
 
   React.useEffect(() => {
+    if (mode !== "inline") {
+      return
+    }
+
     if (!statusMessage) {
       return
     }
 
     setActiveStatusMessage(statusMessage)
     setIsStatusVisible(true)
-  }, [statusMessage])
+  }, [mode, statusMessage])
 
   React.useEffect(() => {
+    if (mode !== "inline") {
+      return
+    }
+
     if (!activeStatusMessage) {
       return
     }
@@ -41,22 +53,47 @@ export function SessionsFeedback({
     return () => {
       window.clearTimeout(timeoutId)
     }
-  }, [activeStatusMessage])
+  }, [activeStatusMessage, mode])
 
   React.useEffect(() => {
     const status = searchParams.get("status")
+    const error = searchParams.get("error")
 
-    if (!statusMessage || !status) {
+    if (mode === "toast") {
+      if (statusMessage && status) {
+        toast.success(statusMessage)
+      }
+
+      if (errorMessage && error) {
+        toast.error(errorMessage)
+      }
+    }
+
+    const shouldDeleteStatus = Boolean(statusMessage && status)
+    const shouldDeleteError = mode === "toast" && Boolean(errorMessage && error)
+
+    if (!shouldDeleteStatus && !shouldDeleteError) {
       return
     }
 
     const nextParams = new URLSearchParams(searchParams.toString())
-    nextParams.delete("status")
+    if (shouldDeleteStatus) {
+      nextParams.delete("status")
+    }
+
+    if (shouldDeleteError) {
+      nextParams.delete("error")
+    }
+
     const nextSearch = nextParams.toString()
     const nextUrl = nextSearch.length > 0 ? `${pathname}?${nextSearch}` : pathname
 
     router.replace(nextUrl, { scroll: false })
-  }, [statusMessage, searchParams, pathname, router])
+  }, [errorMessage, mode, statusMessage, searchParams, pathname, router])
+
+  if (mode === "toast") {
+    return null
+  }
 
   return (
     <>

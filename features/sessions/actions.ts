@@ -29,6 +29,7 @@ import {
   updateSessionSetupInputSchema,
   uploadSessionAssetInputSchema,
 } from "@/lib/validation/sessions"
+import type { SessionDetailInfo } from "@/features/sessions/detail-types"
 import type { Json } from "@/types/database"
 
 const SESSION_PHOTOS_BUCKET = "session-photos"
@@ -167,6 +168,37 @@ function parseJsonText(value: string | undefined): Json | null {
   } catch {
     return normalized
   }
+}
+
+function formatSessionInfoJsonNote(value: Json | null | undefined): string | null {
+  if (value === null || value === undefined) {
+    return null
+  }
+
+  if (typeof value === "string") {
+    return normalizeOptionalText(value)
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value)
+  }
+
+  if (Array.isArray(value)) {
+    const items = value
+      .map((item) => formatSessionInfoJsonNote(item))
+      .filter((item): item is string => item !== null)
+
+    return items.length > 0 ? items.join(", ") : null
+  }
+
+  const objectEntries = Object.entries(value)
+    .map(([key, nestedValue]) => {
+      const nestedText = formatSessionInfoJsonNote(nestedValue)
+      return nestedText ? `${key}: ${nestedText}` : null
+    })
+    .filter((item): item is string => item !== null)
+
+  return objectEntries.length > 0 ? objectEntries.join(" | ") : null
 }
 
 type SessionSetupPayloadEntry = {
@@ -1088,18 +1120,70 @@ export async function updateSessionDetailAction(formData: FormData): Promise<voi
   )
 }
 
-export async function updateSessionInfoAction(formData: FormData): Promise<void> {
+type SessionInfoActionError = "invalid_input" | "forbidden" | "update_failed"
+
+type SessionInfoAvailableStandardMove = {
+  id: string
+  name: string
+  description: string | null
+  isActive: boolean
+}
+
+type SessionInfoActionSnapshot = {
+  info: SessionDetailInfo
+  availableStandardMoves: SessionInfoAvailableStandardMove[]
+  linkedStandardMoveIds: string[]
+}
+
+export type UpdateSessionInfoActionResult =
+  | ({ ok: true } & SessionInfoActionSnapshot)
+  | {
+      ok: false
+      error: SessionInfoActionError
+      message: string
+    }
+
+type UpdateSessionInfoMutationResult =
+  | ({ ok: true; sessionId: string; scope: SessionActionScope } & SessionInfoActionSnapshot)
+  | {
+      ok: false
+      error: SessionInfoActionError
+      message: string
+      sessionId?: string
+      scope: SessionActionScope
+    }
+
+const SESSION_INFO_ERROR_MESSAGES: Record<SessionInfoActionError, string> = {
+  invalid_input: "The submitted data is invalid. Review the form and try again.",
+  forbidden: "You do not have permission to manage this session in the active scope.",
+  update_failed: "Could not update this session. Confirm your permissions and try again.",
+}
+
+function buildSessionInfoActionError(input: {
+  error: SessionInfoActionError
+  scope: SessionActionScope
+  sessionId?: string
+}): UpdateSessionInfoMutationResult {
+  return {
+    ok: false,
+    error: input.error,
+    message: SESSION_INFO_ERROR_MESSAGES[input.error],
+    scope: input.scope,
+    sessionId: input.sessionId,
+  }
+}
+
+async function updateSessionInfoMutation(formData: FormData): Promise<UpdateSessionInfoMutationResult> {
   const context = await requireAuthenticatedAccessContext()
   const scope = getScopeFromFormData(formData)
   const sessionId = getFormString(formData, "sessionId")
 
   if (!sessionId || !scope.scopeOrgId || !scope.scopeTeamId) {
-    redirect(
-      buildTeamSessionsRedirectPath({
-        error: "invalid_input",
-        ...scope,
-      }),
-    )
+    return buildSessionInfoActionError({
+      error: "invalid_input",
+      scope,
+      sessionId,
+    })
   }
 
   const parsedInput = updateSessionInfoInputSchema.safeParse({
@@ -1114,13 +1198,11 @@ export async function updateSessionInfoAction(formData: FormData): Promise<void>
   })
 
   if (!parsedInput.success) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId,
-        error: "invalid_input",
-        ...scope,
-      }),
-    )
+    return buildSessionInfoActionError({
+      error: "invalid_input",
+      scope,
+      sessionId,
+    })
   }
 
   if (
@@ -1130,13 +1212,11 @@ export async function updateSessionInfoAction(formData: FormData): Promise<void>
       teamId: scope.scopeTeamId,
     })
   ) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "forbidden",
-        ...scope,
-      }),
-    )
+    return buildSessionInfoActionError({
+      error: "forbidden",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
   }
 
   const scopedSession = await resolveScopedSessionContext({
@@ -1146,13 +1226,11 @@ export async function updateSessionInfoAction(formData: FormData): Promise<void>
   })
 
   if (!scopedSession) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "forbidden",
-        ...scope,
-      }),
-    )
+    return buildSessionInfoActionError({
+      error: "forbidden",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
   }
 
   const bestOfSession = normalizeOptionalText(parsedInput.data.bestOfSession)
@@ -1190,25 +1268,21 @@ export async function updateSessionInfoAction(formData: FormData): Promise<void>
   ])
 
   if (reviewMutation.error || setupMutation.error) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "update_failed",
-        ...scope,
-      }),
-    )
+    return buildSessionInfoActionError({
+      error: "update_failed",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
   }
 
   let quickCreatedStandardMoveId: string | null = null
 
   if (hasQuickCreateInput && !newStandardMoveDescription) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "invalid_input",
-        ...scope,
-      }),
-    )
+    return buildSessionInfoActionError({
+      error: "invalid_input",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
   }
 
   if (newStandardMoveDescription && scope.scopeTeamId) {
@@ -1222,13 +1296,11 @@ export async function updateSessionInfoAction(formData: FormData): Promise<void>
       .limit(1)
 
     if (existingMoveError) {
-      redirect(
-        buildSessionDetailRedirectPath({
-          sessionId: parsedInput.data.sessionId,
-          error: "update_failed",
-          ...scope,
-        }),
-      )
+      return buildSessionInfoActionError({
+        error: "update_failed",
+        scope,
+        sessionId: parsedInput.data.sessionId,
+      })
     }
 
     const existingMove = existingMoveRows?.[0]
@@ -1246,13 +1318,11 @@ export async function updateSessionInfoAction(formData: FormData): Promise<void>
           .eq("id", existingMove.id)
 
         if (reactivateMoveError) {
-          redirect(
-            buildSessionDetailRedirectPath({
-              sessionId: parsedInput.data.sessionId,
-              error: "update_failed",
-              ...scope,
-            }),
-          )
+          return buildSessionInfoActionError({
+            error: "update_failed",
+            scope,
+            sessionId: parsedInput.data.sessionId,
+          })
         }
       }
     } else {
@@ -1268,13 +1338,11 @@ export async function updateSessionInfoAction(formData: FormData): Promise<void>
         .single()
 
       if (createMoveError || !insertedMove) {
-        redirect(
-          buildSessionDetailRedirectPath({
-            sessionId: parsedInput.data.sessionId,
-            error: "update_failed",
-            ...scope,
-          }),
-        )
+        return buildSessionInfoActionError({
+          error: "update_failed",
+          scope,
+          sessionId: parsedInput.data.sessionId,
+        })
       }
 
       quickCreatedStandardMoveId = insertedMove.id
@@ -1296,13 +1364,11 @@ export async function updateSessionInfoAction(formData: FormData): Promise<void>
       .eq("session_id", parsedInput.data.sessionId)
 
   if (existingSessionStandardMovesError) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "update_failed",
-        ...scope,
-      }),
-    )
+    return buildSessionInfoActionError({
+      error: "update_failed",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
   }
 
   const existingMoveRows = existingSessionStandardMoves ?? []
@@ -1322,23 +1388,19 @@ export async function updateSessionInfoAction(formData: FormData): Promise<void>
       .in("id", moveIdsToInsert)
 
     if (activeMovesToInsertError) {
-      redirect(
-        buildSessionDetailRedirectPath({
-          sessionId: parsedInput.data.sessionId,
-          error: "update_failed",
-          ...scope,
-        }),
-      )
+      return buildSessionInfoActionError({
+        error: "update_failed",
+        scope,
+        sessionId: parsedInput.data.sessionId,
+      })
     }
 
     if ((activeMovesToInsert ?? []).length !== moveIdsToInsert.length) {
-      redirect(
-        buildSessionDetailRedirectPath({
-          sessionId: parsedInput.data.sessionId,
-          error: "invalid_input",
-          ...scope,
-        }),
-      )
+      return buildSessionInfoActionError({
+        error: "invalid_input",
+        scope,
+        sessionId: parsedInput.data.sessionId,
+      })
     }
 
     const { error: insertSessionStandardMovesError } = await supabase
@@ -1352,13 +1414,11 @@ export async function updateSessionInfoAction(formData: FormData): Promise<void>
       )
 
     if (insertSessionStandardMovesError) {
-      redirect(
-        buildSessionDetailRedirectPath({
-          sessionId: parsedInput.data.sessionId,
-          error: "update_failed",
-          ...scope,
-        }),
-      )
+      return buildSessionInfoActionError({
+        error: "update_failed",
+        scope,
+        sessionId: parsedInput.data.sessionId,
+      })
     }
   }
 
@@ -1369,15 +1429,44 @@ export async function updateSessionInfoAction(formData: FormData): Promise<void>
       .in("id", rowIdsToDelete)
 
     if (deleteSessionStandardMovesError) {
-      redirect(
-        buildSessionDetailRedirectPath({
-          sessionId: parsedInput.data.sessionId,
-          error: "update_failed",
-          ...scope,
-        }),
-      )
+      return buildSessionInfoActionError({
+        error: "update_failed",
+        scope,
+        sessionId: parsedInput.data.sessionId,
+      })
     }
   }
+
+  const { data: teamStandardMovesData, error: teamStandardMovesError } = await supabase
+    .from("team_standard_moves")
+    .select("id,name,description,is_active")
+    .eq("team_id", scope.scopeTeamId)
+    .order("name", { ascending: true })
+
+  if (teamStandardMovesError) {
+    return buildSessionInfoActionError({
+      error: "update_failed",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
+  }
+
+  const availableStandardMoves = (teamStandardMovesData ?? []).map((standardMove) => ({
+    id: standardMove.id,
+    name: standardMove.name,
+    description: standardMove.description,
+    isActive: standardMove.is_active,
+  }))
+  const standardMoveById = new Map(
+    availableStandardMoves.map((standardMove) => [standardMove.id, standardMove]),
+  )
+  const linkedStandardMoveIds = desiredStandardMoveIdList.filter((standardMoveId) =>
+    standardMoveById.has(standardMoveId),
+  )
+  const standardMoves = linkedStandardMoveIds
+    .map((standardMoveId) => standardMoveById.get(standardMoveId)?.name ?? null)
+    .filter((standardMoveName): standardMoveName is string => standardMoveName !== null)
+    .sort((left, right) => left.localeCompare(right))
 
   revalidateSessionSlices({
     sessionId: parsedInput.data.sessionId,
@@ -1385,11 +1474,70 @@ export async function updateSessionInfoAction(formData: FormData): Promise<void>
     teamVenueId: scopedSession.teamVenue.id,
   })
 
+  return {
+    ok: true,
+    sessionId: parsedInput.data.sessionId,
+    scope,
+    info: {
+      bestOfSession,
+      toWork,
+      standardMoves,
+      windPatterns: formatSessionInfoJsonNote(windPatterns),
+      freeNotes,
+    },
+    availableStandardMoves,
+    linkedStandardMoveIds,
+  }
+}
+
+export async function saveSessionInfoAction(
+  formData: FormData,
+): Promise<UpdateSessionInfoActionResult> {
+  const result = await updateSessionInfoMutation(formData)
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      error: result.error,
+      message: result.message,
+    }
+  }
+
+  return {
+    ok: true,
+    info: result.info,
+    availableStandardMoves: result.availableStandardMoves,
+    linkedStandardMoveIds: result.linkedStandardMoveIds,
+  }
+}
+
+export async function updateSessionInfoAction(formData: FormData): Promise<void> {
+  const result = await updateSessionInfoMutation(formData)
+
+  if (!result.ok) {
+    if (!result.sessionId) {
+      redirect(
+        buildTeamSessionsRedirectPath({
+          error: result.error,
+          ...result.scope,
+        }),
+      )
+    }
+
+    redirect(
+      buildSessionDetailRedirectPath({
+        sessionId: result.sessionId,
+        error: result.error,
+        ...result.scope,
+      }),
+    )
+  }
+
   redirect(
     buildSessionDetailRedirectPath({
-      sessionId: parsedInput.data.sessionId,
+      sessionId: result.sessionId,
       status: "info_updated",
-      ...scope,
+      ...result.scope,
     }),
   )
 }

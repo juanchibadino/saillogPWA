@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 import {
   CameraIcon,
   GripVerticalIcon,
@@ -26,6 +27,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -73,6 +75,7 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   createTeamSetupMetricAction,
   deleteTeamSetupMetricAction,
+  saveSessionInfoAction,
   updateTeamSetupMetricAction,
   updateSessionDetailAction,
   updateSessionGearUsageAction,
@@ -2112,6 +2115,111 @@ function EditSessionMetadataDialog(input: {
 
 type InfoEditSection = "coaching" | "standardMoves" | "windPatterns"
 
+type SessionInfoState = {
+  bestOfSession: string | null
+  toWork: string | null
+  standardMoves: string[]
+  windPatterns: string | null
+  freeNotes: string | null
+}
+
+type SessionInfoStandardMove = {
+  id: string
+  name: string
+  description: string | null
+  isActive: boolean
+}
+
+type SessionInfoSaveDraft = {
+  bestOfSession: string
+  toWork: string
+  freeNotes: string
+  windPatterns: string
+  standardMoveIds: string[]
+  newStandardMoveName: string
+  newStandardMoveDescription: string
+}
+
+function normalizeInfoText(value: string): string | null {
+  const normalized = value.trim()
+  return normalized.length > 0 ? normalized : null
+}
+
+function buildOptimisticStandardMoveNames(input: {
+  availableStandardMoves: SessionInfoStandardMove[]
+  selectedStandardMoveIds: string[]
+  newStandardMoveName: string
+  newStandardMoveDescription: string
+}): string[] {
+  const standardMoveById = new Map(
+    input.availableStandardMoves.map((standardMove) => [standardMove.id, standardMove]),
+  )
+  const names = input.selectedStandardMoveIds
+    .map((standardMoveId) => standardMoveById.get(standardMoveId)?.name ?? null)
+    .filter((standardMoveName): standardMoveName is string => standardMoveName !== null)
+  const normalizedDescription = input.newStandardMoveDescription.trim()
+
+  if (normalizedDescription.length > 0) {
+    const resolvedName =
+      input.newStandardMoveName.trim().length > 0
+        ? input.newStandardMoveName.trim()
+        : generateStandardMoveNameFromDescription(normalizedDescription)
+    const hasExistingName = names.some(
+      (name) => name.localeCompare(resolvedName, undefined, { sensitivity: "accent" }) === 0,
+    )
+
+    if (!hasExistingName) {
+      names.push(resolvedName)
+    }
+  }
+
+  return [...new Set(names)].sort((left, right) => left.localeCompare(right))
+}
+
+function buildOptimisticInfoState(input: {
+  draft: SessionInfoSaveDraft
+  availableStandardMoves: SessionInfoStandardMove[]
+}): SessionInfoState {
+  return {
+    bestOfSession: normalizeInfoText(input.draft.bestOfSession),
+    toWork: normalizeInfoText(input.draft.toWork),
+    freeNotes: normalizeInfoText(input.draft.freeNotes),
+    windPatterns: normalizeInfoText(input.draft.windPatterns),
+    standardMoves: buildOptimisticStandardMoveNames({
+      availableStandardMoves: input.availableStandardMoves,
+      selectedStandardMoveIds: input.draft.standardMoveIds,
+      newStandardMoveName: input.draft.newStandardMoveName,
+      newStandardMoveDescription: input.draft.newStandardMoveDescription,
+    }),
+  }
+}
+
+function appendSessionInfoFormData(input: {
+  formData: FormData
+  sessionId: string
+  scope: NavigationScope
+  draft: SessionInfoSaveDraft
+}) {
+  input.formData.set("sessionId", input.sessionId)
+  input.formData.set("scopeOrgId", input.scope.activeOrgId)
+
+  if (input.scope.activeTeamId) {
+    input.formData.set("scopeTeamId", input.scope.activeTeamId)
+  }
+
+  input.formData.set("scopeTab", "info")
+  input.formData.set("bestOfSession", input.draft.bestOfSession)
+  input.formData.set("toWork", input.draft.toWork)
+  input.formData.set("freeNotes", input.draft.freeNotes)
+  input.formData.set("windPatterns", input.draft.windPatterns)
+  input.formData.set("newStandardMoveName", input.draft.newStandardMoveName)
+  input.formData.set("newStandardMoveDescription", input.draft.newStandardMoveDescription)
+
+  for (const standardMoveId of input.draft.standardMoveIds) {
+    input.formData.append("standardMoveId", standardMoveId)
+  }
+}
+
 function resolveInfoEditCopy(section: InfoEditSection): {
   triggerLabel: string
   title: string
@@ -2147,13 +2255,15 @@ function resolveInfoEditCopy(section: InfoEditSection): {
 function InfoDialogSubmitButton(props: {
   canSubmit: boolean
   className?: string
+  isSaving: boolean
   label: string
 }) {
   const { pending } = useFormStatus()
+  const isPending = pending || props.isSaving
 
   return (
-    <Button type="submit" disabled={pending || !props.canSubmit} className={props.className}>
-      {pending ? (
+    <Button type="submit" disabled={isPending || !props.canSubmit} className={props.className}>
+      {isPending ? (
         <>
           <Loader2Icon className="size-4 animate-spin" />
           Saving...
@@ -2165,11 +2275,12 @@ function InfoDialogSubmitButton(props: {
   )
 }
 
-function InfoDialogFieldset(props: { children: React.ReactNode }) {
+function InfoDialogFieldset(props: { children: React.ReactNode; isSaving: boolean }) {
   const { pending } = useFormStatus()
+  const isPending = pending || props.isSaving
 
   return (
-    <fieldset disabled={pending} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-4">
+    <fieldset disabled={isPending} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-4">
       {props.children}
     </fieldset>
   )
@@ -2211,12 +2322,15 @@ function InfoEditDialog(input: {
   linkedStandardMoveIds: string[]
   windPatterns: string | null
   freeNotes: string | null
+  onSave: (draft: SessionInfoSaveDraft) => Promise<boolean>
 }) {
   const [bestOfSession, setBestOfSession] = React.useState(input.bestOfSession ?? "")
   const [toWork, setToWork] = React.useState(input.toWork ?? "")
   const [standardMoveIds, setStandardMoveIds] = React.useState<string[]>(input.linkedStandardMoveIds)
   const [newStandardMoveName, setNewStandardMoveName] = React.useState("")
   const [newStandardMoveDescription, setNewStandardMoveDescription] = React.useState("")
+  const [isOpen, setIsOpen] = React.useState(false)
+  const [isSaving, setIsSaving] = React.useState(false)
   const [isQuickCreateDialogOpen, setIsQuickCreateDialogOpen] = React.useState(false)
   const [isQuickCreateNameManuallyEdited, setIsQuickCreateNameManuallyEdited] =
     React.useState(false)
@@ -2234,8 +2348,86 @@ function InfoEditDialog(input: {
   const canSubmitInfo =
     input.section === "standardMoves" ? !quickCreateDescriptionMissing : true
 
+  React.useEffect(() => {
+    if (isOpen || isSaving) {
+      return
+    }
+
+    setBestOfSession(input.bestOfSession ?? "")
+  }, [input.bestOfSession, isOpen, isSaving])
+
+  React.useEffect(() => {
+    if (isOpen || isSaving) {
+      return
+    }
+
+    setToWork(input.toWork ?? "")
+  }, [input.toWork, isOpen, isSaving])
+
+  React.useEffect(() => {
+    if (isOpen || isSaving) {
+      return
+    }
+
+    setFreeNotes(input.freeNotes ?? "")
+  }, [input.freeNotes, isOpen, isSaving])
+
+  React.useEffect(() => {
+    if (isOpen || isSaving) {
+      return
+    }
+
+    setWindPatterns(input.windPatterns ?? "")
+  }, [input.windPatterns, isOpen, isSaving])
+
+  React.useEffect(() => {
+    if (isOpen || isSaving) {
+      return
+    }
+
+    setStandardMoveIds(input.linkedStandardMoveIds)
+  }, [input.linkedStandardMoveIds, isOpen, isSaving])
+
+  async function handleInfoSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!canSubmitInfo || isSaving) {
+      return
+    }
+
+    const draft: SessionInfoSaveDraft = {
+      bestOfSession,
+      toWork,
+      freeNotes,
+      windPatterns,
+      standardMoveIds,
+      newStandardMoveName,
+      newStandardMoveDescription,
+    }
+
+    setIsSaving(true)
+    setIsQuickCreateDialogOpen(false)
+    setIsOpen(false)
+
+    const didSave = await input.onSave(draft)
+
+    if (didSave) {
+      setNewStandardMoveName("")
+      setNewStandardMoveDescription("")
+      setIsQuickCreateNameManuallyEdited(false)
+    } else {
+      setIsOpen(true)
+    }
+
+    setIsSaving(false)
+  }
+
   const infoForm = (
-    <form action={updateSessionInfoAction} className="flex min-h-0 flex-1 flex-col">
+    <form
+      action={updateSessionInfoAction}
+      onSubmit={handleInfoSubmit}
+      className="flex min-h-0 flex-1 flex-col"
+    >
       <input type="hidden" name="sessionId" value={input.sessionId} />
       <input type="hidden" name="scopeOrgId" value={input.scope.activeOrgId} />
       {input.scope.activeTeamId ? (
@@ -2269,7 +2461,7 @@ function InfoEditDialog(input: {
         <input type="hidden" name="windPatterns" value={windPatterns} />
       ) : null}
 
-      <InfoDialogFieldset>
+      <InfoDialogFieldset isSaving={isSaving}>
         {input.section === "coaching" ? (
           <>
             <div className="space-y-2">
@@ -2494,6 +2686,7 @@ function InfoEditDialog(input: {
           <InfoDialogSubmitButton
             canSubmit={canSubmitInfo}
             className="w-full"
+            isSaving={isSaving}
             label={copy.submitLabel}
           />
         </DrawerFooter>
@@ -2502,6 +2695,7 @@ function InfoEditDialog(input: {
           <InfoDialogSubmitButton
             canSubmit={canSubmitInfo}
             className="w-full"
+            isSaving={isSaving}
             label={copy.submitLabel}
           />
         </SheetFooter>
@@ -2515,7 +2709,7 @@ function InfoEditDialog(input: {
 
   if (isMobile) {
     return (
-      <Drawer>
+      <Drawer open={isOpen} onOpenChange={setIsOpen}>
         <DrawerTrigger asChild>
           <Button type="button" variant="outline" size="default" className="h-9 px-3">
             {copy.triggerLabel}
@@ -2535,7 +2729,7 @@ function InfoEditDialog(input: {
   }
 
   return (
-    <Sheet>
+    <Sheet open={isOpen} onOpenChange={setIsOpen}>
       <SheetTrigger render={<Button type="button" variant="outline" size="sm" />}>
         {copy.triggerLabel}
       </SheetTrigger>
@@ -3155,6 +3349,70 @@ export function SessionDetailTabsClient(input: {
   canManageSession: boolean
 }) {
   const [selectedTab, setSelectedTab] = React.useState<SessionDetailTab>(input.initialTab)
+  const router = useRouter()
+  const [info, setInfo] = React.useState<SessionInfoState>(input.info)
+  const [availableStandardMoves, setAvailableStandardMoves] = React.useState<
+    SessionInfoStandardMove[]
+  >(input.availableStandardMoves)
+  const [linkedStandardMoveIds, setLinkedStandardMoveIds] = React.useState<string[]>(
+    input.linkedStandardMoveIds,
+  )
+
+  React.useEffect(() => {
+    setInfo(input.info)
+  }, [input.info])
+
+  React.useEffect(() => {
+    setAvailableStandardMoves(input.availableStandardMoves)
+  }, [input.availableStandardMoves])
+
+  React.useEffect(() => {
+    setLinkedStandardMoveIds(input.linkedStandardMoveIds)
+  }, [input.linkedStandardMoveIds])
+
+  const handleInfoSave = React.useCallback(
+    async (draft: SessionInfoSaveDraft): Promise<boolean> => {
+      const previousInfo = info
+      const optimisticInfo = buildOptimisticInfoState({
+        draft,
+        availableStandardMoves,
+      })
+      const toastId = toast.loading("Saving session info...")
+      const formData = new FormData()
+
+      appendSessionInfoFormData({
+        formData,
+        sessionId: input.sessionId,
+        scope: input.scope,
+        draft,
+      })
+      setInfo(optimisticInfo)
+
+      try {
+        const result = await saveSessionInfoAction(formData)
+
+        if (!result.ok) {
+          setInfo(previousInfo)
+          toast.error(result.message, { id: toastId })
+          return false
+        }
+
+        setInfo(result.info)
+        setAvailableStandardMoves(result.availableStandardMoves)
+        setLinkedStandardMoveIds(result.linkedStandardMoveIds)
+        toast.success("Session info saved.", { id: toastId })
+        router.refresh()
+        return true
+      } catch {
+        setInfo(previousInfo)
+        toast.error("Could not update this session. Confirm your permissions and try again.", {
+          id: toastId,
+        })
+        return false
+      }
+    },
+    [availableStandardMoves, info, input.scope, input.sessionId, router],
+  )
 
   return (
     <Tabs
@@ -3172,117 +3430,120 @@ export function SessionDetailTabsClient(input: {
 
       <section className="rounded-xl border bg-card p-4 sm:p-6">
         {selectedTab === "info" ? (
-        <TabsContent value="info" className="space-y-4">
-          <div className="space-y-4">
-            <section>
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h4 className="text-base font-semibold">Coaching Notes</h4>
+          <TabsContent value="info" className="space-y-4">
+            <div className="space-y-4">
+              <section>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-base font-semibold">Coaching Notes</h4>
+                  </div>
+                  {input.canManageSession ? (
+                    <InfoEditDialog
+                      section="coaching"
+                      sessionId={input.sessionId}
+                      scope={input.scope}
+                      bestOfSession={info.bestOfSession}
+                      toWork={info.toWork}
+                      availableStandardMoves={availableStandardMoves}
+                      linkedStandardMoveIds={linkedStandardMoveIds}
+                      windPatterns={info.windPatterns}
+                      freeNotes={info.freeNotes}
+                      onSave={handleInfoSave}
+                    />
+                  ) : null}
                 </div>
-                {input.canManageSession ? (
-                  <InfoEditDialog
-                    section="coaching"
-                    sessionId={input.sessionId}
-                    scope={input.scope}
-                    bestOfSession={input.info.bestOfSession}
-                    toWork={input.info.toWork}
-                    availableStandardMoves={input.availableStandardMoves}
-                    linkedStandardMoveIds={input.linkedStandardMoveIds}
-                    windPatterns={input.info.windPatterns}
-                    freeNotes={input.info.freeNotes}
-                  />
-                ) : null}
-              </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg bg-muted p-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Best
+                    </p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm">
+                      {renderTextValue(info.bestOfSession)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-muted p-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      To Work
+                    </p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm">
+                      {renderTextValue(info.toWork)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-muted p-4 sm:col-span-2">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Free Notes
+                    </p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm">
+                      {renderTextValue(info.freeNotes)}
+                    </p>
+                  </div>
+                </div>
+              </section>
+
+              <section>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-base font-semibold">Standard Moves</h4>
+                  </div>
+                  {input.canManageSession ? (
+                    <InfoEditDialog
+                      section="standardMoves"
+                      sessionId={input.sessionId}
+                      scope={input.scope}
+                      bestOfSession={info.bestOfSession}
+                      toWork={info.toWork}
+                      availableStandardMoves={availableStandardMoves}
+                      linkedStandardMoveIds={linkedStandardMoveIds}
+                      windPatterns={info.windPatterns}
+                      freeNotes={info.freeNotes}
+                      onSave={handleInfoSave}
+                    />
+                  ) : null}
+                </div>
+
                 <div className="rounded-lg bg-muted p-4">
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Best
+                    Std. Moves
                   </p>
                   <p className="mt-2 whitespace-pre-wrap text-sm">
-                    {renderTextValue(input.info.bestOfSession)}
+                    {renderTextList(info.standardMoves)}
                   </p>
                 </div>
+              </section>
+
+              <section>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-base font-semibold">Wind Patterns</h4>
+                  </div>
+                  {input.canManageSession ? (
+                    <InfoEditDialog
+                      section="windPatterns"
+                      sessionId={input.sessionId}
+                      scope={input.scope}
+                      bestOfSession={info.bestOfSession}
+                      toWork={info.toWork}
+                      availableStandardMoves={availableStandardMoves}
+                      linkedStandardMoveIds={linkedStandardMoveIds}
+                      windPatterns={info.windPatterns}
+                      freeNotes={info.freeNotes}
+                      onSave={handleInfoSave}
+                    />
+                  ) : null}
+                </div>
+
                 <div className="rounded-lg bg-muted p-4">
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    To Work
+                    Wind Patterns
                   </p>
                   <p className="mt-2 whitespace-pre-wrap text-sm">
-                    {renderTextValue(input.info.toWork)}
+                    {renderTextValue(info.windPatterns)}
                   </p>
                 </div>
-                <div className="rounded-lg bg-muted p-4 sm:col-span-2">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Free Notes
-                  </p>
-                  <p className="mt-2 whitespace-pre-wrap text-sm">
-                    {renderTextValue(input.info.freeNotes)}
-                  </p>
-                </div>
-              </div>
-            </section>
-
-            <section>
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h4 className="text-base font-semibold">Standard Moves</h4>
-                </div>
-                {input.canManageSession ? (
-                  <InfoEditDialog
-                    section="standardMoves"
-                    sessionId={input.sessionId}
-                    scope={input.scope}
-                    bestOfSession={input.info.bestOfSession}
-                    toWork={input.info.toWork}
-                    availableStandardMoves={input.availableStandardMoves}
-                    linkedStandardMoveIds={input.linkedStandardMoveIds}
-                    windPatterns={input.info.windPatterns}
-                    freeNotes={input.info.freeNotes}
-                  />
-                ) : null}
-              </div>
-
-              <div className="rounded-lg bg-muted p-4">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Std. Moves
-                </p>
-                <p className="mt-2 whitespace-pre-wrap text-sm">
-                  {renderTextList(input.info.standardMoves)}
-                </p>
-              </div>
-            </section>
-
-            <section>
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h4 className="text-base font-semibold">Wind Patterns</h4>
-                </div>
-                {input.canManageSession ? (
-                  <InfoEditDialog
-                    section="windPatterns"
-                    sessionId={input.sessionId}
-                    scope={input.scope}
-                    bestOfSession={input.info.bestOfSession}
-                    toWork={input.info.toWork}
-                    availableStandardMoves={input.availableStandardMoves}
-                    linkedStandardMoveIds={input.linkedStandardMoveIds}
-                    windPatterns={input.info.windPatterns}
-                    freeNotes={input.info.freeNotes}
-                  />
-                ) : null}
-              </div>
-
-              <div className="rounded-lg bg-muted p-4">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Wind Patterns
-                </p>
-                <p className="mt-2 whitespace-pre-wrap text-sm">
-                  {renderTextValue(input.info.windPatterns)}
-                </p>
-              </div>
-            </section>
-          </div>
-        </TabsContent>
+              </section>
+            </div>
+          </TabsContent>
         ) : null}
 
         {selectedTab === "goals" ? (
