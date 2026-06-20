@@ -10,11 +10,11 @@ import {
   NAVIGATION_SCOPE_ORG_QUERY_KEY,
   NAVIGATION_SCOPE_TEAM_QUERY_KEY,
 } from "@/lib/navigation/constants"
-import { generateStandardMoveNameFromDescription } from "@/lib/standard-moves"
 import { createAdminSupabaseClient } from "@/lib/supabase/admin"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { scopeFormInputSchema } from "@/lib/validation/navigation"
 import { updateSessionGearUsageInputSchema } from "@/lib/validation/gear"
+import { createTeamStandardMoveInputSchema } from "@/lib/validation/standard-moves"
 import {
   createTeamSetupMetricInputSchema,
   deleteTeamSetupMetricInputSchema,
@@ -1143,6 +1143,20 @@ export type UpdateSessionInfoActionResult =
       message: string
     }
 
+type CreateSessionStandardMoveActionError = "invalid_input" | "forbidden" | "create_failed"
+
+export type CreateSessionStandardMoveActionResult =
+  | {
+      ok: true
+      standardMove: SessionInfoAvailableStandardMove
+      availableStandardMoves: SessionInfoAvailableStandardMove[]
+    }
+  | {
+      ok: false
+      error: CreateSessionStandardMoveActionError
+      message: string
+    }
+
 type UpdateSessionInfoMutationResult =
   | ({ ok: true; sessionId: string; scope: SessionActionScope } & SessionInfoActionSnapshot)
   | {
@@ -1159,6 +1173,15 @@ const SESSION_INFO_ERROR_MESSAGES: Record<SessionInfoActionError, string> = {
   update_failed: "Could not update this session. Confirm your permissions and try again.",
 }
 
+const CREATE_SESSION_STANDARD_MOVE_ERROR_MESSAGES: Record<
+  CreateSessionStandardMoveActionError,
+  string
+> = {
+  invalid_input: "The submitted standard move data is invalid. Review the form and try again.",
+  forbidden: "You do not have permission to manage this session in the active scope.",
+  create_failed: "Could not create standard move. Confirm permissions and uniqueness of the name.",
+}
+
 function buildSessionInfoActionError(input: {
   error: SessionInfoActionError
   scope: SessionActionScope
@@ -1170,6 +1193,132 @@ function buildSessionInfoActionError(input: {
     message: SESSION_INFO_ERROR_MESSAGES[input.error],
     scope: input.scope,
     sessionId: input.sessionId,
+  }
+}
+
+function buildCreateSessionStandardMoveActionError(
+  error: CreateSessionStandardMoveActionError,
+): CreateSessionStandardMoveActionResult {
+  return {
+    ok: false,
+    error,
+    message: CREATE_SESSION_STANDARD_MOVE_ERROR_MESSAGES[error],
+  }
+}
+
+export async function createSessionStandardMoveAction(
+  formData: FormData,
+): Promise<CreateSessionStandardMoveActionResult> {
+  const context = await requireAuthenticatedAccessContext()
+  const scope = getScopeFromFormData(formData)
+  const sessionId = getFormString(formData, "sessionId")
+  const parsedInput = createTeamStandardMoveInputSchema.safeParse({
+    name: getFormString(formData, "name"),
+    description: getFormString(formData, "description"),
+  })
+
+  if (!sessionId || !scope.scopeOrgId || !scope.scopeTeamId || !parsedInput.success) {
+    return buildCreateSessionStandardMoveActionError("invalid_input")
+  }
+
+  const normalizedDescription = normalizeOptionalText(parsedInput.data.description)
+
+  if (!normalizedDescription) {
+    return buildCreateSessionStandardMoveActionError("invalid_input")
+  }
+
+  if (
+    !canManageTeamSessions({
+      context,
+      organizationId: scope.scopeOrgId,
+      teamId: scope.scopeTeamId,
+    })
+  ) {
+    return buildCreateSessionStandardMoveActionError("forbidden")
+  }
+
+  const scopedSession = await resolveScopedSessionContext({
+    sessionId,
+    scopeOrgId: scope.scopeOrgId,
+    scopeTeamId: scope.scopeTeamId,
+  })
+
+  if (!scopedSession) {
+    return buildCreateSessionStandardMoveActionError("forbidden")
+  }
+
+  const supabase = await createServerSupabaseClient()
+  const { data: existingMoveRows, error: existingMoveError } = await supabase
+    .from("team_standard_moves")
+    .select("id")
+    .eq("team_id", scope.scopeTeamId)
+    .ilike("name", parsedInput.data.name)
+    .limit(1)
+
+  if (existingMoveError) {
+    return buildCreateSessionStandardMoveActionError("create_failed")
+  }
+
+  const existingMove = existingMoveRows?.[0]
+  const moveMutation = existingMove
+    ? await supabase
+        .from("team_standard_moves")
+        .update({
+          name: parsedInput.data.name,
+          description: normalizedDescription,
+          is_active: true,
+        })
+        .eq("id", existingMove.id)
+        .select("id,name,description,is_active")
+        .single()
+    : await supabase
+        .from("team_standard_moves")
+        .insert({
+          team_id: scope.scopeTeamId,
+          name: parsedInput.data.name,
+          description: normalizedDescription,
+          created_by_profile_id: context.profile?.id ?? null,
+        })
+        .select("id,name,description,is_active")
+        .single()
+
+  if (moveMutation.error || !moveMutation.data) {
+    return buildCreateSessionStandardMoveActionError("create_failed")
+  }
+
+  const { data: teamStandardMovesData, error: teamStandardMovesError } = await supabase
+    .from("team_standard_moves")
+    .select("id,name,description,is_active")
+    .eq("team_id", scope.scopeTeamId)
+    .order("name", { ascending: true })
+
+  if (teamStandardMovesError) {
+    return buildCreateSessionStandardMoveActionError("create_failed")
+  }
+
+  const standardMove = {
+    id: moveMutation.data.id,
+    name: moveMutation.data.name,
+    description: moveMutation.data.description,
+    isActive: moveMutation.data.is_active,
+  }
+  const availableStandardMoves = (teamStandardMovesData ?? []).map((move) => ({
+    id: move.id,
+    name: move.name,
+    description: move.description,
+    isActive: move.is_active,
+  }))
+
+  revalidateSessionSlices({
+    sessionId,
+    campId: scopedSession.camp.id,
+    teamVenueId: scopedSession.teamVenue.id,
+  })
+
+  return {
+    ok: true,
+    standardMove,
+    availableStandardMoves,
   }
 }
 
@@ -1193,8 +1342,6 @@ async function updateSessionInfoMutation(formData: FormData): Promise<UpdateSess
     windPatterns: getFormString(formData, "windPatterns"),
     freeNotes: getFormString(formData, "freeNotes"),
     standardMoveIds: getFormStringArray(formData, "standardMoveId"),
-    newStandardMoveName: getFormString(formData, "newStandardMoveName"),
-    newStandardMoveDescription: getFormString(formData, "newStandardMoveDescription"),
   })
 
   if (!parsedInput.success) {
@@ -1238,11 +1385,6 @@ async function updateSessionInfoMutation(formData: FormData): Promise<UpdateSess
   const windPatterns = parseJsonText(parsedInput.data.windPatterns)
   const freeNotes = normalizeOptionalText(parsedInput.data.freeNotes)
   const selectedStandardMoveIds = [...new Set(parsedInput.data.standardMoveIds)]
-  const newStandardMoveName = normalizeOptionalText(parsedInput.data.newStandardMoveName)
-  const newStandardMoveDescription = normalizeOptionalText(
-    parsedInput.data.newStandardMoveDescription,
-  )
-  const hasQuickCreateInput = Boolean(newStandardMoveName || newStandardMoveDescription)
 
   const supabase = await createServerSupabaseClient()
   const [reviewMutation, setupMutation] = await Promise.all([
@@ -1275,86 +1417,7 @@ async function updateSessionInfoMutation(formData: FormData): Promise<UpdateSess
     })
   }
 
-  let quickCreatedStandardMoveId: string | null = null
-
-  if (hasQuickCreateInput && !newStandardMoveDescription) {
-    return buildSessionInfoActionError({
-      error: "invalid_input",
-      scope,
-      sessionId: parsedInput.data.sessionId,
-    })
-  }
-
-  if (newStandardMoveDescription && scope.scopeTeamId) {
-    const resolvedStandardMoveName =
-      newStandardMoveName ?? generateStandardMoveNameFromDescription(newStandardMoveDescription)
-    const { data: existingMoveRows, error: existingMoveError } = await supabase
-      .from("team_standard_moves")
-      .select("id,is_active")
-      .eq("team_id", scope.scopeTeamId)
-      .ilike("name", resolvedStandardMoveName)
-      .limit(1)
-
-    if (existingMoveError) {
-      return buildSessionInfoActionError({
-        error: "update_failed",
-        scope,
-        sessionId: parsedInput.data.sessionId,
-      })
-    }
-
-    const existingMove = existingMoveRows?.[0]
-
-    if (existingMove) {
-      quickCreatedStandardMoveId = existingMove.id
-
-      if (!existingMove.is_active) {
-        const { error: reactivateMoveError } = await supabase
-          .from("team_standard_moves")
-          .update({
-            is_active: true,
-            description: newStandardMoveDescription ?? undefined,
-          })
-          .eq("id", existingMove.id)
-
-        if (reactivateMoveError) {
-          return buildSessionInfoActionError({
-            error: "update_failed",
-            scope,
-            sessionId: parsedInput.data.sessionId,
-          })
-        }
-      }
-    } else {
-      const { data: insertedMove, error: createMoveError } = await supabase
-        .from("team_standard_moves")
-        .insert({
-          team_id: scope.scopeTeamId,
-          name: resolvedStandardMoveName,
-          description: newStandardMoveDescription,
-          created_by_profile_id: context.profile?.id ?? null,
-        })
-        .select("id")
-        .single()
-
-      if (createMoveError || !insertedMove) {
-        return buildSessionInfoActionError({
-          error: "update_failed",
-          scope,
-          sessionId: parsedInput.data.sessionId,
-        })
-      }
-
-      quickCreatedStandardMoveId = insertedMove.id
-    }
-  }
-
   const desiredStandardMoveIds = new Set<string>(selectedStandardMoveIds)
-
-  if (quickCreatedStandardMoveId) {
-    desiredStandardMoveIds.add(quickCreatedStandardMoveId)
-  }
-
   const desiredStandardMoveIdList = [...desiredStandardMoveIds]
 
   const { data: existingSessionStandardMoves, error: existingSessionStandardMovesError } =

@@ -46,6 +46,8 @@ type SessionBreadcrumbResponse = {
   venue_name: string | null
   camp_id: string | null
   camp_name: string | null
+  session_date: string | null
+  dock_out_at: string | null
 }
 
 function getSectionTitle(pathname: string): string {
@@ -185,6 +187,65 @@ function getTeamSessionsTitle(
     "No team selected"
 
   return `${activeTeamLabel} > Sessions`
+}
+
+function formatSessionDateTimeLabel(input: {
+  sessionDate: string | null | undefined
+  dockOutAt: string | null | undefined
+}): string | null {
+  if (!input.sessionDate) {
+    return null
+  }
+
+  const date = new Date(`${input.sessionDate}T00:00:00.000Z`)
+
+  if (Number.isNaN(date.getTime())) {
+    return null
+  }
+
+  const dateParts = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).formatToParts(date)
+  const month = dateParts.find((part) => part.type === "month")?.value
+  const day = dateParts.find((part) => part.type === "day")?.value
+  const dateLabel = month && day ? `${month} ${day}` : null
+
+  if (!dateLabel) {
+    return null
+  }
+
+  const fallbackTimeValue = `${input.sessionDate}T00:00:00.000Z`
+  const time = new Date(input.dockOutAt ?? fallbackTimeValue)
+  const safeTime = Number.isNaN(time.getTime()) ? new Date(fallbackTimeValue) : time
+
+  const timeParts = new Intl.DateTimeFormat("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "UTC",
+  }).formatToParts(safeTime)
+  const hour = timeParts.find((part) => part.type === "hour")?.value.padStart(2, "0")
+  const minute = timeParts.find((part) => part.type === "minute")?.value
+  const dayPeriod = timeParts.find((part) => part.type === "dayPeriod")?.value
+
+  if (!hour || !minute || !dayPeriod) {
+    return dateLabel
+  }
+
+  return `${dateLabel} ${hour}:${minute} ${dayPeriod.toUpperCase()}`
+}
+
+function getSessionDetailTitle(
+  sessionBreadcrumb: SessionBreadcrumbResponse | null,
+): string {
+  return (
+    formatSessionDateTimeLabel({
+      sessionDate: sessionBreadcrumb?.session_date,
+      dockOutAt: sessionBreadcrumb?.dock_out_at,
+    }) ?? "Session"
+  )
 }
 
 function getTeamNotesTitle(
@@ -433,7 +494,6 @@ export function SiteHeader({
   const venuesHref = buildScopedHref("/venues", activeScope)
   const phaseOneMobileHeaderEnabled =
     isMobile && shouldUsePhaseOneMobileHeader(pathname)
-  const mobileHeaderTitle = getSectionTitle(pathname)
   const mobileBackFallbackHref = buildScopedHref(
     resolveMobileBackFallbackPath(pathname),
     activeScope,
@@ -575,6 +635,10 @@ export function SiteHeader({
   const sessionTeamLabel = sessionBreadcrumb?.team_name ?? activeTeamLabel
   const sessionVenueLabel = sessionBreadcrumb?.venue_name ?? "Venue"
   const sessionCampLabel = sessionBreadcrumb?.camp_name ?? "Camp"
+  const sessionDetailTitle = getSessionDetailTitle(sessionBreadcrumb)
+  const mobileHeaderTitle = sessionDetailId
+    ? sessionDetailTitle
+    : getSectionTitle(pathname)
   const sessionVenueHref =
     sessionBreadcrumb?.venue_id !== null && sessionBreadcrumb?.venue_id !== undefined
       ? buildScopedHrefWithTab(`/venues/${sessionBreadcrumb.venue_id}`, activeScope, "sessions")
@@ -599,7 +663,7 @@ export function SiteHeader({
 
   if (phaseOneMobileHeaderEnabled) {
     const showMobileSidebarTrigger =
-      pathname === "/team-sessions" || pathname === "/team-venues"
+      pathname.startsWith("/team-sessions") || pathname === "/team-venues"
 
     return (
       <header className="flex h-12 shrink-0 items-center border-b bg-background px-4">
@@ -649,7 +713,7 @@ export function SiteHeader({
               </BreadcrumbItem>
               <BreadcrumbSeparator />
               <BreadcrumbItem>
-                <BreadcrumbPage>Session</BreadcrumbPage>
+                <BreadcrumbPage>{sessionDetailTitle}</BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>

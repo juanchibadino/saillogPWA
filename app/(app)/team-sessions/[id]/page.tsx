@@ -134,7 +134,7 @@ function formatTimeLabel(value: string | null): string {
   return new Intl.DateTimeFormat("en-US", {
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
+    hour12: true,
     timeZone: "UTC",
   }).format(date)
 }
@@ -388,7 +388,30 @@ export default async function SessionDetailPage({
           ) : null}
         </div>
 
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <Card className="overflow-hidden p-0 md:hidden">
+          <div className="divide-y divide-border px-6 py-3">
+            <div className="flex min-h-12 items-center justify-between gap-4">
+              <p className="text-sm text-muted-foreground">Date</p>
+              <p className="text-right text-sm font-semibold">{sessionDateLabel}</p>
+            </div>
+
+            <div className="flex min-h-12 items-center justify-between gap-4">
+              <p className="text-sm text-muted-foreground">Dock Out</p>
+              <p className="text-right text-sm font-semibold tabular-nums">
+                {formatTimeLabel(detailData.session.dock_out_at)}
+              </p>
+            </div>
+
+            <div className="flex min-h-12 items-center justify-between gap-4">
+              <p className="text-sm font-semibold">Duration</p>
+              <p className="text-right text-sm font-semibold tabular-nums">
+                {formatDurationLabel(durationMinutes)}
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <div className="hidden gap-4 md:grid md:grid-cols-3">
           <Card>
             <CardHeader>
               <CardDescription>Date</CardDescription>
@@ -398,7 +421,7 @@ export default async function SessionDetailPage({
 
           <Card>
             <CardHeader>
-              <CardDescription>Start Time</CardDescription>
+              <CardDescription>Dock Out</CardDescription>
               <CardTitle className="text-xl font-semibold tabular-nums">
                 {formatTimeLabel(detailData.session.dock_out_at)}
               </CardTitle>
@@ -407,16 +430,7 @@ export default async function SessionDetailPage({
 
           <Card>
             <CardHeader>
-              <CardDescription>End Time</CardDescription>
-              <CardTitle className="text-xl font-semibold tabular-nums">
-                {formatTimeLabel(detailData.session.dock_in_at)}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardDescription>Total duration</CardDescription>
+              <CardDescription>Duration</CardDescription>
               <CardTitle className="text-xl font-semibold tabular-nums">
                 {formatDurationLabel(durationMinutes)}
               </CardTitle>

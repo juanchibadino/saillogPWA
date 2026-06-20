@@ -4,10 +4,13 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 import {
   CameraIcon,
+  CheckIcon,
+  ChevronDownIcon,
   GripVerticalIcon,
   Loader2Icon,
   PencilIcon,
   PlusIcon,
+  SearchIcon,
   SpellCheckIcon,
   Trash2Icon,
 } from "lucide-react"
@@ -29,8 +32,15 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 import { toast } from "sonner"
 
-import { Button } from "@/components/ui/button"
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -49,6 +59,12 @@ import {
   DrawerTitle,
   DrawerTrigger,
 } from "@/components/ui/drawer"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -73,6 +89,12 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
+  createSessionStandardMoveAction,
   createTeamSetupMetricAction,
   deleteTeamSetupMetricAction,
   saveSessionInfoAction,
@@ -97,6 +119,7 @@ import {
 import type { NavigationScope } from "@/lib/navigation/types"
 import { generateStandardMoveNameFromDescription } from "@/lib/standard-moves"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { cn } from "@/lib/utils"
 
 function formatTimeInputValue(iso: string | null): string {
   if (!iso) {
@@ -182,14 +205,6 @@ function renderTextValue(value: string | null): string {
   }
 
   return value
-}
-
-function renderTextList(values: string[]): string {
-  if (values.length === 0) {
-    return "—"
-  }
-
-  return values.join(", ")
 }
 
 type SessionNoteTextReplacement = {
@@ -2130,14 +2145,101 @@ type SessionInfoStandardMove = {
   isActive: boolean
 }
 
+function resolveLinkedStandardMoveBadges(input: {
+  availableStandardMoves: SessionInfoStandardMove[]
+  linkedStandardMoveIds: string[]
+  fallbackStandardMoveNames: string[]
+}): SessionInfoStandardMove[] {
+  const standardMoveById = new Map(
+    input.availableStandardMoves.map((standardMove) => [standardMove.id, standardMove]),
+  )
+  const linkedStandardMoves = input.linkedStandardMoveIds
+    .map((standardMoveId) => standardMoveById.get(standardMoveId) ?? null)
+    .filter((standardMove): standardMove is SessionInfoStandardMove => standardMove !== null)
+
+  if (linkedStandardMoves.length > 0) {
+    return linkedStandardMoves.sort((left, right) => left.name.localeCompare(right.name))
+  }
+
+  return input.fallbackStandardMoveNames.map((name, index) => ({
+    id: `fallback-${index}-${name}`,
+    name,
+    description: null,
+    isActive: true,
+  }))
+}
+
+function StandardMoveTooltipBadge(props: {
+  standardMove: SessionInfoStandardMove
+  isMobile: boolean
+}) {
+  const [isOpen, setIsOpen] = React.useState(false)
+  const description = props.standardMove.description?.trim()
+  const tooltipText =
+    description && description.length > 0 ? description : "No description available."
+
+  return (
+    <Tooltip open={isOpen} onOpenChange={setIsOpen}>
+      <TooltipTrigger
+        closeOnClick={false}
+        className="max-w-full rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        onClick={(event) => {
+          if (!props.isMobile) {
+            return
+          }
+
+          event.preventDefault()
+          setIsOpen((currentIsOpen) => !currentIsOpen)
+        }}
+      >
+        <Badge
+          variant="secondary"
+          className={[
+            "h-7 max-w-full rounded-md border border-border/70 bg-background px-2.5 text-foreground hover:bg-accent",
+            props.isMobile ? "cursor-pointer" : "cursor-help",
+          ].join(" ")}
+        >
+          <span className="max-w-[16rem] truncate">{props.standardMove.name}</span>
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-sm whitespace-normal text-left leading-relaxed">
+        <p>{tooltipText}</p>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+function SessionInfoStandardMovesBadges(input: {
+  availableStandardMoves: SessionInfoStandardMove[]
+  linkedStandardMoveIds: string[]
+  fallbackStandardMoveNames: string[]
+}) {
+  const isMobile = useIsMobile()
+  const standardMoves = resolveLinkedStandardMoveBadges(input)
+
+  if (standardMoves.length === 0) {
+    return <p className="mt-2 whitespace-pre-wrap text-sm">—</p>
+  }
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {standardMoves.map((standardMove) => (
+        <StandardMoveTooltipBadge
+          key={standardMove.id}
+          standardMove={standardMove}
+          isMobile={isMobile}
+        />
+      ))}
+    </div>
+  )
+}
+
 type SessionInfoSaveDraft = {
   bestOfSession: string
   toWork: string
   freeNotes: string
   windPatterns: string
   standardMoveIds: string[]
-  newStandardMoveName: string
-  newStandardMoveDescription: string
 }
 
 function normalizeInfoText(value: string): string | null {
@@ -2148,8 +2250,6 @@ function normalizeInfoText(value: string): string | null {
 function buildOptimisticStandardMoveNames(input: {
   availableStandardMoves: SessionInfoStandardMove[]
   selectedStandardMoveIds: string[]
-  newStandardMoveName: string
-  newStandardMoveDescription: string
 }): string[] {
   const standardMoveById = new Map(
     input.availableStandardMoves.map((standardMove) => [standardMove.id, standardMove]),
@@ -2157,21 +2257,6 @@ function buildOptimisticStandardMoveNames(input: {
   const names = input.selectedStandardMoveIds
     .map((standardMoveId) => standardMoveById.get(standardMoveId)?.name ?? null)
     .filter((standardMoveName): standardMoveName is string => standardMoveName !== null)
-  const normalizedDescription = input.newStandardMoveDescription.trim()
-
-  if (normalizedDescription.length > 0) {
-    const resolvedName =
-      input.newStandardMoveName.trim().length > 0
-        ? input.newStandardMoveName.trim()
-        : generateStandardMoveNameFromDescription(normalizedDescription)
-    const hasExistingName = names.some(
-      (name) => name.localeCompare(resolvedName, undefined, { sensitivity: "accent" }) === 0,
-    )
-
-    if (!hasExistingName) {
-      names.push(resolvedName)
-    }
-  }
 
   return [...new Set(names)].sort((left, right) => left.localeCompare(right))
 }
@@ -2188,8 +2273,6 @@ function buildOptimisticInfoState(input: {
     standardMoves: buildOptimisticStandardMoveNames({
       availableStandardMoves: input.availableStandardMoves,
       selectedStandardMoveIds: input.draft.standardMoveIds,
-      newStandardMoveName: input.draft.newStandardMoveName,
-      newStandardMoveDescription: input.draft.newStandardMoveDescription,
     }),
   }
 }
@@ -2212,8 +2295,6 @@ function appendSessionInfoFormData(input: {
   input.formData.set("toWork", input.draft.toWork)
   input.formData.set("freeNotes", input.draft.freeNotes)
   input.formData.set("windPatterns", input.draft.windPatterns)
-  input.formData.set("newStandardMoveName", input.draft.newStandardMoveName)
-  input.formData.set("newStandardMoveDescription", input.draft.newStandardMoveDescription)
 
   for (const standardMoveId of input.draft.standardMoveIds) {
     input.formData.append("standardMoveId", standardMoveId)
@@ -2275,12 +2356,20 @@ function InfoDialogSubmitButton(props: {
   )
 }
 
-function InfoDialogFieldset(props: { children: React.ReactNode; isSaving: boolean }) {
+function InfoDialogFieldset(props: {
+  children: React.ReactNode
+  className?: string
+  isSaving: boolean
+}) {
   const { pending } = useFormStatus()
   const isPending = pending || props.isSaving
+  const className = [
+    "min-h-0 flex-1 overflow-y-auto px-4 pb-4",
+    props.className ?? "space-y-4",
+  ].join(" ")
 
   return (
-    <fieldset disabled={isPending} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-4">
+    <fieldset disabled={isPending} className={className}>
       {props.children}
     </fieldset>
   )
@@ -2322,6 +2411,10 @@ function InfoEditDialog(input: {
   linkedStandardMoveIds: string[]
   windPatterns: string | null
   freeNotes: string | null
+  onStandardMoveCreate: (input: {
+    standardMove: SessionInfoStandardMove
+    availableStandardMoves: SessionInfoStandardMove[]
+  }) => void
   onSave: (draft: SessionInfoSaveDraft) => Promise<boolean>
 }) {
   const [bestOfSession, setBestOfSession] = React.useState(input.bestOfSession ?? "")
@@ -2332,21 +2425,37 @@ function InfoEditDialog(input: {
   const [isOpen, setIsOpen] = React.useState(false)
   const [isSaving, setIsSaving] = React.useState(false)
   const [isQuickCreateDialogOpen, setIsQuickCreateDialogOpen] = React.useState(false)
+  const [isCreatingStandardMove, setIsCreatingStandardMove] = React.useState(false)
   const [isQuickCreateNameManuallyEdited, setIsQuickCreateNameManuallyEdited] =
     React.useState(false)
   const [windPatterns, setWindPatterns] = React.useState(input.windPatterns ?? "")
   const [freeNotes, setFreeNotes] = React.useState(input.freeNotes ?? "")
+  const [standardMoveSearch, setStandardMoveSearch] = React.useState("")
   const isMobile = useIsMobile()
-  const hasQuickCreateName = newStandardMoveName.trim().length > 0
   const hasQuickCreateDescription = newStandardMoveDescription.trim().length > 0
-  const quickCreateDescriptionMissing = hasQuickCreateName && !hasQuickCreateDescription
   const standardMoveOptions = input.availableStandardMoves.filter(
     (standardMove) =>
       standardMove.isActive || input.linkedStandardMoveIds.includes(standardMove.id),
   )
+  const normalizedStandardMoveSearch = standardMoveSearch.trim().toLowerCase()
+  const filteredStandardMoveOptions =
+    normalizedStandardMoveSearch.length === 0
+      ? standardMoveOptions
+      : standardMoveOptions.filter((standardMove) => {
+          const searchableText = [
+            standardMove.name,
+            standardMove.description ?? "",
+            standardMove.isActive ? "" : "archived",
+          ]
+            .join(" ")
+            .toLowerCase()
+
+          return searchableText.includes(normalizedStandardMoveSearch)
+        })
   const copy = resolveInfoEditCopy(input.section)
-  const canSubmitInfo =
-    input.section === "standardMoves" ? !quickCreateDescriptionMissing : true
+  const canCreateStandardMove =
+    hasQuickCreateDescription && !isCreatingStandardMove && Boolean(input.scope.activeTeamId)
+  const canSubmitInfo = true
 
   React.useEffect(() => {
     if (isOpen || isSaving) {
@@ -2388,6 +2497,75 @@ function InfoEditDialog(input: {
     setStandardMoveIds(input.linkedStandardMoveIds)
   }, [input.linkedStandardMoveIds, isOpen, isSaving])
 
+  function resetQuickCreateState() {
+    setNewStandardMoveName("")
+    setNewStandardMoveDescription("")
+    setIsQuickCreateNameManuallyEdited(false)
+  }
+
+  function handleQuickCreateDialogOpenChange(nextOpen: boolean) {
+    if (isSaving || isCreatingStandardMove) {
+      return
+    }
+
+    setIsQuickCreateDialogOpen(nextOpen)
+
+    if (!nextOpen) {
+      resetQuickCreateState()
+    }
+  }
+
+  async function handleQuickCreateSubmit() {
+    if (!canCreateStandardMove || !input.scope.activeTeamId) {
+      return
+    }
+
+    const normalizedDescription = newStandardMoveDescription.trim()
+    const resolvedName =
+      newStandardMoveName.trim().length > 0
+        ? newStandardMoveName.trim()
+        : generateStandardMoveNameFromDescription(normalizedDescription)
+    const formData = new FormData()
+
+    formData.set("sessionId", input.sessionId)
+    formData.set("scopeOrgId", input.scope.activeOrgId)
+    formData.set("scopeTeamId", input.scope.activeTeamId)
+    formData.set("name", resolvedName)
+    formData.set("description", normalizedDescription)
+
+    setIsCreatingStandardMove(true)
+    const toastId = toast.loading("Creating standard move...")
+
+    try {
+      const result = await createSessionStandardMoveAction(formData)
+
+      if (!result.ok) {
+        toast.error(result.message, { id: toastId })
+        return
+      }
+
+      input.onStandardMoveCreate({
+        standardMove: result.standardMove,
+        availableStandardMoves: result.availableStandardMoves,
+      })
+      setStandardMoveIds((currentStandardMoveIds) =>
+        currentStandardMoveIds.includes(result.standardMove.id)
+          ? currentStandardMoveIds
+          : [...currentStandardMoveIds, result.standardMove.id],
+      )
+      setStandardMoveSearch("")
+      resetQuickCreateState()
+      setIsQuickCreateDialogOpen(false)
+      toast.success("Standard move created and selected.", { id: toastId })
+    } catch {
+      toast.error("Could not create standard move. Confirm permissions and try again.", {
+        id: toastId,
+      })
+    } finally {
+      setIsCreatingStandardMove(false)
+    }
+  }
+
   async function handleInfoSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
@@ -2401,26 +2579,166 @@ function InfoEditDialog(input: {
       freeNotes,
       windPatterns,
       standardMoveIds,
-      newStandardMoveName,
-      newStandardMoveDescription,
     }
 
     setIsSaving(true)
     setIsQuickCreateDialogOpen(false)
+    resetQuickCreateState()
     setIsOpen(false)
 
     const didSave = await input.onSave(draft)
 
-    if (didSave) {
-      setNewStandardMoveName("")
-      setNewStandardMoveDescription("")
-      setIsQuickCreateNameManuallyEdited(false)
-    } else {
+    if (!didSave) {
       setIsOpen(true)
     }
 
     setIsSaving(false)
   }
+
+  function handleInfoOpenChange(nextOpen: boolean) {
+    if (isSaving || isCreatingStandardMove) {
+      return
+    }
+
+    setIsOpen(nextOpen)
+
+    if (!nextOpen) {
+      setIsQuickCreateDialogOpen(false)
+      setStandardMoveSearch("")
+      resetQuickCreateState()
+    }
+  }
+
+  const quickCreatePanel =
+    input.section === "standardMoves" ? (
+      <div className="shrink-0 border-t bg-popover px-4 py-3">
+        <div className="grid gap-3 rounded-lg border p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-h-9 items-center">
+              <p className="text-sm font-medium">New Standard Move</p>
+            </div>
+            <Dialog
+              open={isQuickCreateDialogOpen}
+              onOpenChange={handleQuickCreateDialogOpenChange}
+            >
+              <DialogTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isSaving || isCreatingStandardMove}
+                  />
+                }
+              >
+                <PlusIcon className="size-4" />
+                Quick create
+              </DialogTrigger>
+              <DialogContent
+                className="sm:max-w-xl"
+                overlayClassName="bg-black/35 backdrop-blur-md"
+              >
+                <DialogHeader>
+                  <DialogTitle>Quick Create Std. Move</DialogTitle>
+                  <DialogDescription>
+                    Description is required. Name is auto-generated and editable.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                  <fieldset disabled={isCreatingStandardMove} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor={`quick-standard-move-description-${input.sessionId}`}>
+                        Description
+                      </Label>
+                      <Textarea
+                        id={`quick-standard-move-description-${input.sessionId}`}
+                        rows={3}
+                        maxLength={4000}
+                        value={newStandardMoveDescription}
+                        onChange={(event) => {
+                          const nextDescription = event.target.value
+                          setNewStandardMoveDescription(nextDescription)
+
+                          if (!isQuickCreateNameManuallyEdited) {
+                            if (nextDescription.trim().length === 0) {
+                              setNewStandardMoveName("")
+                            } else {
+                              setNewStandardMoveName(
+                                generateStandardMoveNameFromDescription(nextDescription),
+                              )
+                            }
+                          }
+                        }}
+                        placeholder="Describe the move in plain language."
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label htmlFor={`quick-standard-move-name-${input.sessionId}`}>Name</Label>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={
+                            isCreatingStandardMove ||
+                            newStandardMoveDescription.trim().length === 0
+                          }
+                          onClick={() => {
+                            setNewStandardMoveName(
+                              generateStandardMoveNameFromDescription(newStandardMoveDescription),
+                            )
+                            setIsQuickCreateNameManuallyEdited(false)
+                          }}
+                        >
+                          Use generated
+                        </Button>
+                      </div>
+                      <Input
+                        id={`quick-standard-move-name-${input.sessionId}`}
+                        maxLength={120}
+                        value={newStandardMoveName}
+                        onChange={(event) => {
+                          setNewStandardMoveName(event.target.value)
+                          setIsQuickCreateNameManuallyEdited(true)
+                        }}
+                        placeholder="Auto-generated from the description"
+                      />
+                    </div>
+                  </fieldset>
+
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={isCreatingStandardMove}
+                      onClick={() => handleQuickCreateDialogOpenChange(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      disabled={!canCreateStandardMove}
+                      onClick={handleQuickCreateSubmit}
+                    >
+                      {isCreatingStandardMove ? (
+                        <>
+                          <Loader2Icon className="size-4 animate-spin" />
+                          Creating...
+                        </>
+                      ) : (
+                        "Create"
+                      )}
+                    </Button>
+                  </DialogFooter>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
+      </div>
+    ) : null
 
   const infoForm = (
     <form
@@ -2434,12 +2752,6 @@ function InfoEditDialog(input: {
         <input type="hidden" name="scopeTeamId" value={input.scope.activeTeamId} />
       ) : null}
       <input type="hidden" name="scopeTab" value="info" />
-      <input type="hidden" name="newStandardMoveName" value={newStandardMoveName} />
-      <input
-        type="hidden"
-        name="newStandardMoveDescription"
-        value={newStandardMoveDescription}
-      />
       {input.section !== "coaching" ? (
         <>
           <input type="hidden" name="bestOfSession" value={bestOfSession} />
@@ -2461,7 +2773,10 @@ function InfoEditDialog(input: {
         <input type="hidden" name="windPatterns" value={windPatterns} />
       ) : null}
 
-      <InfoDialogFieldset isSaving={isSaving}>
+      <InfoDialogFieldset
+        className={input.section === "standardMoves" ? "flex flex-col gap-4" : undefined}
+        isSaving={isSaving}
+      >
         {input.section === "coaching" ? (
           <>
             <div className="space-y-2">
@@ -2516,151 +2831,86 @@ function InfoEditDialog(input: {
 
         {input.section === "standardMoves" ? (
           <>
-            <div className="space-y-2">
-              <Label htmlFor={`standard-moves-${input.sessionId}`}>Std. Moves</Label>
-              <select
-                id={`standard-moves-${input.sessionId}`}
-                multiple
-                name="standardMoveId"
-                value={standardMoveIds}
-                onChange={(event) => {
-                  const nextSelectedIds = Array.from(event.target.selectedOptions).map(
-                    (option) => option.value,
-                  )
-                  setStandardMoveIds(nextSelectedIds)
-                }}
-                className="min-h-32 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none ring-ring/50 focus-visible:ring-[3px]"
+            <div className="flex min-h-0 flex-1 flex-col gap-3">
+              <div className="relative shrink-0">
+                <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={standardMoveSearch}
+                  onChange={(event) => setStandardMoveSearch(event.target.value)}
+                  placeholder="Search Standard Moves"
+                  className="pl-9"
+                  aria-label="Search Standard Moves"
+                />
+              </div>
+              <div
+                className="min-h-0 flex-1 overflow-y-auto p-1"
+                role="group"
+                aria-label="Std. Moves"
               >
                 {standardMoveOptions.length === 0 ? (
-                  <option value="" disabled>
+                  <p className="px-3 py-2 text-xs text-muted-foreground">
                     No standard moves available yet.
-                  </option>
-                ) : (
-                  standardMoveOptions.map((standardMove) => (
-                    <option key={standardMove.id} value={standardMove.id}>
-                      {standardMove.name}
-                      {standardMove.isActive ? "" : " (Archived)"}
-                    </option>
-                  ))
-                )}
-              </select>
-              <p className="text-xs text-muted-foreground">
-                Hold Cmd/Ctrl to select multiple moves.
-              </p>
-            </div>
-
-            <div className="grid gap-3 rounded-lg border p-3">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <p className="text-sm font-medium">Quick Create Std. Move</p>
-                  <p className="text-xs text-muted-foreground">
-                    Create and link a new team standard move without leaving this screen.
                   </p>
-                </div>
-                <Dialog open={isQuickCreateDialogOpen} onOpenChange={setIsQuickCreateDialogOpen}>
-                  <DialogTrigger render={<Button type="button" variant="outline" size="sm" />}>
-                    <PlusIcon className="size-4" />
-                    Quick create
-                  </DialogTrigger>
-                  <DialogContent
-                    className="sm:max-w-xl"
-                    overlayClassName="bg-black/35 backdrop-blur-md"
-                  >
-                    <DialogHeader>
-                      <DialogTitle>Quick Create Std. Move</DialogTitle>
-                      <DialogDescription>
-                        Description is required. Name is auto-generated and editable.
-                      </DialogDescription>
-                    </DialogHeader>
+                ) : filteredStandardMoveOptions.length === 0 ? (
+                  <p className="px-3 py-2 text-sm text-muted-foreground">
+                    No standard moves match this search.
+                  </p>
+                ) : (
+                  <Accordion className="gap-1">
+                    {filteredStandardMoveOptions.map((standardMove) => {
+                      const isSelected = standardMoveIds.includes(standardMove.id)
+                      const hasDescription =
+                        standardMove.description !== null &&
+                        standardMove.description.trim().length > 0
 
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor={`quick-standard-move-description-${input.sessionId}`}>
-                          Description
-                        </Label>
-                        <Textarea
-                          id={`quick-standard-move-description-${input.sessionId}`}
-                          rows={3}
-                          maxLength={4000}
-                          value={newStandardMoveDescription}
-                          onChange={(event) => {
-                            const nextDescription = event.target.value
-                            setNewStandardMoveDescription(nextDescription)
+                      return (
+                        <AccordionItem
+                          key={standardMove.id}
+                          value={standardMove.id}
+                          className="rounded-md border-0"
+                        >
+                          <div className="flex min-h-12 items-center gap-3 rounded-md px-2 py-2 text-xs transition-colors hover:bg-muted/60">
+                            <Checkbox
+                              name="standardMoveId"
+                              value={standardMove.id}
+                              checked={isSelected}
+                              onCheckedChange={(checked) => {
+                                setStandardMoveIds((currentStandardMoveIds) => {
+                                  if (checked) {
+                                    return currentStandardMoveIds.includes(standardMove.id)
+                                      ? currentStandardMoveIds
+                                      : [...currentStandardMoveIds, standardMove.id]
+                                  }
 
-                            if (!isQuickCreateNameManuallyEdited) {
-                              if (nextDescription.trim().length === 0) {
-                                setNewStandardMoveName("")
-                              } else {
-                                setNewStandardMoveName(
-                                  generateStandardMoveNameFromDescription(nextDescription),
-                                )
-                              }
-                            }
-                          }}
-                          placeholder="Describe the move in plain language."
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <Label htmlFor={`quick-standard-move-name-${input.sessionId}`}>Name</Label>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            disabled={newStandardMoveDescription.trim().length === 0}
-                            onClick={() => {
-                              setNewStandardMoveName(
-                                generateStandardMoveNameFromDescription(newStandardMoveDescription),
-                              )
-                              setIsQuickCreateNameManuallyEdited(false)
-                            }}
-                          >
-                            Use generated
-                          </Button>
-                        </div>
-                        <Input
-                          id={`quick-standard-move-name-${input.sessionId}`}
-                          maxLength={120}
-                          value={newStandardMoveName}
-                          onChange={(event) => {
-                            setNewStandardMoveName(event.target.value)
-                            setIsQuickCreateNameManuallyEdited(true)
-                          }}
-                          placeholder="Auto-generated from the description"
-                        />
-                      </div>
-                    </div>
-
-                    <DialogFooter>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => setIsQuickCreateDialogOpen(false)}
-                      >
-                        Done
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
+                                  return currentStandardMoveIds.filter(
+                                    (standardMoveId) => standardMoveId !== standardMove.id,
+                                  )
+                                })
+                              }}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <AccordionTrigger
+                                className="w-full py-0 text-sm hover:no-underline [&_[data-slot=accordion-trigger-icon]]:size-4"
+                                disabled={!hasDescription && standardMove.isActive}
+                              >
+                                <span className="truncate">{standardMove.name}</span>
+                              </AccordionTrigger>
+                            </div>
+                          </div>
+                          <AccordionContent className="pl-11 pr-2 pb-3 text-sm text-muted-foreground">
+                            {hasDescription ? (
+                              <p className="whitespace-pre-wrap">{standardMove.description}</p>
+                            ) : null}
+                            {!standardMove.isActive ? (
+                              <p className={hasDescription ? "mt-2" : undefined}>Archived</p>
+                            ) : null}
+                          </AccordionContent>
+                        </AccordionItem>
+                      )
+                    })}
+                  </Accordion>
+                )}
               </div>
-
-              {hasQuickCreateDescription ? (
-                <p className="text-xs text-muted-foreground">
-                  Will create and link:{" "}
-                  <span className="font-medium text-foreground">
-                    {newStandardMoveName.trim().length > 0
-                      ? newStandardMoveName.trim()
-                      : generateStandardMoveNameFromDescription(newStandardMoveDescription)}
-                  </span>
-                </p>
-              ) : null}
-
-              {quickCreateDescriptionMissing ? (
-                <p className="text-xs text-destructive">
-                  Description is required when quick-creating a standard move.
-                </p>
-              ) : null}
             </div>
           </>
         ) : null}
@@ -2680,6 +2930,8 @@ function InfoEditDialog(input: {
           </div>
         ) : null}
       </InfoDialogFieldset>
+
+      {quickCreatePanel}
 
       {isMobile ? (
         <DrawerFooter className="shrink-0">
@@ -2709,7 +2961,7 @@ function InfoEditDialog(input: {
 
   if (isMobile) {
     return (
-      <Drawer open={isOpen} onOpenChange={setIsOpen}>
+      <Drawer open={isOpen} onOpenChange={handleInfoOpenChange}>
         <DrawerTrigger asChild>
           <Button type="button" variant="outline" size="default" className="h-9 px-3">
             {copy.triggerLabel}
@@ -2729,7 +2981,7 @@ function InfoEditDialog(input: {
   }
 
   return (
-    <Sheet open={isOpen} onOpenChange={setIsOpen}>
+    <Sheet open={isOpen} onOpenChange={handleInfoOpenChange}>
       <SheetTrigger render={<Button type="button" variant="outline" size="sm" />}>
         {copy.triggerLabel}
       </SheetTrigger>
@@ -3286,6 +3538,340 @@ function resolveTab(value: string): SessionDetailTab {
     : "info"
 }
 
+const MOBILE_SESSION_DETAIL_TAB_LIST_X_PADDING = 6
+
+const MOBILE_SESSION_DETAIL_TAB_MEASURE_TRIGGER_CLASS =
+  "relative inline-flex h-[calc(100%-1px)] flex-none items-center justify-center gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-sm font-medium whitespace-nowrap"
+
+type MobileSessionDetailTabWidthMap = Record<SessionDetailTab, number>
+
+type MobileSessionDetailTabMetrics = {
+  containerWidth: number
+  moreWidth: number
+  tabWidths: MobileSessionDetailTabWidthMap
+}
+
+function formatSessionDetailTabLabel(tab: SessionDetailTab): string {
+  return tab.charAt(0).toUpperCase() + tab.slice(1)
+}
+
+function getMobileSessionDetailTabsWidth(
+  tabs: readonly SessionDetailTab[],
+  tabWidths: MobileSessionDetailTabWidthMap,
+): number {
+  return tabs.reduce(
+    (totalWidth, tab) => totalWidth + tabWidths[tab],
+    MOBILE_SESSION_DETAIL_TAB_LIST_X_PADDING,
+  )
+}
+
+function getVisibleMobileSessionDetailTabs(input: {
+  metrics: MobileSessionDetailTabMetrics
+  orderedTabs: readonly SessionDetailTab[]
+  requiredTab?: SessionDetailTab
+}): SessionDetailTab[] {
+  const allTabsWidth = getMobileSessionDetailTabsWidth(
+    SESSION_DETAIL_TABS,
+    input.metrics.tabWidths,
+  )
+
+  if (allTabsWidth <= input.metrics.containerWidth) {
+    return [...SESSION_DETAIL_TABS]
+  }
+
+  const availableTabsWidth = Math.max(
+    0,
+    input.metrics.containerWidth -
+      input.metrics.moreWidth -
+      MOBILE_SESSION_DETAIL_TAB_LIST_X_PADDING,
+  )
+  const visibleTabs: SessionDetailTab[] = []
+  let usedTabsWidth = 0
+
+  for (const tab of input.orderedTabs) {
+    const tabWidth = input.metrics.tabWidths[tab]
+
+    if (tab === input.requiredTab) {
+      while (visibleTabs.length > 0 && usedTabsWidth + tabWidth > availableTabsWidth) {
+        const removedTab = visibleTabs.pop()
+
+        if (!removedTab) {
+          break
+        }
+
+        usedTabsWidth -= input.metrics.tabWidths[removedTab]
+      }
+
+      if (visibleTabs.length === 0 || usedTabsWidth + tabWidth <= availableTabsWidth) {
+        visibleTabs.push(tab)
+        usedTabsWidth += tabWidth
+      }
+
+      continue
+    }
+
+    if (visibleTabs.length === 0 || usedTabsWidth + tabWidth <= availableTabsWidth) {
+      visibleTabs.push(tab)
+      usedTabsWidth += tabWidth
+    }
+  }
+
+  return visibleTabs.length > 0 ? visibleTabs : [input.orderedTabs[0] ?? "info"]
+}
+
+function moveMobileSessionDetailTabIntoView(input: {
+  orderedTabs: readonly SessionDetailTab[]
+  tab: SessionDetailTab
+  visibleTabs: readonly SessionDetailTab[]
+}): SessionDetailTab[] {
+  if (input.visibleTabs.includes(input.tab)) {
+    return [...input.orderedTabs]
+  }
+
+  const tabIndex = input.orderedTabs.indexOf(input.tab)
+  const replacementTab = input.visibleTabs.at(-1)
+
+  if (tabIndex === -1 || !replacementTab) {
+    return [...input.orderedTabs]
+  }
+
+  const replacementIndex = input.orderedTabs.indexOf(replacementTab)
+
+  if (replacementIndex === -1) {
+    return [...input.orderedTabs]
+  }
+
+  const nextOrderedTabs = [...input.orderedTabs]
+  nextOrderedTabs[replacementIndex] = input.tab
+  nextOrderedTabs[tabIndex] = replacementTab
+  return nextOrderedTabs
+}
+
+function areMobileSessionDetailTabMetricsEqual(
+  left: MobileSessionDetailTabMetrics,
+  right: MobileSessionDetailTabMetrics,
+): boolean {
+  if (left.containerWidth !== right.containerWidth || left.moreWidth !== right.moreWidth) {
+    return false
+  }
+
+  return SESSION_DETAIL_TABS.every((tab) => left.tabWidths[tab] === right.tabWidths[tab])
+}
+
+function MobileSessionDetailTabsList(input: {
+  selectedTab: SessionDetailTab
+  onTabChange: (tab: SessionDetailTab) => void
+}) {
+  const containerRef = React.useRef<HTMLDivElement | null>(null)
+  const moreMeasureRef = React.useRef<HTMLButtonElement | null>(null)
+  const tabMeasureRefs = React.useRef<
+    Partial<Record<SessionDetailTab, HTMLButtonElement | null>>
+  >({})
+  const [metrics, setMetrics] = React.useState<MobileSessionDetailTabMetrics | null>(null)
+  const [tabOrder, setTabOrder] = React.useState<SessionDetailTab[]>(() => [
+    ...SESSION_DETAIL_TABS,
+  ])
+
+  const measureTabs = React.useCallback(() => {
+    const container = containerRef.current
+    const moreMeasure = moreMeasureRef.current
+
+    if (!container || !moreMeasure) {
+      return
+    }
+
+    const nextTabWidths = {} as MobileSessionDetailTabWidthMap
+
+    for (const tab of SESSION_DETAIL_TABS) {
+      const tabMeasure = tabMeasureRefs.current[tab]
+
+      if (!tabMeasure) {
+        return
+      }
+
+      nextTabWidths[tab] = Math.ceil(tabMeasure.getBoundingClientRect().width)
+    }
+
+    const nextMetrics: MobileSessionDetailTabMetrics = {
+      containerWidth: Math.floor(container.getBoundingClientRect().width),
+      moreWidth: Math.ceil(moreMeasure.getBoundingClientRect().width),
+      tabWidths: nextTabWidths,
+    }
+
+    if (nextMetrics.containerWidth <= 0 || nextMetrics.moreWidth <= 0) {
+      return
+    }
+
+    setMetrics((currentMetrics) =>
+      currentMetrics && areMobileSessionDetailTabMetricsEqual(currentMetrics, nextMetrics)
+        ? currentMetrics
+        : nextMetrics,
+    )
+  }, [])
+
+  React.useEffect(() => {
+    measureTabs()
+
+    const animationFrame = window.requestAnimationFrame(measureTabs)
+    const container = containerRef.current
+    const resizeObserver =
+      typeof ResizeObserver === "undefined" || !container
+        ? null
+        : new ResizeObserver(() => {
+            measureTabs()
+          })
+
+    if (resizeObserver && container) {
+      resizeObserver.observe(container)
+    }
+
+    window.addEventListener("resize", measureTabs)
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame)
+      resizeObserver?.disconnect()
+      window.removeEventListener("resize", measureTabs)
+    }
+  }, [measureTabs])
+
+  const visibleTabs = React.useMemo(
+    () =>
+      metrics
+        ? getVisibleMobileSessionDetailTabs({
+            metrics,
+            orderedTabs: tabOrder,
+            requiredTab: input.selectedTab,
+          })
+        : [...SESSION_DETAIL_TABS],
+    [input.selectedTab, metrics, tabOrder],
+  )
+  const allTabsVisible = visibleTabs.length === SESSION_DETAIL_TABS.length
+  const overflowTabs = allTabsVisible
+    ? []
+    : tabOrder.filter((tab) => !visibleTabs.includes(tab))
+
+  function setTabMeasureRef(tab: SessionDetailTab) {
+    return (node: HTMLButtonElement | null) => {
+      tabMeasureRefs.current[tab] = node
+    }
+  }
+
+  function handleOverflowTabSelect(tab: SessionDetailTab): void {
+    setTabOrder((currentTabOrder) => {
+      if (!metrics) {
+        return currentTabOrder
+      }
+
+      const currentVisibleTabs = getVisibleMobileSessionDetailTabs({
+        metrics,
+        orderedTabs: currentTabOrder,
+      })
+
+      return moveMobileSessionDetailTabIntoView({
+        orderedTabs: currentTabOrder,
+        tab,
+        visibleTabs: currentVisibleTabs,
+      })
+    })
+    input.onTabChange(tab)
+  }
+
+  return (
+    <div ref={containerRef} className="w-full">
+      <div
+        className={cn(
+          "inline-flex h-10 max-w-full items-center rounded-lg bg-muted p-[3px] text-muted-foreground",
+          allTabsVisible ? "w-full" : "w-fit",
+        )}
+      >
+        <TabsList
+          className={cn(
+            "h-full min-w-0 rounded-md bg-transparent p-0",
+            allTabsVisible ? "w-full flex-1" : "w-fit shrink-0",
+          )}
+        >
+          {visibleTabs.map((tab) => (
+            <TabsTrigger
+              key={tab}
+              value={tab}
+              className={cn(
+                "capitalize",
+                allTabsVisible ? "min-w-0 flex-1 px-2" : "min-w-fit shrink-0",
+              )}
+            >
+              {formatSessionDetailTabLabel(tab)}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        {!allTabsVisible ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-[calc(100%-1px)] shrink-0 rounded-md px-2 text-foreground/60 hover:text-foreground"
+                />
+              }
+            >
+              <span>More</span>
+              <ChevronDownIcon className="size-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-40">
+              {overflowTabs.map((tab) => (
+                <DropdownMenuItem
+                  key={tab}
+                  onClick={() => handleOverflowTabSelect(tab)}
+                  className="gap-2"
+                >
+                  <span className="flex size-4 items-center justify-center">
+                    {input.selectedTab === tab ? <CheckIcon className="size-4" /> : null}
+                  </span>
+                  <span className="flex-1">{formatSessionDetailTabLabel(tab)}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
+      </div>
+
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed top-0 left-0 -z-10 opacity-0"
+      >
+        <div className="inline-flex h-10 items-center rounded-lg bg-muted p-[3px] text-muted-foreground">
+          {SESSION_DETAIL_TABS.map((tab) => (
+            <button
+              key={tab}
+              ref={setTabMeasureRef(tab)}
+              type="button"
+              tabIndex={-1}
+              className={MOBILE_SESSION_DETAIL_TAB_MEASURE_TRIGGER_CLASS}
+            >
+              {formatSessionDetailTabLabel(tab)}
+            </button>
+          ))}
+          <button
+            ref={moreMeasureRef}
+            type="button"
+            tabIndex={-1}
+            className={buttonVariants({
+              variant: "ghost",
+              size: "sm",
+              className: "h-[calc(100%-1px)] rounded-md px-2",
+            })}
+          >
+            <span>More</span>
+            <ChevronDownIcon className="size-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function SessionHeaderActions(input: {
   sessionId: string
   scope: NavigationScope
@@ -3414,16 +4000,39 @@ export function SessionDetailTabsClient(input: {
     [availableStandardMoves, info, input.scope, input.sessionId, router],
   )
 
+  const handleStandardMoveCreate = React.useCallback(
+    (result: {
+      standardMove: SessionInfoStandardMove
+      availableStandardMoves: SessionInfoStandardMove[]
+    }) => {
+      const hasCreatedMove = result.availableStandardMoves.some(
+        (standardMove) => standardMove.id === result.standardMove.id,
+      )
+      const nextAvailableStandardMoves = hasCreatedMove
+        ? result.availableStandardMoves
+        : [...result.availableStandardMoves, result.standardMove].sort((left, right) =>
+            left.name.localeCompare(right.name),
+          )
+
+      setAvailableStandardMoves(nextAvailableStandardMoves)
+    },
+    [],
+  )
+
   return (
     <Tabs
       value={selectedTab}
       onValueChange={(value) => setSelectedTab(resolveTab(value))}
       className="space-y-4"
     >
-      <TabsList className="h-10">
+      <div className="md:hidden">
+        <MobileSessionDetailTabsList selectedTab={selectedTab} onTabChange={setSelectedTab} />
+      </div>
+
+      <TabsList className="hidden h-10 md:inline-flex">
         {SESSION_DETAIL_TABS.map((tab) => (
           <TabsTrigger key={tab} value={tab} className="min-w-fit capitalize">
-            {tab}
+            {formatSessionDetailTabLabel(tab)}
           </TabsTrigger>
         ))}
       </TabsList>
@@ -3448,6 +4057,7 @@ export function SessionDetailTabsClient(input: {
                       linkedStandardMoveIds={linkedStandardMoveIds}
                       windPatterns={info.windPatterns}
                       freeNotes={info.freeNotes}
+                      onStandardMoveCreate={handleStandardMoveCreate}
                       onSave={handleInfoSave}
                     />
                   ) : null}
@@ -3497,6 +4107,7 @@ export function SessionDetailTabsClient(input: {
                       linkedStandardMoveIds={linkedStandardMoveIds}
                       windPatterns={info.windPatterns}
                       freeNotes={info.freeNotes}
+                      onStandardMoveCreate={handleStandardMoveCreate}
                       onSave={handleInfoSave}
                     />
                   ) : null}
@@ -3506,9 +4117,11 @@ export function SessionDetailTabsClient(input: {
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Std. Moves
                   </p>
-                  <p className="mt-2 whitespace-pre-wrap text-sm">
-                    {renderTextList(info.standardMoves)}
-                  </p>
+                  <SessionInfoStandardMovesBadges
+                    availableStandardMoves={availableStandardMoves}
+                    linkedStandardMoveIds={linkedStandardMoveIds}
+                    fallbackStandardMoveNames={info.standardMoves}
+                  />
                 </div>
               </section>
 
@@ -3528,6 +4141,7 @@ export function SessionDetailTabsClient(input: {
                       linkedStandardMoveIds={linkedStandardMoveIds}
                       windPatterns={info.windPatterns}
                       freeNotes={info.freeNotes}
+                      onStandardMoveCreate={handleStandardMoveCreate}
                       onSave={handleInfoSave}
                     />
                   ) : null}

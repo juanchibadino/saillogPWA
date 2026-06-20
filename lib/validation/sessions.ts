@@ -64,40 +64,14 @@ export const updateSessionDetailInputSchema = z
     }
   })
 
-export const updateSessionInfoInputSchema = z
-  .object({
-    sessionId: z.string().uuid(),
-    bestOfSession: optionalTrimmedTextSchema,
-    toWork: optionalTrimmedTextSchema,
-    windPatterns: optionalTrimmedTextSchema,
-    freeNotes: optionalTrimmedTextSchema,
-    standardMoveIds: z.array(z.string().uuid()).max(200).optional().default([]),
-    newStandardMoveName: z
-      .string()
-      .trim()
-      .max(120, "Maximum length is 120 characters")
-      .optional(),
-    newStandardMoveDescription: z
-      .string()
-      .trim()
-      .max(4000, "Maximum length is 4000 characters")
-      .optional(),
-  })
-  .superRefine((value, context) => {
-    const hasQuickCreateName =
-      typeof value.newStandardMoveName === "string" && value.newStandardMoveName.length > 0
-    const hasQuickCreateDescription =
-      typeof value.newStandardMoveDescription === "string" &&
-      value.newStandardMoveDescription.length > 0
-
-    if (hasQuickCreateName && !hasQuickCreateDescription) {
-      context.addIssue({
-        code: "custom",
-        message: "Description is required when creating a standard move",
-        path: ["newStandardMoveDescription"],
-      })
-    }
-  })
+export const updateSessionInfoInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  bestOfSession: optionalTrimmedTextSchema,
+  toWork: optionalTrimmedTextSchema,
+  windPatterns: optionalTrimmedTextSchema,
+  freeNotes: optionalTrimmedTextSchema,
+  standardMoveIds: z.array(z.string().uuid()).max(200).optional().default([]),
+})
 
 export const updateSessionResultsInputSchema = z.object({
   sessionId: z.string().uuid(),
