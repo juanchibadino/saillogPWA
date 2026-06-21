@@ -1,8 +1,64 @@
 # PROGRESS.md
 
-Last updated: 2026-06-19
+Last updated: 2026-06-20
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
+
+## 2026-06-20 - Session header edit action placement
+
+- Updated `/team-sessions/[id]` header so `Setup` remains in the right-side action area while the session metadata edit action moves next to the session type title.
+- Changed the session metadata edit trigger in `features/sessions/session-detail-tabs-client.tsx` to an icon-only pencil button that still opens the mobile Drawer or desktop Sheet.
+- Validation: `git diff --check` and `npm run build`.
+
+## 2026-06-20 - Setup save performance audit fixes
+
+- Optimized `/team-sessions/[id]` Setup saves in `features/sessions/session-detail-tabs-client.tsx` and `features/sessions/actions.ts` so the client submits only changed setup items and only sends boat metric order when it actually changed.
+- Updated `saveSessionSetupAction` to bulk delete/upsert/insert changed setup values/options, skip unchanged reorder work, avoid the full post-save setup snapshot query, and revalidate only the session detail path for Setup value saves.
+- Removed intermediate `Saving...` toasts from Setup and Info optimistic saves so the user only sees confirmation or error feedback.
+- Validation: `git diff --check` and `npm run build`.
+
+## 2026-06-20 - Setup save optimistic UI
+
+- Added an optimistic save path for `/team-sessions/[id]` Setup edits using a new result-returning `saveSessionSetupAction` while keeping `updateSessionSetupAction` as the redirect fallback.
+- Updated `features/sessions/session-detail-tabs-client.tsx` so saving Setup immediately exits edit mode, closes the Drawer/Sheet, shows the edited values/order, uses a stable success/error toast id, reconciles through route refresh, and reopens edit mode on failure.
+- Validation: `git diff --check` and `npm run build`.
+
+## 2026-06-20 - Session feedback toast dedupe
+
+- Updated session detail save feedback in `features/sessions/sessions-feedback.tsx` so URL-driven Sonner toasts use stable ids per route/status or route/error.
+- Prevents duplicate stacked messages when Setup save redirects are processed more than once during refresh/dev rendering.
+- Validation: `git diff --check` and `npm run build`.
+
+## 2026-06-20 - Setup edit metric row layout
+
+- Updated `/team-sessions/[id]` Setup edit rows in `features/sessions/session-detail-tabs-client.tsx` so metric titles like TWD render above the multiselect badge field instead of beside it.
+- Kept Boat metric template action icons in the row header while the editable input area stays full-width below the title.
+- Validation: `git diff --check` and `npm run build`.
+
+## 2026-06-20 - Setup data editor drawer sheet
+
+- Updated `/team-sessions/[id]` Setup editor in `features/sessions/session-detail-tabs-client.tsx` from a shared Dialog to the standard mobile Drawer and desktop right Sheet pattern.
+- Kept the long setup content in a dedicated scrollable middle region with fixed header/footer actions so Weather/Boat metrics remain usable on smaller viewports.
+- Validation: `git diff --check` and `npm run build`.
+
+## 2026-06-20 - Session duration stepper
+
+- Updated `/team-sessions/[id]` `Edit Session` duration in `features/sessions/session-detail-tabs-client.tsx` from a free numeric input to a required quarter-hour stepper with `-` and `+` controls and `h/m` display.
+- Updated `lib/validation/sessions.ts` so session detail edits require `Start Time (UTC)` and a 15-minute increment `Total Duration`.
+- Validation: `git diff --check` and `npm run build`.
+
+## 2026-06-20 - Session edit drawer height
+
+- Updated `/team-sessions/[id]` mobile `Edit Session` drawer in `features/sessions/session-detail-tabs-client.tsx` to use content-sized height with an 85dvh max, removing the large empty gap under the short metadata form while keeping overflow constrained.
+- Validation: `git diff --check` and `npm run build`.
+
+## 2026-06-19 - Session detail edit drawer sheet
+
+- Updated `/team-sessions/[id]` session metadata edit in `features/sessions/session-detail-tabs-client.tsx` to use the standard mobile Drawer and desktop right Sheet pattern.
+- Kept the existing update action and form fields, with fixed header/footer and scrolleable form content inside the edit surface.
+- Changed the session metadata edit fields to a single vertical column in the desktop Sheet instead of the previous 50/50 two-column layout.
+- Validation: `git diff --check` and `npm run build`.
+- Browser verification note: attempted local browser verification, but `agent-browser` was unavailable and the existing Next dev server lock/port did not respond from the sandbox.
 
 ## 2026-06-19 - Session detail header date label
 

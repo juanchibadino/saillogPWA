@@ -61,11 +61,15 @@ export function SessionsFeedback({
 
     if (mode === "toast") {
       if (statusMessage && status) {
-        toast.success(statusMessage)
+        toast.success(statusMessage, {
+          id: `sessions-feedback:${pathname}:status:${status}`,
+        })
       }
 
       if (errorMessage && error) {
-        toast.error(errorMessage)
+        toast.error(errorMessage, {
+          id: `sessions-feedback:${pathname}:error:${error}`,
+        })
       }
     }
 

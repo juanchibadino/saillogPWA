@@ -43,26 +43,20 @@ export const updateSessionInputSchema = baseSessionInputSchema.extend({
   id: z.string().uuid(),
 })
 
-export const updateSessionDetailInputSchema = z
-  .object({
-    id: z.string().uuid(),
-    sessionType: z.enum(["training", "regatta"]),
-    sessionDate: dateInputSchema,
-    startTime: hhmmTimeSchema.optional(),
-    totalDurationHours: z.number().positive().max(24).optional(),
-  })
-  .superRefine((value, context) => {
-    const hasStart = typeof value.startTime === "string" && value.startTime.length > 0
-    const hasDuration = typeof value.totalDurationHours === "number"
-
-    if (hasDuration && !hasStart) {
-      context.addIssue({
-        code: "custom",
-        message: "Start time is required when total duration is provided",
-        path: ["startTime"],
-      })
-    }
-  })
+export const updateSessionDetailInputSchema = z.object({
+  id: z.string().uuid(),
+  sessionType: z.enum(["training", "regatta"]),
+  sessionDate: dateInputSchema,
+  startTime: hhmmTimeSchema,
+  totalDurationHours: z
+    .number()
+    .min(0.25, "Total duration must be at least 15 minutes")
+    .max(24, "Total duration must be 24 hours or less")
+    .refine((value) => {
+      const minutes = value * 60
+      return Number.isInteger(minutes) && minutes % 15 === 0
+    }, "Total duration must use 15-minute increments"),
+})
 
 export const updateSessionInfoInputSchema = z.object({
   sessionId: z.string().uuid(),

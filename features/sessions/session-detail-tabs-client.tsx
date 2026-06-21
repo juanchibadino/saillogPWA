@@ -8,6 +8,7 @@ import {
   ChevronDownIcon,
   GripVerticalIcon,
   Loader2Icon,
+  MinusIcon,
   PencilIcon,
   PlusIcon,
   SearchIcon,
@@ -97,6 +98,7 @@ import {
   createSessionStandardMoveAction,
   createTeamSetupMetricAction,
   deleteTeamSetupMetricAction,
+  saveSessionSetupAction,
   saveSessionInfoAction,
   updateTeamSetupMetricAction,
   updateSessionDetailAction,
@@ -137,11 +139,20 @@ function formatTimeInputValue(iso: string | null): string {
   return `${hours}:${minutes}`
 }
 
-function formatDurationHoursInputValue(input: {
+const SESSION_DURATION_STEP_MINUTES = 15
+const MIN_SESSION_DURATION_MINUTES = SESSION_DURATION_STEP_MINUTES
+const DEFAULT_SESSION_DURATION_MINUTES = 60
+const MAX_SESSION_DURATION_MINUTES = 24 * 60
+
+function clampSessionDurationMinutes(minutes: number): number {
+  return Math.min(Math.max(minutes, MIN_SESSION_DURATION_MINUTES), MAX_SESSION_DURATION_MINUTES)
+}
+
+function resolveSessionDurationMinutes(input: {
   dockOutAt: string | null
   dockInAt: string | null
   fallbackNetTimeMinutes: number | null
-}): string {
+}): number {
   let minutes: number | null = input.fallbackNetTimeMinutes
 
   if (input.dockOutAt && input.dockInAt) {
@@ -157,9 +168,27 @@ function formatDurationHoursInputValue(input: {
   }
 
   if (minutes === null || minutes <= 0) {
-    return ""
+    return DEFAULT_SESSION_DURATION_MINUTES
   }
 
+  const roundedMinutes =
+    Math.round(minutes / SESSION_DURATION_STEP_MINUTES) * SESSION_DURATION_STEP_MINUTES
+
+  return clampSessionDurationMinutes(roundedMinutes)
+}
+
+function formatSessionDurationLabel(minutes: number): string {
+  const hours = Math.floor(minutes / 60)
+  const remainingMinutes = minutes % 60
+
+  if (hours <= 0) {
+    return `${remainingMinutes}m`
+  }
+
+  return `${hours}h ${remainingMinutes}m`
+}
+
+function formatSessionDurationHoursValue(minutes: number): string {
   const hours = minutes / 60
   const rounded = Math.round(hours * 100) / 100
   return Number.isInteger(rounded) ? String(rounded) : String(rounded)
@@ -644,6 +673,12 @@ type SetupDraftItem = {
 
 type SetupDraftByItemId = Record<string, SetupDraftItem>
 
+type SetupPayloadEntry = {
+  itemId: string
+  textValue: string | null
+  selectedOptions: SetupDraftSelectedOption[]
+}
+
 function clampPercentInteger(value: number): number {
   if (!Number.isFinite(value)) {
     return 0
@@ -1036,6 +1071,147 @@ function groupSetupItems(items: SessionSetupDialogItem[]): {
   return { weather, boat }
 }
 
+function buildBoatSetupOrderIds(items: SessionSetupDialogItem[]): string[] {
+  return groupSetupItems(items).boat.map((item) => item.id)
+}
+
+function areStringArraysEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index])
+}
+
+function normalizeSetupTextValue(value: string): string | null {
+  const normalized = value.trim()
+  return normalized.length > 0 ? normalized : null
+}
+
+function normalizeSetupSelectedOptions(input: {
+  item: SessionSetupDialogItem
+  selectedOptions: SetupDraftSelectedOption[]
+}): SetupDraftSelectedOption[] {
+  const optionOrderById = new Map(
+    input.item.options.map((option, index) => [option.id, index]),
+  )
+  const selectedOptionById = new Map(
+    input.selectedOptions.map((selectedOption) => [
+      selectedOption.optionId,
+      selectedOption,
+    ]),
+  )
+
+  return [...selectedOptionById.values()]
+    .sort(
+      (left, right) =>
+        (optionOrderById.get(left.optionId) ?? Number.MAX_SAFE_INTEGER) -
+        (optionOrderById.get(right.optionId) ?? Number.MAX_SAFE_INTEGER),
+    )
+    .map((selectedOption) => ({
+      optionId: selectedOption.optionId,
+      allocationPercent:
+        input.item.key === "tws" && typeof selectedOption.allocationPercent === "number"
+          ? clampPercentInteger(selectedOption.allocationPercent)
+          : null,
+    }))
+}
+
+function buildSetupPayloadEntryFromDraft(input: {
+  item: SessionSetupDialogItem
+  draftByItemId: SetupDraftByItemId
+}): SetupPayloadEntry {
+  const draft = input.draftByItemId[input.item.id] ?? {
+    textValue: "",
+    selectedOptions: [],
+    twsEditedOptionIds: [],
+  }
+
+  return {
+    itemId: input.item.id,
+    textValue:
+      input.item.inputKind === "text" ? normalizeSetupTextValue(draft.textValue) : null,
+    selectedOptions:
+      input.item.inputKind === "text"
+        ? []
+        : normalizeSetupSelectedOptions({
+            item: input.item,
+            selectedOptions: draft.selectedOptions,
+          }),
+  }
+}
+
+function buildSetupPayloadEntryFromItem(item: SessionSetupDialogItem): SetupPayloadEntry {
+  return {
+    itemId: item.id,
+    textValue: item.inputKind === "text" ? normalizeSetupTextValue(item.textValue) : null,
+    selectedOptions:
+      item.inputKind === "text"
+        ? []
+        : normalizeSetupSelectedOptions({
+            item,
+            selectedOptions: item.selectedOptions,
+          }),
+  }
+}
+
+function areSetupPayloadEntriesEqual(left: SetupPayloadEntry, right: SetupPayloadEntry): boolean {
+  return (
+    left.textValue === right.textValue &&
+    left.selectedOptions.length === right.selectedOptions.length &&
+    left.selectedOptions.every((leftOption, index) => {
+      const rightOption = right.selectedOptions[index]
+      return (
+        rightOption &&
+        leftOption.optionId === rightOption.optionId &&
+        leftOption.allocationPercent === rightOption.allocationPercent
+      )
+    })
+  )
+}
+
+function buildChangedSetupPayloadEntries(input: {
+  items: SessionSetupDialogItem[]
+  draftByItemId: SetupDraftByItemId
+}): SetupPayloadEntry[] {
+  return input.items
+    .map((item) => ({
+      currentEntry: buildSetupPayloadEntryFromItem(item),
+      nextEntry: buildSetupPayloadEntryFromDraft({
+        item,
+        draftByItemId: input.draftByItemId,
+      }),
+    }))
+    .filter(
+      ({ currentEntry, nextEntry }) =>
+        !areSetupPayloadEntriesEqual(currentEntry, nextEntry),
+    )
+    .map(({ nextEntry }) => nextEntry)
+}
+
+function buildOptimisticSetupItems(input: {
+  items: SessionSetupDialogItem[]
+  draftByItemId: SetupDraftByItemId
+  boatOrderIds: string[]
+}): SessionSetupDialogItem[] {
+  const boatPositionById = new Map(
+    input.boatOrderIds.map((itemId, index) => [itemId, index + 1]),
+  )
+
+  return input.items.map((item) => {
+    const nextEntry = buildSetupPayloadEntryFromDraft({
+      item,
+      draftByItemId: input.draftByItemId,
+    })
+
+    return {
+      ...item,
+      position:
+        item.metricGroup === "boat"
+          ? (boatPositionById.get(item.id) ?? item.position)
+          : item.position,
+      textValue: item.inputKind === "text" ? (nextEntry.textValue ?? "") : "",
+      selectedOptions: item.inputKind === "text" ? [] : nextEntry.selectedOptions,
+    }
+  })
+}
+
 function parseMetricOptionsFromText(value: string): string[] {
   const uniqueOptions = new Set<string>()
 
@@ -1101,32 +1277,39 @@ function SortableBoatSetupRow(input: {
 
 function SetupDialogFooter(input: {
   isEditMode: boolean
+  isSaving: boolean
   onEnterEditMode: () => void
+  surface: "drawer" | "sheet"
 }) {
   const { pending } = useFormStatus()
+  const isPending = pending || input.isSaving
 
-  return (
-    <DialogFooter
-      className={input.isEditMode ? "shrink-0 sm:justify-end" : "shrink-0 sm:justify-start"}
-    >
+  const content = (
+    <>
       {!input.isEditMode ? (
         <Button
           key="setup-edit"
           type="button"
           variant="outline"
           size="sm"
+          className={input.surface === "drawer" ? "w-full" : undefined}
           onClick={(event) => {
             event.preventDefault()
             event.stopPropagation()
             input.onEnterEditMode()
           }}
-          disabled={pending}
+          disabled={isPending}
         >
           Edit
         </Button>
       ) : (
-        <Button key="setup-save" type="submit" disabled={pending}>
-          {pending ? (
+        <Button
+          key="setup-save"
+          type="submit"
+          disabled={isPending}
+          className={input.surface === "drawer" ? "w-full" : undefined}
+        >
+          {isPending ? (
             <>
               <Loader2Icon className="size-4 animate-spin" />
               Saving...
@@ -1136,7 +1319,19 @@ function SetupDialogFooter(input: {
           )}
         </Button>
       )}
-    </DialogFooter>
+    </>
+  )
+
+  if (input.surface === "drawer") {
+    return <DrawerFooter className="shrink-0 border-t">{content}</DrawerFooter>
+  }
+
+  return (
+    <SheetFooter
+      className={input.isEditMode ? "shrink-0 border-t sm:justify-end" : "shrink-0 border-t sm:justify-start"}
+    >
+      {content}
+    </SheetFooter>
   )
 }
 
@@ -1145,10 +1340,17 @@ function SetupDialog(input: {
   scope: NavigationScope
   items: SessionSetupDialogItem[]
 }) {
-  function SetupDialogFieldset(props: { children: React.ReactNode }) {
+  function SetupDialogFieldset(props: { children: React.ReactNode; isSaving: boolean }) {
     const { pending } = useFormStatus()
 
-    return <fieldset disabled={pending} className="m-0 border-0 p-0">{props.children}</fieldset>
+    return (
+      <fieldset
+        disabled={pending || props.isSaving}
+        className="m-0 min-h-0 flex-1 overflow-hidden border-0 p-0"
+      >
+        {props.children}
+      </fieldset>
+    )
   }
 
   function EditSetupMetricFieldset(props: { children: React.ReactNode }) {
@@ -1174,22 +1376,26 @@ function SetupDialog(input: {
     )
   }
 
-  const groupedItems = React.useMemo(() => groupSetupItems(input.items), [input.items])
+  const [setupItems, setSetupItems] = React.useState<SessionSetupDialogItem[]>(input.items)
+  const groupedItems = React.useMemo(() => groupSetupItems(setupItems), [setupItems])
   const initialBoatOrderIds = React.useMemo(
-    () => groupedItems.boat.map((item) => item.id),
-    [groupedItems.boat],
+    () => buildBoatSetupOrderIds(setupItems),
+    [setupItems],
   )
   const boatItemById = React.useMemo(
     () => new Map(groupedItems.boat.map((item) => [item.id, item])),
     [groupedItems.boat],
   )
 
+  const router = useRouter()
   const [isOpen, setIsOpen] = React.useState(false)
   const [isEditMode, setIsEditMode] = React.useState(false)
   const [draftByItemId, setDraftByItemId] = React.useState<SetupDraftByItemId>(() =>
     buildInitialSetupDraft(input.items),
   )
   const [boatOrderIds, setBoatOrderIds] = React.useState<string[]>(initialBoatOrderIds)
+  const [isSavingSetup, setIsSavingSetup] = React.useState(false)
+  const previousInputItemsRef = React.useRef(input.items)
 
   const [isCreateMetricDialogOpen, setIsCreateMetricDialogOpen] = React.useState(false)
   const [createMetricStep, setCreateMetricStep] = React.useState<"kind" | "details">("kind")
@@ -1207,6 +1413,7 @@ function SetupDialog(input: {
   const [editingMetricOptionsText, setEditingMetricOptionsText] = React.useState("")
 
   const [deletingMetricId, setDeletingMetricId] = React.useState<string | null>(null)
+  const isMobile = useIsMobile()
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -1214,33 +1421,42 @@ function SetupDialog(input: {
     }),
   )
 
-  const payloadValue = React.useMemo(
-    () =>
-      JSON.stringify(
-        input.items.map((item) => {
-          const draft = draftByItemId[item.id] ?? {
-            textValue: "",
-            selectedOptions: [],
-            twsEditedOptionIds: [],
-          }
+  React.useEffect(() => {
+    if (previousInputItemsRef.current === input.items) {
+      return
+    }
 
-          return {
-            itemId: item.id,
-            textValue: draft.textValue,
-            selectedOptions: draft.selectedOptions.map((selectedOption) => ({
-              optionId: selectedOption.optionId,
-              allocationPercent:
-                item.key === "tws" ? selectedOption.allocationPercent : null,
-            })),
-          }
-        }),
-      ),
-    [draftByItemId, input.items],
+    previousInputItemsRef.current = input.items
+    setSetupItems(input.items)
+
+    if (!isOpen || !isEditMode) {
+      setDraftByItemId(buildInitialSetupDraft(input.items))
+      setBoatOrderIds(buildBoatSetupOrderIds(input.items))
+    }
+  }, [input.items, isEditMode, isOpen])
+
+  const setupPayloadEntries = React.useMemo(
+    () =>
+      buildChangedSetupPayloadEntries({
+        items: setupItems,
+        draftByItemId,
+      }),
+    [draftByItemId, setupItems],
+  )
+
+  const payloadValue = React.useMemo(
+    () => JSON.stringify(setupPayloadEntries),
+    [setupPayloadEntries],
+  )
+
+  const hasBoatOrderChange = React.useMemo(
+    () => !areStringArraysEqual(boatOrderIds, buildBoatSetupOrderIds(setupItems)),
+    [boatOrderIds, setupItems],
   )
 
   const orderedItemIdsPayload = React.useMemo(
-    () => JSON.stringify(boatOrderIds),
-    [boatOrderIds],
+    () => (hasBoatOrderChange ? JSON.stringify(boatOrderIds) : null),
+    [boatOrderIds, hasBoatOrderChange],
   )
 
   const orderedBoatItems = React.useMemo(
@@ -1277,8 +1493,8 @@ function SetupDialog(input: {
   )
 
   function resetDialogState() {
-    setDraftByItemId(buildInitialSetupDraft(input.items))
-    setBoatOrderIds(initialBoatOrderIds)
+    setDraftByItemId(buildInitialSetupDraft(setupItems))
+    setBoatOrderIds(buildBoatSetupOrderIds(setupItems))
     setIsEditMode(false)
     setIsCreateMetricDialogOpen(false)
     setCreateMetricStep("kind")
@@ -1295,6 +1511,66 @@ function SetupDialog(input: {
   function handleOpenChange(nextOpen: boolean) {
     setIsOpen(nextOpen)
     resetDialogState()
+  }
+
+  async function handleSetupSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!isEditMode || isSavingSetup) {
+      return
+    }
+
+    if (setupPayloadEntries.length === 0 && !orderedItemIdsPayload) {
+      setIsEditMode(false)
+      setIsOpen(false)
+      return
+    }
+
+    const formData = new FormData(event.currentTarget)
+    const previousSetupItems = setupItems
+    const submittedDraftByItemId = draftByItemId
+    const submittedBoatOrderIds = boatOrderIds
+    const optimisticSetupItems = buildOptimisticSetupItems({
+      items: setupItems,
+      draftByItemId,
+      boatOrderIds,
+    })
+    const toastId = `session-setup-save:${input.sessionId}`
+
+    setSetupItems(optimisticSetupItems)
+    setDraftByItemId(buildInitialSetupDraft(optimisticSetupItems))
+    setBoatOrderIds(buildBoatSetupOrderIds(optimisticSetupItems))
+    setIsEditMode(false)
+    setIsOpen(false)
+    setIsSavingSetup(true)
+
+    try {
+      const result = await saveSessionSetupAction(formData)
+
+      if (!result.ok) {
+        setSetupItems(previousSetupItems)
+        setDraftByItemId(submittedDraftByItemId)
+        setBoatOrderIds(submittedBoatOrderIds)
+        setIsEditMode(true)
+        setIsOpen(true)
+        toast.error(result.message, { id: toastId })
+        return
+      }
+
+      toast.success("Session setup updated successfully.", { id: toastId })
+      router.refresh()
+    } catch {
+      setSetupItems(previousSetupItems)
+      setDraftByItemId(submittedDraftByItemId)
+      setBoatOrderIds(submittedBoatOrderIds)
+      setIsEditMode(true)
+      setIsOpen(true)
+      toast.error("Could not update this session setup. Confirm permissions and try again.", {
+        id: toastId,
+      })
+    } finally {
+      setIsSavingSetup(false)
+    }
   }
 
   function updateTextValue(itemId: string, nextValue: string) {
@@ -1604,17 +1880,15 @@ function SetupDialog(input: {
     return (
       <div
         key={inputRow.item.id}
-        className={`rounded-lg border p-3 ${inputRow.isDragging ? "ring-1 ring-foreground/20" : ""}`}
+        className={`space-y-3 rounded-lg ${inputRow.isDragging ? "ring-1 ring-foreground/20" : ""}`}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between gap-3">
           <Label
             htmlFor={`setup-item-${inputRow.item.id}`}
-            className="w-28 shrink-0 text-sm font-medium sm:w-36"
+            className="min-w-0 text-xs uppercase text-muted-foreground"
           >
             <span className="block truncate">{inputRow.item.label}</span>
           </Label>
-
-          <div className="min-w-0 flex-1">{renderField(inputRow.item)}</div>
 
           {inputRow.showTemplateControls ? (
             <div className="flex shrink-0 items-center gap-1">
@@ -1649,7 +1923,9 @@ function SetupDialog(input: {
           ) : null}
         </div>
 
-        {hint ? <p className="mt-2 text-xs text-muted-foreground">{hint}</p> : null}
+        <div className="min-w-0">{renderField(inputRow.item)}</div>
+
+        {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
       </div>
     )
   }
@@ -1663,24 +1939,25 @@ function SetupDialog(input: {
     )
   }
 
-  return (
-    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogTrigger render={<Button type="button" variant="outline" size="sm" />}>
-        Setup
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-5xl">
-        <DialogHeader className="shrink-0">
-          <DialogTitle>Session setup</DialogTitle>
-        </DialogHeader>
-
-        <form action={updateSessionSetupAction} className="space-y-4">
+  const setupForm = (
+    <form
+      action={updateSessionSetupAction}
+      onSubmit={handleSetupSubmit}
+      className="flex min-h-0 flex-1 flex-col"
+    >
           <SetupScopeHiddenFields sessionId={input.sessionId} scope={input.scope} />
           <input type="hidden" name="setupPayload" value={payloadValue} />
-          <input type="hidden" name="orderedItemIdsPayload" value={orderedItemIdsPayload} />
+          {orderedItemIdsPayload ? (
+            <input
+              type="hidden"
+              name="orderedItemIdsPayload"
+              value={orderedItemIdsPayload}
+            />
+          ) : null}
 
-          <SetupDialogFieldset>
-            <div className="no-scrollbar max-h-[65vh] space-y-6 overflow-y-auto pb-2 pr-1">
-              {input.items.length === 0 ? (
+          <SetupDialogFieldset isSaving={isSavingSetup}>
+            <div className="no-scrollbar h-full space-y-6 overflow-y-auto px-4 pb-4 pr-5">
+              {setupItems.length === 0 ? (
                 <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
                   No setup metrics are configured for this team yet.
                 </div>
@@ -1777,9 +2054,44 @@ function SetupDialog(input: {
 
           <SetupDialogFooter
             isEditMode={isEditMode}
+            isSaving={isSavingSetup}
             onEnterEditMode={() => setIsEditMode(true)}
+            surface={isMobile ? "drawer" : "sheet"}
           />
         </form>
+  )
+
+  const setupSurface = isMobile ? (
+    <Drawer open={isOpen} onOpenChange={handleOpenChange}>
+      <DrawerTrigger asChild>
+        <Button type="button" variant="outline" size="default" className="h-9 px-3">
+          Setup
+        </Button>
+      </DrawerTrigger>
+      <DrawerContent className="h-[85dvh] overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+        <DrawerHeader className="shrink-0">
+          <DrawerTitle>Session setup</DrawerTitle>
+        </DrawerHeader>
+        {setupForm}
+      </DrawerContent>
+    </Drawer>
+  ) : (
+    <Sheet open={isOpen} onOpenChange={handleOpenChange}>
+      <SheetTrigger render={<Button type="button" variant="outline" size="sm" />}>
+        Setup
+      </SheetTrigger>
+      <SheetContent side="right" className="h-full overflow-hidden sm:max-w-5xl">
+        <SheetHeader className="shrink-0">
+          <SheetTitle>Session setup</SheetTitle>
+        </SheetHeader>
+        {setupForm}
+      </SheetContent>
+    </Sheet>
+  )
+
+  return (
+    <>
+      {setupSurface}
 
         <Dialog
           open={isCreateMetricDialogOpen}
@@ -1993,12 +2305,11 @@ function SetupDialog(input: {
             </form>
           </DialogContent>
         </Dialog>
-      </DialogContent>
-    </Dialog>
+    </>
   )
 }
 
-function EditSessionMetadataDialog(input: {
+export function SessionMetadataEditAction(input: {
   sessionId: string
   scope: NavigationScope
   sessionType: "training" | "regatta"
@@ -2007,11 +2318,11 @@ function EditSessionMetadataDialog(input: {
   dockInAt: string | null
   netTimeMinutes: number | null
 }) {
-  function EditSessionDialogSubmitButton() {
+  function EditSessionDialogSubmitButton(props: { className?: string }) {
     const { pending } = useFormStatus()
 
     return (
-      <Button type="submit" disabled={pending}>
+      <Button type="submit" disabled={pending} className={props.className}>
         {pending ? (
           <>
             <Loader2Icon className="size-4 animate-spin" />
@@ -2033,35 +2344,44 @@ function EditSessionMetadataDialog(input: {
   const [nextSessionType, setNextSessionType] = React.useState(input.sessionType)
   const [nextSessionDate, setNextSessionDate] = React.useState(input.sessionDate)
   const [nextStartTime, setNextStartTime] = React.useState(formatTimeInputValue(input.dockOutAt))
-  const [nextTotalDurationHours, setNextTotalDurationHours] = React.useState(
-    formatDurationHoursInputValue({
+  const [nextTotalDurationMinutes, setNextTotalDurationMinutes] = React.useState(() =>
+    resolveSessionDurationMinutes({
       dockOutAt: input.dockOutAt,
       dockInAt: input.dockInAt,
       fallbackNetTimeMinutes: input.netTimeMinutes,
     }),
   )
+  const isMobile = useIsMobile()
+  const totalDurationLabelId = `session-duration-label-${input.sessionId}`
+  const nextTotalDurationHours = formatSessionDurationHoursValue(nextTotalDurationMinutes)
 
-  return (
-    <Dialog>
-      <DialogTrigger render={<Button type="button" variant="outline" size="sm" />}>
-        Edit
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Edit session</DialogTitle>
-          <DialogDescription>Update type, date, and session timing.</DialogDescription>
-        </DialogHeader>
+  function adjustTotalDurationMinutes(deltaMinutes: number): void {
+    setNextTotalDurationMinutes((currentMinutes) =>
+      clampSessionDurationMinutes(currentMinutes + deltaMinutes),
+    )
+  }
 
-        <form action={updateSessionDetailAction} className="space-y-4">
-          <input type="hidden" name="id" value={input.sessionId} />
-          <input type="hidden" name="scopeOrgId" value={input.scope.activeOrgId} />
-          {input.scope.activeTeamId ? (
-            <input type="hidden" name="scopeTeamId" value={input.scope.activeTeamId} />
-          ) : null}
-          <input type="hidden" name="scopeTab" value="info" />
+  const editSessionForm = (
+    <form
+      action={updateSessionDetailAction}
+      className={cn("flex min-h-0 flex-col", isMobile ? "flex-none" : "flex-1")}
+    >
+      <input type="hidden" name="id" value={input.sessionId} />
+      <input type="hidden" name="scopeOrgId" value={input.scope.activeOrgId} />
+      {input.scope.activeTeamId ? (
+        <input type="hidden" name="scopeTeamId" value={input.scope.activeTeamId} />
+      ) : null}
+      <input type="hidden" name="scopeTab" value="info" />
 
+      <div
+        className={cn(
+          "overflow-y-auto px-4 pb-4",
+          isMobile ? "max-h-[calc(85dvh-10rem)]" : "min-h-0 flex-1",
+        )}
+      >
+        <div className="space-y-4">
           <EditSessionDialogFieldset>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor={`session-type-${input.sessionId}`}>Type</Label>
                 <select
@@ -2095,36 +2415,111 @@ function EditSessionMetadataDialog(input: {
                   id={`session-start-${input.sessionId}`}
                   name="startTime"
                   type="time"
+                  required
                   value={nextStartTime}
                   onChange={(event) => setNextStartTime(event.target.value)}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor={`session-duration-${input.sessionId}`}>
-                  Total Duration (hours, optional)
-                </Label>
-                <Input
-                  id={`session-duration-${input.sessionId}`}
-                  name="totalDurationHours"
-                  type="number"
-                  min="0.25"
-                  max="24"
-                  step="0.25"
-                  placeholder="e.g. 2"
-                  value={nextTotalDurationHours}
-                  onChange={(event) => setNextTotalDurationHours(event.target.value)}
-                />
+                <Label id={totalDurationLabelId}>Total Duration</Label>
+                <input type="hidden" name="totalDurationHours" value={nextTotalDurationHours} />
+                <div
+                  className="grid grid-cols-[3rem_minmax(0,1fr)_3rem] items-center gap-2"
+                  role="group"
+                  aria-labelledby={totalDurationLabelId}
+                >
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-lg"
+                    className="size-12"
+                    aria-label="Decrease total duration by 15 minutes"
+                    disabled={nextTotalDurationMinutes <= MIN_SESSION_DURATION_MINUTES}
+                    onClick={() => adjustTotalDurationMinutes(-SESSION_DURATION_STEP_MINUTES)}
+                  >
+                    <MinusIcon className="size-5" />
+                  </Button>
+                  <div
+                    className="flex h-12 min-w-0 items-center justify-center rounded-lg border border-input bg-background px-3 text-base font-medium tabular-nums"
+                    aria-live="polite"
+                  >
+                    {formatSessionDurationLabel(nextTotalDurationMinutes)}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-lg"
+                    className="size-12"
+                    aria-label="Increase total duration by 15 minutes"
+                    disabled={nextTotalDurationMinutes >= MAX_SESSION_DURATION_MINUTES}
+                    onClick={() => adjustTotalDurationMinutes(SESSION_DURATION_STEP_MINUTES)}
+                  >
+                    <PlusIcon className="size-5" />
+                  </Button>
+                </div>
               </div>
             </div>
           </EditSessionDialogFieldset>
+        </div>
+      </div>
 
-          <DialogFooter>
-            <EditSessionDialogSubmitButton />
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+      {isMobile ? (
+        <DrawerFooter className="shrink-0 border-t">
+          <EditSessionDialogSubmitButton className="w-full" />
+        </DrawerFooter>
+      ) : (
+        <SheetFooter className="shrink-0 border-t">
+          <EditSessionDialogSubmitButton className="w-full" />
+        </SheetFooter>
+      )}
+    </form>
+  )
+
+  if (isMobile) {
+    return (
+      <Drawer>
+        <DrawerTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-lg"
+            aria-label="Edit session"
+          >
+            <PencilIcon className="size-4" />
+          </Button>
+        </DrawerTrigger>
+        <DrawerContent className="max-h-[85dvh] overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+          <DrawerHeader className="shrink-0">
+            <DrawerTitle>Edit Session</DrawerTitle>
+          </DrawerHeader>
+          {editSessionForm}
+        </DrawerContent>
+      </Drawer>
+    )
+  }
+
+  return (
+    <Sheet>
+      <SheetTrigger
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-lg"
+            aria-label="Edit session"
+          />
+        }
+      >
+        <PencilIcon className="size-4" />
+      </SheetTrigger>
+      <SheetContent side="right" className="h-full overflow-hidden sm:max-w-xl">
+        <SheetHeader className="shrink-0">
+          <SheetTitle>Edit Session</SheetTitle>
+        </SheetHeader>
+        {editSessionForm}
+      </SheetContent>
+    </Sheet>
   )
 }
 
@@ -2222,7 +2617,7 @@ function SessionInfoStandardMovesBadges(input: {
   }
 
   return (
-    <div className="mt-2 flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2">
       {standardMoves.map((standardMove) => (
         <StandardMoveTooltipBadge
           key={standardMove.id}
@@ -3876,11 +4271,6 @@ export function SessionHeaderActions(input: {
   sessionId: string
   scope: NavigationScope
   setupDialogItems: SessionSetupDialogItem[]
-  sessionType: "training" | "regatta"
-  sessionDate: string
-  dockOutAt: string | null
-  dockInAt: string | null
-  netTimeMinutes: number | null
   canManageSession: boolean
 }) {
   if (!input.canManageSession) {
@@ -3893,15 +4283,6 @@ export function SessionHeaderActions(input: {
         sessionId={input.sessionId}
         scope={input.scope}
         items={input.setupDialogItems}
-      />
-      <EditSessionMetadataDialog
-        sessionId={input.sessionId}
-        scope={input.scope}
-        sessionType={input.sessionType}
-        sessionDate={input.sessionDate}
-        dockOutAt={input.dockOutAt}
-        dockInAt={input.dockInAt}
-        netTimeMinutes={input.netTimeMinutes}
       />
     </div>
   )
@@ -3963,7 +4344,7 @@ export function SessionDetailTabsClient(input: {
         draft,
         availableStandardMoves,
       })
-      const toastId = toast.loading("Saving session info...")
+      const toastId = `session-info-save:${input.sessionId}`
       const formData = new FormData()
 
       appendSessionInfoFormData({
@@ -4114,9 +4495,6 @@ export function SessionDetailTabsClient(input: {
                 </div>
 
                 <div className="rounded-lg bg-muted p-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Std. Moves
-                  </p>
                   <SessionInfoStandardMovesBadges
                     availableStandardMoves={availableStandardMoves}
                     linkedStandardMoveIds={linkedStandardMoveIds}
@@ -4148,10 +4526,7 @@ export function SessionDetailTabsClient(input: {
                 </div>
 
                 <div className="rounded-lg bg-muted p-4">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Wind Patterns
-                  </p>
-                  <p className="mt-2 whitespace-pre-wrap text-sm">
+                  <p className="whitespace-pre-wrap text-sm">
                     {renderTextValue(info.windPatterns)}
                   </p>
                 </div>

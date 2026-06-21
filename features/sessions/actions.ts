@@ -30,7 +30,7 @@ import {
   uploadSessionAssetInputSchema,
 } from "@/lib/validation/sessions"
 import type { SessionDetailInfo } from "@/features/sessions/detail-types"
-import type { Json } from "@/types/database"
+import type { Database, Json } from "@/types/database"
 
 const SESSION_PHOTOS_BUCKET = "session-photos"
 const SESSION_FILES_BUCKET = "session-files"
@@ -210,6 +210,16 @@ type SessionSetupPayloadEntry = {
   }>
 }
 
+type TeamSetupItemMutationRow = Pick<
+  Database["public"]["Tables"]["team_setup_items"]["Row"],
+  "id" | "key" | "input_kind" | "metric_group" | "is_fixed"
+>
+
+type SessionSetupItemValueIdRow = Pick<
+  Database["public"]["Tables"]["session_setup_item_values"]["Row"],
+  "id" | "team_setup_item_id"
+>
+
 function parseSessionSetupPayload(value: string): SessionSetupPayloadEntry[] | null {
   let parsed: unknown
 
@@ -329,6 +339,10 @@ function parseSessionSetupPayload(value: string): SessionSetupPayloadEntry[] | n
   return entries
 }
 
+function areStringArraysEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index])
+}
+
 async function persistBoatSetupMetricOrder(input: {
   supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>
   teamId: string
@@ -346,6 +360,9 @@ async function persistBoatSetupMetricOrder(input: {
   const activeBoatItems = teamSetupItems.filter(
     (item) => item.is_active && item.metric_group === "boat" && !item.is_fixed,
   )
+  const currentOrderedItemIds = [...activeBoatItems]
+    .sort((left, right) => left.position - right.position)
+    .map((item) => item.id)
 
   if (activeBoatItems.length !== input.orderedItemIds.length) {
     return { error: "invalid_input" }
@@ -360,6 +377,10 @@ async function persistBoatSetupMetricOrder(input: {
     input.orderedItemIds.some((itemId) => !activeBoatIdSet.has(itemId))
   ) {
     return { error: "invalid_input" }
+  }
+
+  if (areStringArraysEqual(currentOrderedItemIds, input.orderedItemIds)) {
+    return { error: null }
   }
 
   const maxPosition = Math.max(0, ...teamSetupItems.map((item) => item.position))
@@ -816,6 +837,10 @@ function revalidateSessionSlices(input: {
   if (input.teamVenueId) {
     revalidatePath(`/venues/${input.teamVenueId}`)
   }
+}
+
+function revalidateSessionSetupSlices(input: { sessionId: string }): void {
+  revalidatePath(`/team-sessions/${input.sessionId}`)
 }
 
 export async function createSessionAction(formData: FormData): Promise<void> {
@@ -1796,18 +1821,65 @@ export async function updateSessionResultsAction(formData: FormData): Promise<vo
   )
 }
 
-export async function updateSessionSetupAction(formData: FormData): Promise<void> {
+type SessionSetupActionError = "invalid_input" | "forbidden" | "update_failed"
+
+export type UpdateSessionSetupActionResult =
+  | {
+      ok: true
+    }
+  | {
+      ok: false
+      error: SessionSetupActionError
+      message: string
+    }
+
+type UpdateSessionSetupMutationResult =
+  | {
+      ok: true
+      sessionId: string
+      scope: SessionActionScope
+    }
+  | {
+      ok: false
+      error: SessionSetupActionError
+      message: string
+      sessionId?: string
+      scope: SessionActionScope
+    }
+
+const SESSION_SETUP_ERROR_MESSAGES: Record<SessionSetupActionError, string> = {
+  invalid_input: "The submitted setup data is invalid. Review the form and try again.",
+  forbidden: "You do not have permission to manage this session in the active scope.",
+  update_failed: "Could not update this session setup. Confirm permissions and try again.",
+}
+
+function buildSessionSetupActionError(input: {
+  error: SessionSetupActionError
+  scope: SessionActionScope
+  sessionId?: string
+}): UpdateSessionSetupMutationResult {
+  return {
+    ok: false,
+    error: input.error,
+    message: SESSION_SETUP_ERROR_MESSAGES[input.error],
+    scope: input.scope,
+    sessionId: input.sessionId,
+  }
+}
+
+async function updateSessionSetupMutation(
+  formData: FormData,
+): Promise<UpdateSessionSetupMutationResult> {
   const context = await requireAuthenticatedAccessContext()
   const scope = getScopeFromFormData(formData)
   const sessionId = getFormString(formData, "sessionId")
 
   if (!sessionId || !scope.scopeOrgId || !scope.scopeTeamId) {
-    redirect(
-      buildTeamSessionsRedirectPath({
-        error: "invalid_input",
-        ...scope,
-      }),
-    )
+    return buildSessionSetupActionError({
+      error: "invalid_input",
+      scope,
+      sessionId,
+    })
   }
 
   const parsedInput = updateSessionSetupInputSchema.safeParse({
@@ -1817,13 +1889,11 @@ export async function updateSessionSetupAction(formData: FormData): Promise<void
   })
 
   if (!parsedInput.success) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId,
-        error: "invalid_input",
-        ...scope,
-      }),
-    )
+    return buildSessionSetupActionError({
+      error: "invalid_input",
+      scope,
+      sessionId,
+    })
   }
 
   if (
@@ -1833,13 +1903,11 @@ export async function updateSessionSetupAction(formData: FormData): Promise<void
       teamId: scope.scopeTeamId,
     })
   ) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "forbidden",
-        ...scope,
-      }),
-    )
+    return buildSessionSetupActionError({
+      error: "forbidden",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
   }
 
   const scopedSession = await resolveScopedSessionContext({
@@ -1849,13 +1917,11 @@ export async function updateSessionSetupAction(formData: FormData): Promise<void
   })
 
   if (!scopedSession) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "forbidden",
-        ...scope,
-      }),
-    )
+    return buildSessionSetupActionError({
+      error: "forbidden",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
   }
 
   const parsedPayload = parseSessionSetupPayload(parsedInput.data.setupPayload)
@@ -1865,13 +1931,11 @@ export async function updateSessionSetupAction(formData: FormData): Promise<void
       : undefined
 
   if (!parsedPayload || orderedItemIds === null) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "invalid_input",
-        ...scope,
-      }),
-    )
+    return buildSessionSetupActionError({
+      error: "invalid_input",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
   }
 
   const payloadByItemId = new Map<string, SessionSetupPayloadEntry>()
@@ -1879,249 +1943,298 @@ export async function updateSessionSetupAction(formData: FormData): Promise<void
     payloadByItemId.set(entry.itemId, entry)
   }
 
+  if (payloadByItemId.size !== parsedPayload.length) {
+    return buildSessionSetupActionError({
+      error: "invalid_input",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
+  }
+
+  const hasValueChanges = payloadByItemId.size > 0
+  const hasOrderChange = typeof orderedItemIds !== "undefined" && orderedItemIds.length > 0
+
+  if (!hasValueChanges && !hasOrderChange) {
+    return {
+      ok: true,
+      sessionId: parsedInput.data.sessionId,
+      scope,
+    }
+  }
+
   const supabase = await createServerSupabaseClient()
-  const { data: itemRows, error: itemsError } = await supabase
-    .from("team_setup_items")
-    .select("id,key,input_kind,metric_group,is_fixed")
-    .eq("team_id", scope.scopeTeamId)
-    .eq("is_active", true)
+  if (hasValueChanges) {
+    const payloadEntries = Array.from(payloadByItemId.values())
+    const payloadItemIds = payloadEntries.map((entry) => entry.itemId)
+    const { data: itemRowsData, error: itemsError } = await supabase
+      .from("team_setup_items")
+      .select("id,key,input_kind,metric_group,is_fixed")
+      .eq("team_id", scope.scopeTeamId)
+      .eq("is_active", true)
+      .in("id", payloadItemIds)
 
-  if (itemsError || !itemRows) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
+    if (itemsError || !itemRowsData) {
+      return buildSessionSetupActionError({
         error: "update_failed",
-        ...scope,
-      }),
-    )
-  }
-
-  const itemById = new Map(itemRows.map((row) => [row.id, row]))
-  const itemIds = Array.from(itemById.keys())
-
-  if (itemIds.length === 0) {
-    redirect(
-      buildSessionDetailRedirectPath({
+        scope,
         sessionId: parsedInput.data.sessionId,
-        status: "setup_updated",
-        ...scope,
-      }),
-    )
-  }
+      })
+    }
 
-  if (parsedPayload.some((entry) => !itemById.has(entry.itemId))) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
+    const itemRows = itemRowsData as TeamSetupItemMutationRow[]
+    const itemById = new Map(itemRows.map((row) => [row.id, row]))
+
+    if (itemById.size !== payloadItemIds.length) {
+      return buildSessionSetupActionError({
         error: "invalid_input",
-        ...scope,
-      }),
-    )
-  }
-
-  const { data: optionRows, error: optionsError } = await supabase
-    .from("team_setup_item_options")
-    .select("id,team_setup_item_id")
-    .in("team_setup_item_id", itemIds)
-    .eq("is_active", true)
-
-  if (optionsError || !optionRows) {
-    redirect(
-      buildSessionDetailRedirectPath({
+        scope,
         sessionId: parsedInput.data.sessionId,
-        error: "update_failed",
-        ...scope,
-      }),
-    )
-  }
-
-  const validOptionIdsByItemId = new Map<string, Set<string>>()
-  for (const optionRow of optionRows) {
-    const optionSet = validOptionIdsByItemId.get(optionRow.team_setup_item_id) ?? new Set<string>()
-    optionSet.add(optionRow.id)
-    validOptionIdsByItemId.set(optionRow.team_setup_item_id, optionSet)
-  }
-
-  for (const itemId of itemIds) {
-    const payloadEntry = payloadByItemId.get(itemId) ?? {
-      itemId,
-      textValue: null,
-      selectedOptions: [],
+      })
     }
 
-    const item = itemById.get(itemId)
-    if (!item) {
-      continue
-    }
+    const optionItemIds = payloadEntries
+      .filter((entry) => entry.selectedOptions.length > 0)
+      .map((entry) => entry.itemId)
+    const validOptionIdsByItemId = new Map<string, Set<string>>()
 
-    const hasTextValue = Boolean(payloadEntry.textValue)
-    const hasSelectedOptions = payloadEntry.selectedOptions.length > 0
-    const shouldPersist = hasTextValue || hasSelectedOptions
+    if (optionItemIds.length > 0) {
+      const { data: optionRows, error: optionsError } = await supabase
+        .from("team_setup_item_options")
+        .select("id,team_setup_item_id")
+        .in("team_setup_item_id", optionItemIds)
+        .eq("is_active", true)
 
-    if (item.input_kind === "text" && hasSelectedOptions) {
-      redirect(
-        buildSessionDetailRedirectPath({
+      if (optionsError || !optionRows) {
+        return buildSessionSetupActionError({
+          error: "update_failed",
+          scope,
           sessionId: parsedInput.data.sessionId,
-          error: "invalid_input",
-          ...scope,
-        }),
-      )
-    }
-
-    if (item.input_kind !== "text" && hasTextValue) {
-      redirect(
-        buildSessionDetailRedirectPath({
-          sessionId: parsedInput.data.sessionId,
-          error: "invalid_input",
-          ...scope,
-        }),
-      )
-    }
-
-    const validOptionIds = validOptionIdsByItemId.get(itemId) ?? new Set<string>()
-    if (
-      payloadEntry.selectedOptions.some((selectedOption) => !validOptionIds.has(selectedOption.optionId))
-    ) {
-      redirect(
-        buildSessionDetailRedirectPath({
-          sessionId: parsedInput.data.sessionId,
-          error: "invalid_input",
-          ...scope,
-        }),
-      )
-    }
-
-    if (item.input_kind === "single_select" && payloadEntry.selectedOptions.length > 1) {
-      redirect(
-        buildSessionDetailRedirectPath({
-          sessionId: parsedInput.data.sessionId,
-          error: "invalid_input",
-          ...scope,
-        }),
-      )
-    }
-
-    if (!shouldPersist) {
-      const { data: existingValueRow, error: existingValueError } = await supabase
-        .from("session_setup_item_values")
-        .select("id")
-        .eq("session_id", parsedInput.data.sessionId)
-        .eq("team_setup_item_id", itemId)
-        .maybeSingle()
-
-      if (existingValueError) {
-        redirect(
-          buildSessionDetailRedirectPath({
-            sessionId: parsedInput.data.sessionId,
-            error: "update_failed",
-            ...scope,
-          }),
-        )
+        })
       }
 
-      if (existingValueRow) {
-        const { error: deleteValueError } = await supabase
+      for (const optionRow of optionRows) {
+        const optionSet =
+          validOptionIdsByItemId.get(optionRow.team_setup_item_id) ?? new Set<string>()
+        optionSet.add(optionRow.id)
+        validOptionIdsByItemId.set(optionRow.team_setup_item_id, optionSet)
+      }
+    }
+
+    const itemIdsToDelete: string[] = []
+    const valuesToUpsert: Array<
+      Database["public"]["Tables"]["session_setup_item_values"]["Insert"]
+    > = []
+    const selectedOptionsByItemId = new Map<
+      string,
+      Array<{ optionId: string; allocationPercent: number | null }>
+    >()
+
+    for (const payloadEntry of payloadEntries) {
+      const item = itemById.get(payloadEntry.itemId)
+
+      if (!item) {
+        return buildSessionSetupActionError({
+          error: "invalid_input",
+          scope,
+          sessionId: parsedInput.data.sessionId,
+        })
+      }
+
+      const hasTextValue = Boolean(payloadEntry.textValue)
+      const hasSelectedOptions = payloadEntry.selectedOptions.length > 0
+      const shouldPersist = hasTextValue || hasSelectedOptions
+
+      if (item.input_kind === "text" && hasSelectedOptions) {
+        return buildSessionSetupActionError({
+          error: "invalid_input",
+          scope,
+          sessionId: parsedInput.data.sessionId,
+        })
+      }
+
+      if (item.input_kind !== "text" && hasTextValue) {
+        return buildSessionSetupActionError({
+          error: "invalid_input",
+          scope,
+          sessionId: parsedInput.data.sessionId,
+        })
+      }
+
+      const validOptionIds = validOptionIdsByItemId.get(payloadEntry.itemId) ?? new Set<string>()
+      if (
+        payloadEntry.selectedOptions.some(
+          (selectedOption) => !validOptionIds.has(selectedOption.optionId),
+        )
+      ) {
+        return buildSessionSetupActionError({
+          error: "invalid_input",
+          scope,
+          sessionId: parsedInput.data.sessionId,
+        })
+      }
+
+      if (item.input_kind === "single_select" && payloadEntry.selectedOptions.length > 1) {
+        return buildSessionSetupActionError({
+          error: "invalid_input",
+          scope,
+          sessionId: parsedInput.data.sessionId,
+        })
+      }
+
+      if (!shouldPersist) {
+        itemIdsToDelete.push(payloadEntry.itemId)
+        continue
+      }
+
+      const normalizedSelectedOptions =
+        item.key === "tws"
+          ? normalizeTwsSelectedOptions({
+              selectedOptions: payloadEntry.selectedOptions,
+            })
+          : payloadEntry.selectedOptions.map((selectedOption) => ({
+              optionId: selectedOption.optionId,
+              allocationPercent: null,
+            }))
+
+      if (!normalizedSelectedOptions) {
+        return buildSessionSetupActionError({
+          error: "invalid_input",
+          scope,
+          sessionId: parsedInput.data.sessionId,
+        })
+      }
+
+      valuesToUpsert.push({
+        session_id: parsedInput.data.sessionId,
+        team_setup_item_id: payloadEntry.itemId,
+        text_value: item.input_kind === "text" ? payloadEntry.textValue : null,
+      })
+
+      if (item.input_kind !== "text") {
+        selectedOptionsByItemId.set(payloadEntry.itemId, normalizedSelectedOptions)
+      }
+    }
+
+    if (itemIdsToDelete.length > 0) {
+      const { data: existingValueRowsData, error: existingValueRowsError } = await supabase
+        .from("session_setup_item_values")
+        .select("id,team_setup_item_id")
+        .eq("session_id", parsedInput.data.sessionId)
+        .in("team_setup_item_id", itemIdsToDelete)
+
+      if (existingValueRowsError || !existingValueRowsData) {
+        return buildSessionSetupActionError({
+          error: "update_failed",
+          scope,
+          sessionId: parsedInput.data.sessionId,
+        })
+      }
+
+      const existingValueRows = existingValueRowsData as SessionSetupItemValueIdRow[]
+      const valueIdsToDelete = existingValueRows.map((row) => row.id)
+
+      if (valueIdsToDelete.length > 0) {
+        const { error: deleteValuesError } = await supabase
           .from("session_setup_item_values")
           .delete()
-          .eq("id", existingValueRow.id)
+          .in("id", valueIdsToDelete)
 
-        if (deleteValueError) {
-          redirect(
-            buildSessionDetailRedirectPath({
-              sessionId: parsedInput.data.sessionId,
-              error: "update_failed",
-              ...scope,
-            }),
-          )
+        if (deleteValuesError) {
+          return buildSessionSetupActionError({
+            error: "update_failed",
+            scope,
+            sessionId: parsedInput.data.sessionId,
+          })
+        }
+      }
+    }
+
+    if (valuesToUpsert.length > 0) {
+      const { data: upsertedValueRowsData, error: upsertValuesError } = await supabase
+        .from("session_setup_item_values")
+        .upsert(valuesToUpsert, { onConflict: "session_id,team_setup_item_id" })
+        .select("id,team_setup_item_id")
+
+      if (upsertValuesError || !upsertedValueRowsData) {
+        return buildSessionSetupActionError({
+          error: "update_failed",
+          scope,
+          sessionId: parsedInput.data.sessionId,
+        })
+      }
+
+      const upsertedValueRows = upsertedValueRowsData as SessionSetupItemValueIdRow[]
+      const valueIdByItemId = new Map(
+        upsertedValueRows.map((row) => [row.team_setup_item_id, row.id]),
+      )
+      const optionValueIds = Array.from(selectedOptionsByItemId.keys())
+        .map((itemId) => valueIdByItemId.get(itemId) ?? null)
+        .filter((valueId): valueId is string => valueId !== null)
+
+      if (optionValueIds.length !== selectedOptionsByItemId.size) {
+        return buildSessionSetupActionError({
+          error: "update_failed",
+          scope,
+          sessionId: parsedInput.data.sessionId,
+        })
+      }
+
+      if (optionValueIds.length > 0) {
+        const { error: deleteSelectedOptionsError } = await supabase
+          .from("session_setup_item_selected_options")
+          .delete()
+          .in("session_setup_item_value_id", optionValueIds)
+
+        if (deleteSelectedOptionsError) {
+          return buildSessionSetupActionError({
+            error: "update_failed",
+            scope,
+            sessionId: parsedInput.data.sessionId,
+          })
         }
       }
 
-      continue
-    }
+      const selectedOptionRowsToInsert: Array<
+        Database["public"]["Tables"]["session_setup_item_selected_options"]["Insert"]
+      > = []
 
-    const normalizedSelectedOptions =
-      item.key === "tws"
-        ? normalizeTwsSelectedOptions({
-            selectedOptions: payloadEntry.selectedOptions,
-          })
-        : payloadEntry.selectedOptions.map((selectedOption) => ({
-            optionId: selectedOption.optionId,
-            allocationPercent: null,
-          }))
+      for (const [itemId, selectedOptions] of selectedOptionsByItemId.entries()) {
+        const valueId = valueIdByItemId.get(itemId)
 
-    if (!normalizedSelectedOptions) {
-      redirect(
-        buildSessionDetailRedirectPath({
-          sessionId: parsedInput.data.sessionId,
-          error: "invalid_input",
-          ...scope,
-        }),
-      )
-    }
-
-    const { data: upsertedValueRow, error: upsertValueError } = await supabase
-      .from("session_setup_item_values")
-      .upsert(
-        {
-          session_id: parsedInput.data.sessionId,
-          team_setup_item_id: itemId,
-          text_value: item.input_kind === "text" ? payloadEntry.textValue : null,
-        },
-        { onConflict: "session_id,team_setup_item_id" },
-      )
-      .select("id")
-      .single()
-
-    if (upsertValueError || !upsertedValueRow) {
-      redirect(
-        buildSessionDetailRedirectPath({
-          sessionId: parsedInput.data.sessionId,
-          error: "update_failed",
-          ...scope,
-        }),
-      )
-    }
-
-    const { error: deleteSelectedOptionsError } = await supabase
-      .from("session_setup_item_selected_options")
-      .delete()
-      .eq("session_setup_item_value_id", upsertedValueRow.id)
-
-    if (deleteSelectedOptionsError) {
-      redirect(
-        buildSessionDetailRedirectPath({
-          sessionId: parsedInput.data.sessionId,
-          error: "update_failed",
-          ...scope,
-        }),
-      )
-    }
-
-    if (item.input_kind !== "text" && normalizedSelectedOptions.length > 0) {
-      const { error: insertSelectedOptionsError } = await supabase
-        .from("session_setup_item_selected_options")
-        .insert(
-          normalizedSelectedOptions.map((selectedOption) => ({
-            session_setup_item_value_id: upsertedValueRow.id,
-            team_setup_item_option_id: selectedOption.optionId,
-            allocation_percent:
-              item.key === "tws" ? selectedOption.allocationPercent : null,
-          })),
-        )
-
-      if (insertSelectedOptionsError) {
-        redirect(
-          buildSessionDetailRedirectPath({
-            sessionId: parsedInput.data.sessionId,
+        if (!valueId) {
+          return buildSessionSetupActionError({
             error: "update_failed",
-            ...scope,
-          }),
-        )
+            scope,
+            sessionId: parsedInput.data.sessionId,
+          })
+        }
+
+        for (const selectedOption of selectedOptions) {
+          selectedOptionRowsToInsert.push({
+            session_setup_item_value_id: valueId,
+            team_setup_item_option_id: selectedOption.optionId,
+            allocation_percent: selectedOption.allocationPercent,
+          })
+        }
+      }
+
+      if (selectedOptionRowsToInsert.length > 0) {
+        const { error: insertSelectedOptionsError } = await supabase
+          .from("session_setup_item_selected_options")
+          .insert(selectedOptionRowsToInsert)
+
+        if (insertSelectedOptionsError) {
+          return buildSessionSetupActionError({
+            error: "update_failed",
+            scope,
+            sessionId: parsedInput.data.sessionId,
+          })
+        }
       }
     }
   }
 
-  if (orderedItemIds) {
+  if (hasOrderChange) {
     const reorderResult = await persistBoatSetupMetricOrder({
       supabase,
       teamId: scope.scopeTeamId,
@@ -2129,27 +2242,70 @@ export async function updateSessionSetupAction(formData: FormData): Promise<void
     })
 
     if (reorderResult.error) {
-      redirect(
-        buildSessionDetailRedirectPath({
-          sessionId: parsedInput.data.sessionId,
-          error: reorderResult.error,
-          ...scope,
-        }),
-      )
+      return buildSessionSetupActionError({
+        error: reorderResult.error,
+        scope,
+        sessionId: parsedInput.data.sessionId,
+      })
     }
   }
 
-  revalidateSessionSlices({
+  revalidateSessionSetupSlices({
     sessionId: parsedInput.data.sessionId,
-    campId: scopedSession.camp.id,
-    teamVenueId: scopedSession.teamVenue.id,
   })
+
+  return {
+    ok: true,
+    sessionId: parsedInput.data.sessionId,
+    scope,
+  }
+}
+
+export async function saveSessionSetupAction(
+  formData: FormData,
+): Promise<UpdateSessionSetupActionResult> {
+  const result = await updateSessionSetupMutation(formData)
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      error: result.error,
+      message: result.message,
+    }
+  }
+
+  return {
+    ok: true,
+  }
+}
+
+export async function updateSessionSetupAction(formData: FormData): Promise<void> {
+  const result = await updateSessionSetupMutation(formData)
+
+  if (!result.ok) {
+    if (!result.sessionId) {
+      redirect(
+        buildTeamSessionsRedirectPath({
+          error: result.error,
+          ...result.scope,
+        }),
+      )
+    }
+
+    redirect(
+      buildSessionDetailRedirectPath({
+        sessionId: result.sessionId,
+        error: result.error,
+        ...result.scope,
+      }),
+    )
+  }
 
   redirect(
     buildSessionDetailRedirectPath({
-      sessionId: parsedInput.data.sessionId,
+      sessionId: result.sessionId,
       status: "setup_updated",
-      ...scope,
+      ...result.scope,
     }),
   )
 }
