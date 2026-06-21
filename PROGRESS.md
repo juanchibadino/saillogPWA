@@ -4,6 +4,12 @@ Last updated: 2026-06-20
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
 
+## 2026-06-21 - Session header actions restored
+
+- Restored `/team-sessions/[id]` header actions so `Setup` and `Edit` render together on the right side of the session title row.
+- Moved the session metadata edit trigger back out of the title area and restored the visible `Edit` label while preserving the mobile Drawer and desktop Sheet edit surfaces.
+- Validation: `git diff --check` and `npm run build`.
+
 ## 2026-06-20 - Session header edit action placement
 
 - Updated `/team-sessions/[id]` header so `Setup` remains in the right-side action area while the session metadata edit action moves next to the session type title.

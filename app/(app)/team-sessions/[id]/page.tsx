@@ -14,7 +14,6 @@ import {
 import {
   SessionDetailTabsClient,
   SessionHeaderActions,
-  SessionMetadataEditAction,
 } from "@/features/sessions/session-detail-tabs-client"
 import { SessionsFeedback } from "@/features/sessions/sessions-feedback"
 import {
@@ -205,6 +204,11 @@ async function SessionHeaderActionsSlot(input: {
   deferredDataPromise: Promise<SessionDetailDeferredData>
   sessionId: string
   scope: NonNullable<Awaited<ReturnType<typeof resolveNavigationScope>>["scope"]>
+  sessionType: "training" | "regatta"
+  sessionDate: string
+  dockOutAt: string | null
+  dockInAt: string | null
+  netTimeMinutes: number | null
   canManageSession: boolean
 }) {
   const deferredData = await input.deferredDataPromise
@@ -214,6 +218,11 @@ async function SessionHeaderActionsSlot(input: {
       sessionId={input.sessionId}
       scope={input.scope}
       setupDialogItems={deferredData.setupDialogItems}
+      sessionType={input.sessionType}
+      sessionDate={input.sessionDate}
+      dockOutAt={input.dockOutAt}
+      dockInAt={input.dockInAt}
+      netTimeMinutes={input.netTimeMinutes}
       canManageSession={input.canManageSession}
     />
   )
@@ -358,19 +367,8 @@ export default async function SessionDetailPage({
 
       <section className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
+          <div>
             <h1 className="text-2xl font-semibold tracking-tight">{sessionTypeLabel}</h1>
-            {canManageSession ? (
-              <SessionMetadataEditAction
-                sessionId={detailData.session.id}
-                scope={scope}
-                sessionType={detailData.session.session_type}
-                sessionDate={detailData.session.session_date}
-                dockOutAt={detailData.session.dock_out_at}
-                dockInAt={detailData.session.dock_in_at}
-                netTimeMinutes={detailData.session.net_time_minutes}
-              />
-            ) : null}
           </div>
 
           {canManageSession ? (
@@ -379,6 +377,11 @@ export default async function SessionDetailPage({
                 deferredDataPromise={deferredDataPromise}
                 sessionId={detailData.session.id}
                 scope={scope}
+                sessionType={detailData.session.session_type}
+                sessionDate={detailData.session.session_date}
+                dockOutAt={detailData.session.dock_out_at}
+                dockInAt={detailData.session.dock_in_at}
+                netTimeMinutes={detailData.session.net_time_minutes}
                 canManageSession={canManageSession}
               />
             </Suspense>

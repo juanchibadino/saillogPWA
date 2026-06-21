@@ -2309,7 +2309,7 @@ function SetupDialog(input: {
   )
 }
 
-export function SessionMetadataEditAction(input: {
+function EditSessionMetadataDialog(input: {
   sessionId: string
   scope: NavigationScope
   sessionType: "training" | "regatta"
@@ -2480,13 +2480,8 @@ export function SessionMetadataEditAction(input: {
     return (
       <Drawer>
         <DrawerTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon-lg"
-            aria-label="Edit session"
-          >
-            <PencilIcon className="size-4" />
+          <Button type="button" variant="outline" size="default" className="h-9 px-3">
+            Edit
           </Button>
         </DrawerTrigger>
         <DrawerContent className="max-h-[85dvh] overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
@@ -2501,17 +2496,8 @@ export function SessionMetadataEditAction(input: {
 
   return (
     <Sheet>
-      <SheetTrigger
-        render={
-          <Button
-            type="button"
-            variant="outline"
-            size="icon-lg"
-            aria-label="Edit session"
-          />
-        }
-      >
-        <PencilIcon className="size-4" />
+      <SheetTrigger render={<Button type="button" variant="outline" size="sm" />}>
+        Edit
       </SheetTrigger>
       <SheetContent side="right" className="h-full overflow-hidden sm:max-w-xl">
         <SheetHeader className="shrink-0">
@@ -4271,6 +4257,11 @@ export function SessionHeaderActions(input: {
   sessionId: string
   scope: NavigationScope
   setupDialogItems: SessionSetupDialogItem[]
+  sessionType: "training" | "regatta"
+  sessionDate: string
+  dockOutAt: string | null
+  dockInAt: string | null
+  netTimeMinutes: number | null
   canManageSession: boolean
 }) {
   if (!input.canManageSession) {
@@ -4283,6 +4274,15 @@ export function SessionHeaderActions(input: {
         sessionId={input.sessionId}
         scope={input.scope}
         items={input.setupDialogItems}
+      />
+      <EditSessionMetadataDialog
+        sessionId={input.sessionId}
+        scope={input.scope}
+        sessionType={input.sessionType}
+        sessionDate={input.sessionDate}
+        dockOutAt={input.dockOutAt}
+        dockInAt={input.dockInAt}
+        netTimeMinutes={input.netTimeMinutes}
       />
     </div>
   )
