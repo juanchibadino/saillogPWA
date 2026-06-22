@@ -447,45 +447,113 @@ export function OrganizationReportsPageSkeleton() {
 }
 
 export function SessionDetailPageSkeleton() {
+  const summaryLabels = ["Type", "Date", "Dock Out", "Duration"]
+  const tabLabels = ["Info", "Goals", "Results", "Images", "Analytics", "Gear"]
+
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <Skeleton className="h-4 w-64" />
-      </div>
-
-      <div className="space-y-3">
+      <section className="space-y-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="space-y-2">
-            <Skeleton className="h-8 w-40" />
-            <Skeleton className="h-4 w-36" />
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Team Session</h1>
           </div>
+
           <div className="flex gap-2">
-            <Skeleton className="h-9 w-20" />
-            <Skeleton className="h-9 w-20" />
+            <button
+              type="button"
+              disabled
+              className="inline-flex h-7 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-[0.8rem] font-medium text-muted-foreground opacity-70 md:h-7"
+            >
+              Setup
+            </button>
+            <button
+              type="button"
+              disabled
+              className="inline-flex h-7 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-[0.8rem] font-medium text-muted-foreground opacity-70 md:h-7"
+            >
+              Edit
+            </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <SkeletonCard key={`session-detail-kpi-${index}`} />
+        <div className="overflow-hidden rounded-xl border bg-card p-0 md:hidden">
+          <div className="divide-y divide-border px-6 py-3">
+            {summaryLabels.map((label) => (
+              <div
+                key={`session-detail-mobile-summary-${label}`}
+                className="flex min-h-12 items-center justify-between gap-4"
+              >
+                <p className="text-sm text-muted-foreground">{label}</p>
+                <Skeleton className="h-5 w-24" />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="hidden gap-4 md:grid md:grid-cols-4">
+          {summaryLabels.map((label) => (
+            <div
+              key={`session-detail-desktop-summary-${label}`}
+              className="rounded-xl border bg-card p-6"
+            >
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">{label}</p>
+                <Skeleton className="h-7 w-28" />
+              </div>
+            </div>
           ))}
         </div>
-      </div>
+      </section>
 
-      <div className="rounded-xl border bg-card p-4 sm:p-6">
-        <div className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <Skeleton key={`session-detail-tab-${index}`} className="h-9 w-24 rounded-full" />
-            ))}
-          </div>
-
-          <div className="space-y-3">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <Skeleton key={`session-detail-row-${index}`} className="h-16 w-full" />
-            ))}
-          </div>
+      <div className="space-y-4">
+        <div className="flex h-10 max-w-full items-center gap-1 overflow-x-auto rounded-lg bg-muted p-1 md:hidden">
+          {tabLabels.map((label, index) => (
+            <button
+              key={`session-detail-mobile-tab-${label}`}
+              type="button"
+              disabled
+              className="inline-flex h-8 min-w-fit items-center justify-center rounded-md px-2 text-sm font-medium text-muted-foreground data-[active=true]:bg-background data-[active=true]:text-foreground"
+              data-active={index === 0 ? "true" : undefined}
+            >
+              {label}
+            </button>
+          ))}
         </div>
+
+        <div className="hidden h-10 items-center gap-1 rounded-lg bg-muted p-1 md:inline-flex">
+          {tabLabels.map((label, index) => (
+            <button
+              key={`session-detail-desktop-tab-${label}`}
+              type="button"
+              disabled
+              className="inline-flex h-8 min-w-fit items-center justify-center rounded-md px-3 text-sm font-medium text-muted-foreground data-[active=true]:bg-background data-[active=true]:text-foreground"
+              data-active={index === 0 ? "true" : undefined}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <section className="rounded-xl border bg-card p-4 sm:p-6">
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-2">
+                <h3 className="text-base font-semibold">Info</h3>
+                <Skeleton className="h-4 w-72 max-w-full" />
+              </div>
+              <span
+                aria-hidden="true"
+                className="mt-1 size-4 animate-spin rounded-full border-2 border-muted-foreground/25 border-t-muted-foreground"
+              />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Skeleton className="h-28 rounded-lg" />
+              <Skeleton className="h-28 rounded-lg" />
+              <Skeleton className="h-20 rounded-lg sm:col-span-2" />
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   )

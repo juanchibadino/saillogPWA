@@ -62,9 +62,9 @@ export const updateSessionInfoInputSchema = z.object({
   sessionId: z.string().uuid(),
   bestOfSession: optionalTrimmedTextSchema,
   toWork: optionalTrimmedTextSchema,
-  windPatterns: optionalTrimmedTextSchema,
   freeNotes: optionalTrimmedTextSchema,
   standardMoveIds: z.array(z.string().uuid()).max(200).optional().default([]),
+  windPatternIds: z.array(z.string().uuid()).max(200).optional().default([]),
 })
 
 export const updateSessionResultsInputSchema = z.object({

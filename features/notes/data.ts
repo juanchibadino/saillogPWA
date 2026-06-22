@@ -1,7 +1,7 @@
 import "server-only"
 
 import { createServerSupabaseClient } from "@/lib/supabase/server"
-import type { Database } from "@/types/database"
+import type { Database, Json } from "@/types/database"
 
 const TEAM_NOTES_PAGE_SIZE = 12
 const CONDITION_ITEM_KEYS = new Set(["tws", "twd", "sea_state", "conditions"])
@@ -48,7 +48,7 @@ type SessionSetupItemSelectedOptionRow = Pick<
 
 type SessionReviewRow = Pick<
   Database["public"]["Tables"]["session_reviews"]["Row"],
-  "session_id" | "best_of_session" | "to_work"
+  "session_id" | "best_of_session" | "to_work" | "wind_patterns"
 >
 
 type SessionSetupRow = Pick<
@@ -61,8 +61,18 @@ type SessionStandardMoveRow = Pick<
   "session_id" | "team_standard_move_id"
 >
 
+type SessionWindPatternRow = Pick<
+  Database["public"]["Tables"]["session_wind_patterns"]["Row"],
+  "session_id" | "team_venue_wind_pattern_id"
+>
+
 type TeamStandardMoveRow = Pick<
   Database["public"]["Tables"]["team_standard_moves"]["Row"],
+  "id" | "name"
+>
+
+type TeamVenueWindPatternRow = Pick<
+  Database["public"]["Tables"]["team_venue_wind_patterns"]["Row"],
   "id" | "name"
 >
 
@@ -77,10 +87,12 @@ const SESSION_SETUP_ITEM_VALUE_SELECT_COLUMNS =
   "id,session_id,team_setup_item_id,text_value"
 const SESSION_SETUP_ITEM_SELECTED_OPTION_SELECT_COLUMNS =
   "session_setup_item_value_id,team_setup_item_option_id"
-const SESSION_REVIEW_SELECT_COLUMNS = "session_id,best_of_session,to_work"
+const SESSION_REVIEW_SELECT_COLUMNS = "session_id,best_of_session,to_work,wind_patterns"
 const SESSION_SETUP_SELECT_COLUMNS = "session_id,free_notes"
 const SESSION_STANDARD_MOVE_SELECT_COLUMNS = "session_id,team_standard_move_id"
+const SESSION_WIND_PATTERN_SELECT_COLUMNS = "session_id,team_venue_wind_pattern_id"
 const TEAM_STANDARD_MOVE_SELECT_COLUMNS = "id,name"
+const TEAM_VENUE_WIND_PATTERN_SELECT_COLUMNS = "id,name"
 
 export type TeamNoteVenueFilterOption = {
   venueId: string
@@ -115,6 +127,8 @@ export type TeamNoteCard = {
     toWork: string | null
     freeNotes: string | null
     standardMoves: string[]
+    windPatterns: string[]
+    legacyWindPatterns: string | null
   }
 }
 
@@ -138,6 +152,38 @@ function normalizeText(value: string | null | undefined): string | null {
 
   const normalized = value.trim()
   return normalized.length > 0 ? normalized : null
+}
+
+function formatJsonNote(value: Json | null | undefined): string | null {
+  if (value === null || value === undefined) {
+    return null
+  }
+
+  if (typeof value === "string") {
+    return normalizeText(value)
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value)
+  }
+
+  if (Array.isArray(value)) {
+    const items = value
+      .map((item) => formatJsonNote(item))
+      .filter((item): item is string => item !== null)
+
+    return items.length > 0 ? items.join(", ") : null
+  }
+
+  const objectEntries = Object.entries(value)
+    .map(([key, nestedValue]) => {
+      const nestedText = formatJsonNote(nestedValue)
+
+      return nestedText ? `${key}: ${nestedText}` : null
+    })
+    .filter((item): item is string => item !== null)
+
+  return objectEntries.length > 0 ? objectEntries.join(" | ") : null
 }
 
 function normalizePage(value: number): number {
@@ -223,6 +269,8 @@ function buildSearchIndex(card: TeamNoteCard): string {
     card.notes.toWork ?? "",
     card.notes.freeNotes ?? "",
     card.notes.standardMoves.join(" "),
+    card.notes.windPatterns.join(" "),
+    card.notes.legacyWindPatterns ?? "",
   ]
     .join(" ")
     .toLowerCase()
@@ -470,6 +518,7 @@ export async function getTeamNotesPageData(input: {
     { data: reviewData, error: reviewsError },
     { data: setupData, error: setupsError },
     { data: sessionStandardMoveData, error: sessionStandardMovesError },
+    { data: sessionWindPatternData, error: sessionWindPatternsError },
   ] =
     await Promise.all([
       supabase
@@ -483,6 +532,10 @@ export async function getTeamNotesPageData(input: {
       supabase
         .from("session_standard_moves")
         .select(SESSION_STANDARD_MOVE_SELECT_COLUMNS)
+        .in("session_id", sessionIds),
+      supabase
+        .from("session_wind_patterns")
+        .select(SESSION_WIND_PATTERN_SELECT_COLUMNS)
         .in("session_id", sessionIds),
     ])
 
@@ -500,9 +553,20 @@ export async function getTeamNotesPageData(input: {
     )
   }
 
+  if (sessionWindPatternsError) {
+    throw new Error(
+      `Could not load session wind patterns for notes: ${sessionWindPatternsError.message}`,
+    )
+  }
+
   const sessionStandardMoves: SessionStandardMoveRow[] = sessionStandardMoveData ?? []
+  const sessionWindPatterns: SessionWindPatternRow[] = sessionWindPatternData ?? []
   const standardMoveIds = uniqueIds(sessionStandardMoves.map((row) => row.team_standard_move_id))
+  const windPatternIds = uniqueIds(
+    sessionWindPatterns.map((row) => row.team_venue_wind_pattern_id),
+  )
   let teamStandardMoves: TeamStandardMoveRow[] = []
+  let teamVenueWindPatterns: TeamVenueWindPatternRow[] = []
 
   if (standardMoveIds.length > 0) {
     const { data: standardMoveData, error: standardMovesError } = await supabase
@@ -518,6 +582,19 @@ export async function getTeamNotesPageData(input: {
     teamStandardMoves = standardMoveData ?? []
   }
 
+  if (windPatternIds.length > 0) {
+    const { data: windPatternData, error: windPatternsError } = await supabase
+      .from("team_venue_wind_patterns")
+      .select(TEAM_VENUE_WIND_PATTERN_SELECT_COLUMNS)
+      .in("id", windPatternIds)
+
+    if (windPatternsError) {
+      throw new Error(`Could not load wind patterns for notes: ${windPatternsError.message}`)
+    }
+
+    teamVenueWindPatterns = windPatternData ?? []
+  }
+
   const reviewBySessionId = new Map<string, SessionReviewRow>(
     (reviewData ?? []).map((row) => [row.session_id, row]),
   )
@@ -525,7 +602,9 @@ export async function getTeamNotesPageData(input: {
     (setupData ?? []).map((row) => [row.session_id, row]),
   )
   const standardMoveNameById = new Map(teamStandardMoves.map((row) => [row.id, row.name]))
+  const windPatternNameById = new Map(teamVenueWindPatterns.map((row) => [row.id, row.name]))
   const standardMovesBySessionId = new Map<string, string[]>()
+  const windPatternsBySessionId = new Map<string, string[]>()
 
   for (const sessionStandardMove of sessionStandardMoves) {
     const standardMoveName = standardMoveNameById.get(sessionStandardMove.team_standard_move_id)
@@ -540,7 +619,31 @@ export async function getTeamNotesPageData(input: {
   }
 
   for (const [sessionId, standardMoveNames] of standardMovesBySessionId.entries()) {
-    standardMovesBySessionId.set(sessionId, [...standardMoveNames].sort((left, right) => left.localeCompare(right)))
+    standardMovesBySessionId.set(
+      sessionId,
+      [...standardMoveNames].sort((left, right) => left.localeCompare(right)),
+    )
+  }
+
+  for (const sessionWindPattern of sessionWindPatterns) {
+    const windPatternName = windPatternNameById.get(
+      sessionWindPattern.team_venue_wind_pattern_id,
+    )
+
+    if (!windPatternName) {
+      continue
+    }
+
+    const existingNames = windPatternsBySessionId.get(sessionWindPattern.session_id) ?? []
+    existingNames.push(windPatternName)
+    windPatternsBySessionId.set(sessionWindPattern.session_id, existingNames)
+  }
+
+  for (const [sessionId, windPatternNames] of windPatternsBySessionId.entries()) {
+    windPatternsBySessionId.set(
+      sessionId,
+      [...windPatternNames].sort((left, right) => left.localeCompare(right)),
+    )
   }
 
   const selectedOptionIdsBySetupValueId = new Map<string, string[]>()
@@ -662,7 +765,16 @@ export async function getTeamNotesPageData(input: {
     const toWork = normalizeText(review?.to_work)
     const freeNotes = normalizeText(sessionSetup?.free_notes)
     const standardMoves = standardMovesBySessionId.get(session.id) ?? []
-    const hasNotesData = Boolean(bestOfSession || toWork || freeNotes || standardMoves.length > 0)
+    const windPatterns = windPatternsBySessionId.get(session.id) ?? []
+    const legacyWindPatterns = windPatterns.length > 0 ? null : formatJsonNote(review?.wind_patterns)
+    const hasNotesData = Boolean(
+      bestOfSession ||
+        toWork ||
+        freeNotes ||
+        standardMoves.length > 0 ||
+        windPatterns.length > 0 ||
+        legacyWindPatterns,
+    )
 
     if (!hasSetupData && !hasNotesData) {
       continue
@@ -700,6 +812,8 @@ export async function getTeamNotesPageData(input: {
         toWork,
         freeNotes,
         standardMoves,
+        windPatterns,
+        legacyWindPatterns,
       },
     }
 

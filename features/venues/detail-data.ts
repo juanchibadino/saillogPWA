@@ -1,5 +1,6 @@
 import "server-only";
 
+import { getTeamVenueWindPatternsPageData } from "@/features/wind-patterns/data";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
 import type {
@@ -319,6 +320,14 @@ function buildEmptyYearData(): VenueDetailYearData {
       templates: [],
       runs: [],
     },
+  };
+}
+
+function buildEmptyWindPatternsData() {
+  return {
+    patterns: [],
+    activeCount: 0,
+    archivedCount: 0,
   };
 }
 
@@ -764,6 +773,7 @@ function buildEmptyData(input: {
   return {
     venue: input.venue,
     teamVenue: input.teamVenue,
+    windPatterns: buildEmptyWindPatternsData(),
     availableYears,
     selectedYear,
     byYear: {
@@ -879,6 +889,7 @@ export async function getVenueDetailPageData(input: {
     { data: reportRows, error: reportsError },
     { data: templateRows, error: templatesError },
     { data: runRows, error: runsError },
+    windPatterns,
   ] = await Promise.all([
     supabase
       .from("team_venue_reports")
@@ -897,6 +908,9 @@ export async function getVenueDetailPageData(input: {
       .eq("team_id", input.activeTeamId)
       .eq("team_venue_id", teamVenue.id)
       .order("created_at", { ascending: false }),
+    getTeamVenueWindPatternsPageData({
+      teamVenueId: teamVenue.id,
+    }),
   ]);
 
   if (reportsError) {
@@ -1156,6 +1170,7 @@ export async function getVenueDetailPageData(input: {
   return {
     venue,
     teamVenue,
+    windPatterns,
     availableYears,
     selectedYear,
     byYear,

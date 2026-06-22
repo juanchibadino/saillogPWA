@@ -373,6 +373,30 @@ export type Database = {
         };
         Relationships: [];
       };
+      session_wind_patterns: {
+        Row: {
+          id: string;
+          session_id: string;
+          team_venue_wind_pattern_id: string;
+          created_by_profile_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          session_id: string;
+          team_venue_wind_pattern_id: string;
+          created_by_profile_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          session_id?: string;
+          team_venue_wind_pattern_id?: string;
+          created_by_profile_id?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       session_reviews: {
         Row: {
           id: string;
@@ -502,6 +526,39 @@ export type Database = {
         Update: {
           id?: string;
           team_id?: string;
+          name?: string;
+          description?: string | null;
+          is_active?: boolean;
+          created_by_profile_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      team_venue_wind_patterns: {
+        Row: {
+          id: string;
+          team_venue_id: string;
+          name: string;
+          description: string | null;
+          is_active: boolean;
+          created_by_profile_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          team_venue_id: string;
+          name: string;
+          description?: string | null;
+          is_active?: boolean;
+          created_by_profile_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          team_venue_id?: string;
           name?: string;
           description?: string | null;
           is_active?: boolean;

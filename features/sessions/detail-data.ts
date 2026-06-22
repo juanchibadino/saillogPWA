@@ -107,6 +107,16 @@ type SessionStandardMoveRow = Pick<
   "session_id" | "team_standard_move_id"
 >
 
+type TeamVenueWindPatternRow = Pick<
+  Database["public"]["Tables"]["team_venue_wind_patterns"]["Row"],
+  "id" | "name" | "description" | "is_active"
+>
+
+type SessionWindPatternRow = Pick<
+  Database["public"]["Tables"]["session_wind_patterns"]["Row"],
+  "session_id" | "team_venue_wind_pattern_id"
+>
+
 const SESSION_SELECT_COLUMNS =
   "id,camp_id,session_type,session_date,dock_out_at,dock_in_at,net_time_minutes,highlighted_by_coach,goals"
 const CAMP_SELECT_COLUMNS = "id,name,team_venue_id"
@@ -129,6 +139,8 @@ const SESSION_SETUP_ITEM_SELECTED_OPTIONS_SELECT_COLUMNS =
   "session_setup_item_value_id,team_setup_item_option_id,allocation_percent"
 const TEAM_STANDARD_MOVES_SELECT_COLUMNS = "id,name,description,is_active"
 const SESSION_STANDARD_MOVES_SELECT_COLUMNS = "session_id,team_standard_move_id"
+const TEAM_VENUE_WIND_PATTERNS_SELECT_COLUMNS = "id,name,description,is_active"
+const SESSION_WIND_PATTERNS_SELECT_COLUMNS = "session_id,team_venue_wind_pattern_id"
 
 export type SessionDetailShellData = Pick<
   SessionDetailData,
@@ -197,12 +209,14 @@ function buildInfo(input: {
   review: SessionReviewRow | null
   setup: SessionSetupRow | null
   standardMoveNames: string[]
+  windPatternNames: string[]
 }): SessionDetailInfo {
   return {
     bestOfSession: normalizeText(input.review?.best_of_session),
     toWork: normalizeText(input.review?.to_work),
     standardMoves: input.standardMoveNames,
-    windPatterns: formatJsonNote(input.review?.wind_patterns),
+    windPatterns: input.windPatternNames,
+    legacyWindPatterns: formatJsonNote(input.review?.wind_patterns),
     freeNotes: normalizeText(input.setup?.free_notes),
   }
 }
@@ -385,6 +399,7 @@ export async function getSessionDetailShellData(input: {
 
 export async function getSessionDetailDeferredData(input: {
   activeTeamId: string
+  teamVenueId: string
   sessionId: string
 }): Promise<SessionDetailDeferredData> {
   const supabase = await createServerSupabaseClient()
@@ -399,6 +414,8 @@ export async function getSessionDetailDeferredData(input: {
     { data: teamSetupItemsData, error: teamSetupItemsError },
     { data: teamStandardMovesData, error: teamStandardMovesError },
     { data: sessionStandardMovesData, error: sessionStandardMovesError },
+    { data: teamVenueWindPatternsData, error: teamVenueWindPatternsError },
+    { data: sessionWindPatternsData, error: sessionWindPatternsError },
   ] = await Promise.all([
     supabase
       .from("session_reviews")
@@ -442,6 +459,15 @@ export async function getSessionDetailDeferredData(input: {
     supabase
       .from("session_standard_moves")
       .select(SESSION_STANDARD_MOVES_SELECT_COLUMNS)
+      .eq("session_id", input.sessionId),
+    supabase
+      .from("team_venue_wind_patterns")
+      .select(TEAM_VENUE_WIND_PATTERNS_SELECT_COLUMNS)
+      .eq("team_venue_id", input.teamVenueId)
+      .order("name", { ascending: true }),
+    supabase
+      .from("session_wind_patterns")
+      .select(SESSION_WIND_PATTERNS_SELECT_COLUMNS)
       .eq("session_id", input.sessionId),
   ])
 
@@ -489,6 +515,18 @@ export async function getSessionDetailDeferredData(input: {
     )
   }
 
+  if (teamVenueWindPatternsError) {
+    throw new Error(
+      `Could not load venue wind patterns for session detail: ${teamVenueWindPatternsError.message}`,
+    )
+  }
+
+  if (sessionWindPatternsError) {
+    throw new Error(
+      `Could not load session wind pattern links for session detail: ${sessionWindPatternsError.message}`,
+    )
+  }
+
   const assets: SessionAssetRow[] = (assetRows ?? []) as SessionAssetRow[]
   const gearItems: GearItemRow[] = (gearItemsData ?? []) as GearItemRow[]
   const sessionGearUsageRows: SessionGearUsageRow[] =
@@ -497,6 +535,9 @@ export async function getSessionDetailDeferredData(input: {
   const teamSetupItemIds = teamSetupItems.map((item) => item.id)
   const teamStandardMoves = (teamStandardMovesData ?? []) as TeamStandardMoveRow[]
   const sessionStandardMoves = (sessionStandardMovesData ?? []) as SessionStandardMoveRow[]
+  const teamVenueWindPatterns =
+    (teamVenueWindPatternsData ?? []) as TeamVenueWindPatternRow[]
+  const sessionWindPatterns = (sessionWindPatternsData ?? []) as SessionWindPatternRow[]
   const gearItemIds = new Set(gearItems.map((item) => item.id))
   const linkedGearItemIds = [...new Set(sessionGearUsageRows.map((row) => row.gear_item_id))].filter(
     (gearItemId) => gearItemIds.has(gearItemId),
@@ -510,6 +551,16 @@ export async function getSessionDetailDeferredData(input: {
   const linkedStandardMoveNames = linkedStandardMoveIds
     .map((standardMoveId) => standardMoveById.get(standardMoveId)?.name ?? null)
     .filter((standardMoveName): standardMoveName is string => standardMoveName !== null)
+    .sort((left, right) => left.localeCompare(right))
+  const windPatternById = new Map(
+    teamVenueWindPatterns.map((windPattern) => [windPattern.id, windPattern]),
+  )
+  const linkedWindPatternIds = [
+    ...new Set(sessionWindPatterns.map((row) => row.team_venue_wind_pattern_id)),
+  ].filter((windPatternId) => windPatternById.has(windPatternId))
+  const linkedWindPatternNames = linkedWindPatternIds
+    .map((windPatternId) => windPatternById.get(windPatternId)?.name ?? null)
+    .filter((windPatternName): windPatternName is string => windPatternName !== null)
     .sort((left, right) => left.localeCompare(right))
 
   let teamSetupItemOptions: TeamSetupItemOptionRow[] = []
@@ -570,6 +621,7 @@ export async function getSessionDetailDeferredData(input: {
       review: (reviewRow as SessionReviewRow | null) ?? null,
       setup: (setupRow as SessionSetupRow | null) ?? null,
       standardMoveNames: linkedStandardMoveNames,
+      windPatternNames: linkedWindPatternNames,
     }),
     availableStandardMoves: teamStandardMoves.map((standardMove) => ({
       id: standardMove.id,
@@ -578,6 +630,13 @@ export async function getSessionDetailDeferredData(input: {
       isActive: standardMove.is_active,
     })),
     linkedStandardMoveIds,
+    availableWindPatterns: teamVenueWindPatterns.map((windPattern) => ({
+      id: windPattern.id,
+      name: windPattern.name,
+      description: windPattern.description,
+      isActive: windPattern.is_active,
+    })),
+    linkedWindPatternIds,
     results: buildResults((regattaResultRow as SessionRegattaResultRow | null) ?? null),
     setupDialogItems: buildSetupDialogItems({
       teamSetupItems,
@@ -605,6 +664,7 @@ export async function getSessionDetailData(input: {
 
   const deferredData = await getSessionDetailDeferredData({
     activeTeamId: shellData.team.id,
+    teamVenueId: shellData.camp.team_venue_id,
     sessionId: shellData.session.id,
   })
 

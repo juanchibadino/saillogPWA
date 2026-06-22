@@ -1,4 +1,5 @@
 import { Suspense } from "react"
+import { Loader2Icon } from "lucide-react"
 
 import {
   Card,
@@ -6,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   getSessionDetailDeferredData,
   getSessionDetailShellData,
@@ -178,21 +180,88 @@ function formatSessionTypeLabel(value: "training" | "regatta"): string {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
-function SessionHeaderActionsFallback() {
-  return <div className="h-8 w-36 rounded-lg bg-muted" />
+function formatSessionDetailTabLabel(tab: SessionDetailTab): string {
+  return tab.charAt(0).toUpperCase() + tab.slice(1)
 }
 
-function SessionDetailTabsFallback() {
+function SessionHeaderActionsFallback() {
   return (
-    <div className="space-y-4">
-      <div className="h-10 w-80 max-w-full rounded-lg bg-muted" />
+    <div className="flex items-center gap-2" aria-busy="true">
+      <button
+        type="button"
+        disabled
+        className="inline-flex h-7 items-center justify-center gap-1 rounded-lg border border-border bg-background px-2.5 text-[0.8rem] font-medium text-muted-foreground opacity-70"
+      >
+        <Loader2Icon aria-hidden="true" className="size-3.5 animate-spin" />
+        <span>Setup</span>
+      </button>
+      <button
+        type="button"
+        disabled
+        className="inline-flex h-7 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-[0.8rem] font-medium text-muted-foreground opacity-70"
+      >
+        Edit
+      </button>
+    </div>
+  )
+}
+
+function SessionDetailTabsFallback({
+  selectedTab,
+}: {
+  selectedTab: SessionDetailTab
+}) {
+  const selectedTabLabel = formatSessionDetailTabLabel(selectedTab)
+
+  return (
+    <div className="space-y-4" aria-busy="true">
+      <div className="md:hidden">
+        <div className="flex h-10 max-w-full items-center gap-1 overflow-x-auto rounded-lg bg-muted p-1">
+          {SESSION_DETAIL_TABS.map((tab) => (
+            <button
+              key={`mobile-tab-loading-${tab}`}
+              type="button"
+              disabled
+              className="inline-flex h-8 min-w-fit items-center justify-center rounded-md px-2 text-sm font-medium text-muted-foreground data-[active=true]:bg-background data-[active=true]:text-foreground"
+              data-active={tab === selectedTab ? "true" : undefined}
+            >
+              {formatSessionDetailTabLabel(tab)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="hidden h-10 items-center gap-1 rounded-lg bg-muted p-1 md:inline-flex">
+        {SESSION_DETAIL_TABS.map((tab) => (
+          <button
+            key={`tab-loading-${tab}`}
+            type="button"
+            disabled
+            className="inline-flex h-8 min-w-fit items-center justify-center rounded-md px-3 text-sm font-medium text-muted-foreground data-[active=true]:bg-background data-[active=true]:text-foreground"
+            data-active={tab === selectedTab ? "true" : undefined}
+          >
+            {formatSessionDetailTabLabel(tab)}
+          </button>
+        ))}
+      </div>
+
       <section className="rounded-xl border bg-card p-4 sm:p-6">
-        <div className="space-y-3">
-          <div className="h-5 w-40 rounded bg-muted" />
-          <div className="h-4 w-72 max-w-full rounded bg-muted" />
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-2">
+              <h3 className="text-base font-semibold">{selectedTabLabel}</h3>
+              <Skeleton className="h-4 w-72 max-w-full" />
+            </div>
+            <Loader2Icon
+              aria-label={`Loading ${selectedTabLabel}`}
+              className="mt-1 size-4 animate-spin text-muted-foreground"
+            />
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="h-28 rounded-lg bg-muted" />
-            <div className="h-28 rounded-lg bg-muted" />
+            <Skeleton className="h-28 rounded-lg" />
+            <Skeleton className="h-28 rounded-lg" />
+            <Skeleton className="h-20 rounded-lg sm:col-span-2" />
           </div>
         </div>
       </section>
@@ -250,11 +319,14 @@ async function SessionDetailTabsSlot(input: {
         toWork: deferredData.info.toWork,
         standardMoves: deferredData.info.standardMoves,
         windPatterns: deferredData.info.windPatterns,
+        legacyWindPatterns: deferredData.info.legacyWindPatterns,
         freeNotes: deferredData.info.freeNotes,
       }}
       goals={input.goals}
       availableStandardMoves={deferredData.availableStandardMoves}
       linkedStandardMoveIds={deferredData.linkedStandardMoveIds}
+      availableWindPatterns={deferredData.availableWindPatterns}
+      linkedWindPatternIds={deferredData.linkedWindPatternIds}
       resultNotes={deferredData.results.resultNotes}
       images={deferredData.images}
       analyticsFiles={deferredData.analyticsFiles}
@@ -342,6 +414,7 @@ export default async function SessionDetailPage({
   })
   const deferredDataPromise = getSessionDetailDeferredData({
     activeTeamId: detailData.team.id,
+    teamVenueId: detailData.camp.team_venue_id,
     sessionId: detailData.session.id,
   })
 
@@ -368,7 +441,7 @@ export default async function SessionDetailPage({
       <section className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">{sessionTypeLabel}</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Team Session</h1>
           </div>
 
           {canManageSession ? (
@@ -391,6 +464,11 @@ export default async function SessionDetailPage({
         <Card className="overflow-hidden p-0 md:hidden">
           <div className="divide-y divide-border px-6 py-3">
             <div className="flex min-h-12 items-center justify-between gap-4">
+              <p className="text-sm text-muted-foreground">Type</p>
+              <p className="text-right text-sm font-semibold">{sessionTypeLabel}</p>
+            </div>
+
+            <div className="flex min-h-12 items-center justify-between gap-4">
               <p className="text-sm text-muted-foreground">Date</p>
               <p className="text-right text-sm font-semibold">{sessionDateLabel}</p>
             </div>
@@ -403,7 +481,7 @@ export default async function SessionDetailPage({
             </div>
 
             <div className="flex min-h-12 items-center justify-between gap-4">
-              <p className="text-sm font-semibold">Duration</p>
+              <p className="text-sm text-muted-foreground">Duration</p>
               <p className="text-right text-sm font-semibold tabular-nums">
                 {formatDurationLabel(durationMinutes)}
               </p>
@@ -411,7 +489,14 @@ export default async function SessionDetailPage({
           </div>
         </Card>
 
-        <div className="hidden gap-4 md:grid md:grid-cols-3">
+        <div className="hidden gap-4 md:grid md:grid-cols-4">
+          <Card>
+            <CardHeader>
+              <CardDescription>Type</CardDescription>
+              <CardTitle className="text-xl font-semibold">{sessionTypeLabel}</CardTitle>
+            </CardHeader>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardDescription>Date</CardDescription>
@@ -439,7 +524,7 @@ export default async function SessionDetailPage({
         </div>
       </section>
 
-      <Suspense fallback={<SessionDetailTabsFallback />}>
+      <Suspense fallback={<SessionDetailTabsFallback selectedTab={selectedTab} />}>
         <SessionDetailTabsSlot
           deferredDataPromise={deferredDataPromise}
           initialTab={selectedTab}

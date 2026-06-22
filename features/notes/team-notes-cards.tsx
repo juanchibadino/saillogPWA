@@ -31,6 +31,14 @@ function renderText(value: string | null): string {
   return value ?? "—"
 }
 
+function renderWindPatterns(card: TeamNoteCard): string {
+  if (card.notes.windPatterns.length > 0) {
+    return renderValues(card.notes.windPatterns)
+  }
+
+  return renderText(card.notes.legacyWindPatterns)
+}
+
 export function TeamNotesCards(input: {
   scope: NavigationScope
   cards: TeamNoteCard[]
@@ -111,7 +119,7 @@ export function TeamNotesCards(input: {
             <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
               Notes
             </p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               <div>
                 <p className="text-sm text-muted-foreground">Best</p>
                 <p className="whitespace-pre-wrap font-medium">{renderText(card.notes.bestOfSession)}</p>
@@ -129,6 +137,10 @@ export function TeamNotesCards(input: {
                 <p className="whitespace-pre-wrap font-medium">
                   {renderValues(card.notes.standardMoves)}
                 </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Wind Patterns</p>
+                <p className="whitespace-pre-wrap font-medium">{renderWindPatterns(card)}</p>
               </div>
             </div>
           </section>

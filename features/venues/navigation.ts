@@ -4,7 +4,7 @@ import {
 } from "@/lib/navigation/constants"
 import type { NavigationScope } from "@/lib/navigation/types"
 
-export const VENUE_DETAIL_TABS = ["camps", "sessions", "assessments", "reports"] as const
+export const VENUE_DETAIL_TABS = ["camps", "sessions", "wind-patterns", "assessments", "reports"] as const
 
 export type VenueDetailTab = (typeof VENUE_DETAIL_TABS)[number]
 

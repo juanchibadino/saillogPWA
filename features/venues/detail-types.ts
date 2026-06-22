@@ -1,4 +1,5 @@
 import type { Database } from "@/types/database";
+import type { TeamVenueWindPatternsPageData } from "@/features/wind-patterns/data";
 
 type VenueRow = Database["public"]["Tables"]["venues"]["Row"];
 type TeamVenueRow = Database["public"]["Tables"]["team_venues"]["Row"];
@@ -130,6 +131,7 @@ export type VenueDetailYearData = {
 export type VenueDetailPageData = {
   venue: VenueDetailVenue | null;
   teamVenue: VenueDetailTeamVenue | null;
+  windPatterns: TeamVenueWindPatternsPageData;
   availableYears: number[];
   selectedYear: number;
   byYear: Record<number, VenueDetailYearData>;

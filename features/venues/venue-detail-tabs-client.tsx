@@ -10,6 +10,9 @@ import type {
   VenueDetailSessionItem,
   VenueDetailYearData,
 } from "@/features/venues/detail-types";
+import { CreateWindPatternDialog } from "@/features/wind-patterns/wind-patterns-form-dialogs";
+import { WindPatternsTable } from "@/features/wind-patterns/wind-patterns-table";
+import { WindPatternsToolbar } from "@/features/wind-patterns/wind-patterns-toolbar";
 import { VenueAssessmentsPanel } from "@/features/venues/venue-assessments-panel";
 import { buildCampDetailHref } from "@/features/camps/navigation";
 import { buildSessionDetailHref } from "@/features/sessions/navigation";
@@ -59,6 +62,7 @@ const EMPTY_YEAR_DATA: VenueDetailYearData = {
 const SESSIONS_PAGE_SIZE = 10;
 
 type SessionPaginationItem = number | "ellipsis-start" | "ellipsis-end";
+type WindPatternStatusFilter = "active" | "archived" | "all";
 
 function resolveTab(value: string): VenueDetailTab {
   if (value === "metrics") {
@@ -68,6 +72,50 @@ function resolveTab(value: string): VenueDetailTab {
   return VENUE_DETAIL_TABS.includes(value as VenueDetailTab)
     ? (value as VenueDetailTab)
     : "camps";
+}
+
+function formatVenueDetailTabLabel(tab: VenueDetailTab): string {
+  if (tab === "wind-patterns") {
+    return "Wind Patterns";
+  }
+
+  return tab.charAt(0).toUpperCase() + tab.slice(1);
+}
+
+function buildWindPatternsFiltersHref(input: {
+  scope: NavigationScope;
+  teamVenueId: string;
+  year: number;
+  statusFilter?: WindPatternStatusFilter;
+}): string {
+  const href = buildVenueDetailHref({
+    scope: input.scope,
+    teamVenueId: input.teamVenueId,
+    tab: "wind-patterns",
+    year: input.year,
+  });
+
+  if (!input.statusFilter || input.statusFilter === "active") {
+    return href;
+  }
+
+  const separator = href.includes("?") ? "&" : "?";
+  return `${href}${separator}statusFilter=${input.statusFilter}`;
+}
+
+function filterWindPatternsByStatus(input: {
+  patterns: VenueDetailPageData["windPatterns"]["patterns"];
+  statusFilter: WindPatternStatusFilter;
+}): VenueDetailPageData["windPatterns"]["patterns"] {
+  if (input.statusFilter === "all") {
+    return input.patterns;
+  }
+
+  if (input.statusFilter === "archived") {
+    return input.patterns.filter((pattern) => !pattern.isActive);
+  }
+
+  return input.patterns.filter((pattern) => pattern.isActive);
 }
 
 function buildSessionPaginationItems(
@@ -126,6 +174,9 @@ function renderTabPanel(input: {
   selectedYear: number;
   canManageAssessments: boolean;
   canManageReports: boolean;
+  canManageWindPatterns: boolean;
+  windPatterns: VenueDetailPageData["windPatterns"];
+  windPatternStatusFilter: WindPatternStatusFilter;
   assessments: VenueDetailYearData["assessments"];
   reports: VenueDetailYearData["reports"];
   sessionPagination: {
@@ -290,6 +341,73 @@ function renderTabPanel(input: {
     );
   }
 
+  if (input.tab === "wind-patterns") {
+    const filteredPatterns = filterWindPatternsByStatus({
+      patterns: input.windPatterns.patterns,
+      statusFilter: input.windPatternStatusFilter,
+    });
+
+    return (
+      <WindPatternsTable
+        patterns={filteredPatterns}
+        canManageWindPatterns={input.canManageWindPatterns}
+        selectedStatusFilter={input.windPatternStatusFilter}
+        scope={input.scope}
+        teamVenueId={input.teamVenueId}
+        year={input.selectedYear}
+        toolbar={
+          <WindPatternsToolbar
+            selectedValue={input.windPatternStatusFilter}
+            options={[
+              {
+                value: "active",
+                label: "Active",
+                href: buildWindPatternsFiltersHref({
+                  scope: input.scope,
+                  teamVenueId: input.teamVenueId,
+                  year: input.selectedYear,
+                  statusFilter: "active",
+                }),
+                count: input.windPatterns.activeCount,
+              },
+              {
+                value: "archived",
+                label: "Archived",
+                href: buildWindPatternsFiltersHref({
+                  scope: input.scope,
+                  teamVenueId: input.teamVenueId,
+                  year: input.selectedYear,
+                  statusFilter: "archived",
+                }),
+                count: input.windPatterns.archivedCount,
+              },
+              {
+                value: "all",
+                label: "All",
+                href: buildWindPatternsFiltersHref({
+                  scope: input.scope,
+                  teamVenueId: input.teamVenueId,
+                  year: input.selectedYear,
+                  statusFilter: "all",
+                }),
+                count: input.windPatterns.activeCount + input.windPatterns.archivedCount,
+              },
+            ]}
+            action={
+              <CreateWindPatternDialog
+                scope={input.scope}
+                teamVenueId={input.teamVenueId}
+                statusFilter={input.windPatternStatusFilter}
+                year={input.selectedYear}
+                disabled={!input.canManageWindPatterns}
+              />
+            }
+          />
+        }
+      />
+    );
+  }
+
   const reportCreateRedirectTo = buildVenueDetailHref({
     scope: input.scope,
     teamVenueId: input.teamVenueId,
@@ -376,6 +494,9 @@ export function VenueDetailTabsClient(input: {
   initialTab: VenueDetailTab;
   canManageAssessments: boolean;
   canManageReports: boolean;
+  canManageWindPatterns: boolean;
+  windPatterns: VenueDetailPageData["windPatterns"];
+  initialWindPatternStatusFilter: WindPatternStatusFilter;
   action?: ReactNode;
 }) {
   const [selectedYear, setSelectedYear] = useState(input.initialYear);
@@ -474,10 +595,10 @@ export function VenueDetailTabsClient(input: {
       >
         <TabsList className="h-10">
           {VENUE_DETAIL_TABS.map((tab) => (
-            <TabsTrigger key={tab} value={tab} className="min-w-fit capitalize">
-              {tab}
-            </TabsTrigger>
-          ))}
+                <TabsTrigger key={tab} value={tab} className="min-w-fit capitalize">
+                  {formatVenueDetailTabLabel(tab)}
+                </TabsTrigger>
+              ))}
         </TabsList>
 
         <section className="rounded-xl border bg-card p-4 sm:p-6">
@@ -493,6 +614,9 @@ export function VenueDetailTabsClient(input: {
                     selectedYear,
                     canManageAssessments: input.canManageAssessments,
                     canManageReports: input.canManageReports,
+                    canManageWindPatterns: input.canManageWindPatterns,
+                    windPatterns: input.windPatterns,
+                    windPatternStatusFilter: input.initialWindPatternStatusFilter,
                     assessments: yearData.assessments,
                     reports: yearData.reports,
                     sessionPagination: {

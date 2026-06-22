@@ -13,6 +13,7 @@ import { EditVenueDialog } from "@/features/venues/venue-form-dialogs"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import {
   canManageOrganizationOperations,
+  canManageTeamSessions,
   canManageTeamStructure,
 } from "@/lib/auth/capabilities"
 import {
@@ -25,6 +26,7 @@ type VenueDetailSearchParams = Promise<
 >
 
 type VenueDetailParams = Promise<{ id: string }>
+type WindPatternStatusFilter = "active" | "archived" | "all"
 
 const DEFAULT_TAB: VenueDetailTab = "camps"
 
@@ -85,6 +87,22 @@ function getStatusMessage(status: string | undefined): string | null {
     return "Report created successfully."
   }
 
+  if (status === "wind_pattern_created") {
+    return "Wind pattern created successfully."
+  }
+
+  if (status === "wind_pattern_updated") {
+    return "Wind pattern updated successfully."
+  }
+
+  if (status === "wind_pattern_archived") {
+    return "Wind pattern archived successfully."
+  }
+
+  if (status === "wind_pattern_restored") {
+    return "Wind pattern restored successfully."
+  }
+
   return null
 }
 
@@ -121,7 +139,27 @@ function getErrorMessage(error: string | undefined): string | null {
     return "Could not create report. Confirm the selected camps and try again."
   }
 
+  if (error === "wind_pattern_create_failed") {
+    return "Could not create wind pattern. Confirm permissions and uniqueness of the name."
+  }
+
+  if (error === "wind_pattern_update_failed") {
+    return "Could not update wind pattern. Confirm permissions and try again."
+  }
+
   return null
+}
+
+function resolveWindPatternStatusFilter(value: string | undefined): WindPatternStatusFilter {
+  if (value === "archived") {
+    return "archived"
+  }
+
+  if (value === "all") {
+    return "all"
+  }
+
+  return "active"
 }
 
 export default async function VenueDetailPage({
@@ -140,6 +178,9 @@ export default async function VenueDetailPage({
   const selectedTab = resolveTab(getSingleSearchParamValue(resolvedSearchParams.tab))
   const requestedYear = parseRequestedYear(
     getSingleSearchParamValue(resolvedSearchParams.year),
+  )
+  const requestedWindPatternStatusFilter = resolveWindPatternStatusFilter(
+    getSingleSearchParamValue(resolvedSearchParams.statusFilter),
   )
 
   const statusMessage = getStatusMessage(status)
@@ -242,6 +283,14 @@ export default async function VenueDetailPage({
         })
       : false
   const canManageReports = canManageAssessments
+  const canManageWindPatterns =
+    !noTeamSelected && detailData.teamVenue
+      ? canManageTeamSessions({
+          context,
+          organizationId: scope.activeOrgId,
+          teamId: detailData.teamVenue.team_id,
+        })
+      : false
 
   return (
     <div>
@@ -282,6 +331,9 @@ export default async function VenueDetailPage({
         initialTab={selectedTab}
         canManageAssessments={canManageAssessments}
         canManageReports={canManageReports}
+        canManageWindPatterns={canManageWindPatterns}
+        windPatterns={detailData.windPatterns}
+        initialWindPatternStatusFilter={requestedWindPatternStatusFilter}
         action={detailHeaderAction}
       />
     </div>

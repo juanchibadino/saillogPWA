@@ -30,7 +30,8 @@ export type SessionDetailInfo = {
   bestOfSession: string | null
   toWork: string | null
   standardMoves: string[]
-  windPatterns: string | null
+  windPatterns: string[]
+  legacyWindPatterns: string | null
   freeNotes: string | null
 }
 
@@ -85,6 +86,13 @@ export type SessionDetailData = {
     isActive: boolean
   }[]
   linkedStandardMoveIds: string[]
+  availableWindPatterns: {
+    id: string
+    name: string
+    description: string | null
+    isActive: boolean
+  }[]
+  linkedWindPatternIds: string[]
   results: SessionDetailResults
   setupDialogItems: SessionSetupDialogItem[]
   images: SessionDetailAsset[]

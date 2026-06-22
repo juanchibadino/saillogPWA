@@ -1,8 +1,22 @@
 # PROGRESS.md
 
-Last updated: 2026-06-20
+Last updated: 2026-06-22
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
+
+## 2026-06-22 - Team session detail loading shell
+
+- Updated `/team-sessions/[id]` so the page title is a static `Team Session` while `Type`, `Date`, `Dock Out`, and `Duration` stay as fixed summary labels with data-only values.
+- Reworked the route skeleton and deferred Suspense fallbacks to mirror the real mobile/desktop layout, keep tab labels visible, and use compact spinners only for secondary deferred content/actions.
+- Validation: `npm run lint` passes with existing warnings in `app/sign-in/sign-in-content.tsx` and `features/onboarding/onboarding-flow.tsx`; `npm run build`; `git diff --check`; browser check on `Test Organization` / `Test Team` desktop and mobile.
+
+## 2026-06-22 - Venue-scoped wind patterns catalog
+
+- Added `supabase/migrations/026_wind_patterns_v1.sql` for reusable Wind Patterns scoped to `team_venues`, plus session links, RLS, indexes, updated-at handling, and trigger validation for same-venue active links.
+- Added venue-detail Wind Patterns management with active/archived/all filters, create/edit/archive/restore actions, usage counts, and existing session-management permission checks.
+- Updated `/team-sessions/[id]` Info so Wind Patterns are selected from the venue-scoped catalog with quick-create, saved as pattern links, and displayed as tooltip badges with legacy `session_reviews.wind_patterns` fallback.
+- Updated camp detail and team notes displays to show linked Wind Pattern names before falling back to legacy free text.
+- Validation: `npm run lint`, `npm run build`, and `git diff --check`.
 
 ## 2026-06-21 - Session header actions restored
 

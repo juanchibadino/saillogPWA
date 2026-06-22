@@ -47,8 +47,18 @@ type SessionStandardMoveRow = Pick<
   "session_id" | "team_standard_move_id"
 >
 
+type SessionWindPatternRow = Pick<
+  Database["public"]["Tables"]["session_wind_patterns"]["Row"],
+  "session_id" | "team_venue_wind_pattern_id"
+>
+
 type TeamStandardMoveRow = Pick<
   Database["public"]["Tables"]["team_standard_moves"]["Row"],
+  "id" | "name"
+>
+
+type TeamVenueWindPatternRow = Pick<
+  Database["public"]["Tables"]["team_venue_wind_patterns"]["Row"],
   "id" | "name"
 >
 
@@ -62,7 +72,9 @@ const SESSION_SETUP_SELECT_COLUMNS = "session_id,free_notes"
 const SESSION_REVIEW_SELECT_COLUMNS =
   "session_id,best_of_session,to_work,wind_patterns"
 const SESSION_STANDARD_MOVE_SELECT_COLUMNS = "session_id,team_standard_move_id"
+const SESSION_WIND_PATTERN_SELECT_COLUMNS = "session_id,team_venue_wind_pattern_id"
 const TEAM_STANDARD_MOVE_SELECT_COLUMNS = "id,name"
+const TEAM_VENUE_WIND_PATTERN_SELECT_COLUMNS = "id,name"
 
 const EMPTY_KPIS: CampDetailKpi[] = [
   { label: "Total Sessions", value: "0", note: "Current camp" },
@@ -219,6 +231,7 @@ function buildNotesCards(input: {
   setupBySessionId: Map<string, SessionSetupRow>
   reviewBySessionId: Map<string, SessionReviewRow>
   standardMoveNamesBySessionId: Map<string, string[]>
+  windPatternNamesBySessionId: Map<string, string[]>
 }): CampDetailNotesCard[] {
   const notesCards: CampDetailNotesCard[] = []
 
@@ -232,7 +245,11 @@ function buildNotesCards(input: {
     const standardMoveNames = input.standardMoveNamesBySessionId.get(session.id) ?? []
     const standardMoves =
       standardMoveNames.length > 0 ? normalizeText(standardMoveNames.join(", ")) : null
-    const windPattern = formatJsonNote(review?.wind_patterns)
+    const windPatternNames = input.windPatternNamesBySessionId.get(session.id) ?? []
+    const windPattern =
+      windPatternNames.length > 0
+        ? normalizeText(windPatternNames.join(", "))
+        : formatJsonNote(review?.wind_patterns)
 
     if (!freeNotes && !best && !toWork && !standardMoves && !windPattern) {
       continue
@@ -367,13 +384,16 @@ export async function getCampDetailPageData(input: {
   let setupRows: SessionSetupRow[] = []
   let reviewRows: SessionReviewRow[] = []
   let sessionStandardMoveRows: SessionStandardMoveRow[] = []
+  let sessionWindPatternRows: SessionWindPatternRow[] = []
   let teamStandardMoves: TeamStandardMoveRow[] = []
+  let teamVenueWindPatterns: TeamVenueWindPatternRow[] = []
 
   if (sessionIds.length > 0) {
     const [
       { data: setupData, error: setupError },
       { data: reviewData, error: reviewError },
       { data: sessionStandardMoveData, error: sessionStandardMoveError },
+      { data: sessionWindPatternData, error: sessionWindPatternError },
     ] = await Promise.all([
       supabase
         .from("session_setups")
@@ -386,6 +406,10 @@ export async function getCampDetailPageData(input: {
       supabase
         .from("session_standard_moves")
         .select(SESSION_STANDARD_MOVE_SELECT_COLUMNS)
+        .in("session_id", sessionIds),
+      supabase
+        .from("session_wind_patterns")
+        .select(SESSION_WIND_PATTERN_SELECT_COLUMNS)
         .in("session_id", sessionIds),
     ])
 
@@ -403,11 +427,21 @@ export async function getCampDetailPageData(input: {
       )
     }
 
+    if (sessionWindPatternError) {
+      throw new Error(
+        `Could not load session wind patterns for camp detail: ${sessionWindPatternError.message}`,
+      )
+    }
+
     setupRows = setupData ?? []
     reviewRows = reviewData ?? []
     sessionStandardMoveRows = sessionStandardMoveData ?? []
+    sessionWindPatternRows = sessionWindPatternData ?? []
 
     const standardMoveIds = [...new Set(sessionStandardMoveRows.map((row) => row.team_standard_move_id))]
+    const windPatternIds = [
+      ...new Set(sessionWindPatternRows.map((row) => row.team_venue_wind_pattern_id)),
+    ]
 
     if (standardMoveIds.length > 0) {
       const { data: teamStandardMoveData, error: teamStandardMoveError } = await supabase
@@ -424,12 +458,30 @@ export async function getCampDetailPageData(input: {
 
       teamStandardMoves = teamStandardMoveData ?? []
     }
+
+    if (windPatternIds.length > 0) {
+      const { data: teamVenueWindPatternData, error: teamVenueWindPatternError } = await supabase
+        .from("team_venue_wind_patterns")
+        .select(TEAM_VENUE_WIND_PATTERN_SELECT_COLUMNS)
+        .in("id", windPatternIds)
+        .eq("team_venue_id", teamVenue.id)
+
+      if (teamVenueWindPatternError) {
+        throw new Error(
+          `Could not load venue wind patterns for camp detail: ${teamVenueWindPatternError.message}`,
+        )
+      }
+
+      teamVenueWindPatterns = teamVenueWindPatternData ?? []
+    }
   }
 
   const setupBySessionId = new Map(setupRows.map((row) => [row.session_id, row]))
   const reviewBySessionId = new Map(reviewRows.map((row) => [row.session_id, row]))
   const standardMoveNameById = new Map(teamStandardMoves.map((row) => [row.id, row.name]))
+  const windPatternNameById = new Map(teamVenueWindPatterns.map((row) => [row.id, row.name]))
   const standardMoveNamesBySessionId = new Map<string, string[]>()
+  const windPatternNamesBySessionId = new Map<string, string[]>()
 
   for (const row of sessionStandardMoveRows) {
     const standardMoveName = standardMoveNameById.get(row.team_standard_move_id)
@@ -450,6 +502,25 @@ export async function getCampDetailPageData(input: {
     )
   }
 
+  for (const row of sessionWindPatternRows) {
+    const windPatternName = windPatternNameById.get(row.team_venue_wind_pattern_id)
+
+    if (!windPatternName) {
+      continue
+    }
+
+    const existingNames = windPatternNamesBySessionId.get(row.session_id) ?? []
+    existingNames.push(windPatternName)
+    windPatternNamesBySessionId.set(row.session_id, existingNames)
+  }
+
+  for (const [sessionId, windPatternNames] of windPatternNamesBySessionId.entries()) {
+    windPatternNamesBySessionId.set(
+      sessionId,
+      [...windPatternNames].sort((left, right) => left.localeCompare(right)),
+    )
+  }
+
   return {
     camp: detailCamp,
     teamVenue,
@@ -463,6 +534,7 @@ export async function getCampDetailPageData(input: {
       setupBySessionId,
       reviewBySessionId,
       standardMoveNamesBySessionId,
+      windPatternNamesBySessionId,
     }),
   }
 }
