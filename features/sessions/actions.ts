@@ -18,6 +18,7 @@ import { createTeamStandardMoveInputSchema } from "@/lib/validation/standard-mov
 import { createTeamVenueWindPatternInputSchema } from "@/lib/validation/wind-patterns"
 import {
   createTeamSetupMetricInputSchema,
+  deleteSessionAssetInputSchema,
   deleteTeamSetupMetricInputSchema,
   createSessionInputSchema,
   reorderTeamSetupMetricsInputSchema,
@@ -36,6 +37,9 @@ import type { Database, Json } from "@/types/database"
 const SESSION_PHOTOS_BUCKET = "session-photos"
 const SESSION_FILES_BUCKET = "session-files"
 const MAX_ASSET_BYTES = 25 * 1024 * 1024
+const MAX_PHOTO_ASSET_BYTES = 2 * 1024 * 1024
+const COMPRESSED_PHOTO_MIME_TYPE = "image/webp"
+const ANALYTICS_FILE_MIME_TYPE = "application/pdf"
 
 type SessionActionScope = {
   scopeOrgId?: string
@@ -557,6 +561,10 @@ function buildAssetStoragePath(input: {
   const timestamp = Date.now()
   const randomPart = Math.random().toString(36).slice(2, 10)
   return `sessions/${input.sessionId}/${input.assetType}/${timestamp}-${randomPart}-${safeName}`
+}
+
+function hasPdfFileName(fileName: string): boolean {
+  return fileName.trim().toLowerCase().endsWith(".pdf")
 }
 
 function getScopeFromFormData(formData: FormData): SessionActionScope {
@@ -3269,18 +3277,98 @@ export async function updateSessionGearUsageAction(formData: FormData): Promise<
   )
 }
 
-export async function uploadSessionAssetAction(formData: FormData): Promise<void> {
+type UploadSessionAssetActionError = "invalid_input" | "forbidden" | "upload_failed"
+type DeleteSessionAssetActionError = "invalid_input" | "forbidden" | "delete_failed"
+
+export type UploadSessionAssetActionResult =
+  | {
+      ok: true
+      status: "asset_uploaded"
+      tab: "images" | "analytics"
+    }
+  | {
+      ok: false
+      error: UploadSessionAssetActionError
+      message: string
+    }
+
+export type DeleteSessionAssetActionResult =
+  | {
+      ok: true
+      status: "asset_deleted"
+      tab: "images" | "analytics"
+    }
+  | {
+      ok: false
+      error: DeleteSessionAssetActionError
+      message: string
+    }
+
+type UploadSessionAssetMutationResult =
+  | {
+      ok: true
+      sessionId: string
+      scope: SessionActionScope
+      status: "asset_uploaded"
+      tab: "images" | "analytics"
+    }
+  | {
+      ok: false
+      error: UploadSessionAssetActionError
+      message: string
+      sessionId?: string
+      scope: SessionActionScope
+    }
+
+const SESSION_ASSET_UPLOAD_ERROR_MESSAGES: Record<UploadSessionAssetActionError, string> = {
+  invalid_input: "The selected file is invalid. Review the file and try again.",
+  forbidden: "You do not have permission to upload files in the active scope.",
+  upload_failed: "Could not upload this file. Confirm storage is available and try again.",
+}
+
+const SESSION_ASSET_DELETE_ERROR_MESSAGES: Record<DeleteSessionAssetActionError, string> = {
+  invalid_input: "Could not find this file. Refresh and try again.",
+  forbidden: "You do not have permission to delete files in the active scope.",
+  delete_failed: "Could not delete this file. Confirm storage is available and try again.",
+}
+
+function buildUploadSessionAssetActionError(input: {
+  error: UploadSessionAssetActionError
+  scope: SessionActionScope
+  sessionId?: string
+}): UploadSessionAssetMutationResult {
+  return {
+    ok: false,
+    error: input.error,
+    message: SESSION_ASSET_UPLOAD_ERROR_MESSAGES[input.error],
+    sessionId: input.sessionId,
+    scope: input.scope,
+  }
+}
+
+function buildDeleteSessionAssetActionError(
+  error: DeleteSessionAssetActionError,
+): DeleteSessionAssetActionResult {
+  return {
+    ok: false,
+    error,
+    message: SESSION_ASSET_DELETE_ERROR_MESSAGES[error],
+  }
+}
+
+async function uploadSessionAssetMutation(
+  formData: FormData,
+): Promise<UploadSessionAssetMutationResult> {
   const context = await requireAuthenticatedAccessContext()
   const scope = getScopeFromFormData(formData)
   const sessionId = getFormString(formData, "sessionId")
 
   if (!sessionId || !scope.scopeOrgId || !scope.scopeTeamId) {
-    redirect(
-      buildTeamSessionsRedirectPath({
-        error: "invalid_input",
-        ...scope,
-      }),
-    )
+    return buildUploadSessionAssetActionError({
+      error: "invalid_input",
+      scope,
+      sessionId,
+    })
   }
 
   const parsedInput = uploadSessionAssetInputSchema.safeParse({
@@ -3291,23 +3379,32 @@ export async function uploadSessionAssetAction(formData: FormData): Promise<void
   const assetFile = getFormFile(formData, "assetFile")
 
   if (!parsedInput.success || !assetFile) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId,
-        error: "invalid_input",
-        ...scope,
-      }),
-    )
+    return buildUploadSessionAssetActionError({
+      error: "invalid_input",
+      scope,
+      sessionId,
+    })
   }
 
-  if (assetFile.size <= 0 || assetFile.size > MAX_ASSET_BYTES) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "invalid_input",
-        ...scope,
-      }),
-    )
+  const maxFileSize =
+    parsedInput.data.assetType === "photo" ? MAX_PHOTO_ASSET_BYTES : MAX_ASSET_BYTES
+  const hasValidPhotoMimeType =
+    parsedInput.data.assetType !== "photo" || assetFile.type === COMPRESSED_PHOTO_MIME_TYPE
+  const hasValidAnalyticsFile =
+    parsedInput.data.assetType !== "analytics_file" ||
+    (assetFile.type === ANALYTICS_FILE_MIME_TYPE && hasPdfFileName(assetFile.name))
+
+  if (
+    assetFile.size <= 0 ||
+    assetFile.size > maxFileSize ||
+    !hasValidPhotoMimeType ||
+    !hasValidAnalyticsFile
+  ) {
+    return buildUploadSessionAssetActionError({
+      error: "invalid_input",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
   }
 
   if (
@@ -3317,13 +3414,11 @@ export async function uploadSessionAssetAction(formData: FormData): Promise<void
       teamId: scope.scopeTeamId,
     })
   ) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "forbidden",
-        ...scope,
-      }),
-    )
+    return buildUploadSessionAssetActionError({
+      error: "forbidden",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
   }
 
   const scopedSession = await resolveScopedSessionContext({
@@ -3333,13 +3428,11 @@ export async function uploadSessionAssetAction(formData: FormData): Promise<void
   })
 
   if (!scopedSession) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "forbidden",
-        ...scope,
-      }),
-    )
+    return buildUploadSessionAssetActionError({
+      error: "forbidden",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
   }
 
   const storageBucket = getAssetBucket(parsedInput.data.assetType)
@@ -3369,13 +3462,11 @@ export async function uploadSessionAssetAction(formData: FormData): Promise<void
   }
 
   if (uploadFailed) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "upload_failed",
-        ...scope,
-      }),
-    )
+    return buildUploadSessionAssetActionError({
+      error: "upload_failed",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
   }
 
   const supabase = await createServerSupabaseClient()
@@ -3398,13 +3489,11 @@ export async function uploadSessionAssetAction(formData: FormData): Promise<void
       // Best effort cleanup only.
     }
 
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "upload_failed",
-        ...scope,
-      }),
-    )
+    return buildUploadSessionAssetActionError({
+      error: "upload_failed",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
   }
 
   revalidateSessionSlices({
@@ -3413,13 +3502,143 @@ export async function uploadSessionAssetAction(formData: FormData): Promise<void
     teamVenueId: scopedSession.teamVenue.id,
   })
 
+  return {
+    ok: true,
+    sessionId: parsedInput.data.sessionId,
+    scope,
+    status: "asset_uploaded",
+    tab: parsedInput.data.assetType === "photo" ? "images" : "analytics",
+  }
+}
+
+export async function saveSessionAssetAction(
+  formData: FormData,
+): Promise<UploadSessionAssetActionResult> {
+  const result = await uploadSessionAssetMutation(formData)
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      error: result.error,
+      message: result.message,
+    }
+  }
+
+  return {
+    ok: true,
+    status: result.status,
+    tab: result.tab,
+  }
+}
+
+export async function deleteSessionAssetAction(
+  formData: FormData,
+): Promise<DeleteSessionAssetActionResult> {
+  const context = await requireAuthenticatedAccessContext()
+  const scope = getScopeFromFormData(formData)
+  const parsedInput = deleteSessionAssetInputSchema.safeParse({
+    sessionId: getFormString(formData, "sessionId"),
+    assetId: getFormString(formData, "assetId"),
+  })
+
+  if (!parsedInput.success || !scope.scopeOrgId || !scope.scopeTeamId) {
+    return buildDeleteSessionAssetActionError("invalid_input")
+  }
+
+  if (
+    !canManageTeamSessions({
+      context,
+      organizationId: scope.scopeOrgId,
+      teamId: scope.scopeTeamId,
+    })
+  ) {
+    return buildDeleteSessionAssetActionError("forbidden")
+  }
+
+  const scopedSession = await resolveScopedSessionContext({
+    sessionId: parsedInput.data.sessionId,
+    scopeOrgId: scope.scopeOrgId,
+    scopeTeamId: scope.scopeTeamId,
+  })
+
+  if (!scopedSession) {
+    return buildDeleteSessionAssetActionError("forbidden")
+  }
+
+  const supabase = await createServerSupabaseClient()
+  const { data: assetRow, error: assetError } = await supabase
+    .from("session_assets")
+    .select("id, asset_type, bucket, storage_path")
+    .eq("id", parsedInput.data.assetId)
+    .eq("session_id", parsedInput.data.sessionId)
+    .maybeSingle()
+
+  if (assetError || !assetRow) {
+    return buildDeleteSessionAssetActionError("invalid_input")
+  }
+
+  const { error: deleteError } = await supabase
+    .from("session_assets")
+    .delete()
+    .eq("id", assetRow.id)
+    .eq("session_id", parsedInput.data.sessionId)
+
+  if (deleteError) {
+    return buildDeleteSessionAssetActionError("delete_failed")
+  }
+
+  try {
+    const storageAdmin = createAdminSupabaseClient()
+    await storageAdmin.storage.from(assetRow.bucket).remove([assetRow.storage_path])
+  } catch {
+    // The asset row is already deleted; storage cleanup is best-effort.
+  }
+
+  revalidateSessionSlices({
+    sessionId: parsedInput.data.sessionId,
+    campId: scopedSession.camp.id,
+    teamVenueId: scopedSession.teamVenue.id,
+  })
+
+  return {
+    ok: true,
+    status: "asset_deleted",
+    tab: assetRow.asset_type === "photo" ? "images" : "analytics",
+  }
+}
+
+export async function uploadSessionAssetAction(formData: FormData): Promise<void> {
+  const result = await uploadSessionAssetMutation(formData)
+
+  if (!result.ok) {
+    if (!result.sessionId) {
+      const teamSessionsError =
+        result.error === "upload_failed" ? "update_failed" : result.error
+
+      redirect(
+        buildTeamSessionsRedirectPath({
+          error: teamSessionsError,
+          ...result.scope,
+        }),
+      )
+    }
+
+    redirect(
+      buildSessionDetailRedirectPath({
+        sessionId: result.sessionId,
+        error: result.error,
+        ...result.scope,
+      }),
+    )
+  }
+
   redirect(
     buildSessionDetailRedirectPath({
-      sessionId: parsedInput.data.sessionId,
-      scopeOrgId: scope.scopeOrgId,
-      scopeTeamId: scope.scopeTeamId,
-      scopeTab: parsedInput.data.assetType === "photo" ? "images" : "analytics",
-      status: "asset_uploaded",
+      sessionId: result.sessionId,
+      scopeOrgId: result.scope.scopeOrgId,
+      scopeTeamId: result.scope.scopeTeamId,
+      scopeTab: result.tab,
+      status: result.status,
     }),
   )
 }

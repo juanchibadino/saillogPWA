@@ -113,6 +113,11 @@ export const uploadSessionAssetInputSchema = z.object({
   assetType: z.enum(["photo", "analytics_file"]),
 })
 
+export const deleteSessionAssetInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  assetId: z.string().uuid(),
+})
+
 export type CreateSessionInput = z.infer<typeof createSessionInputSchema>
 export type UpdateSessionInput = z.infer<typeof updateSessionInputSchema>
 export type UpdateSessionDetailInput = z.infer<typeof updateSessionDetailInputSchema>
@@ -125,5 +130,6 @@ export type UpdateTeamSetupMetricInput = z.infer<typeof updateTeamSetupMetricInp
 export type DeleteTeamSetupMetricInput = z.infer<typeof deleteTeamSetupMetricInputSchema>
 export type ReorderTeamSetupMetricsInput = z.infer<typeof reorderTeamSetupMetricsInputSchema>
 export type UploadSessionAssetInput = z.infer<typeof uploadSessionAssetInputSchema>
+export type DeleteSessionAssetInput = z.infer<typeof deleteSessionAssetInputSchema>
 
 export type SessionInfoJsonText = Json | null

@@ -4,6 +4,24 @@ Last updated: 2026-06-22
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
 
+## 2026-06-22 - Team session images and files
+
+- Added private Supabase Storage setup in `supabase/migrations/027_session_assets_storage.sql` for `session-photos` and `session-files`, with path-scoped storage policies aligned to existing team-session read/manage permissions.
+- Updated `/team-sessions/[id]` Images and Analytics tabs in `features/sessions/session-detail-tabs-client.tsx` to use Drive-style file cards, preview dialogs, download/open actions, and pending upload feedback.
+- Adjusted the mobile Images and Analytics asset cards to a compact two-column grid with smaller thumbnail card spacing and metadata.
+- Fixed the Images tab desktop horizontal overflow by removing layout impact from the hidden file input, and constrained the mobile image preview dialog while removing the extra `Open image` action.
+- Expanded the mobile image preview dialog to near-full viewport, added in-dialog image zoom controls plus pinch/drag zoom behavior, and added manager-only Delete actions with confirmation and pending spinner state.
+- Replaced embedded asset signed URLs with an authenticated `/api/session-assets/[id]/content` redirect route so thumbnails/previews request a fresh storage URL, added image load fallbacks, and softened zoom behavior to avoid browser/UI zoom.
+- Added client-side photo compression to WebP with max 720px longest edge before upload, plus server-side WebP/2 MB validation in `features/sessions/actions.ts` and signed asset URLs from `features/sessions/detail-data.ts`.
+- Validation: `npm run lint` passes with existing warnings in `app/sign-in/sign-in-content.tsx` and `features/onboarding/onboarding-flow.tsx`; `npm run build`; `git diff --check`; browser check on `Test Organization` / `Test Team` desktop and mobile Images/Analytics tabs. Local `supabase` CLI is unavailable, so migration application was not verified locally.
+- Additional validation for the mobile grid adjustment: `npm run lint` passes with the same existing warnings; `npm run build`; `git diff --check`.
+- Additional validation for the overflow/dialog adjustment: browser check on `Test Organization` / `Test Team` confirmed desktop Images tab `scrollWidth` equals viewport width and mobile image dialog stays within the viewport with no `Open image` action; `npm run lint` passes with the same existing warnings; `npm run build`; `git diff --check`.
+- Additional validation for the zoom/delete adjustment: browser check on `Test Organization` / `Test Team` confirmed the mobile image dialog renders at 378x832 inside a 390x844 viewport, zoom controls change the preview to 150% without page overflow, and the card action menu opens the Delete confirmation without submitting deletion; `npm run lint` passes with the same existing warnings; `npm run build`; `git diff --check`.
+- Additional validation for the asset route/zoom fix: browser check on `Test Organization` / `Test Team` confirmed thumbnail and dialog image use `/api/session-assets/[id]/content`, image `naturalWidth` is 720, the dialog remains 378x832 inside a 390x844 viewport, first zoom step changes to 125%, `visualViewport.scale` stays 1, and page `scrollWidth` stays 390; `npm run lint` passes with the same existing warnings; `npm run build`; `git diff --check`.
+- Additional validation for the contained image preview fix: browser check on `Test Organization` / `Test Team` confirmed thumbnails and dialog image use `object-fit: contain`, desktop internal wheel zoom changes only the preview transform while `visualViewport.scale` remains 1, and mobile reset state fits the image at 336x260 inside a 378x832 dialog with page `scrollWidth` still 390.
+- Tuned image preview interaction so the first zoom step is 135%, pinch/wheel zoom is more responsive, and normal wheel/trackpad movement pans the zoomed image. Validation confirmed preview transform changed from scale-only to translated pan while `visualViewport.scale` stayed 1 and page width stayed fixed.
+- Limited Analytics uploads to PDF only by changing the picker accept list to `application/pdf,.pdf`, enforcing `application/pdf` plus `.pdf` server-side, and narrowing the `session-files` storage bucket MIME allowlist to `application/pdf`.
+
 ## 2026-06-22 - Team session detail loading shell
 
 - Updated `/team-sessions/[id]` so the page title is a static `Team Session` while `Type`, `Date`, `Dock Out`, and `Duration` stay as fixed summary labels with data-only values.

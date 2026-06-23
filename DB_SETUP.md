@@ -133,13 +133,13 @@ If you prefer to paste the SQL once in the SQL Editor to get moving, that is fin
 
 ## Storage plan
 
-Create these buckets later as part of setup:
+`supabase/migrations/027_session_assets_storage.sql` creates these private buckets:
 
 - `session-photos`
 - `session-files`
 
-Do not make them public by default.
-Secure them with policies later.
+Do not make them public. Keep access controlled by the storage policies in the
+migration.
 
 ---
 

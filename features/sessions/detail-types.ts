@@ -63,10 +63,14 @@ export type SessionSetupDialogItem = {
   textValue: string
 }
 
-export type SessionDetailAsset = Pick<
+export type SessionDetailAssetMetadata = Pick<
   AssetRow,
   "id" | "asset_type" | "bucket" | "storage_path" | "file_name" | "mime_type" | "size_bytes" | "created_at"
 >
+
+export type SessionDetailAsset = SessionDetailAssetMetadata & {
+  signedUrl: string | null
+}
 
 export type SessionDetailGearItem = Pick<
   GearItemRow,

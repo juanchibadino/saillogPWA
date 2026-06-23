@@ -10,6 +10,7 @@ import type {
   SessionDetailInfo,
   SessionDetailResults,
   SessionDetailSession,
+  SessionDetailAssetMetadata,
   SessionSetupDialogItem,
   SessionDetailTeam,
   SessionDetailVenue,
@@ -90,7 +91,7 @@ type SessionSetupItemSelectedOptionRow = Pick<
   "session_setup_item_value_id" | "team_setup_item_option_id" | "allocation_percent"
 >
 
-type SessionAssetRow = SessionDetailAsset
+type SessionAssetRow = SessionDetailAssetMetadata
 type GearItemRow = SessionDetailGearItem
 type SessionGearUsageRow = Pick<
   Database["public"]["Tables"]["session_gear_usage"]["Row"],
@@ -141,7 +142,6 @@ const TEAM_STANDARD_MOVES_SELECT_COLUMNS = "id,name,description,is_active"
 const SESSION_STANDARD_MOVES_SELECT_COLUMNS = "session_id,team_standard_move_id"
 const TEAM_VENUE_WIND_PATTERNS_SELECT_COLUMNS = "id,name,description,is_active"
 const SESSION_WIND_PATTERNS_SELECT_COLUMNS = "session_id,team_venue_wind_pattern_id"
-
 export type SessionDetailShellData = Pick<
   SessionDetailData,
   "team" | "venue" | "camp" | "session"
@@ -225,6 +225,13 @@ function buildResults(row: SessionRegattaResultRow | null): SessionDetailResults
   return {
     resultNotes: normalizeText(row?.result_notes),
   }
+}
+
+async function attachAssetSignedUrls(assets: SessionAssetRow[]): Promise<SessionDetailAsset[]> {
+  return assets.map((asset) => ({
+    ...asset,
+    signedUrl: `/api/session-assets/${asset.id}/content`,
+  }))
 }
 
 function buildSetupDialogItems(input: {
@@ -528,6 +535,7 @@ export async function getSessionDetailDeferredData(input: {
   }
 
   const assets: SessionAssetRow[] = (assetRows ?? []) as SessionAssetRow[]
+  const assetsWithSignedUrls = await attachAssetSignedUrls(assets)
   const gearItems: GearItemRow[] = (gearItemsData ?? []) as GearItemRow[]
   const sessionGearUsageRows: SessionGearUsageRow[] =
     (sessionGearUsageData ?? []) as SessionGearUsageRow[]
@@ -644,8 +652,8 @@ export async function getSessionDetailDeferredData(input: {
       sessionSetupValues,
       sessionSetupSelectedOptions,
     }),
-    images: assets.filter((asset) => asset.asset_type === "photo"),
-    analyticsFiles: assets.filter((asset) => asset.asset_type !== "photo"),
+    images: assetsWithSignedUrls.filter((asset) => asset.asset_type === "photo"),
+    analyticsFiles: assetsWithSignedUrls.filter((asset) => asset.asset_type !== "photo"),
     gearItems,
     linkedGearItemIds,
   }
