@@ -417,11 +417,17 @@ Goal: improve route performance and scalability.
 
 Goal: improve Security, Scalability, and correctness under partial failure.
 
+- Status: implemented 2026-06-23.
 - Move setup value save, selected-option replacement, and boat metric reorder
   into a database RPC or transactional server-side operation.
 - Move gear usage replacement into a transaction-safe operation.
 - Keep app-level permission checks before calling the RPC.
 - Return structured action results for JS clients and keep redirect fallbacks.
+- Implemented with `save_session_setup_atomic` and
+  `replace_session_gear_usage_atomic` in
+  `supabase/migrations/028_transaction_safe_session_saves.sql`, typed Supabase
+  RPC calls in `features/sessions/actions.ts`, and a JS result-returning Gear
+  save path in `features/sessions/detail/gear-panel.tsx`.
 - Expected score movement: Security `4 -> 4.5`, Scalability `4 -> 4.3`,
   Best Practices `4.7 -> 5`.
 

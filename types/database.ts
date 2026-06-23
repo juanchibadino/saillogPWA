@@ -1402,7 +1402,27 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      replace_session_gear_usage_atomic: {
+        Args: {
+          p_gear_item_ids: string[];
+          p_linked_by_profile_id: string | null;
+          p_session_id: string;
+          p_team_id: string;
+        };
+        Returns: undefined;
+      };
+      save_session_setup_atomic: {
+        Args: {
+          p_delete_item_ids: string[];
+          p_ordered_item_ids: string[] | null;
+          p_session_id: string;
+          p_team_id: string;
+          p_values: Json;
+        };
+        Returns: undefined;
+      };
+    };
     Enums: {
       assessment_run_status_type: "draft" | "published" | "closed";
       asset_type: "photo" | "analytics_file" | "document";

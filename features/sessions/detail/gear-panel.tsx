@@ -1,8 +1,10 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 import { CameraIcon, Loader2Icon } from "lucide-react"
 import { useFormStatus } from "react-dom"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -32,7 +34,10 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { updateSessionGearUsageAction } from "@/features/sessions/actions"
+import {
+  saveSessionGearUsageAction,
+  updateSessionGearUsageAction,
+} from "@/features/sessions/actions"
 import type { SessionDetailGearItem } from "@/features/sessions/detail-types"
 import { useIsMobile } from "@/hooks/use-mobile"
 import type { NavigationScope } from "@/lib/navigation/types"
@@ -351,14 +356,16 @@ function SessionGearBarcodeScannerDialog({
 function SessionGearDialogFields({
   children,
   className,
+  isSaving,
 }: {
   children: React.ReactNode
   className?: string
+  isSaving: boolean
 }) {
   const { pending } = useFormStatus()
 
   return (
-    <fieldset disabled={pending} className={cn("space-y-3", className)}>
+    <fieldset disabled={pending || isSaving} className={cn("space-y-3", className)}>
       {children}
     </fieldset>
   )
@@ -366,19 +373,22 @@ function SessionGearDialogFields({
 
 function SessionGearSubmitButton({
   className,
+  isSaving,
 }: {
   className?: string
+  isSaving: boolean
 }) {
   const { pending } = useFormStatus()
+  const isPending = pending || isSaving
 
   return (
-    <Button type="submit" disabled={pending} className={className}>
-      {pending ? (
+    <Button type="submit" disabled={isPending} className={className}>
+      {isPending ? (
         <>
-            <Loader2Icon className="size-4 animate-spin" />
-            Saving...
-          </>
-        ) : (
+          <Loader2Icon className="size-4 animate-spin" />
+          Saving...
+        </>
+      ) : (
         "Save"
       )}
     </Button>
@@ -386,21 +396,27 @@ function SessionGearSubmitButton({
 }
 
 function SessionGearDialogFooter({
+  isSaving,
   onScanned,
   surface,
 }: {
+  isSaving: boolean
   onScanned: (barcodeValue: string) => void
   surface: "drawer" | "sheet"
 }) {
   const { pending } = useFormStatus()
+  const isPending = pending || isSaving
 
   const content = (
     <>
       <div className={surface === "sheet" ? "sm:mr-auto" : undefined}>
-        <SessionGearBarcodeScannerDialog disabled={pending} onDetected={onScanned} />
+        <SessionGearBarcodeScannerDialog disabled={isPending} onDetected={onScanned} />
       </div>
       <div className={surface === "sheet" ? "sm:ml-auto" : undefined}>
-        <SessionGearSubmitButton className={surface === "drawer" ? "w-full" : undefined} />
+        <SessionGearSubmitButton
+          className={surface === "drawer" ? "w-full" : undefined}
+          isSaving={isSaving}
+        />
       </div>
     </>
   )
@@ -421,14 +437,17 @@ function SessionGearLinkDialog(input: {
   scope: NavigationScope
   gearItems: SessionDetailGearItem[]
   linkedGearItemIds: string[]
+  onSaved: (linkedGearItemIds: string[]) => void
 }) {
   const [isOpen, setIsOpen] = React.useState(false)
   const [selectorTab, setSelectorTab] = React.useState<SessionGearSelectorTab>("all")
   const [selectedGearItemIds, setSelectedGearItemIds] = React.useState<string[]>(() =>
     [...new Set(input.linkedGearItemIds)],
   )
+  const [isSavingGear, setIsSavingGear] = React.useState(false)
   const [scanFeedbackMessage, setScanFeedbackMessage] = React.useState<string | null>(null)
   const [scanFeedbackType, setScanFeedbackType] = React.useState<"success" | "error">("success")
+  const router = useRouter()
   const isMobile = useIsMobile()
   const availableGearTypes = React.useMemo(() => {
     const presentTypes = new Set(input.gearItems.map((gearItem) => gearItem.gear_type))
@@ -514,6 +533,40 @@ function SessionGearLinkDialog(input: {
     setScanFeedbackMessage(`Linked: ${matchedGearItem.name}`)
   }
 
+  async function handleGearSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+
+    if (isSavingGear) {
+      return
+    }
+
+    const formData = new FormData(event.currentTarget)
+    const submittedGearItemIds = selectedGearItemIds
+    const toastId = `session-gear-save:${input.sessionId}`
+
+    setIsSavingGear(true)
+
+    try {
+      const result = await saveSessionGearUsageAction(formData)
+
+      if (!result.ok) {
+        toast.error(result.message, { id: toastId })
+        return
+      }
+
+      input.onSaved(submittedGearItemIds)
+      setIsOpen(false)
+      toast.success("Session gear updated successfully.", { id: toastId })
+      router.refresh()
+    } catch {
+      toast.error("Could not update session gear. Confirm permissions and try again.", {
+        id: toastId,
+      })
+    } finally {
+      setIsSavingGear(false)
+    }
+  }
+
   const selectedGearItemIdSet = new Set(selectedGearItemIds)
   const linkedGearItems = input.gearItems.filter((gearItem) =>
     selectedGearItemIdSet.has(gearItem.id),
@@ -557,7 +610,11 @@ function SessionGearLinkDialog(input: {
   }
 
   const gearForm = (
-    <form action={updateSessionGearUsageAction} className="flex min-h-0 flex-1 flex-col">
+    <form
+      action={updateSessionGearUsageAction}
+      onSubmit={handleGearSubmit}
+      className="flex min-h-0 flex-1 flex-col"
+    >
       <input type="hidden" name="sessionId" value={input.sessionId} />
       <input type="hidden" name="scopeOrgId" value={input.scope.activeOrgId} />
       {input.scope.activeTeamId ? (
@@ -574,7 +631,10 @@ function SessionGearLinkDialog(input: {
         />
       ))}
 
-      <SessionGearDialogFields className="min-h-0 flex-1 overflow-y-auto px-4">
+      <SessionGearDialogFields
+        className="min-h-0 flex-1 overflow-y-auto px-4"
+        isSaving={isSavingGear}
+      >
         {input.gearItems.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No gear items exist for this team yet. Add items in Team Gear first.
@@ -639,6 +699,7 @@ function SessionGearLinkDialog(input: {
       ) : null}
 
       <SessionGearDialogFooter
+        isSaving={isSavingGear}
         onScanned={handleBarcodeScanned}
         surface={isMobile ? "drawer" : "sheet"}
       />
@@ -731,6 +792,14 @@ export type SessionGearTabPanelProps = {
 }
 
 export function SessionGearTabPanel(input: SessionGearTabPanelProps) {
+  const [linkedGearItemIds, setLinkedGearItemIds] = React.useState<string[]>(() =>
+    [...new Set(input.linkedGearItemIds)],
+  )
+
+  React.useEffect(() => {
+    setLinkedGearItemIds([...new Set(input.linkedGearItemIds)])
+  }, [input.linkedGearItemIds])
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -742,7 +811,8 @@ export function SessionGearTabPanel(input: SessionGearTabPanelProps) {
             sessionId={input.sessionId}
             scope={input.scope}
             gearItems={input.gearItems}
-            linkedGearItemIds={input.linkedGearItemIds}
+            linkedGearItemIds={linkedGearItemIds}
+            onSaved={setLinkedGearItemIds}
           />
         ) : null}
       </div>
@@ -755,7 +825,7 @@ export function SessionGearTabPanel(input: SessionGearTabPanelProps) {
 
       <SessionGearPanel
         gearItems={input.gearItems}
-        linkedGearItemIds={input.linkedGearItemIds}
+        linkedGearItemIds={linkedGearItemIds}
       />
     </div>
   )

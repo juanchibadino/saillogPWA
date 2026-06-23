@@ -4,6 +4,18 @@ Last updated: 2026-06-23
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
 
+## 2026-06-23 - Team session audit Step 5
+
+- Added `supabase/migrations/028_transaction_safe_session_saves.sql` with transaction-safe RPCs for session setup saves/reorders and session gear link replacement.
+- Updated `features/sessions/actions.ts` so setup save, setup metric reorder, and gear replacement call the RPCs after the existing app-level permission and scope checks.
+- Added a result-returning `saveSessionGearUsageAction` while keeping `updateSessionGearUsageAction` as the redirect fallback, and updated `features/sessions/detail/gear-panel.tsx` to use visible saving state plus success/error toasts.
+- Updated `AUDIT_TEAM_SESSION.MD` Step 5 status.
+- Validation: `npm run lint` passes with existing warnings in
+  `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`; `npm run build`;
+  `git diff --check`. Local `supabase` CLI is unavailable, so migration
+  application was not verified locally.
+
 ## 2026-06-23 - Team session audit Step 4
 
 - Split `/team-sessions/[id]` deferred data loading by selected tab so the route no longer blocks the initial tab on assets, analytics files, gear, results, and Info catalogs together.
