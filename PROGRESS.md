@@ -1,8 +1,23 @@
 # PROGRESS.md
 
-Last updated: 2026-06-22
+Last updated: 2026-06-23
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
+
+## 2026-06-23 - Team session audit Step 3
+
+- Split `features/sessions/session-detail-tabs-client.tsx` into focused client modules under `features/sessions/detail/`: setup dialog, Info panel, Goals panel, Results panel, assets/image viewer, Gear/barcode scanner, and mobile tab measurement.
+- Kept `session-detail-tabs-client.tsx` as the tab/header shell and loaded heavy tab modules through `next/dynamic` so Setup, Info editors, assets/image compression/preview, and Gear scanner code are behind separate client boundaries.
+- Added `features/sessions/detail/responsive-edit-surface.tsx` and moved the duplicated Goals/Results Drawer-or-Sheet shell onto that shared surface while preserving their existing fixed footer save controls.
+- Preserved the existing server action names, hidden scope fields, optimistic Info save flow, Drawer/Sheet behavior, asset upload/delete behavior, and Gear linking/scanner behavior.
+- Validation: `npm run lint` passes with existing warnings in `app/sign-in/sign-in-content.tsx` and `features/onboarding/onboarding-flow.tsx`; `npx tsc --noEmit`; `npm run build`; `git diff --check`.
+
+## 2026-06-23 - Team session audit Step 2
+
+- Normalized `/team-sessions/[id]` edit submit copy in `features/sessions/session-detail-tabs-client.tsx` so metadata and Gear use `Save` / `Saving...` like Info, Goals, and Results.
+- Removed empty description rendering from Info edit headers, the Results tab header, and Images/Analytics asset panels; fixed the Gear barcode feedback typo to `Barcode is not registered`.
+- Reviewed `Start Time (UTC)` and kept the current UTC label/behavior because the save path still builds `dock_out_at` as a UTC timestamp and there is no venue timezone field to render reliable local operational time yet.
+- Validation: `npm run lint` passes with existing warnings in `app/sign-in/sign-in-content.tsx` and `features/onboarding/onboarding-flow.tsx`; `npm run build`; `git diff --check`.
 
 ## 2026-06-22 - Team session images and files
 
@@ -21,6 +36,7 @@ Branch: `main`
 - Additional validation for the contained image preview fix: browser check on `Test Organization` / `Test Team` confirmed thumbnails and dialog image use `object-fit: contain`, desktop internal wheel zoom changes only the preview transform while `visualViewport.scale` remains 1, and mobile reset state fits the image at 336x260 inside a 378x832 dialog with page `scrollWidth` still 390.
 - Tuned image preview interaction so the first zoom step is 135%, pinch/wheel zoom is more responsive, and normal wheel/trackpad movement pans the zoomed image. Validation confirmed preview transform changed from scale-only to translated pan while `visualViewport.scale` stayed 1 and page width stayed fixed.
 - Limited Analytics uploads to PDF only by changing the picker accept list to `application/pdf,.pdf`, enforcing `application/pdf` plus `.pdf` server-side, and narrowing the `session-files` storage bucket MIME allowlist to `application/pdf`.
+- Added small asset-card loading states: image thumbnails show a spinner until they load or fall back, and confirmed deletes keep the card in a spinner overlay until the refreshed session asset list removes it.
 
 ## 2026-06-22 - Team session detail loading shell
 

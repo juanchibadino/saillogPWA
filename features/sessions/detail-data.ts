@@ -2,6 +2,10 @@ import "server-only"
 
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import type { Database, Json } from "@/types/database"
+import {
+  logSessionDetailTiming,
+  startSessionDetailTiming,
+} from "@/features/sessions/detail-timing"
 import type {
   SessionDetailAsset,
   SessionDetailCamp,
@@ -309,7 +313,33 @@ export async function getSessionDetailShellData(input: {
   activeTeamId: string | null
   sessionId: string
 }): Promise<SessionDetailShellData | null> {
+  const startedAt = startSessionDetailTiming()
+  const logShellTiming = (
+    status: "success" | "error",
+    outcome: string,
+    error?: string,
+  ) => {
+    logSessionDetailTiming({
+      route: "/team-sessions/[id]",
+      phase: "load_shell",
+      startedAt,
+      sessionId: input.sessionId,
+      activeTeamId: input.activeTeamId,
+      status,
+      error,
+      metadata: {
+        outcome,
+        activeOrganizationId: input.activeOrganizationId,
+      },
+    })
+  }
+  const throwShellTimingError = (outcome: string, message: string): never => {
+    logShellTiming("error", outcome, message)
+    throw new Error(message)
+  }
+
   if (!input.activeTeamId) {
+    logShellTiming("error", "missing_active_team")
     return null
   }
 
@@ -321,10 +351,14 @@ export async function getSessionDetailShellData(input: {
     .maybeSingle()
 
   if (sessionError) {
-    throw new Error(`Could not load session detail: ${sessionError.message}`)
+    throwShellTimingError(
+      "session_query_error",
+      `Could not load session detail: ${sessionError.message}`,
+    )
   }
 
   if (!sessionRow) {
+    logShellTiming("success", "session_not_found")
     return null
   }
 
@@ -337,10 +371,14 @@ export async function getSessionDetailShellData(input: {
     .maybeSingle()
 
   if (campError) {
-    throw new Error(`Could not load camp for session detail: ${campError.message}`)
+    throwShellTimingError(
+      "camp_query_error",
+      `Could not load camp for session detail: ${campError.message}`,
+    )
   }
 
   if (!campRow) {
+    logShellTiming("success", "camp_not_found")
     return null
   }
 
@@ -354,10 +392,14 @@ export async function getSessionDetailShellData(input: {
     .maybeSingle()
 
   if (teamVenueError) {
-    throw new Error(`Could not load team venue for session detail: ${teamVenueError.message}`)
+    throwShellTimingError(
+      "team_venue_query_error",
+      `Could not load team venue for session detail: ${teamVenueError.message}`,
+    )
   }
 
   if (!teamVenueRow) {
+    logShellTiming("success", "team_venue_not_found")
     return null
   }
 
@@ -382,26 +424,36 @@ export async function getSessionDetailShellData(input: {
   ])
 
   if (teamError) {
-    throw new Error(`Could not load team for session detail: ${teamError.message}`)
+    throwShellTimingError(
+      "team_query_error",
+      `Could not load team for session detail: ${teamError.message}`,
+    )
   }
 
   if (venueError) {
-    throw new Error(`Could not load venue for session detail: ${venueError.message}`)
+    throwShellTimingError(
+      "venue_query_error",
+      `Could not load venue for session detail: ${venueError.message}`,
+    )
   }
 
   if (!teamRow || !venueRow) {
+    logShellTiming("success", "team_or_venue_not_found")
     return null
   }
 
   const team: SessionDetailTeam = teamRow as TeamRow
   const venue: SessionDetailVenue = venueRow as VenueRow
 
-  return {
+  const shellData = {
     team,
     venue,
     camp,
     session,
   }
+
+  logShellTiming("success", "loaded")
+  return shellData
 }
 
 export async function getSessionDetailDeferredData(input: {
@@ -409,6 +461,33 @@ export async function getSessionDetailDeferredData(input: {
   teamVenueId: string
   sessionId: string
 }): Promise<SessionDetailDeferredData> {
+  const startedAt = startSessionDetailTiming()
+  const logDeferredTiming = (
+    status: "success" | "error",
+    outcome: string,
+    error?: string,
+    metadata?: Record<string, string | number | boolean | null | undefined>,
+  ) => {
+    logSessionDetailTiming({
+      route: "/team-sessions/[id]",
+      phase: "load_deferred",
+      startedAt,
+      sessionId: input.sessionId,
+      activeTeamId: input.activeTeamId,
+      status,
+      error,
+      metadata: {
+        outcome,
+        teamVenueId: input.teamVenueId,
+        ...metadata,
+      },
+    })
+  }
+  const throwDeferredTimingError = (outcome: string, message: string): never => {
+    logDeferredTiming("error", outcome, message)
+    throw new Error(message)
+  }
+
   const supabase = await createServerSupabaseClient()
 
   const [
@@ -479,57 +558,78 @@ export async function getSessionDetailDeferredData(input: {
   ])
 
   if (reviewError) {
-    throw new Error(`Could not load review for session detail: ${reviewError.message}`)
+    throwDeferredTimingError(
+      "review_query_error",
+      `Could not load review for session detail: ${reviewError.message}`,
+    )
   }
 
   if (setupError) {
-    throw new Error(`Could not load setup for session detail: ${setupError.message}`)
+    throwDeferredTimingError(
+      "setup_query_error",
+      `Could not load setup for session detail: ${setupError.message}`,
+    )
   }
 
   if (regattaResultError) {
-    throw new Error(`Could not load regatta result for session detail: ${regattaResultError.message}`)
+    throwDeferredTimingError(
+      "regatta_result_query_error",
+      `Could not load regatta result for session detail: ${regattaResultError.message}`,
+    )
   }
 
   if (assetsError) {
-    throw new Error(`Could not load assets for session detail: ${assetsError.message}`)
+    throwDeferredTimingError(
+      "assets_query_error",
+      `Could not load assets for session detail: ${assetsError.message}`,
+    )
   }
 
   if (gearItemsError) {
-    throw new Error(`Could not load gear items for session detail: ${gearItemsError.message}`)
+    throwDeferredTimingError(
+      "gear_items_query_error",
+      `Could not load gear items for session detail: ${gearItemsError.message}`,
+    )
   }
 
   if (sessionGearUsageError) {
-    throw new Error(
+    throwDeferredTimingError(
+      "session_gear_usage_query_error",
       `Could not load session gear usage for session detail: ${sessionGearUsageError.message}`,
     )
   }
 
   if (teamSetupItemsError) {
-    throw new Error(
+    throwDeferredTimingError(
+      "team_setup_items_query_error",
       `Could not load team setup items for session detail: ${teamSetupItemsError.message}`,
     )
   }
 
   if (teamStandardMovesError) {
-    throw new Error(
+    throwDeferredTimingError(
+      "team_standard_moves_query_error",
       `Could not load team standard moves for session detail: ${teamStandardMovesError.message}`,
     )
   }
 
   if (sessionStandardMovesError) {
-    throw new Error(
+    throwDeferredTimingError(
+      "session_standard_moves_query_error",
       `Could not load session standard move links for session detail: ${sessionStandardMovesError.message}`,
     )
   }
 
   if (teamVenueWindPatternsError) {
-    throw new Error(
+    throwDeferredTimingError(
+      "team_venue_wind_patterns_query_error",
       `Could not load venue wind patterns for session detail: ${teamVenueWindPatternsError.message}`,
     )
   }
 
   if (sessionWindPatternsError) {
-    throw new Error(
+    throwDeferredTimingError(
+      "session_wind_patterns_query_error",
       `Could not load session wind pattern links for session detail: ${sessionWindPatternsError.message}`,
     )
   }
@@ -591,13 +691,15 @@ export async function getSessionDetailDeferredData(input: {
       ])
 
     if (setupOptionsError) {
-      throw new Error(
+      throwDeferredTimingError(
+        "setup_options_query_error",
         `Could not load team setup options for session detail: ${setupOptionsError.message}`,
       )
     }
 
     if (setupValuesError) {
-      throw new Error(
+      throwDeferredTimingError(
+        "setup_values_query_error",
         `Could not load session setup values for session detail: ${setupValuesError.message}`,
       )
     }
@@ -614,7 +716,8 @@ export async function getSessionDetailDeferredData(input: {
         .in("session_setup_item_value_id", setupValueIds)
 
       if (selectedOptionsError) {
-        throw new Error(
+        throwDeferredTimingError(
+          "setup_selected_options_query_error",
           `Could not load session setup selected options: ${selectedOptionsError.message}`,
         )
       }
@@ -624,7 +727,7 @@ export async function getSessionDetailDeferredData(input: {
     }
   }
 
-  return {
+  const deferredData: SessionDetailDeferredData = {
     info: buildInfo({
       review: (reviewRow as SessionReviewRow | null) ?? null,
       setup: (setupRow as SessionSetupRow | null) ?? null,
@@ -657,6 +760,16 @@ export async function getSessionDetailDeferredData(input: {
     gearItems,
     linkedGearItemIds,
   }
+
+  logDeferredTiming("success", "loaded", undefined, {
+    assetCount: assets.length,
+    gearItemCount: gearItems.length,
+    setupItemCount: teamSetupItems.length,
+    standardMoveCount: teamStandardMoves.length,
+    windPatternCount: teamVenueWindPatterns.length,
+  })
+
+  return deferredData
 }
 
 export async function getSessionDetailData(input: {

@@ -10,6 +10,11 @@ import {
   NAVIGATION_SCOPE_ORG_QUERY_KEY,
   NAVIGATION_SCOPE_TEAM_QUERY_KEY,
 } from "@/lib/navigation/constants"
+import {
+  logSessionDetailTiming,
+  startSessionDetailTiming,
+  type SessionDetailTimingStatus,
+} from "@/features/sessions/detail-timing"
 import { createAdminSupabaseClient } from "@/lib/supabase/admin"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { scopeFormInputSchema } from "@/lib/validation/navigation"
@@ -48,6 +53,32 @@ type SessionActionScope = {
   scopeCampId?: string
   scopeTab?: string
   scopePage?: number
+}
+
+function logSessionActionTiming(input: {
+  error?: string
+  metadata?: Record<string, string | number | boolean | null | undefined>
+  outcome: string
+  phase: string
+  scope: SessionActionScope
+  sessionId?: string | null
+  startedAt: number
+  status: SessionDetailTimingStatus
+}): void {
+  logSessionDetailTiming({
+    route: "/team-sessions/[id]",
+    phase: input.phase,
+    startedAt: input.startedAt,
+    sessionId: input.sessionId,
+    activeTeamId: input.scope.scopeTeamId ?? null,
+    status: input.status,
+    error: input.error,
+    metadata: {
+      activeOrganizationId: input.scope.scopeOrgId ?? null,
+      outcome: input.outcome,
+      ...input.metadata,
+    },
+  })
 }
 
 function getFormString(formData: FormData, key: string): string | undefined {
@@ -1028,11 +1059,28 @@ export async function updateSessionAction(formData: FormData): Promise<void> {
 }
 
 export async function updateSessionDetailAction(formData: FormData): Promise<void> {
+  const startedAt = startSessionDetailTiming()
   const context = await requireAuthenticatedAccessContext()
   const scope = getScopeFromFormData(formData)
   const sessionId = getFormString(formData, "id")
+  const logTiming = (
+    status: SessionDetailTimingStatus,
+    outcome: string,
+    error?: string,
+  ) => {
+    logSessionActionTiming({
+      phase: "save_session_metadata",
+      startedAt,
+      scope,
+      sessionId,
+      status,
+      outcome,
+      error,
+    })
+  }
 
   if (!sessionId || !scope.scopeOrgId || !scope.scopeTeamId) {
+    logTiming("error", "invalid_input")
     redirect(
       buildTeamSessionsRedirectPath({
         error: "invalid_input",
@@ -1050,6 +1098,7 @@ export async function updateSessionDetailAction(formData: FormData): Promise<voi
   })
 
   if (!parsedInput.success) {
+    logTiming("error", "invalid_input")
     redirect(
       buildSessionDetailRedirectPath({
         sessionId,
@@ -1066,6 +1115,7 @@ export async function updateSessionDetailAction(formData: FormData): Promise<voi
       teamId: scope.scopeTeamId,
     })
   ) {
+    logTiming("error", "forbidden")
     redirect(
       buildSessionDetailRedirectPath({
         sessionId: parsedInput.data.id,
@@ -1082,6 +1132,7 @@ export async function updateSessionDetailAction(formData: FormData): Promise<voi
   })
 
   if (!scopedSession) {
+    logTiming("error", "forbidden")
     redirect(
       buildSessionDetailRedirectPath({
         sessionId: parsedInput.data.id,
@@ -1116,6 +1167,7 @@ export async function updateSessionDetailAction(formData: FormData): Promise<voi
     .eq("id", parsedInput.data.id)
 
   if (updateError) {
+    logTiming("error", "update_failed", updateError.message)
     redirect(
       buildSessionDetailRedirectPath({
         sessionId: parsedInput.data.id,
@@ -1131,6 +1183,7 @@ export async function updateSessionDetailAction(formData: FormData): Promise<voi
     teamVenueId: scopedSession.teamVenue.id,
   })
 
+  logTiming("success", "updated")
   redirect(
     buildSessionDetailRedirectPath({
       sessionId: parsedInput.data.id,
@@ -1873,15 +1926,41 @@ async function updateSessionInfoMutation(formData: FormData): Promise<UpdateSess
 export async function saveSessionInfoAction(
   formData: FormData,
 ): Promise<UpdateSessionInfoActionResult> {
+  const startedAt = startSessionDetailTiming()
+  const scope = getScopeFromFormData(formData)
+  const sessionId = getFormString(formData, "sessionId")
   const result = await updateSessionInfoMutation(formData)
 
   if (!result.ok) {
+    logSessionActionTiming({
+      phase: "save_session_info",
+      startedAt,
+      scope,
+      sessionId,
+      status: "error",
+      outcome: result.error,
+      error: result.message,
+    })
+
     return {
       ok: false,
       error: result.error,
       message: result.message,
     }
   }
+
+  logSessionActionTiming({
+    phase: "save_session_info",
+    startedAt,
+    scope,
+    sessionId,
+    status: "success",
+    outcome: "saved",
+    metadata: {
+      standardMoveCount: result.linkedStandardMoveIds.length,
+      windPatternCount: result.linkedWindPatternIds.length,
+    },
+  })
 
   return {
     ok: true,
@@ -1894,9 +1973,22 @@ export async function saveSessionInfoAction(
 }
 
 export async function updateSessionInfoAction(formData: FormData): Promise<void> {
+  const startedAt = startSessionDetailTiming()
+  const scope = getScopeFromFormData(formData)
+  const submittedSessionId = getFormString(formData, "sessionId")
   const result = await updateSessionInfoMutation(formData)
 
   if (!result.ok) {
+    logSessionActionTiming({
+      phase: "save_session_info",
+      startedAt,
+      scope,
+      sessionId: result.sessionId ?? submittedSessionId,
+      status: "error",
+      outcome: result.error,
+      error: result.message,
+    })
+
     if (!result.sessionId) {
       redirect(
         buildTeamSessionsRedirectPath({
@@ -1915,6 +2007,19 @@ export async function updateSessionInfoAction(formData: FormData): Promise<void>
     )
   }
 
+  logSessionActionTiming({
+    phase: "save_session_info",
+    startedAt,
+    scope,
+    sessionId: result.sessionId,
+    status: "success",
+    outcome: "saved",
+    metadata: {
+      standardMoveCount: result.linkedStandardMoveIds.length,
+      windPatternCount: result.linkedWindPatternIds.length,
+    },
+  })
+
   redirect(
     buildSessionDetailRedirectPath({
       sessionId: result.sessionId,
@@ -1925,11 +2030,28 @@ export async function updateSessionInfoAction(formData: FormData): Promise<void>
 }
 
 export async function updateSessionGoalsAction(formData: FormData): Promise<void> {
+  const startedAt = startSessionDetailTiming()
   const context = await requireAuthenticatedAccessContext()
   const scope = getScopeFromFormData(formData)
   const sessionId = getFormString(formData, "sessionId")
+  const logTiming = (
+    status: SessionDetailTimingStatus,
+    outcome: string,
+    error?: string,
+  ) => {
+    logSessionActionTiming({
+      phase: "save_session_goals",
+      startedAt,
+      scope,
+      sessionId,
+      status,
+      outcome,
+      error,
+    })
+  }
 
   if (!sessionId || !scope.scopeOrgId || !scope.scopeTeamId) {
+    logTiming("error", "invalid_input")
     redirect(
       buildTeamSessionsRedirectPath({
         error: "invalid_input",
@@ -1944,6 +2066,7 @@ export async function updateSessionGoalsAction(formData: FormData): Promise<void
   })
 
   if (!parsedInput.success) {
+    logTiming("error", "invalid_input")
     redirect(
       buildSessionDetailRedirectPath({
         sessionId,
@@ -1960,6 +2083,7 @@ export async function updateSessionGoalsAction(formData: FormData): Promise<void
       teamId: scope.scopeTeamId,
     })
   ) {
+    logTiming("error", "forbidden")
     redirect(
       buildSessionDetailRedirectPath({
         sessionId: parsedInput.data.sessionId,
@@ -1976,6 +2100,7 @@ export async function updateSessionGoalsAction(formData: FormData): Promise<void
   })
 
   if (!scopedSession) {
+    logTiming("error", "forbidden")
     redirect(
       buildSessionDetailRedirectPath({
         sessionId: parsedInput.data.sessionId,
@@ -1995,6 +2120,7 @@ export async function updateSessionGoalsAction(formData: FormData): Promise<void
     .eq("id", parsedInput.data.sessionId)
 
   if (updateError) {
+    logTiming("error", "update_failed", updateError.message)
     redirect(
       buildSessionDetailRedirectPath({
         sessionId: parsedInput.data.sessionId,
@@ -2010,6 +2136,7 @@ export async function updateSessionGoalsAction(formData: FormData): Promise<void
     teamVenueId: scopedSession.teamVenue.id,
   })
 
+  logTiming("success", "saved")
   redirect(
     buildSessionDetailRedirectPath({
       sessionId: parsedInput.data.sessionId,
@@ -2020,11 +2147,28 @@ export async function updateSessionGoalsAction(formData: FormData): Promise<void
 }
 
 export async function updateSessionResultsAction(formData: FormData): Promise<void> {
+  const startedAt = startSessionDetailTiming()
   const context = await requireAuthenticatedAccessContext()
   const scope = getScopeFromFormData(formData)
   const sessionId = getFormString(formData, "sessionId")
+  const logTiming = (
+    status: SessionDetailTimingStatus,
+    outcome: string,
+    error?: string,
+  ) => {
+    logSessionActionTiming({
+      phase: "save_session_results",
+      startedAt,
+      scope,
+      sessionId,
+      status,
+      outcome,
+      error,
+    })
+  }
 
   if (!sessionId || !scope.scopeOrgId || !scope.scopeTeamId) {
+    logTiming("error", "invalid_input")
     redirect(
       buildTeamSessionsRedirectPath({
         error: "invalid_input",
@@ -2039,6 +2183,7 @@ export async function updateSessionResultsAction(formData: FormData): Promise<vo
   })
 
   if (!parsedInput.success) {
+    logTiming("error", "invalid_input")
     redirect(
       buildSessionDetailRedirectPath({
         sessionId,
@@ -2055,6 +2200,7 @@ export async function updateSessionResultsAction(formData: FormData): Promise<vo
       teamId: scope.scopeTeamId,
     })
   ) {
+    logTiming("error", "forbidden")
     redirect(
       buildSessionDetailRedirectPath({
         sessionId: parsedInput.data.sessionId,
@@ -2071,6 +2217,7 @@ export async function updateSessionResultsAction(formData: FormData): Promise<vo
   })
 
   if (!scopedSession) {
+    logTiming("error", "forbidden")
     redirect(
       buildSessionDetailRedirectPath({
         sessionId: parsedInput.data.sessionId,
@@ -2091,6 +2238,7 @@ export async function updateSessionResultsAction(formData: FormData): Promise<vo
   )
 
   if (resultError) {
+    logTiming("error", "update_failed", resultError.message)
     redirect(
       buildSessionDetailRedirectPath({
         sessionId: parsedInput.data.sessionId,
@@ -2106,6 +2254,7 @@ export async function updateSessionResultsAction(formData: FormData): Promise<vo
     teamVenueId: scopedSession.teamVenue.id,
   })
 
+  logTiming("success", "saved")
   redirect(
     buildSessionDetailRedirectPath({
       sessionId: parsedInput.data.sessionId,
@@ -2558,9 +2707,22 @@ async function updateSessionSetupMutation(
 export async function saveSessionSetupAction(
   formData: FormData,
 ): Promise<UpdateSessionSetupActionResult> {
+  const startedAt = startSessionDetailTiming()
+  const scope = getScopeFromFormData(formData)
+  const sessionId = getFormString(formData, "sessionId")
   const result = await updateSessionSetupMutation(formData)
 
   if (!result.ok) {
+    logSessionActionTiming({
+      phase: "save_session_setup",
+      startedAt,
+      scope,
+      sessionId: result.sessionId ?? sessionId,
+      status: "error",
+      outcome: result.error,
+      error: result.message,
+    })
+
     return {
       ok: false,
       error: result.error,
@@ -2568,15 +2730,37 @@ export async function saveSessionSetupAction(
     }
   }
 
+  logSessionActionTiming({
+    phase: "save_session_setup",
+    startedAt,
+    scope,
+    sessionId,
+    status: "success",
+    outcome: "saved",
+  })
+
   return {
     ok: true,
   }
 }
 
 export async function updateSessionSetupAction(formData: FormData): Promise<void> {
+  const startedAt = startSessionDetailTiming()
+  const scope = getScopeFromFormData(formData)
+  const submittedSessionId = getFormString(formData, "sessionId")
   const result = await updateSessionSetupMutation(formData)
 
   if (!result.ok) {
+    logSessionActionTiming({
+      phase: "save_session_setup",
+      startedAt,
+      scope,
+      sessionId: result.sessionId ?? submittedSessionId,
+      status: "error",
+      outcome: result.error,
+      error: result.message,
+    })
+
     if (!result.sessionId) {
       redirect(
         buildTeamSessionsRedirectPath({
@@ -2594,6 +2778,15 @@ export async function updateSessionSetupAction(formData: FormData): Promise<void
       }),
     )
   }
+
+  logSessionActionTiming({
+    phase: "save_session_setup",
+    startedAt,
+    scope,
+    sessionId: result.sessionId,
+    status: "success",
+    outcome: "saved",
+  })
 
   redirect(
     buildSessionDetailRedirectPath({
@@ -3136,12 +3329,32 @@ export async function reorderTeamSetupMetricsAction(formData: FormData): Promise
 }
 
 export async function updateSessionGearUsageAction(formData: FormData): Promise<void> {
+  const startedAt = startSessionDetailTiming()
   const context = await requireAuthenticatedAccessContext()
   const scope = getScopeFromFormData(formData)
   const sessionId = getFormString(formData, "sessionId")
   const uniqueGearItemIds = [...new Set(getFormStringArray(formData, "gearItemIds"))]
+  const logTiming = (
+    status: SessionDetailTimingStatus,
+    outcome: string,
+    error?: string,
+  ) => {
+    logSessionActionTiming({
+      phase: "save_session_gear",
+      startedAt,
+      scope,
+      sessionId,
+      status,
+      outcome,
+      error,
+      metadata: {
+        gearItemCount: uniqueGearItemIds.length,
+      },
+    })
+  }
 
   if (!sessionId || !scope.scopeOrgId || !scope.scopeTeamId) {
+    logTiming("error", "invalid_input")
     redirect(
       buildTeamSessionsRedirectPath({
         error: "invalid_input",
@@ -3156,6 +3369,7 @@ export async function updateSessionGearUsageAction(formData: FormData): Promise<
   })
 
   if (!parsedInput.success) {
+    logTiming("error", "invalid_input")
     redirect(
       buildSessionDetailRedirectPath({
         sessionId,
@@ -3172,6 +3386,7 @@ export async function updateSessionGearUsageAction(formData: FormData): Promise<
       teamId: scope.scopeTeamId,
     })
   ) {
+    logTiming("error", "forbidden")
     redirect(
       buildSessionDetailRedirectPath({
         sessionId: parsedInput.data.sessionId,
@@ -3188,6 +3403,7 @@ export async function updateSessionGearUsageAction(formData: FormData): Promise<
   })
 
   if (!scopedSession) {
+    logTiming("error", "forbidden")
     redirect(
       buildSessionDetailRedirectPath({
         sessionId: parsedInput.data.sessionId,
@@ -3207,6 +3423,7 @@ export async function updateSessionGearUsageAction(formData: FormData): Promise<
       .in("id", parsedInput.data.gearItemIds)
 
     if (scopedGearError) {
+      logTiming("error", "gear_scope_query_failed", scopedGearError.message)
       redirect(
         buildSessionDetailRedirectPath({
           sessionId: parsedInput.data.sessionId,
@@ -3217,6 +3434,7 @@ export async function updateSessionGearUsageAction(formData: FormData): Promise<
     }
 
     if (!scopedGearRows || scopedGearRows.length !== parsedInput.data.gearItemIds.length) {
+      logTiming("error", "invalid_gear_items")
       redirect(
         buildSessionDetailRedirectPath({
           sessionId: parsedInput.data.sessionId,
@@ -3233,6 +3451,7 @@ export async function updateSessionGearUsageAction(formData: FormData): Promise<
     .eq("session_id", parsedInput.data.sessionId)
 
   if (deleteUsageError) {
+    logTiming("error", "delete_usage_failed", deleteUsageError.message)
     redirect(
       buildSessionDetailRedirectPath({
         sessionId: parsedInput.data.sessionId,
@@ -3252,6 +3471,7 @@ export async function updateSessionGearUsageAction(formData: FormData): Promise<
     )
 
     if (insertUsageError) {
+      logTiming("error", "insert_usage_failed", insertUsageError.message)
       redirect(
         buildSessionDetailRedirectPath({
           sessionId: parsedInput.data.sessionId,
@@ -3268,6 +3488,7 @@ export async function updateSessionGearUsageAction(formData: FormData): Promise<
     teamVenueId: scopedSession.teamVenue.id,
   })
 
+  logTiming("success", "saved")
   redirect(
     buildSessionDetailRedirectPath({
       sessionId: parsedInput.data.sessionId,
@@ -3514,15 +3735,45 @@ async function uploadSessionAssetMutation(
 export async function saveSessionAssetAction(
   formData: FormData,
 ): Promise<UploadSessionAssetActionResult> {
+  const startedAt = startSessionDetailTiming()
+  const scope = getScopeFromFormData(formData)
+  const sessionId = getFormString(formData, "sessionId")
+  const assetType = getFormString(formData, "assetType")
   const result = await uploadSessionAssetMutation(formData)
 
   if (!result.ok) {
+    logSessionActionTiming({
+      phase: "upload_session_asset",
+      startedAt,
+      scope,
+      sessionId,
+      status: "error",
+      outcome: result.error,
+      error: result.message,
+      metadata: {
+        assetType: assetType ?? null,
+      },
+    })
+
     return {
       ok: false,
       error: result.error,
       message: result.message,
     }
   }
+
+  logSessionActionTiming({
+    phase: "upload_session_asset",
+    startedAt,
+    scope,
+    sessionId,
+    status: "success",
+    outcome: result.status,
+    metadata: {
+      assetType: assetType ?? null,
+      tab: result.tab,
+    },
+  })
 
   return {
     ok: true,
@@ -3534,14 +3785,42 @@ export async function saveSessionAssetAction(
 export async function deleteSessionAssetAction(
   formData: FormData,
 ): Promise<DeleteSessionAssetActionResult> {
+  const startedAt = startSessionDetailTiming()
   const context = await requireAuthenticatedAccessContext()
   const scope = getScopeFromFormData(formData)
+  const submittedSessionId = getFormString(formData, "sessionId")
+  const submittedAssetId = getFormString(formData, "assetId")
+  const logTiming = (input: {
+    assetType?: string | null
+    error?: string
+    outcome: string
+    sessionId?: string | null
+    status: SessionDetailTimingStatus
+  }) => {
+    logSessionActionTiming({
+      phase: "delete_session_asset",
+      startedAt,
+      scope,
+      sessionId: input.sessionId ?? submittedSessionId,
+      status: input.status,
+      outcome: input.outcome,
+      error: input.error,
+      metadata: {
+        assetId: submittedAssetId ?? null,
+        assetType: input.assetType ?? null,
+      },
+    })
+  }
   const parsedInput = deleteSessionAssetInputSchema.safeParse({
-    sessionId: getFormString(formData, "sessionId"),
-    assetId: getFormString(formData, "assetId"),
+    sessionId: submittedSessionId,
+    assetId: submittedAssetId,
   })
 
   if (!parsedInput.success || !scope.scopeOrgId || !scope.scopeTeamId) {
+    logTiming({
+      outcome: "invalid_input",
+      status: "error",
+    })
     return buildDeleteSessionAssetActionError("invalid_input")
   }
 
@@ -3552,6 +3831,11 @@ export async function deleteSessionAssetAction(
       teamId: scope.scopeTeamId,
     })
   ) {
+    logTiming({
+      outcome: "forbidden",
+      sessionId: parsedInput.data.sessionId,
+      status: "error",
+    })
     return buildDeleteSessionAssetActionError("forbidden")
   }
 
@@ -3562,6 +3846,11 @@ export async function deleteSessionAssetAction(
   })
 
   if (!scopedSession) {
+    logTiming({
+      outcome: "forbidden",
+      sessionId: parsedInput.data.sessionId,
+      status: "error",
+    })
     return buildDeleteSessionAssetActionError("forbidden")
   }
 
@@ -3574,6 +3863,12 @@ export async function deleteSessionAssetAction(
     .maybeSingle()
 
   if (assetError || !assetRow) {
+    logTiming({
+      outcome: assetError ? "asset_query_error" : "asset_not_found",
+      sessionId: parsedInput.data.sessionId,
+      status: "error",
+      error: assetError?.message,
+    })
     return buildDeleteSessionAssetActionError("invalid_input")
   }
 
@@ -3584,6 +3879,13 @@ export async function deleteSessionAssetAction(
     .eq("session_id", parsedInput.data.sessionId)
 
   if (deleteError) {
+    logTiming({
+      assetType: assetRow.asset_type,
+      outcome: "delete_failed",
+      sessionId: parsedInput.data.sessionId,
+      status: "error",
+      error: deleteError.message,
+    })
     return buildDeleteSessionAssetActionError("delete_failed")
   }
 
@@ -3600,6 +3902,13 @@ export async function deleteSessionAssetAction(
     teamVenueId: scopedSession.teamVenue.id,
   })
 
+  logTiming({
+    assetType: assetRow.asset_type,
+    outcome: "deleted",
+    sessionId: parsedInput.data.sessionId,
+    status: "success",
+  })
+
   return {
     ok: true,
     status: "asset_deleted",
@@ -3608,9 +3917,26 @@ export async function deleteSessionAssetAction(
 }
 
 export async function uploadSessionAssetAction(formData: FormData): Promise<void> {
+  const startedAt = startSessionDetailTiming()
+  const scope = getScopeFromFormData(formData)
+  const sessionId = getFormString(formData, "sessionId")
+  const assetType = getFormString(formData, "assetType")
   const result = await uploadSessionAssetMutation(formData)
 
   if (!result.ok) {
+    logSessionActionTiming({
+      phase: "upload_session_asset",
+      startedAt,
+      scope,
+      sessionId: result.sessionId ?? sessionId,
+      status: "error",
+      outcome: result.error,
+      error: result.message,
+      metadata: {
+        assetType: assetType ?? null,
+      },
+    })
+
     if (!result.sessionId) {
       const teamSessionsError =
         result.error === "upload_failed" ? "update_failed" : result.error
@@ -3631,6 +3957,19 @@ export async function uploadSessionAssetAction(formData: FormData): Promise<void
       }),
     )
   }
+
+  logSessionActionTiming({
+    phase: "upload_session_asset",
+    startedAt,
+    scope,
+    sessionId: result.sessionId,
+    status: "success",
+    outcome: result.status,
+    metadata: {
+      assetType: assetType ?? null,
+      tab: result.tab,
+    },
+  })
 
   redirect(
     buildSessionDetailRedirectPath({
