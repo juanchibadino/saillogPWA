@@ -3,22 +3,32 @@ import "server-only"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import type { Database, Json } from "@/types/database"
 import {
+  getSessionDetailTimingErrorMessage,
   logSessionDetailTiming,
   startSessionDetailTiming,
 } from "@/features/sessions/detail-timing"
 import type {
   SessionDetailAsset,
+  SessionDetailAnalyticsTabData,
   SessionDetailCamp,
   SessionDetailData,
   SessionDetailGearItem,
+  SessionDetailGearTabData,
+  SessionDetailGoalsTabData,
+  SessionDetailImagesTabData,
   SessionDetailInfo,
+  SessionDetailInfoTabData,
+  SessionDetailResultsTabData,
   SessionDetailResults,
+  SessionDetailSetupData,
   SessionDetailSession,
   SessionDetailAssetMetadata,
   SessionSetupDialogItem,
+  SessionDetailTabPayload,
   SessionDetailTeam,
   SessionDetailVenue,
 } from "@/features/sessions/detail-types"
+import type { SessionDetailTab } from "@/features/sessions/navigation"
 
 type SessionRow = Pick<
   Database["public"]["Tables"]["sessions"]["Row"],
@@ -155,6 +165,51 @@ export type SessionDetailDeferredData = Omit<
   SessionDetailData,
   "team" | "venue" | "camp" | "session"
 >
+
+type SessionDetailScopedInput = {
+  activeTeamId: string
+  teamVenueId: string
+  sessionId: string
+}
+
+function createSessionDetailScopedLogger(input: {
+  activeTeamId: string
+  metadata?: Record<string, string | number | boolean | null | undefined>
+  phase: string
+  sessionId: string
+  startedAt: number
+}) {
+  return (
+    status: "success" | "error",
+    outcome: string,
+    error?: string,
+    metadata?: Record<string, string | number | boolean | null | undefined>,
+  ) => {
+    logSessionDetailTiming({
+      route: "/team-sessions/[id]",
+      phase: input.phase,
+      startedAt: input.startedAt,
+      sessionId: input.sessionId,
+      activeTeamId: input.activeTeamId,
+      status,
+      error,
+      metadata: {
+        outcome,
+        ...input.metadata,
+        ...metadata,
+      },
+    })
+  }
+}
+
+function throwSessionDetailScopedTimingError(
+  logTiming: ReturnType<typeof createSessionDetailScopedLogger>,
+  outcome: string,
+  message: string,
+): never {
+  logTiming("error", outcome, message)
+  throw new Error(message)
+}
 
 function normalizeText(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
@@ -456,48 +511,25 @@ export async function getSessionDetailShellData(input: {
   return shellData
 }
 
-export async function getSessionDetailDeferredData(input: {
-  activeTeamId: string
-  teamVenueId: string
-  sessionId: string
-}): Promise<SessionDetailDeferredData> {
+export async function getSessionDetailInfoTabData(
+  input: SessionDetailScopedInput,
+): Promise<SessionDetailInfoTabData> {
   const startedAt = startSessionDetailTiming()
-  const logDeferredTiming = (
-    status: "success" | "error",
-    outcome: string,
-    error?: string,
-    metadata?: Record<string, string | number | boolean | null | undefined>,
-  ) => {
-    logSessionDetailTiming({
-      route: "/team-sessions/[id]",
-      phase: "load_deferred",
-      startedAt,
-      sessionId: input.sessionId,
-      activeTeamId: input.activeTeamId,
-      status,
-      error,
-      metadata: {
-        outcome,
-        teamVenueId: input.teamVenueId,
-        ...metadata,
-      },
-    })
-  }
-  const throwDeferredTimingError = (outcome: string, message: string): never => {
-    logDeferredTiming("error", outcome, message)
-    throw new Error(message)
-  }
-
+  const logTabTiming = createSessionDetailScopedLogger({
+    phase: "load_tab",
+    startedAt,
+    sessionId: input.sessionId,
+    activeTeamId: input.activeTeamId,
+    metadata: {
+      tab: "info",
+      teamVenueId: input.teamVenueId,
+    },
+  })
   const supabase = await createServerSupabaseClient()
 
   const [
     { data: reviewRow, error: reviewError },
     { data: setupRow, error: setupError },
-    { data: regattaResultRow, error: regattaResultError },
-    { data: assetRows, error: assetsError },
-    { data: gearItemsData, error: gearItemsError },
-    { data: sessionGearUsageData, error: sessionGearUsageError },
-    { data: teamSetupItemsData, error: teamSetupItemsError },
     { data: teamStandardMovesData, error: teamStandardMovesError },
     { data: sessionStandardMovesData, error: sessionStandardMovesError },
     { data: teamVenueWindPatternsData, error: teamVenueWindPatternsError },
@@ -513,30 +545,6 @@ export async function getSessionDetailDeferredData(input: {
       .select(SESSION_SETUP_SELECT_COLUMNS)
       .eq("session_id", input.sessionId)
       .maybeSingle(),
-    supabase
-      .from("session_regatta_results")
-      .select(SESSION_REGATTA_RESULTS_SELECT_COLUMNS)
-      .eq("session_id", input.sessionId)
-      .maybeSingle(),
-    supabase
-      .from("session_assets")
-      .select(SESSION_ASSETS_SELECT_COLUMNS)
-      .eq("session_id", input.sessionId)
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("gear_items")
-      .select(GEAR_ITEMS_SELECT_COLUMNS)
-      .eq("team_id", input.activeTeamId)
-      .order("name", { ascending: true }),
-    supabase
-      .from("session_gear_usage")
-      .select(SESSION_GEAR_USAGE_SELECT_COLUMNS)
-      .eq("session_id", input.sessionId),
-    supabase
-      .from("team_setup_items")
-      .select(TEAM_SETUP_ITEMS_SELECT_COLUMNS)
-      .eq("team_id", input.activeTeamId)
-      .order("position", { ascending: true }),
     supabase
       .from("team_standard_moves")
       .select(TEAM_STANDARD_MOVES_SELECT_COLUMNS)
@@ -558,98 +566,58 @@ export async function getSessionDetailDeferredData(input: {
   ])
 
   if (reviewError) {
-    throwDeferredTimingError(
+    throwSessionDetailScopedTimingError(
+      logTabTiming,
       "review_query_error",
       `Could not load review for session detail: ${reviewError.message}`,
     )
   }
 
   if (setupError) {
-    throwDeferredTimingError(
+    throwSessionDetailScopedTimingError(
+      logTabTiming,
       "setup_query_error",
       `Could not load setup for session detail: ${setupError.message}`,
     )
   }
 
-  if (regattaResultError) {
-    throwDeferredTimingError(
-      "regatta_result_query_error",
-      `Could not load regatta result for session detail: ${regattaResultError.message}`,
-    )
-  }
-
-  if (assetsError) {
-    throwDeferredTimingError(
-      "assets_query_error",
-      `Could not load assets for session detail: ${assetsError.message}`,
-    )
-  }
-
-  if (gearItemsError) {
-    throwDeferredTimingError(
-      "gear_items_query_error",
-      `Could not load gear items for session detail: ${gearItemsError.message}`,
-    )
-  }
-
-  if (sessionGearUsageError) {
-    throwDeferredTimingError(
-      "session_gear_usage_query_error",
-      `Could not load session gear usage for session detail: ${sessionGearUsageError.message}`,
-    )
-  }
-
-  if (teamSetupItemsError) {
-    throwDeferredTimingError(
-      "team_setup_items_query_error",
-      `Could not load team setup items for session detail: ${teamSetupItemsError.message}`,
-    )
-  }
-
   if (teamStandardMovesError) {
-    throwDeferredTimingError(
+    throwSessionDetailScopedTimingError(
+      logTabTiming,
       "team_standard_moves_query_error",
       `Could not load team standard moves for session detail: ${teamStandardMovesError.message}`,
     )
   }
 
   if (sessionStandardMovesError) {
-    throwDeferredTimingError(
+    throwSessionDetailScopedTimingError(
+      logTabTiming,
       "session_standard_moves_query_error",
       `Could not load session standard move links for session detail: ${sessionStandardMovesError.message}`,
     )
   }
 
   if (teamVenueWindPatternsError) {
-    throwDeferredTimingError(
+    throwSessionDetailScopedTimingError(
+      logTabTiming,
       "team_venue_wind_patterns_query_error",
       `Could not load venue wind patterns for session detail: ${teamVenueWindPatternsError.message}`,
     )
   }
 
   if (sessionWindPatternsError) {
-    throwDeferredTimingError(
+    throwSessionDetailScopedTimingError(
+      logTabTiming,
       "session_wind_patterns_query_error",
       `Could not load session wind pattern links for session detail: ${sessionWindPatternsError.message}`,
     )
   }
 
-  const assets: SessionAssetRow[] = (assetRows ?? []) as SessionAssetRow[]
-  const assetsWithSignedUrls = await attachAssetSignedUrls(assets)
-  const gearItems: GearItemRow[] = (gearItemsData ?? []) as GearItemRow[]
-  const sessionGearUsageRows: SessionGearUsageRow[] =
-    (sessionGearUsageData ?? []) as SessionGearUsageRow[]
-  const teamSetupItems = (teamSetupItemsData ?? []) as TeamSetupItemRow[]
-  const teamSetupItemIds = teamSetupItems.map((item) => item.id)
   const teamStandardMoves = (teamStandardMovesData ?? []) as TeamStandardMoveRow[]
   const sessionStandardMoves = (sessionStandardMovesData ?? []) as SessionStandardMoveRow[]
   const teamVenueWindPatterns =
     (teamVenueWindPatternsData ?? []) as TeamVenueWindPatternRow[]
   const sessionWindPatterns = (sessionWindPatternsData ?? []) as SessionWindPatternRow[]
-  const gearItemIds = new Set(gearItems.map((item) => item.id))
-  const linkedGearItemIds = [...new Set(sessionGearUsageRows.map((row) => row.gear_item_id))].filter(
-    (gearItemId) => gearItemIds.has(gearItemId),
-  )
   const standardMoveById = new Map(
     teamStandardMoves.map((standardMove) => [standardMove.id, standardMove]),
   )
@@ -671,63 +639,7 @@ export async function getSessionDetailDeferredData(input: {
     .filter((windPatternName): windPatternName is string => windPatternName !== null)
     .sort((left, right) => left.localeCompare(right))
 
-  let teamSetupItemOptions: TeamSetupItemOptionRow[] = []
-  let sessionSetupValues: SessionSetupItemValueRow[] = []
-  let sessionSetupSelectedOptions: SessionSetupItemSelectedOptionRow[] = []
-
-  if (teamSetupItemIds.length > 0) {
-    const [{ data: setupOptionsData, error: setupOptionsError }, { data: setupValuesData, error: setupValuesError }] =
-      await Promise.all([
-        supabase
-          .from("team_setup_item_options")
-          .select(TEAM_SETUP_ITEM_OPTIONS_SELECT_COLUMNS)
-          .in("team_setup_item_id", teamSetupItemIds)
-          .order("position", { ascending: true }),
-        supabase
-          .from("session_setup_item_values")
-          .select(SESSION_SETUP_ITEM_VALUES_SELECT_COLUMNS)
-          .eq("session_id", input.sessionId)
-          .in("team_setup_item_id", teamSetupItemIds),
-      ])
-
-    if (setupOptionsError) {
-      throwDeferredTimingError(
-        "setup_options_query_error",
-        `Could not load team setup options for session detail: ${setupOptionsError.message}`,
-      )
-    }
-
-    if (setupValuesError) {
-      throwDeferredTimingError(
-        "setup_values_query_error",
-        `Could not load session setup values for session detail: ${setupValuesError.message}`,
-      )
-    }
-
-    teamSetupItemOptions = (setupOptionsData ?? []) as TeamSetupItemOptionRow[]
-    sessionSetupValues = (setupValuesData ?? []) as SessionSetupItemValueRow[]
-
-    const setupValueIds = sessionSetupValues.map((value) => value.id)
-
-    if (setupValueIds.length > 0) {
-      const { data: selectedOptionsData, error: selectedOptionsError } = await supabase
-        .from("session_setup_item_selected_options")
-        .select(SESSION_SETUP_ITEM_SELECTED_OPTIONS_SELECT_COLUMNS)
-        .in("session_setup_item_value_id", setupValueIds)
-
-      if (selectedOptionsError) {
-        throwDeferredTimingError(
-          "setup_selected_options_query_error",
-          `Could not load session setup selected options: ${selectedOptionsError.message}`,
-        )
-      }
-
-      sessionSetupSelectedOptions =
-        (selectedOptionsData ?? []) as SessionSetupItemSelectedOptionRow[]
-    }
-  }
-
-  const deferredData: SessionDetailDeferredData = {
+  const tabData: SessionDetailInfoTabData = {
     info: buildInfo({
       review: (reviewRow as SessionReviewRow | null) ?? null,
       setup: (setupRow as SessionSetupRow | null) ?? null,
@@ -748,28 +660,396 @@ export async function getSessionDetailDeferredData(input: {
       isActive: windPattern.is_active,
     })),
     linkedWindPatternIds,
-    results: buildResults((regattaResultRow as SessionRegattaResultRow | null) ?? null),
-    setupDialogItems: buildSetupDialogItems({
-      teamSetupItems,
-      teamSetupItemOptions,
-      sessionSetupValues,
-      sessionSetupSelectedOptions,
-    }),
-    images: assetsWithSignedUrls.filter((asset) => asset.asset_type === "photo"),
-    analyticsFiles: assetsWithSignedUrls.filter((asset) => asset.asset_type !== "photo"),
-    gearItems,
-    linkedGearItemIds,
   }
 
-  logDeferredTiming("success", "loaded", undefined, {
-    assetCount: assets.length,
-    gearItemCount: gearItems.length,
-    setupItemCount: teamSetupItems.length,
+  logTabTiming("success", "loaded", undefined, {
     standardMoveCount: teamStandardMoves.length,
     windPatternCount: teamVenueWindPatterns.length,
   })
 
-  return deferredData
+  return tabData
+}
+
+export async function getSessionDetailResultsTabData(
+  input: SessionDetailScopedInput,
+): Promise<SessionDetailResultsTabData> {
+  const startedAt = startSessionDetailTiming()
+  const logTabTiming = createSessionDetailScopedLogger({
+    phase: "load_tab",
+    startedAt,
+    sessionId: input.sessionId,
+    activeTeamId: input.activeTeamId,
+    metadata: {
+      tab: "results",
+      teamVenueId: input.teamVenueId,
+    },
+  })
+  const supabase = await createServerSupabaseClient()
+  const { data: regattaResultRow, error: regattaResultError } = await supabase
+    .from("session_regatta_results")
+    .select(SESSION_REGATTA_RESULTS_SELECT_COLUMNS)
+    .eq("session_id", input.sessionId)
+    .maybeSingle()
+
+  if (regattaResultError) {
+    throwSessionDetailScopedTimingError(
+      logTabTiming,
+      "regatta_result_query_error",
+      `Could not load regatta result for session detail: ${regattaResultError.message}`,
+    )
+  }
+
+  const tabData: SessionDetailResultsTabData = {
+    results: buildResults((regattaResultRow as SessionRegattaResultRow | null) ?? null),
+  }
+
+  logTabTiming("success", "loaded")
+  return tabData
+}
+
+export async function getSessionDetailImagesTabData(
+  input: SessionDetailScopedInput,
+): Promise<SessionDetailImagesTabData> {
+  const startedAt = startSessionDetailTiming()
+  const logTabTiming = createSessionDetailScopedLogger({
+    phase: "load_tab",
+    startedAt,
+    sessionId: input.sessionId,
+    activeTeamId: input.activeTeamId,
+    metadata: {
+      tab: "images",
+      teamVenueId: input.teamVenueId,
+    },
+  })
+  const supabase = await createServerSupabaseClient()
+  const { data: assetRows, error: assetsError } = await supabase
+    .from("session_assets")
+    .select(SESSION_ASSETS_SELECT_COLUMNS)
+    .eq("session_id", input.sessionId)
+    .eq("asset_type", "photo")
+    .order("created_at", { ascending: false })
+
+  if (assetsError) {
+    throwSessionDetailScopedTimingError(
+      logTabTiming,
+      "assets_query_error",
+      `Could not load image assets for session detail: ${assetsError.message}`,
+    )
+  }
+
+  const assets: SessionAssetRow[] = (assetRows ?? []) as SessionAssetRow[]
+  const images = await attachAssetSignedUrls(assets)
+
+  logTabTiming("success", "loaded", undefined, { assetCount: images.length })
+  return { images }
+}
+
+export async function getSessionDetailAnalyticsTabData(
+  input: SessionDetailScopedInput,
+): Promise<SessionDetailAnalyticsTabData> {
+  const startedAt = startSessionDetailTiming()
+  const logTabTiming = createSessionDetailScopedLogger({
+    phase: "load_tab",
+    startedAt,
+    sessionId: input.sessionId,
+    activeTeamId: input.activeTeamId,
+    metadata: {
+      tab: "analytics",
+      teamVenueId: input.teamVenueId,
+    },
+  })
+  const supabase = await createServerSupabaseClient()
+  const { data: assetRows, error: assetsError } = await supabase
+    .from("session_assets")
+    .select(SESSION_ASSETS_SELECT_COLUMNS)
+    .eq("session_id", input.sessionId)
+    .neq("asset_type", "photo")
+    .order("created_at", { ascending: false })
+
+  if (assetsError) {
+    throwSessionDetailScopedTimingError(
+      logTabTiming,
+      "assets_query_error",
+      `Could not load analytics assets for session detail: ${assetsError.message}`,
+    )
+  }
+
+  const assets: SessionAssetRow[] = (assetRows ?? []) as SessionAssetRow[]
+  const analyticsFiles = await attachAssetSignedUrls(assets)
+
+  logTabTiming("success", "loaded", undefined, { assetCount: analyticsFiles.length })
+  return { analyticsFiles }
+}
+
+export async function getSessionDetailGearTabData(
+  input: SessionDetailScopedInput,
+): Promise<SessionDetailGearTabData> {
+  const startedAt = startSessionDetailTiming()
+  const logTabTiming = createSessionDetailScopedLogger({
+    phase: "load_tab",
+    startedAt,
+    sessionId: input.sessionId,
+    activeTeamId: input.activeTeamId,
+    metadata: {
+      tab: "gear",
+      teamVenueId: input.teamVenueId,
+    },
+  })
+  const supabase = await createServerSupabaseClient()
+  const [
+    { data: gearItemsData, error: gearItemsError },
+    { data: sessionGearUsageData, error: sessionGearUsageError },
+  ] = await Promise.all([
+    supabase
+      .from("gear_items")
+      .select(GEAR_ITEMS_SELECT_COLUMNS)
+      .eq("team_id", input.activeTeamId)
+      .order("name", { ascending: true }),
+    supabase
+      .from("session_gear_usage")
+      .select(SESSION_GEAR_USAGE_SELECT_COLUMNS)
+      .eq("session_id", input.sessionId),
+  ])
+
+  if (gearItemsError) {
+    throwSessionDetailScopedTimingError(
+      logTabTiming,
+      "gear_items_query_error",
+      `Could not load gear items for session detail: ${gearItemsError.message}`,
+    )
+  }
+
+  if (sessionGearUsageError) {
+    throwSessionDetailScopedTimingError(
+      logTabTiming,
+      "session_gear_usage_query_error",
+      `Could not load session gear usage for session detail: ${sessionGearUsageError.message}`,
+    )
+  }
+
+  const gearItems: GearItemRow[] = (gearItemsData ?? []) as GearItemRow[]
+  const sessionGearUsageRows: SessionGearUsageRow[] =
+    (sessionGearUsageData ?? []) as SessionGearUsageRow[]
+  const gearItemIds = new Set(gearItems.map((item) => item.id))
+  const linkedGearItemIds = [
+    ...new Set(sessionGearUsageRows.map((row) => row.gear_item_id)),
+  ].filter((gearItemId) => gearItemIds.has(gearItemId))
+
+  logTabTiming("success", "loaded", undefined, {
+    gearItemCount: gearItems.length,
+    linkedGearItemCount: linkedGearItemIds.length,
+  })
+
+  return {
+    gearItems,
+    linkedGearItemIds,
+  }
+}
+
+export async function getSessionDetailSetupData(
+  input: SessionDetailScopedInput,
+): Promise<SessionDetailSetupData> {
+  const startedAt = startSessionDetailTiming()
+  const logSetupTiming = createSessionDetailScopedLogger({
+    phase: "load_setup",
+    startedAt,
+    sessionId: input.sessionId,
+    activeTeamId: input.activeTeamId,
+    metadata: {
+      teamVenueId: input.teamVenueId,
+    },
+  })
+  const supabase = await createServerSupabaseClient()
+  const { data: teamSetupItemsData, error: teamSetupItemsError } = await supabase
+    .from("team_setup_items")
+    .select(TEAM_SETUP_ITEMS_SELECT_COLUMNS)
+    .eq("team_id", input.activeTeamId)
+    .order("position", { ascending: true })
+
+  if (teamSetupItemsError) {
+    throwSessionDetailScopedTimingError(
+      logSetupTiming,
+      "team_setup_items_query_error",
+      `Could not load team setup items for session detail: ${teamSetupItemsError.message}`,
+    )
+  }
+
+  const teamSetupItems = (teamSetupItemsData ?? []) as TeamSetupItemRow[]
+  const teamSetupItemIds = teamSetupItems.map((item) => item.id)
+  let teamSetupItemOptions: TeamSetupItemOptionRow[] = []
+  let sessionSetupValues: SessionSetupItemValueRow[] = []
+  let sessionSetupSelectedOptions: SessionSetupItemSelectedOptionRow[] = []
+
+  if (teamSetupItemIds.length > 0) {
+    const [
+      { data: setupOptionsData, error: setupOptionsError },
+      { data: setupValuesData, error: setupValuesError },
+    ] = await Promise.all([
+      supabase
+        .from("team_setup_item_options")
+        .select(TEAM_SETUP_ITEM_OPTIONS_SELECT_COLUMNS)
+        .in("team_setup_item_id", teamSetupItemIds)
+        .order("position", { ascending: true }),
+      supabase
+        .from("session_setup_item_values")
+        .select(SESSION_SETUP_ITEM_VALUES_SELECT_COLUMNS)
+        .eq("session_id", input.sessionId)
+        .in("team_setup_item_id", teamSetupItemIds),
+    ])
+
+    if (setupOptionsError) {
+      throwSessionDetailScopedTimingError(
+        logSetupTiming,
+        "setup_options_query_error",
+        `Could not load team setup options for session detail: ${setupOptionsError.message}`,
+      )
+    }
+
+    if (setupValuesError) {
+      throwSessionDetailScopedTimingError(
+        logSetupTiming,
+        "setup_values_query_error",
+        `Could not load session setup values for session detail: ${setupValuesError.message}`,
+      )
+    }
+
+    teamSetupItemOptions = (setupOptionsData ?? []) as TeamSetupItemOptionRow[]
+    sessionSetupValues = (setupValuesData ?? []) as SessionSetupItemValueRow[]
+
+    const setupValueIds = sessionSetupValues.map((value) => value.id)
+
+    if (setupValueIds.length > 0) {
+      const { data: selectedOptionsData, error: selectedOptionsError } = await supabase
+        .from("session_setup_item_selected_options")
+        .select(SESSION_SETUP_ITEM_SELECTED_OPTIONS_SELECT_COLUMNS)
+        .in("session_setup_item_value_id", setupValueIds)
+
+      if (selectedOptionsError) {
+        throwSessionDetailScopedTimingError(
+          logSetupTiming,
+          "setup_selected_options_query_error",
+          `Could not load session setup selected options: ${selectedOptionsError.message}`,
+        )
+      }
+
+      sessionSetupSelectedOptions =
+        (selectedOptionsData ?? []) as SessionSetupItemSelectedOptionRow[]
+    }
+  }
+
+  const setupDialogItems = buildSetupDialogItems({
+    teamSetupItems,
+    teamSetupItemOptions,
+    sessionSetupValues,
+    sessionSetupSelectedOptions,
+  })
+
+  logSetupTiming("success", "loaded", undefined, {
+    setupItemCount: teamSetupItems.length,
+  })
+
+  return { setupDialogItems }
+}
+
+export async function getSessionDetailGoalsTabData(input: {
+  activeTeamId: string
+  goals: string | null
+  sessionId: string
+  teamVenueId: string
+}): Promise<SessionDetailGoalsTabData> {
+  const startedAt = startSessionDetailTiming()
+  const logTabTiming = createSessionDetailScopedLogger({
+    phase: "load_tab",
+    startedAt,
+    sessionId: input.sessionId,
+    activeTeamId: input.activeTeamId,
+    metadata: {
+      tab: "goals",
+      teamVenueId: input.teamVenueId,
+    },
+  })
+
+  logTabTiming("success", "loaded")
+  return { goals: input.goals }
+}
+
+export async function getSessionDetailTabData(
+  input: SessionDetailScopedInput & {
+    goals: string | null
+    tab: SessionDetailTab
+  },
+): Promise<SessionDetailTabPayload> {
+  if (input.tab === "info") {
+    return getSessionDetailInfoTabData(input)
+  }
+
+  if (input.tab === "goals") {
+    return getSessionDetailGoalsTabData(input)
+  }
+
+  if (input.tab === "results") {
+    return getSessionDetailResultsTabData(input)
+  }
+
+  if (input.tab === "images") {
+    return getSessionDetailImagesTabData(input)
+  }
+
+  if (input.tab === "analytics") {
+    return getSessionDetailAnalyticsTabData(input)
+  }
+
+  return getSessionDetailGearTabData(input)
+}
+
+export async function getSessionDetailDeferredData(
+  input: SessionDetailScopedInput,
+): Promise<SessionDetailDeferredData> {
+  const startedAt = startSessionDetailTiming()
+  const logDeferredTiming = createSessionDetailScopedLogger({
+    phase: "load_deferred",
+    startedAt,
+    sessionId: input.sessionId,
+    activeTeamId: input.activeTeamId,
+    metadata: {
+      teamVenueId: input.teamVenueId,
+    },
+  })
+
+  try {
+    const [infoData, setupData, resultsData, imagesData, analyticsData, gearData] =
+      await Promise.all([
+        getSessionDetailInfoTabData(input),
+        getSessionDetailSetupData(input),
+        getSessionDetailResultsTabData(input),
+        getSessionDetailImagesTabData(input),
+        getSessionDetailAnalyticsTabData(input),
+        getSessionDetailGearTabData(input),
+      ])
+
+    const deferredData: SessionDetailDeferredData = {
+      ...infoData,
+      ...setupData,
+      ...resultsData,
+      ...imagesData,
+      ...analyticsData,
+      ...gearData,
+    }
+
+    logDeferredTiming("success", "loaded", undefined, {
+      imageCount: imagesData.images.length,
+      analyticsFileCount: analyticsData.analyticsFiles.length,
+      gearItemCount: gearData.gearItems.length,
+      setupItemCount: setupData.setupDialogItems.length,
+      standardMoveCount: infoData.availableStandardMoves.length,
+      windPatternCount: infoData.availableWindPatterns.length,
+    })
+
+    return deferredData
+  } catch (error) {
+    logDeferredTiming("error", "load_failed", getSessionDetailTimingErrorMessage(error))
+    throw error
+  }
 }
 
 export async function getSessionDetailData(input: {

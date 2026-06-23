@@ -9,10 +9,14 @@ import {
 } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
-  getSessionDetailDeferredData,
   getSessionDetailShellData,
-  type SessionDetailDeferredData,
+  getSessionDetailSetupData,
+  getSessionDetailTabData,
 } from "@/features/sessions/detail-data"
+import type {
+  SessionDetailSetupData,
+  SessionDetailTabPayload,
+} from "@/features/sessions/detail-types"
 import {
   SessionDetailTabsClient,
   SessionHeaderActions,
@@ -270,7 +274,7 @@ function SessionDetailTabsFallback({
 }
 
 async function SessionHeaderActionsSlot(input: {
-  deferredDataPromise: Promise<SessionDetailDeferredData>
+  setupDataPromise: Promise<SessionDetailSetupData>
   sessionId: string
   scope: NonNullable<Awaited<ReturnType<typeof resolveNavigationScope>>["scope"]>
   sessionType: "training" | "regatta"
@@ -280,13 +284,13 @@ async function SessionHeaderActionsSlot(input: {
   netTimeMinutes: number | null
   canManageSession: boolean
 }) {
-  const deferredData = await input.deferredDataPromise
+  const setupData = await input.setupDataPromise
 
   return (
     <SessionHeaderActions
       sessionId={input.sessionId}
       scope={input.scope}
-      setupDialogItems={deferredData.setupDialogItems}
+      setupDialogItems={setupData.setupDialogItems}
       sessionType={input.sessionType}
       sessionDate={input.sessionDate}
       dockOutAt={input.dockOutAt}
@@ -298,40 +302,24 @@ async function SessionHeaderActionsSlot(input: {
 }
 
 async function SessionDetailTabsSlot(input: {
-  deferredDataPromise: Promise<SessionDetailDeferredData>
   initialTab: SessionDetailTab
+  initialTabDataPromise: Promise<SessionDetailTabPayload>
   scope: NonNullable<Awaited<ReturnType<typeof resolveNavigationScope>>["scope"]>
   sessionId: string
   sessionType: "training" | "regatta"
   goals: string | null
   canManageSession: boolean
 }) {
-  const deferredData = await input.deferredDataPromise
+  const initialTabData = await input.initialTabDataPromise
 
   return (
     <SessionDetailTabsClient
       initialTab={input.initialTab}
+      initialTabData={initialTabData}
       scope={input.scope}
       sessionId={input.sessionId}
       sessionType={input.sessionType}
-      info={{
-        bestOfSession: deferredData.info.bestOfSession,
-        toWork: deferredData.info.toWork,
-        standardMoves: deferredData.info.standardMoves,
-        windPatterns: deferredData.info.windPatterns,
-        legacyWindPatterns: deferredData.info.legacyWindPatterns,
-        freeNotes: deferredData.info.freeNotes,
-      }}
       goals={input.goals}
-      availableStandardMoves={deferredData.availableStandardMoves}
-      linkedStandardMoveIds={deferredData.linkedStandardMoveIds}
-      availableWindPatterns={deferredData.availableWindPatterns}
-      linkedWindPatternIds={deferredData.linkedWindPatternIds}
-      resultNotes={deferredData.results.resultNotes}
-      images={deferredData.images}
-      analyticsFiles={deferredData.analyticsFiles}
-      gearItems={deferredData.gearItems}
-      linkedGearItemIds={deferredData.linkedGearItemIds}
       canManageSession={input.canManageSession}
     />
   )
@@ -412,11 +400,19 @@ export default async function SessionDetailPage({
     organizationId: scope.activeOrgId,
     teamId: scope.activeTeamId,
   })
-  const deferredDataPromise = getSessionDetailDeferredData({
+  const scopedDetailInput = {
     activeTeamId: detailData.team.id,
     teamVenueId: detailData.camp.team_venue_id,
     sessionId: detailData.session.id,
+  }
+  const selectedTabDataPromise = getSessionDetailTabData({
+    ...scopedDetailInput,
+    goals: detailData.session.goals,
+    tab: selectedTab,
   })
+  const setupDataPromise = canManageSession
+    ? getSessionDetailSetupData(scopedDetailInput)
+    : Promise.resolve<SessionDetailSetupData>({ setupDialogItems: [] })
 
   const sessionTypeLabel = formatSessionTypeLabel(detailData.session.session_type)
   const sessionDateLabel = formatDateLabel(detailData.session.session_date)
@@ -447,7 +443,7 @@ export default async function SessionDetailPage({
           {canManageSession ? (
             <Suspense fallback={<SessionHeaderActionsFallback />}>
               <SessionHeaderActionsSlot
-                deferredDataPromise={deferredDataPromise}
+                setupDataPromise={setupDataPromise}
                 sessionId={detailData.session.id}
                 scope={scope}
                 sessionType={detailData.session.session_type}
@@ -526,8 +522,8 @@ export default async function SessionDetailPage({
 
       <Suspense fallback={<SessionDetailTabsFallback selectedTab={selectedTab} />}>
         <SessionDetailTabsSlot
-          deferredDataPromise={deferredDataPromise}
           initialTab={selectedTab}
+          initialTabDataPromise={selectedTabDataPromise}
           scope={scope}
           sessionId={detailData.session.id}
           sessionType={detailData.session.session_type}

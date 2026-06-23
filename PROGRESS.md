@@ -4,6 +4,14 @@ Last updated: 2026-06-23
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
 
+## 2026-06-23 - Team session audit Step 4
+
+- Split `/team-sessions/[id]` deferred data loading by selected tab so the route no longer blocks the initial tab on assets, analytics files, gear, results, and Info catalogs together.
+- Added typed tab payload loaders in `features/sessions/detail-data.ts` plus a scoped `app/api/team-sessions/[id]/tab-data/route.ts` handler for client-side tab switches.
+- Updated `features/sessions/session-detail-tabs-client.tsx` to cache tab payloads on demand, keep Goals from the shell payload, and show the existing compact in-card loader/error retry state while inactive tabs fetch.
+- Split the header Setup data into its own Suspense promise through `getSessionDetailSetupData()` so setup catalogs no longer gate the tab payload.
+- Validation: `npm run lint` passes with existing warnings in `app/sign-in/sign-in-content.tsx` and `features/onboarding/onboarding-flow.tsx`; `npx tsc --noEmit`; `npm run build`; `git diff --check`.
+
 ## 2026-06-23 - Team session audit Step 3
 
 - Split `features/sessions/session-detail-tabs-client.tsx` into focused client modules under `features/sessions/detail/`: setup dialog, Info panel, Goals panel, Results panel, assets/image viewer, Gear/barcode scanner, and mobile tab measurement.

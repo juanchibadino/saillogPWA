@@ -38,16 +38,25 @@ import {
 import type { ResultsPanelProps } from "@/features/sessions/detail/results-panel"
 import type { SetupDialogProps } from "@/features/sessions/detail/setup-dialog"
 import type {
-  SessionDetailAsset,
-  SessionDetailGearItem,
-  SessionDetailInfo,
+  SessionDetailAnalyticsTabData,
+  SessionDetailGearTabData,
+  SessionDetailGoalsTabData,
+  SessionDetailImagesTabData,
+  SessionDetailInfoTabData,
+  SessionDetailResultsTabData,
   SessionSetupDialogItem,
+  SessionDetailTabDataByTab,
+  SessionDetailTabPayload,
 } from "@/features/sessions/detail-types"
 import {
   SESSION_DETAIL_TABS,
   type SessionDetailTab,
 } from "@/features/sessions/navigation"
 import { useIsMobile } from "@/hooks/use-mobile"
+import {
+  NAVIGATION_SCOPE_ORG_QUERY_KEY,
+  NAVIGATION_SCOPE_TEAM_QUERY_KEY,
+} from "@/lib/navigation/constants"
 import type { NavigationScope } from "@/lib/navigation/types"
 import { cn } from "@/lib/utils"
 
@@ -405,25 +414,274 @@ export function SessionHeaderActions(input: {
   )
 }
 
+type SessionDetailTabDataState = {
+  analytics?: SessionDetailAnalyticsTabData
+  gear?: SessionDetailGearTabData
+  goals: SessionDetailGoalsTabData
+  images?: SessionDetailImagesTabData
+  info?: SessionDetailInfoTabData
+  results?: SessionDetailResultsTabData
+}
+
+type SessionDetailTabDataResponse = {
+  [Tab in SessionDetailTab]: {
+    data: SessionDetailTabDataByTab[Tab]
+    tab: Tab
+  }
+}[SessionDetailTab]
+
+type SessionDetailTabLoadError = {
+  message: string
+  tab: SessionDetailTab
+}
+
+function applySessionDetailTabData(input: {
+  data: SessionDetailTabPayload
+  state: SessionDetailTabDataState
+  tab: SessionDetailTab
+}): SessionDetailTabDataState {
+  if (input.tab === "info") {
+    return {
+      ...input.state,
+      info: input.data as SessionDetailInfoTabData,
+    }
+  }
+
+  if (input.tab === "goals") {
+    return {
+      ...input.state,
+      goals: input.data as SessionDetailGoalsTabData,
+    }
+  }
+
+  if (input.tab === "results") {
+    return {
+      ...input.state,
+      results: input.data as SessionDetailResultsTabData,
+    }
+  }
+
+  if (input.tab === "images") {
+    return {
+      ...input.state,
+      images: input.data as SessionDetailImagesTabData,
+    }
+  }
+
+  if (input.tab === "analytics") {
+    return {
+      ...input.state,
+      analytics: input.data as SessionDetailAnalyticsTabData,
+    }
+  }
+
+  return {
+    ...input.state,
+    gear: input.data as SessionDetailGearTabData,
+  }
+}
+
+function buildSessionDetailTabDataState(input: {
+  goals: string | null
+  initialTab: SessionDetailTab
+  initialTabData: SessionDetailTabPayload
+}): SessionDetailTabDataState {
+  return applySessionDetailTabData({
+    data: input.initialTabData,
+    state: {
+      goals: {
+        goals: input.goals,
+      },
+    },
+    tab: input.initialTab,
+  })
+}
+
+function hasSessionDetailTabData(
+  state: SessionDetailTabDataState,
+  tab: SessionDetailTab,
+): boolean {
+  if (tab === "info") {
+    return typeof state.info !== "undefined"
+  }
+
+  if (tab === "goals") {
+    return true
+  }
+
+  if (tab === "results") {
+    return typeof state.results !== "undefined"
+  }
+
+  if (tab === "images") {
+    return typeof state.images !== "undefined"
+  }
+
+  if (tab === "analytics") {
+    return typeof state.analytics !== "undefined"
+  }
+
+  return typeof state.gear !== "undefined"
+}
+
+function buildSessionDetailTabDataUrl(input: {
+  scope: NavigationScope
+  sessionId: string
+  tab: SessionDetailTab
+}): string {
+  const params = new URLSearchParams()
+  params.set("tab", input.tab)
+  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.scope.activeOrgId)
+
+  if (input.scope.activeTeamId) {
+    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scope.activeTeamId)
+  }
+
+  return `/api/team-sessions/${encodeURIComponent(input.sessionId)}/tab-data?${params.toString()}`
+}
+
+async function fetchSessionDetailTabData(input: {
+  scope: NavigationScope
+  sessionId: string
+  tab: SessionDetailTab
+}): Promise<SessionDetailTabPayload> {
+  const response = await fetch(buildSessionDetailTabDataUrl(input), {
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error("Could not load this tab.")
+  }
+
+  const payload = (await response.json()) as SessionDetailTabDataResponse
+
+  if (payload.tab !== input.tab) {
+    throw new Error("The loaded tab data did not match the selected tab.")
+  }
+
+  return payload.data
+}
+
+function SessionTabDataError(input: {
+  error: SessionDetailTabLoadError
+  onRetry: () => void
+}) {
+  const tabLabel = formatSessionDetailTabLabel(input.error.tab)
+
+  return (
+    <div className="flex min-h-32 flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-4 text-center">
+      <div className="space-y-1">
+        <p className="text-sm font-medium">Could not load {tabLabel}.</p>
+        <p className="text-sm text-muted-foreground">{input.error.message}</p>
+      </div>
+      <Button type="button" variant="outline" size="sm" onClick={input.onRetry}>
+        Retry
+      </Button>
+    </div>
+  )
+}
+
 export function SessionDetailTabsClient(input: {
   initialTab: SessionDetailTab
+  initialTabData: SessionDetailTabPayload
   scope: NavigationScope
   sessionId: string
   sessionType: "training" | "regatta"
-  info: SessionDetailInfo
   goals: string | null
-  availableStandardMoves: SessionInfoPanelProps["availableStandardMoves"]
-  linkedStandardMoveIds: string[]
-  availableWindPatterns: SessionInfoPanelProps["availableWindPatterns"]
-  linkedWindPatternIds: string[]
-  resultNotes: string | null
-  images: SessionDetailAsset[]
-  analyticsFiles: SessionDetailAsset[]
-  gearItems: SessionDetailGearItem[]
-  linkedGearItemIds: string[]
   canManageSession: boolean
 }) {
   const [selectedTab, setSelectedTab] = React.useState<SessionDetailTab>(input.initialTab)
+  const [tabData, setTabData] = React.useState<SessionDetailTabDataState>(() =>
+    buildSessionDetailTabDataState({
+      goals: input.goals,
+      initialTab: input.initialTab,
+      initialTabData: input.initialTabData,
+    }),
+  )
+  const [loadError, setLoadError] = React.useState<SessionDetailTabLoadError | null>(null)
+  const inFlightTabsRef = React.useRef<Set<SessionDetailTab>>(new Set())
+  const requestVersionRef = React.useRef(0)
+
+  React.useEffect(() => {
+    requestVersionRef.current += 1
+    inFlightTabsRef.current.clear()
+    setSelectedTab(input.initialTab)
+    setTabData(
+      buildSessionDetailTabDataState({
+        goals: input.goals,
+        initialTab: input.initialTab,
+        initialTabData: input.initialTabData,
+      }),
+    )
+    setLoadError(null)
+  }, [input.goals, input.initialTab, input.initialTabData])
+
+  const loadTabData = React.useCallback(
+    async (tab: SessionDetailTab, options?: { force?: boolean }) => {
+      if (!options?.force && hasSessionDetailTabData(tabData, tab)) {
+        return
+      }
+
+      if (inFlightTabsRef.current.has(tab)) {
+        return
+      }
+
+      const requestVersion = requestVersionRef.current
+      inFlightTabsRef.current.add(tab)
+      setLoadError((currentError) => (currentError?.tab === tab ? null : currentError))
+
+      try {
+        const nextTabData = await fetchSessionDetailTabData({
+          scope: input.scope,
+          sessionId: input.sessionId,
+          tab,
+        })
+
+        if (requestVersion !== requestVersionRef.current) {
+          return
+        }
+
+        setTabData((currentState) =>
+          applySessionDetailTabData({
+            data: nextTabData,
+            state: currentState,
+            tab,
+          }),
+        )
+      } catch (error) {
+        if (requestVersion !== requestVersionRef.current) {
+          return
+        }
+
+        const message = error instanceof Error ? error.message : "Could not load this tab."
+        setLoadError({ message, tab })
+      } finally {
+        if (requestVersion === requestVersionRef.current) {
+          inFlightTabsRef.current.delete(tab)
+        }
+      }
+    },
+    [input.scope, input.sessionId, tabData],
+  )
+
+  React.useEffect(() => {
+    void loadTabData(selectedTab)
+  }, [loadTabData, selectedTab])
+
+  const retrySelectedTab = React.useCallback(() => {
+    void loadTabData(selectedTab, { force: true })
+  }, [loadTabData, selectedTab])
+
+  function renderPendingTab(tab: SessionDetailTab) {
+    if (loadError?.tab === tab) {
+      return <SessionTabDataError error={loadError} onRetry={retrySelectedTab} />
+    }
+
+    return <SessionDynamicPanelFallback />
+  }
 
   return (
     <Tabs
@@ -446,16 +704,20 @@ export function SessionDetailTabsClient(input: {
       <section className="rounded-xl border bg-card p-4 sm:p-6">
         {selectedTab === "info" ? (
           <TabsContent value="info" className="space-y-4">
-            <SessionInfoPanel
-              sessionId={input.sessionId}
-              scope={input.scope}
-              info={input.info}
-              availableStandardMoves={input.availableStandardMoves}
-              linkedStandardMoveIds={input.linkedStandardMoveIds}
-              availableWindPatterns={input.availableWindPatterns}
-              linkedWindPatternIds={input.linkedWindPatternIds}
-              canManageSession={input.canManageSession}
-            />
+            {tabData.info ? (
+              <SessionInfoPanel
+                sessionId={input.sessionId}
+                scope={input.scope}
+                info={tabData.info.info}
+                availableStandardMoves={tabData.info.availableStandardMoves}
+                linkedStandardMoveIds={tabData.info.linkedStandardMoveIds}
+                availableWindPatterns={tabData.info.availableWindPatterns}
+                linkedWindPatternIds={tabData.info.linkedWindPatternIds}
+                canManageSession={input.canManageSession}
+              />
+            ) : (
+              renderPendingTab("info")
+            )}
           </TabsContent>
         ) : null}
 
@@ -464,7 +726,7 @@ export function SessionDetailTabsClient(input: {
             <GoalsPanel
               sessionId={input.sessionId}
               scope={input.scope}
-              goals={input.goals}
+              goals={tabData.goals.goals}
               canManageSession={input.canManageSession}
             />
           </TabsContent>
@@ -472,58 +734,74 @@ export function SessionDetailTabsClient(input: {
 
         {selectedTab === "results" ? (
           <TabsContent value="results" className="space-y-4">
-            <ResultsPanel
-              sessionId={input.sessionId}
-              scope={input.scope}
-              resultNotes={input.resultNotes}
-              canManageSession={input.canManageSession}
-            />
+            {tabData.results ? (
+              <ResultsPanel
+                sessionId={input.sessionId}
+                scope={input.scope}
+                resultNotes={tabData.results.results.resultNotes}
+                canManageSession={input.canManageSession}
+              />
+            ) : (
+              renderPendingTab("results")
+            )}
           </TabsContent>
         ) : null}
 
         {selectedTab === "images" ? (
           <TabsContent value="images" className="space-y-4">
-            <SessionAssetsPanel
-              title="Images"
-              sessionId={input.sessionId}
-              scope={input.scope}
-              assetType="photo"
-              tab="images"
-              accept="image/*"
-              buttonLabel="Upload image"
-              assets={input.images}
-              emptyMessage="No images uploaded for this session yet."
-              canManageSession={input.canManageSession}
-            />
+            {tabData.images ? (
+              <SessionAssetsPanel
+                title="Images"
+                sessionId={input.sessionId}
+                scope={input.scope}
+                assetType="photo"
+                tab="images"
+                accept="image/*"
+                buttonLabel="Upload image"
+                assets={tabData.images.images}
+                emptyMessage="No images uploaded for this session yet."
+                canManageSession={input.canManageSession}
+              />
+            ) : (
+              renderPendingTab("images")
+            )}
           </TabsContent>
         ) : null}
 
         {selectedTab === "analytics" ? (
           <TabsContent value="analytics" className="space-y-4">
-            <SessionAssetsPanel
-              title="Analytics"
-              sessionId={input.sessionId}
-              scope={input.scope}
-              assetType="analytics_file"
-              tab="analytics"
-              accept="application/pdf,.pdf"
-              buttonLabel="Upload PDF"
-              assets={input.analyticsFiles}
-              emptyMessage="No analytics PDFs uploaded for this session yet."
-              canManageSession={input.canManageSession}
-            />
+            {tabData.analytics ? (
+              <SessionAssetsPanel
+                title="Analytics"
+                sessionId={input.sessionId}
+                scope={input.scope}
+                assetType="analytics_file"
+                tab="analytics"
+                accept="application/pdf,.pdf"
+                buttonLabel="Upload PDF"
+                assets={tabData.analytics.analyticsFiles}
+                emptyMessage="No analytics PDFs uploaded for this session yet."
+                canManageSession={input.canManageSession}
+              />
+            ) : (
+              renderPendingTab("analytics")
+            )}
           </TabsContent>
         ) : null}
 
         {selectedTab === "gear" ? (
           <TabsContent value="gear" className="space-y-4">
-            <SessionGearTabPanel
-              sessionId={input.sessionId}
-              scope={input.scope}
-              gearItems={input.gearItems}
-              linkedGearItemIds={input.linkedGearItemIds}
-              canManageSession={input.canManageSession}
-            />
+            {tabData.gear ? (
+              <SessionGearTabPanel
+                sessionId={input.sessionId}
+                scope={input.scope}
+                gearItems={tabData.gear.gearItems}
+                linkedGearItemIds={tabData.gear.linkedGearItemIds}
+                canManageSession={input.canManageSession}
+              />
+            ) : (
+              renderPendingTab("gear")
+            )}
           </TabsContent>
         ) : null}
       </section>

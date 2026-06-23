@@ -104,3 +104,41 @@ export type SessionDetailData = {
   gearItems: SessionDetailGearItem[]
   linkedGearItemIds: string[]
 }
+
+export type SessionDetailSetupData = Pick<SessionDetailData, "setupDialogItems">
+
+export type SessionDetailInfoTabData = Pick<
+  SessionDetailData,
+  | "info"
+  | "availableStandardMoves"
+  | "linkedStandardMoveIds"
+  | "availableWindPatterns"
+  | "linkedWindPatternIds"
+>
+
+export type SessionDetailGoalsTabData = {
+  goals: string | null
+}
+
+export type SessionDetailResultsTabData = Pick<SessionDetailData, "results">
+
+export type SessionDetailImagesTabData = Pick<SessionDetailData, "images">
+
+export type SessionDetailAnalyticsTabData = Pick<SessionDetailData, "analyticsFiles">
+
+export type SessionDetailGearTabData = Pick<
+  SessionDetailData,
+  "gearItems" | "linkedGearItemIds"
+>
+
+export type SessionDetailTabDataByTab = {
+  info: SessionDetailInfoTabData
+  goals: SessionDetailGoalsTabData
+  results: SessionDetailResultsTabData
+  images: SessionDetailImagesTabData
+  analytics: SessionDetailAnalyticsTabData
+  gear: SessionDetailGearTabData
+}
+
+export type SessionDetailTabPayload =
+  SessionDetailTabDataByTab[keyof SessionDetailTabDataByTab]

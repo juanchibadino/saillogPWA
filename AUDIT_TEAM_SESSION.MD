@@ -397,6 +397,7 @@ Goal: improve Modularity, Code Tidiness, INP risk, and future maintainability.
 
 Goal: improve route performance and scalability.
 
+- Status: implemented 2026-06-23.
 - Keep shell data minimal: session, camp, team venue, team, venue, and summary
   metrics.
 - Load selected tab data first instead of loading all tab payloads together.
@@ -404,6 +405,11 @@ Goal: improve route performance and scalability.
   loaders or route handlers.
 - Add load-more or limits for assets and gear.
 - Preserve the existing Suspense fallback and skeleton fidelity.
+- Implemented with typed tab payload loaders in `features/sessions/detail-data.ts`,
+  a scoped tab-data route at `app/api/team-sessions/[id]/tab-data/route.ts`, and
+  client-side tab payload caching in
+  `features/sessions/session-detail-tabs-client.tsx`.
+- Remaining follow-up: add load-more or hard limits for assets and gear.
 - Expected score movement: Performance `4 -> 4.5`, Scalability `3 -> 4`,
   Best Practices `4.5 -> 4.7`.
 
