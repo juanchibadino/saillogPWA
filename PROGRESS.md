@@ -4,6 +4,73 @@ Last updated: 2026-06-23
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
 
+## 2026-06-23 - Team session audit Step 9 implementation
+
+- Optimized Images and Analytics asset loading across
+  `features/sessions/detail-data.ts`, `features/sessions/detail/assets-panel.tsx`,
+  `features/sessions/actions.ts`, and
+  `app/api/session-assets/[id]/content/route.ts`.
+- Images now receive batched direct Supabase signed display URLs for the current
+  page, with optional thumbnail signed URLs, avoiding per-card content route
+  redirects during initial grid render.
+- Analytics now renders cards from metadata only; `Open` and `Download` use the
+  authenticated asset content route only when clicked, with `download=1`
+  requesting a fresh download URL.
+- Added `supabase/migrations/029_session_asset_thumbnails.sql` plus
+  `types/database.ts` fields for nullable thumbnail metadata. New photo uploads
+  save a 720px WebP display image and a 320px WebP thumbnail, while existing
+  images continue to fall back to the display image until a later backfill.
+- Validation: `npm run lint` passes with existing warnings in
+  `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`; `npx tsc --noEmit`;
+  `npm run build`. Browser smoke/measurement is pending until the thumbnail
+  metadata migration is applied to the target database.
+
+## 2026-06-23 - Team session audit Step 9 plan
+
+- Added Step 9 to `AUDIT_TEAM_SESSION.MD` for Images/Analytics performance:
+  baseline signed URL redirect cost, lazy Analytics open/download URLs, batched
+  image URLs, thumbnail generation, pagination/cache preservation, and explicit
+  validation/measurement targets.
+
+## 2026-06-23 - Team session audit Step 8
+
+- Seeded and verified the hosted `USER_TEST` account as an active `coach` on
+  `Test Organization` / `Test Team` before validation.
+- Fixed a lazy-tab race in `features/sessions/session-detail-tabs-client.tsx`:
+  Goals now uses the same pending/error fallback as the other deferred tabs
+  while its payload loads.
+- Completed Step 8 validation: `npm run lint` passes with the existing
+  unrelated warnings in `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`; `npm run build`; `git diff --check`;
+  `git diff --cached --check`.
+- Browser smoke with the seeded Test Team session confirmed desktop shell,
+  Setup/Info/Goals/Results save flows, image upload/delete, analytics PDF
+  upload/delete, gear link/save, mobile Info Drawer, no mobile horizontal
+  overflow, and no framework overlay or browser errors.
+- Final hosted cleanup verification confirmed the smoke text/assets were removed
+  and the seeded test user remained active on Test Team.
+
+## 2026-06-23 - Team session audit Step 7
+
+- Added the hosted test user `tester@sailog.test` with password `123456` and
+  active `coach` membership on `Test Team`, and mirrored that user in
+  `supabase/seed.sql` for deterministic local resets.
+- Added `app/(app)/team-sessions/[id]/error.tsx` with a compact route-level
+  retry state for runtime failures on `/team-sessions/[id]`.
+- Updated `features/sessions/session-detail-tabs-client.tsx` so failed deferred
+  tab loads show specific recovery messages for expired auth, missing team
+  scope, unavailable sessions, invalid tab requests, and runtime tab failures.
+- Updated `AUDIT_TEAM_SESSION.MD` Step 7 status.
+- Validation: `npm run lint` passes with existing warnings in
+  `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`; `npm run build`;
+  `git diff --check`; browser check with `tester@sailog.test` on
+  `Test Organization` / `Test Team` confirmed desktop route load, coach
+  Setup/Edit controls, deferred tab failure recovery + retry, mobile shell, and
+  no browser overlay, console errors, page errors, or mobile horizontal
+  overflow.
+
 ## 2026-06-23 - Team session audit Step 6
 
 - Hardened `/team-sessions/[id]` Images and Analytics asset access by attaching

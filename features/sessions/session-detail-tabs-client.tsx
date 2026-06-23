@@ -436,6 +436,11 @@ type SessionDetailTabLoadError = {
   tab: SessionDetailTab
 }
 
+type SessionDetailTabErrorPayload = {
+  detail?: unknown
+  error?: unknown
+}
+
 type SessionAssetTab = "images" | "analytics"
 
 function appendUniqueSessionAssets<T extends { id: string }>(
@@ -612,7 +617,7 @@ async function fetchSessionDetailTabData(input: {
   })
 
   if (!response.ok) {
-    throw new Error("Could not load this tab.")
+    throw new Error(await resolveSessionDetailTabErrorMessage(response))
   }
 
   const payload = (await response.json()) as SessionDetailTabDataResponse
@@ -624,6 +629,36 @@ async function fetchSessionDetailTabData(input: {
   return payload.data
 }
 
+async function resolveSessionDetailTabErrorMessage(response: Response): Promise<string> {
+  let payload: SessionDetailTabErrorPayload | null = null
+
+  try {
+    payload = (await response.json()) as SessionDetailTabErrorPayload
+  } catch {
+    payload = null
+  }
+
+  const errorCode = typeof payload?.error === "string" ? payload.error : null
+
+  if (response.status === 401 || errorCode === "unauthorized") {
+    return "Your session expired. Sign in again, then retry this tab."
+  }
+
+  if (response.status === 403 || errorCode === "scope_required") {
+    return "This tab needs an active team scope. Select the correct team and retry."
+  }
+
+  if (response.status === 404 || errorCode === "session_not_found") {
+    return "This session is unavailable in the active team scope."
+  }
+
+  if (response.status === 400) {
+    return "This tab request is invalid. Refresh the page and try again."
+  }
+
+  return "This tab hit a runtime error while loading. Retry just this tab."
+}
+
 function SessionTabDataError(input: {
   error: SessionDetailTabLoadError
   onRetry: () => void
@@ -631,7 +666,10 @@ function SessionTabDataError(input: {
   const tabLabel = formatSessionDetailTabLabel(input.error.tab)
 
   return (
-    <div className="flex min-h-32 flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-4 text-center">
+    <div
+      role="alert"
+      className="flex min-h-32 flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-4 text-center"
+    >
       <div className="space-y-1">
         <p className="text-sm font-medium">Could not load {tabLabel}.</p>
         <p className="text-sm text-muted-foreground">{input.error.message}</p>
@@ -837,12 +875,16 @@ export function SessionDetailTabsClient(input: {
 
         {selectedTab === "goals" ? (
           <TabsContent value="goals" className="space-y-4">
-            <GoalsPanel
-              sessionId={input.sessionId}
-              scope={input.scope}
-              goals={tabData.goals.goals}
-              canManageSession={input.canManageSession}
-            />
+            {tabData.goals ? (
+              <GoalsPanel
+                sessionId={input.sessionId}
+                scope={input.scope}
+                goals={tabData.goals.goals}
+                canManageSession={input.canManageSession}
+              />
+            ) : (
+              renderPendingTab("goals")
+            )}
           </TabsContent>
         ) : null}
 

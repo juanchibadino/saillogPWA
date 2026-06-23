@@ -10,6 +10,7 @@
 -- - john.doe@sailog.test
 -- - charlie.brown@sailog.test
 -- - onboarding.test@sailog.test
+-- - tester@sailog.test
 
 with seed_users (id, email, password, first_name, last_name, sailing_role_label) as (
   values
@@ -20,7 +21,8 @@ with seed_users (id, email, password, first_name, last_name, sailing_role_label)
     ('95ca63fe-7d6d-4246-822c-77ff1d8be2ef'::uuid, 'maximo.videla@sailog.test', '123456', 'Maximo', 'Videla', 'Crew (Crew)'),
     ('3a02acf2-2d67-4d91-8fdf-f3286f4f87bf'::uuid, 'john.doe@sailog.test', '123456', 'John', 'Doe', 'Crew (Helm)'),
     ('40ad8a28-4f08-4fd4-9039-380ec45813bf'::uuid, 'charlie.brown@sailog.test', '123456', 'Charlie', 'Brown', 'Crew (Crew)'),
-    ('7f1c5fc7-5af8-4cf8-a53f-423f2f2ec012'::uuid, 'onboarding.test@sailog.test', '123456', 'Onboarding', 'Tester', 'Crew (Crew)')
+    ('7f1c5fc7-5af8-4cf8-a53f-423f2f2ec012'::uuid, 'onboarding.test@sailog.test', '123456', 'Onboarding', 'Tester', 'Crew (Crew)'),
+    ('c64f8125-3042-4476-9cf2-8cf785a8d5df'::uuid, 'tester@sailog.test', '123456', 'Test', 'Coach', 'Team Coach')
 ),
 resolved_seed_users as (
   select
@@ -89,7 +91,8 @@ with seed_emails(email) as (
     ('maximo.videla@sailog.test'),
     ('john.doe@sailog.test'),
     ('charlie.brown@sailog.test'),
-    ('onboarding.test@sailog.test')
+    ('onboarding.test@sailog.test'),
+    ('tester@sailog.test')
 )
 delete from auth.identities i
 using seed_emails s
@@ -105,7 +108,8 @@ with seed_users (id, email, password, first_name, last_name, sailing_role_label)
     ('95ca63fe-7d6d-4246-822c-77ff1d8be2ef'::uuid, 'maximo.videla@sailog.test', '123456', 'Maximo', 'Videla', 'Crew (Crew)'),
     ('3a02acf2-2d67-4d91-8fdf-f3286f4f87bf'::uuid, 'john.doe@sailog.test', '123456', 'John', 'Doe', 'Crew (Helm)'),
     ('40ad8a28-4f08-4fd4-9039-380ec45813bf'::uuid, 'charlie.brown@sailog.test', '123456', 'Charlie', 'Brown', 'Crew (Crew)'),
-    ('7f1c5fc7-5af8-4cf8-a53f-423f2f2ec012'::uuid, 'onboarding.test@sailog.test', '123456', 'Onboarding', 'Tester', 'Crew (Crew)')
+    ('7f1c5fc7-5af8-4cf8-a53f-423f2f2ec012'::uuid, 'onboarding.test@sailog.test', '123456', 'Onboarding', 'Tester', 'Crew (Crew)'),
+    ('c64f8125-3042-4476-9cf2-8cf785a8d5df'::uuid, 'tester@sailog.test', '123456', 'Test', 'Coach', 'Team Coach')
 ),
 resolved_seed_users as (
   select
@@ -144,7 +148,8 @@ with seed_users (id, email, password, first_name, last_name, sailing_role_label)
     ('95ca63fe-7d6d-4246-822c-77ff1d8be2ef'::uuid, 'maximo.videla@sailog.test', '123456', 'Maximo', 'Videla', 'Crew (Crew)'),
     ('3a02acf2-2d67-4d91-8fdf-f3286f4f87bf'::uuid, 'john.doe@sailog.test', '123456', 'John', 'Doe', 'Crew (Helm)'),
     ('40ad8a28-4f08-4fd4-9039-380ec45813bf'::uuid, 'charlie.brown@sailog.test', '123456', 'Charlie', 'Brown', 'Crew (Crew)'),
-    ('7f1c5fc7-5af8-4cf8-a53f-423f2f2ec012'::uuid, 'onboarding.test@sailog.test', '123456', 'Onboarding', 'Tester', 'Crew (Crew)')
+    ('7f1c5fc7-5af8-4cf8-a53f-423f2f2ec012'::uuid, 'onboarding.test@sailog.test', '123456', 'Onboarding', 'Tester', 'Crew (Crew)'),
+    ('c64f8125-3042-4476-9cf2-8cf785a8d5df'::uuid, 'tester@sailog.test', '123456', 'Test', 'Coach', 'Team Coach')
 ),
 resolved_seed_users as (
   select
@@ -188,6 +193,7 @@ declare
   john_profile_id uuid;
   charlie_profile_id uuid;
   klaus_profile_id uuid;
+  tester_profile_id uuid;
   juan_profile_id uuid;
 
   loop_camp_id uuid;
@@ -353,6 +359,12 @@ begin
   limit 1;
 
   select p.id
+  into tester_profile_id
+  from public.profiles p
+  where lower(p.email) = lower('tester@sailog.test')
+  limit 1;
+
+  select p.id
   into juan_profile_id
   from public.profiles p
   where lower(p.email) = lower('juan.badino@sailog.test')
@@ -375,7 +387,8 @@ begin
   values
     (test_team_id, john_profile_id, 'crew', true, null),
     (test_team_id, charlie_profile_id, 'crew', true, null),
-    (test_team_id, klaus_profile_id, 'coach', true, null)
+    (test_team_id, klaus_profile_id, 'coach', true, null),
+    (test_team_id, tester_profile_id, 'coach', true, null)
   on conflict (team_id, profile_id, role) do update
   set
     is_active = true,

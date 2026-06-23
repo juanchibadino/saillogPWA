@@ -43,6 +43,7 @@ export async function GET(request: Request, context: RouteContext) {
   const requestedTeamId = requestUrl.searchParams
     .get(NAVIGATION_SCOPE_TEAM_QUERY_KEY)
     ?.trim()
+  const shouldDownload = requestUrl.searchParams.get("download") === "1"
   const logAssetTiming = (input: {
     activeTeamId?: string | null
     error?: string
@@ -62,6 +63,7 @@ export async function GET(request: Request, context: RouteContext) {
       metadata: {
         activeOrganizationId: requestedOrgId ?? null,
         assetId: assetId ?? null,
+        download: shouldDownload,
         outcome: input.outcome,
         statusCode: input.statusCode,
       },
@@ -118,7 +120,7 @@ export async function GET(request: Request, context: RouteContext) {
   const supabase = await createServerSupabaseClient()
   const { data: assetRow, error: assetError } = await supabase
     .from("session_assets")
-    .select("session_id,bucket,storage_path")
+    .select("session_id,bucket,storage_path,file_name")
     .eq("id", assetId)
     .maybeSingle()
 
@@ -215,7 +217,11 @@ export async function GET(request: Request, context: RouteContext) {
 
   const { data: signedUrlData, error: signedUrlError } = await supabase.storage
     .from(assetRow.bucket)
-    .createSignedUrl(assetRow.storage_path, ASSET_CONTENT_SIGNED_URL_SECONDS)
+    .createSignedUrl(
+      assetRow.storage_path,
+      ASSET_CONTENT_SIGNED_URL_SECONDS,
+      shouldDownload ? { download: assetRow.file_name } : undefined,
+    )
 
   if (signedUrlError || !signedUrlData?.signedUrl) {
     logAssetTiming({

@@ -450,10 +450,14 @@ Goal: improve Security and scalability of Images/Analytics.
 
 Goal: improve Best Practices and operational resilience.
 
-- Add `app/(app)/team-sessions/[id]/error.tsx` with a compact retry state.
-- Add more specific error messages for failed deferred tabs versus failed shell
-  access.
-- Keep unavailable/forbidden states separate from runtime failures.
+- Status: implemented 2026-06-23.
+- Added `app/(app)/team-sessions/[id]/error.tsx` with a compact runtime
+  failure state and route-level retry.
+- Added specific deferred tab recovery messages for expired auth, missing team
+  scope, unavailable sessions, invalid requests, and runtime tab failures.
+- Kept existing active-scope, team-required, read-only, and unavailable-session
+  states as normal route states instead of sending them through the runtime
+  error boundary.
 - Expected score movement: Best Practices `5` maintained, UI Consistency
   `4.5 -> 5`.
 
@@ -461,11 +465,18 @@ Goal: improve Best Practices and operational resilience.
 
 Goal: prevent regressions after the refactor.
 
-- Run `npm run lint`.
-- Run `npm run build`.
-- Run `git diff --check`.
-- Manually verify `/team-sessions/[id]` on desktop and mobile:
-  - shell skeleton
+- Status: implemented 2026-06-23.
+- Seeded and verified the hosted `USER_TEST` account as an active `coach` on
+  `Test Organization` / `Test Team`, matching `.env.local`, and kept the same
+  account in `supabase/seed.sql` for deterministic local resets.
+- Ran `npm run lint`; it passes with the existing unrelated warnings in
+  `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`.
+- Ran `npm run build`.
+- Ran `git diff --check` and `git diff --cached --check`.
+- Manually verified `/team-sessions/[id]` on desktop and mobile with the seeded
+  Test Team session:
+  - shell skeleton structure and six-tab shell
   - Info edit and save
   - Setup edit and save
   - Goals edit and save
@@ -473,8 +484,73 @@ Goal: prevent regressions after the refactor.
   - image upload/delete
   - analytics PDF upload/delete
   - gear link/save
-  - read-only role behavior
-- Capture before/after timing logs for shell, selected tab, and heavy tabs.
+  - mobile Info Drawer and no horizontal overflow
+- Captured timing logs for shell, selected tabs, setup, save actions, asset
+  signed URLs, and heavy tabs in `.next/dev/logs/next-development.log`.
+- Validation found and fixed one lazy-tab race: Goals now renders the same
+  pending/error fallback as the other deferred tabs while its tab payload loads.
+- Separate read-only team-role behavior is not applicable in the current role
+  model because `team_admin`, `coach`, and `crew` all satisfy
+  `canManageTeamSessions()`. The seeded coach path verified the expected
+  permission-gated controls.
+
+### Step 9: Optimize Images And Analytics Asset Loading
+
+Goal: remove the per-asset signed URL redirect cost from the initial Images and
+Analytics tab experience.
+
+- Status: implemented 2026-06-23; browser timing smoke pending after applying
+  migration `029_session_asset_thumbnails.sql`.
+- Baseline captured before implementation:
+  - Images tab payload time.
+  - Analytics tab payload time.
+  - number of `/api/session-assets/[id]/content` calls.
+  - signed URL redirect duration.
+- Keep the measured bottleneck clear: current tab payloads are around 200ms,
+  while asset signed URL redirects are around 2300-2500ms each in local dev
+  against hosted Supabase.
+- Optimized Analytics first:
+  - PDF cards now render from metadata plus authenticated click targets.
+  - Initial Analytics payload returns `signedUrl: null`; `Open` and `Download`
+    use `/api/session-assets/[id]/content` only when clicked.
+- Optimized Images second:
+  - The scoped Images tab-data loader batches Supabase Storage signing with
+    `createSignedUrls()` for the current page after the session/org/team access
+    chain has already been verified.
+  - Image payloads include direct signed display URLs and optional direct signed
+    thumbnail URLs, avoiding one route handler invocation plus one `307`
+    redirect per image card.
+  - `/api/session-assets/[id]/content` remains the explicit open/download
+    fallback and supports `download=1` for fresh download URLs.
+- Added real photo thumbnails:
+  - Uploads now create the existing compressed 720px WebP display image plus a
+    320px WebP thumbnail capped at 256 KB.
+  - Added nullable thumbnail metadata fields to `session_assets` in migration
+    `029_session_asset_thumbnails.sql`.
+  - The grid prefers thumbnails and falls back to the 720px display URL for
+    existing images without thumbnail metadata.
+  - Backfill is still deferred and not required for current images to render.
+- Preserved lazy loading and pagination:
+  - URL signing is limited to the current asset page.
+  - Existing `Load more` behavior and client tab cache remain unchanged.
+  - Grid images still use `loading="lazy"`.
+  - Signed URL expiry stays short at 5 minutes.
+- Validation:
+  - `npm run lint` passes with the existing unrelated warnings in
+    `app/sign-in/sign-in-content.tsx` and
+    `features/onboarding/onboarding-flow.tsx`.
+  - `npx tsc --noEmit`.
+  - `npm run build`.
+  - `git diff --check`.
+  - Browser smoke for Images tab load, Analytics tab load, image upload/delete,
+    PDF upload/delete, and open/download behavior remains pending until the new
+    migration is applied to the target database.
+- Measurement target:
+  - Images tab payload remains around 200-350ms for current test data.
+  - Analytics initial render makes no asset content route calls.
+  - No 2300ms+ signed URL calls occur in the initial tab path.
+  - Asset signed URL work happens only for visible image thumbnails or explicit
+    open/download actions.
 
 ### Target Score After Plan
 

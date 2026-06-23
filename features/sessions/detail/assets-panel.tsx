@@ -78,8 +78,11 @@ function formatAssetUploadedAt(value: string): string {
 
 const SESSION_PHOTO_MAX_DIMENSION = 720
 const SESSION_PHOTO_MAX_BYTES = 2 * 1024 * 1024
+const SESSION_PHOTO_THUMBNAIL_MAX_DIMENSION = 320
+const SESSION_PHOTO_THUMBNAIL_MAX_BYTES = 256 * 1024
 const SESSION_PHOTO_WEBP_TYPE = "image/webp"
 const SESSION_PHOTO_QUALITY_LADDER = [0.55, 0.48, 0.42] as const
+const SESSION_PHOTO_THUMBNAIL_QUALITY_LADDER = [0.5, 0.44, 0.38] as const
 
 type PendingAssetUpload = {
   fileName: string
@@ -91,6 +94,11 @@ type DecodedImageSource = {
   width: number
   height: number
   cleanup: () => void
+}
+
+type CompressedSessionPhotoFiles = {
+  displayFile: File
+  thumbnailFile: File
 }
 
 type ImagePreviewPointerPosition = {
@@ -133,14 +141,14 @@ function AssetThumbnailSpinner() {
   )
 }
 
-function buildCompressedPhotoFileName(fileName: string): string {
+function buildCompressedPhotoFileName(fileName: string, suffix = ""): string {
   const normalizedName = fileName.trim()
   const baseName =
     normalizedName.length > 0
       ? normalizedName.replace(/\.[^/.]+$/, "")
       : "session-image"
 
-  return `${baseName || "session-image"}.webp`
+  return `${baseName || "session-image"}${suffix}.webp`
 }
 
 function getAssetExtension(fileName: string): string {
@@ -202,7 +210,58 @@ function canvasToWebpBlob(canvas: HTMLCanvasElement, quality: number): Promise<B
   })
 }
 
-async function compressSessionPhotoFile(file: File): Promise<File> {
+async function encodeSessionPhotoFile(input: {
+  decodedImage: DecodedImageSource
+  fileName: string
+  maxBytes: number
+  maxDimension: number
+  qualityLadder: readonly number[]
+  suffix?: string
+}): Promise<File> {
+  const maxSourceDimension = Math.max(input.decodedImage.width, input.decodedImage.height)
+  const scale = Math.min(1, input.maxDimension / maxSourceDimension)
+  const targetWidth = Math.max(1, Math.round(input.decodedImage.width * scale))
+  const targetHeight = Math.max(1, Math.round(input.decodedImage.height * scale))
+  const canvas = document.createElement("canvas")
+  canvas.width = targetWidth
+  canvas.height = targetHeight
+
+  const context = canvas.getContext("2d")
+  if (!context) {
+    throw new Error("Could not prepare this image.")
+  }
+
+  context.drawImage(input.decodedImage.source, 0, 0, targetWidth, targetHeight)
+
+  let compressedBlob: Blob | null = null
+
+  for (const quality of input.qualityLadder) {
+    compressedBlob = await canvasToWebpBlob(canvas, quality)
+
+    if (compressedBlob.size <= input.maxBytes) {
+      break
+    }
+  }
+
+  if (!compressedBlob) {
+    throw new Error("Could not compress this image.")
+  }
+
+  if (compressedBlob.type !== SESSION_PHOTO_WEBP_TYPE) {
+    throw new Error("This browser could not create a WebP image.")
+  }
+
+  if (compressedBlob.size > input.maxBytes) {
+    throw new Error("This image is still too large after compression.")
+  }
+
+  return new File([compressedBlob], buildCompressedPhotoFileName(input.fileName, input.suffix), {
+    type: SESSION_PHOTO_WEBP_TYPE,
+    lastModified: Date.now(),
+  })
+}
+
+async function compressSessionPhotoFiles(file: File): Promise<CompressedSessionPhotoFiles> {
   if (!file.type.startsWith("image/")) {
     throw new Error("Select an image file.")
   }
@@ -210,71 +269,56 @@ async function compressSessionPhotoFile(file: File): Promise<File> {
   const decodedImage = await decodeImageSource(file)
 
   try {
-    const maxSourceDimension = Math.max(decodedImage.width, decodedImage.height)
-    const scale = Math.min(1, SESSION_PHOTO_MAX_DIMENSION / maxSourceDimension)
-    const targetWidth = Math.max(1, Math.round(decodedImage.width * scale))
-    const targetHeight = Math.max(1, Math.round(decodedImage.height * scale))
-    const canvas = document.createElement("canvas")
-    canvas.width = targetWidth
-    canvas.height = targetHeight
-
-    const context = canvas.getContext("2d")
-    if (!context) {
-      throw new Error("Could not prepare this image.")
-    }
-
-    context.drawImage(decodedImage.source, 0, 0, targetWidth, targetHeight)
-
-    let compressedBlob: Blob | null = null
-
-    for (const quality of SESSION_PHOTO_QUALITY_LADDER) {
-      compressedBlob = await canvasToWebpBlob(canvas, quality)
-
-      if (compressedBlob.size <= SESSION_PHOTO_MAX_BYTES) {
-        break
-      }
-    }
-
-    if (!compressedBlob) {
-      throw new Error("Could not compress this image.")
-    }
-
-    if (compressedBlob.type !== SESSION_PHOTO_WEBP_TYPE) {
-      throw new Error("This browser could not create a WebP image.")
-    }
-
-    if (compressedBlob.size > SESSION_PHOTO_MAX_BYTES) {
-      throw new Error("This image is still too large after compression.")
-    }
-
-    return new File([compressedBlob], buildCompressedPhotoFileName(file.name), {
-      type: SESSION_PHOTO_WEBP_TYPE,
-      lastModified: Date.now(),
+    const displayFile = await encodeSessionPhotoFile({
+      decodedImage,
+      fileName: file.name,
+      maxBytes: SESSION_PHOTO_MAX_BYTES,
+      maxDimension: SESSION_PHOTO_MAX_DIMENSION,
+      qualityLadder: SESSION_PHOTO_QUALITY_LADDER,
     })
+    const thumbnailFile = await encodeSessionPhotoFile({
+      decodedImage,
+      fileName: file.name,
+      maxBytes: SESSION_PHOTO_THUMBNAIL_MAX_BYTES,
+      maxDimension: SESSION_PHOTO_THUMBNAIL_MAX_DIMENSION,
+      qualityLadder: SESSION_PHOTO_THUMBNAIL_QUALITY_LADDER,
+      suffix: "-thumb",
+    })
+
+    return {
+      displayFile,
+      thumbnailFile,
+    }
   } finally {
     decodedImage.cleanup()
   }
+}
+
+function buildAssetDownloadUrl(contentUrl: string): string {
+  const separator = contentUrl.includes("?") ? "&" : "?"
+  return `${contentUrl}${separator}download=1`
 }
 
 function AssetThumbnail(input: {
   asset: SessionDetailAsset
 }) {
   const isImage = input.asset.asset_type === "photo"
+  const thumbnailUrl = input.asset.thumbnailSignedUrl ?? input.asset.signedUrl
   const [imageStatus, setImageStatus] = React.useState<"loading" | "loaded" | "error">(
-    isImage && input.asset.signedUrl ? "loading" : "error",
+    isImage && thumbnailUrl ? "loading" : "error",
   )
 
   React.useEffect(() => {
-    setImageStatus(isImage && input.asset.signedUrl ? "loading" : "error")
-  }, [input.asset.signedUrl, isImage])
+    setImageStatus(isImage && thumbnailUrl ? "loading" : "error")
+  }, [thumbnailUrl, isImage])
 
-  if (isImage && input.asset.signedUrl && imageStatus !== "error") {
+  if (isImage && thumbnailUrl && imageStatus !== "error") {
     return (
       <div className="relative h-full w-full">
         {imageStatus === "loading" ? <AssetThumbnailSpinner /> : null}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={input.asset.signedUrl}
+          src={thumbnailUrl}
           alt=""
           loading="lazy"
           onLoad={() => setImageStatus("loaded")}
@@ -615,6 +659,7 @@ function AssetActions(input: {
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const [isDeleting, setIsDeleting] = React.useState(false)
   const deleteLabel = input.asset.asset_type === "photo" ? "Delete image" : "Delete file"
+  const downloadUrl = buildAssetDownloadUrl(input.asset.contentUrl)
 
   async function handleDeleteAsset(): Promise<void> {
     setIsDeleting(true)
@@ -665,29 +710,23 @@ function AssetActions(input: {
           <span className="sr-only">File actions</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-36">
-          {input.asset.signedUrl ? (
-            <>
-              <DropdownMenuLinkItem
-                href={input.asset.signedUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="gap-2"
-              >
-                <ExternalLinkIcon className="size-4" />
-                Open
-              </DropdownMenuLinkItem>
-              <DropdownMenuLinkItem
-                href={input.asset.signedUrl}
-                download={input.asset.file_name}
-                className="gap-2"
-              >
-                <DownloadIcon className="size-4" />
-                Download
-              </DropdownMenuLinkItem>
-            </>
-          ) : (
-            <DropdownMenuItem disabled>Unavailable</DropdownMenuItem>
-          )}
+          <DropdownMenuLinkItem
+            href={input.asset.contentUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="gap-2"
+          >
+            <ExternalLinkIcon className="size-4" />
+            Open
+          </DropdownMenuLinkItem>
+          <DropdownMenuLinkItem
+            href={downloadUrl}
+            download={input.asset.file_name}
+            className="gap-2"
+          >
+            <DownloadIcon className="size-4" />
+            Download
+          </DropdownMenuLinkItem>
 
           {input.canManageSession ? (
             <DropdownMenuItem
@@ -759,6 +798,7 @@ function AssetCard(input: {
 }) {
   const isImage = input.asset.asset_type === "photo"
   const [isDeleting, setIsDeleting] = React.useState(false)
+  const downloadUrl = buildAssetDownloadUrl(input.asset.contentUrl)
 
   return (
     <Dialog>
@@ -823,35 +863,33 @@ function AssetCard(input: {
           <AssetPreviewContent asset={input.asset} />
         </div>
 
-        {input.asset.signedUrl ? (
-          <DialogFooter className="min-w-0 sm:justify-end">
-            {input.asset.asset_type === "analytics_file" ? (
-              <a
-                href={input.asset.signedUrl}
-                target="_blank"
-                rel="noreferrer"
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "sm" }),
-                  "w-full sm:w-auto",
-                )}
-              >
-                <ExternalLinkIcon className="size-4" />
-                Open file
-              </a>
-            ) : null}
+        <DialogFooter className="min-w-0 sm:justify-end">
+          {input.asset.asset_type === "analytics_file" ? (
             <a
-              href={input.asset.signedUrl}
-              download={input.asset.file_name}
+              href={input.asset.contentUrl}
+              target="_blank"
+              rel="noreferrer"
               className={cn(
-                buttonVariants({ variant: "default", size: "sm" }),
+                buttonVariants({ variant: "outline", size: "sm" }),
                 "w-full sm:w-auto",
               )}
             >
-              <DownloadIcon className="size-4" />
-              Download
+              <ExternalLinkIcon className="size-4" />
+              Open file
             </a>
-          </DialogFooter>
-        ) : null}
+          ) : null}
+          <a
+            href={downloadUrl}
+            download={input.asset.file_name}
+            className={cn(
+              buttonVariants({ variant: "default", size: "sm" }),
+              "w-full sm:w-auto",
+            )}
+          >
+            <DownloadIcon className="size-4" />
+            Download
+          </a>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
@@ -942,8 +980,9 @@ export function SessionAssetsPanel(input: {
     })
 
     try {
-      const assetFile =
-        input.assetType === "photo" ? await compressSessionPhotoFile(file) : file
+      const compressedPhotoFiles =
+        input.assetType === "photo" ? await compressSessionPhotoFiles(file) : null
+      const assetFile = compressedPhotoFiles?.displayFile ?? file
 
       setPendingUpload({
         fileName: assetFile.name,
@@ -959,6 +998,9 @@ export function SessionAssetsPanel(input: {
       }
       formData.set("scopeTab", input.tab)
       formData.set("assetFile", assetFile)
+      if (compressedPhotoFiles) {
+        formData.set("thumbnailFile", compressedPhotoFiles.thumbnailFile)
+      }
 
       const result = await saveSessionAssetAction(formData)
 

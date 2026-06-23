@@ -146,7 +146,7 @@ const SESSION_REVIEW_SELECT_COLUMNS = "session_id,best_of_session,to_work,wind_p
 const SESSION_SETUP_SELECT_COLUMNS = "session_id,free_notes"
 const SESSION_REGATTA_RESULTS_SELECT_COLUMNS = "session_id,result_notes"
 const SESSION_ASSETS_SELECT_COLUMNS =
-  "id,asset_type,bucket,storage_path,file_name,mime_type,size_bytes,created_at"
+  "id,asset_type,bucket,storage_path,file_name,mime_type,size_bytes,thumbnail_bucket,thumbnail_storage_path,thumbnail_mime_type,thumbnail_size_bytes,created_at"
 const GEAR_ITEMS_SELECT_COLUMNS = "id,name,gear_type,status,condition,serial_number,barcode"
 const SESSION_GEAR_USAGE_SELECT_COLUMNS = "gear_item_id"
 const TEAM_SETUP_ITEMS_SELECT_COLUMNS =
@@ -161,6 +161,10 @@ const SESSION_STANDARD_MOVES_SELECT_COLUMNS = "session_id,team_standard_move_id"
 const TEAM_VENUE_WIND_PATTERNS_SELECT_COLUMNS = "id,name,description,is_active"
 const SESSION_WIND_PATTERNS_SELECT_COLUMNS = "session_id,team_venue_wind_pattern_id"
 const SESSION_DETAIL_ASSET_PAGE_SIZE = 24
+const SESSION_ASSET_SIGNED_URL_SECONDS = 5 * 60
+
+type ServerSupabaseClient = Awaited<ReturnType<typeof createServerSupabaseClient>>
+
 export type SessionDetailShellData = Pick<
   SessionDetailData,
   "team" | "venue" | "camp" | "session"
@@ -188,6 +192,13 @@ function buildAssetContentUrl(input: {
   params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.activeTeamId)
 
   return `/api/session-assets/${encodeURIComponent(input.assetId)}/content?${params.toString()}`
+}
+
+function buildStorageKey(input: {
+  bucket: string
+  storagePath: string
+}): string {
+  return `${input.bucket}\n${input.storagePath}`
 }
 
 function createSessionDetailScopedLogger(input: {
@@ -304,19 +315,124 @@ function buildResults(row: SessionRegattaResultRow | null): SessionDetailResults
   }
 }
 
-async function attachAssetSignedUrls(input: {
+function attachAssetContentUrls(input: {
   activeOrganizationId: string
   activeTeamId: string
   assets: SessionAssetRow[]
-}): Promise<SessionDetailAsset[]> {
+}): SessionDetailAsset[] {
   return input.assets.map((asset) => ({
     ...asset,
-    signedUrl: buildAssetContentUrl({
+    contentUrl: buildAssetContentUrl({
       activeOrganizationId: input.activeOrganizationId,
       activeTeamId: input.activeTeamId,
       assetId: asset.id,
     }),
+    signedUrl: null,
+    thumbnailSignedUrl: null,
   }))
+}
+
+async function createStorageSignedUrlMap(input: {
+  supabase: ServerSupabaseClient
+  targets: Array<{
+    bucket: string
+    storagePath: string
+  }>
+}): Promise<Map<string, string>> {
+  const pathsByBucket = new Map<string, Set<string>>()
+
+  for (const target of input.targets) {
+    const paths = pathsByBucket.get(target.bucket) ?? new Set<string>()
+    paths.add(target.storagePath)
+    pathsByBucket.set(target.bucket, paths)
+  }
+
+  const signedUrlsByStorageKey = new Map<string, string>()
+
+  for (const [bucket, paths] of pathsByBucket) {
+    const { data, error } = await input.supabase.storage
+      .from(bucket)
+      .createSignedUrls(Array.from(paths), SESSION_ASSET_SIGNED_URL_SECONDS)
+
+    if (error) {
+      throw new Error(`Could not create signed asset URLs: ${error.message}`)
+    }
+
+    for (const signedUrl of data ?? []) {
+      if (!signedUrl.path || !signedUrl.signedUrl || signedUrl.error) {
+        continue
+      }
+
+      signedUrlsByStorageKey.set(
+        buildStorageKey({
+          bucket,
+          storagePath: signedUrl.path,
+        }),
+        signedUrl.signedUrl,
+      )
+    }
+  }
+
+  return signedUrlsByStorageKey
+}
+
+async function attachImageAssetUrls(input: {
+  activeOrganizationId: string
+  activeTeamId: string
+  assets: SessionAssetRow[]
+  supabase: ServerSupabaseClient
+}): Promise<SessionDetailAsset[]> {
+  const signedUrlTargets = input.assets.flatMap((asset) => {
+    const targets = [
+      {
+        bucket: asset.bucket,
+        storagePath: asset.storage_path,
+      },
+    ]
+
+    if (asset.thumbnail_bucket && asset.thumbnail_storage_path) {
+      targets.unshift({
+        bucket: asset.thumbnail_bucket,
+        storagePath: asset.thumbnail_storage_path,
+      })
+    }
+
+    return targets
+  })
+  const signedUrlsByStorageKey = await createStorageSignedUrlMap({
+    supabase: input.supabase,
+    targets: signedUrlTargets,
+  })
+
+  return input.assets.map((asset) => {
+    const signedUrl =
+      signedUrlsByStorageKey.get(
+        buildStorageKey({
+          bucket: asset.bucket,
+          storagePath: asset.storage_path,
+        }),
+      ) ?? null
+    const thumbnailSignedUrl =
+      asset.thumbnail_bucket && asset.thumbnail_storage_path
+        ? signedUrlsByStorageKey.get(
+            buildStorageKey({
+              bucket: asset.thumbnail_bucket,
+              storagePath: asset.thumbnail_storage_path,
+            }),
+          ) ?? null
+        : null
+
+    return {
+      ...asset,
+      contentUrl: buildAssetContentUrl({
+        activeOrganizationId: input.activeOrganizationId,
+        activeTeamId: input.activeTeamId,
+        assetId: asset.id,
+      }),
+      signedUrl,
+      thumbnailSignedUrl,
+    }
+  })
 }
 
 function buildSetupDialogItems(input: {
@@ -766,16 +882,19 @@ export async function getSessionDetailImagesTabData(
   }
 
   const assets: SessionAssetRow[] = (assetRows ?? []) as SessionAssetRow[]
-  const images = await attachAssetSignedUrls({
+  const images = await attachImageAssetUrls({
     activeOrganizationId: input.activeOrganizationId,
     activeTeamId: input.activeTeamId,
     assets,
+    supabase,
   })
 
   logTabTiming("success", "loaded", undefined, {
     assetCount: images.length,
     assetOffset,
     assetTotalCount: assetTotalCount ?? images.length,
+    signedUrlCount: images.filter((asset) => Boolean(asset.signedUrl)).length,
+    thumbnailUrlCount: images.filter((asset) => Boolean(asset.thumbnailSignedUrl)).length,
   })
   return {
     images,
@@ -818,7 +937,7 @@ export async function getSessionDetailAnalyticsTabData(
   }
 
   const assets: SessionAssetRow[] = (assetRows ?? []) as SessionAssetRow[]
-  const analyticsFiles = await attachAssetSignedUrls({
+  const analyticsFiles = attachAssetContentUrls({
     activeOrganizationId: input.activeOrganizationId,
     activeTeamId: input.activeTeamId,
     assets,
@@ -828,6 +947,7 @@ export async function getSessionDetailAnalyticsTabData(
     assetCount: analyticsFiles.length,
     assetOffset,
     assetTotalCount: assetTotalCount ?? analyticsFiles.length,
+    signedUrlCount: 0,
   })
   return {
     analyticsFiles,

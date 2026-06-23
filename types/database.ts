@@ -779,6 +779,10 @@ export type Database = {
           file_name: string;
           mime_type: string | null;
           size_bytes: number | null;
+          thumbnail_bucket: string | null;
+          thumbnail_storage_path: string | null;
+          thumbnail_mime_type: string | null;
+          thumbnail_size_bytes: number | null;
           uploaded_by_profile_id: string | null;
           created_at: string;
         };
@@ -791,6 +795,10 @@ export type Database = {
           file_name: string;
           mime_type?: string | null;
           size_bytes?: number | null;
+          thumbnail_bucket?: string | null;
+          thumbnail_storage_path?: string | null;
+          thumbnail_mime_type?: string | null;
+          thumbnail_size_bytes?: number | null;
           uploaded_by_profile_id?: string | null;
           created_at?: string;
         };
@@ -802,6 +810,10 @@ export type Database = {
           file_name?: string;
           mime_type?: string | null;
           size_bytes?: number | null;
+          thumbnail_bucket?: string | null;
+          thumbnail_storage_path?: string | null;
+          thumbnail_mime_type?: string | null;
+          thumbnail_size_bytes?: number | null;
           uploaded_by_profile_id?: string | null;
           created_at?: string;
         };

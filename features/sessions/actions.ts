@@ -43,6 +43,7 @@ const SESSION_PHOTOS_BUCKET = "session-photos"
 const SESSION_FILES_BUCKET = "session-files"
 const MAX_ASSET_BYTES = 25 * 1024 * 1024
 const MAX_PHOTO_ASSET_BYTES = 2 * 1024 * 1024
+const MAX_PHOTO_THUMBNAIL_BYTES = 256 * 1024
 const COMPRESSED_PHOTO_MIME_TYPE = "image/webp"
 const ANALYTICS_FILE_MIME_TYPE = "application/pdf"
 
@@ -534,6 +535,17 @@ function buildAssetStoragePath(input: {
   const timestamp = Date.now()
   const randomPart = Math.random().toString(36).slice(2, 10)
   return `sessions/${input.sessionId}/${input.assetType}/${timestamp}-${randomPart}-${safeName}`
+}
+
+function buildAssetThumbnailStoragePath(storagePath: string): string {
+  const lastSlashIndex = storagePath.lastIndexOf("/")
+  const extensionIndex = storagePath.lastIndexOf(".")
+
+  if (extensionIndex > lastSlashIndex) {
+    return `${storagePath.slice(0, extensionIndex)}.thumb.webp`
+  }
+
+  return `${storagePath}.thumb.webp`
 }
 
 function hasPdfFileName(fileName: string): boolean {
@@ -3554,6 +3566,10 @@ async function uploadSessionAssetMutation(
   })
 
   const assetFile = getFormFile(formData, "assetFile")
+  const thumbnailFile =
+    parsedInput.success && parsedInput.data.assetType === "photo"
+      ? getFormFile(formData, "thumbnailFile")
+      : undefined
 
   if (!parsedInput.success || !assetFile) {
     return buildUploadSessionAssetActionError({
@@ -3575,7 +3591,11 @@ async function uploadSessionAssetMutation(
     assetFile.size <= 0 ||
     assetFile.size > maxFileSize ||
     !hasValidPhotoMimeType ||
-    !hasValidAnalyticsFile
+    !hasValidAnalyticsFile ||
+    (thumbnailFile !== undefined &&
+      (thumbnailFile.size <= 0 ||
+        thumbnailFile.size > MAX_PHOTO_THUMBNAIL_BYTES ||
+        thumbnailFile.type !== COMPRESSED_PHOTO_MIME_TYPE))
   ) {
     return buildUploadSessionAssetActionError({
       error: "invalid_input",
@@ -3585,9 +3605,13 @@ async function uploadSessionAssetMutation(
   }
 
   let fileBytes: Uint8Array
+  let thumbnailFileBytes: Uint8Array | null = null
 
   try {
     fileBytes = new Uint8Array(await assetFile.arrayBuffer())
+    thumbnailFileBytes = thumbnailFile
+      ? new Uint8Array(await thumbnailFile.arrayBuffer())
+      : null
   } catch {
     return buildUploadSessionAssetActionError({
       error: "invalid_input",
@@ -3600,7 +3624,12 @@ async function uploadSessionAssetMutation(
     !hasValidSessionAssetFileSignature({
       assetType: parsedInput.data.assetType,
       fileBytes,
-    })
+    }) ||
+    (thumbnailFileBytes !== null &&
+      !hasValidSessionAssetFileSignature({
+        assetType: "photo",
+        fileBytes: thumbnailFileBytes,
+      }))
   ) {
     return buildUploadSessionAssetActionError({
       error: "invalid_input",
@@ -3643,11 +3672,14 @@ async function uploadSessionAssetMutation(
     assetType: parsedInput.data.assetType,
     fileName: assetFile.name,
   })
+  const thumbnailStoragePath =
+    thumbnailFile && thumbnailFileBytes ? buildAssetThumbnailStoragePath(storagePath) : null
 
   let uploadFailed = false
+  const uploadedStoragePaths: string[] = []
+  const storageAdmin = createAdminSupabaseClient()
 
   try {
-    const storageAdmin = createAdminSupabaseClient()
     const { error: storageError } = await storageAdmin.storage
       .from(storageBucket)
       .upload(storagePath, fileBytes, {
@@ -3656,13 +3688,38 @@ async function uploadSessionAssetMutation(
       })
 
     if (storageError) {
-      uploadFailed = true
+      throw storageError
+    }
+
+    uploadedStoragePaths.push(storagePath)
+
+    if (thumbnailFile && thumbnailFileBytes && thumbnailStoragePath) {
+      const { error: thumbnailStorageError } = await storageAdmin.storage
+        .from(storageBucket)
+        .upload(thumbnailStoragePath, thumbnailFileBytes, {
+          contentType: thumbnailFile.type || undefined,
+          upsert: false,
+        })
+
+      if (thumbnailStorageError) {
+        throw thumbnailStorageError
+      }
+
+      uploadedStoragePaths.push(thumbnailStoragePath)
     }
   } catch {
     uploadFailed = true
   }
 
   if (uploadFailed) {
+    if (uploadedStoragePaths.length > 0) {
+      try {
+        await storageAdmin.storage.from(storageBucket).remove(uploadedStoragePaths)
+      } catch {
+        // Best effort cleanup only.
+      }
+    }
+
     return buildUploadSessionAssetActionError({
       error: "upload_failed",
       scope,
@@ -3679,13 +3736,16 @@ async function uploadSessionAssetMutation(
     file_name: assetFile.name,
     mime_type: assetFile.type || null,
     size_bytes: assetFile.size,
+    thumbnail_bucket: thumbnailStoragePath ? storageBucket : null,
+    thumbnail_storage_path: thumbnailStoragePath,
+    thumbnail_mime_type: thumbnailFile?.type ?? null,
+    thumbnail_size_bytes: thumbnailFile?.size ?? null,
     uploaded_by_profile_id: context.profile?.id ?? null,
   })
 
   if (insertError) {
     try {
-      const storageAdmin = createAdminSupabaseClient()
-      await storageAdmin.storage.from(storageBucket).remove([storagePath])
+      await storageAdmin.storage.from(storageBucket).remove(uploadedStoragePaths)
     } catch {
       // Best effort cleanup only.
     }
@@ -3837,7 +3897,7 @@ export async function deleteSessionAssetAction(
   const supabase = await createServerSupabaseClient()
   const { data: assetRow, error: assetError } = await supabase
     .from("session_assets")
-    .select("id, asset_type, bucket, storage_path")
+    .select("id, asset_type, bucket, storage_path, thumbnail_bucket, thumbnail_storage_path")
     .eq("id", parsedInput.data.assetId)
     .eq("session_id", parsedInput.data.sessionId)
     .maybeSingle()
@@ -3872,6 +3932,12 @@ export async function deleteSessionAssetAction(
   try {
     const storageAdmin = createAdminSupabaseClient()
     await storageAdmin.storage.from(assetRow.bucket).remove([assetRow.storage_path])
+
+    if (assetRow.thumbnail_bucket && assetRow.thumbnail_storage_path) {
+      await storageAdmin.storage
+        .from(assetRow.thumbnail_bucket)
+        .remove([assetRow.thumbnail_storage_path])
+    }
   } catch {
     // The asset row is already deleted; storage cleanup is best-effort.
   }

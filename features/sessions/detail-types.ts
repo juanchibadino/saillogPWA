@@ -65,11 +65,24 @@ export type SessionSetupDialogItem = {
 
 export type SessionDetailAssetMetadata = Pick<
   AssetRow,
-  "id" | "asset_type" | "bucket" | "storage_path" | "file_name" | "mime_type" | "size_bytes" | "created_at"
+  | "id"
+  | "asset_type"
+  | "bucket"
+  | "storage_path"
+  | "file_name"
+  | "mime_type"
+  | "size_bytes"
+  | "thumbnail_bucket"
+  | "thumbnail_storage_path"
+  | "thumbnail_mime_type"
+  | "thumbnail_size_bytes"
+  | "created_at"
 >
 
 export type SessionDetailAsset = SessionDetailAssetMetadata & {
+  contentUrl: string
   signedUrl: string | null
+  thumbnailSignedUrl: string | null
 }
 
 export type SessionDetailAssetPage = {
