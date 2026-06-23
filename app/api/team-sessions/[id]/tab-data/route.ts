@@ -49,6 +49,10 @@ export async function GET(request: Request, context: RouteContext) {
 
   const requestUrl = new URL(request.url)
   const tab = resolveTab(requestUrl.searchParams.get("tab"))
+  const parsedAssetOffset = Number.parseInt(requestUrl.searchParams.get("assetOffset") ?? "0", 10)
+  const assetOffset = Number.isFinite(parsedAssetOffset)
+    ? Math.max(0, parsedAssetOffset)
+    : 0
 
   if (!tab) {
     return NextResponse.json({ error: "invalid_tab" }, { status: 400 })
@@ -82,7 +86,9 @@ export async function GET(request: Request, context: RouteContext) {
 
   try {
     const data = await getSessionDetailTabData({
+      activeOrganizationId: navigation.scope.activeOrgId,
       activeTeamId: shellData.team.id,
+      assetOffset,
       goals: shellData.session.goals,
       sessionId: shellData.session.id,
       tab,

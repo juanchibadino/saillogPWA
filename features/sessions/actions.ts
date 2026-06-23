@@ -540,6 +540,47 @@ function hasPdfFileName(fileName: string): boolean {
   return fileName.trim().toLowerCase().endsWith(".pdf")
 }
 
+function hasAsciiSignature(
+  fileBytes: Uint8Array,
+  offset: number,
+  signature: string,
+): boolean {
+  if (fileBytes.length < offset + signature.length) {
+    return false
+  }
+
+  for (let index = 0; index < signature.length; index += 1) {
+    if (fileBytes[offset + index] !== signature.charCodeAt(index)) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function hasWebpFileSignature(fileBytes: Uint8Array): boolean {
+  return (
+    fileBytes.length >= 12 &&
+    hasAsciiSignature(fileBytes, 0, "RIFF") &&
+    hasAsciiSignature(fileBytes, 8, "WEBP")
+  )
+}
+
+function hasPdfFileSignature(fileBytes: Uint8Array): boolean {
+  return hasAsciiSignature(fileBytes, 0, "%PDF-")
+}
+
+function hasValidSessionAssetFileSignature(input: {
+  assetType: "photo" | "analytics_file"
+  fileBytes: Uint8Array
+}): boolean {
+  if (input.assetType === "photo") {
+    return hasWebpFileSignature(input.fileBytes)
+  }
+
+  return hasPdfFileSignature(input.fileBytes)
+}
+
 function getScopeFromFormData(formData: FormData): SessionActionScope {
   const parsedScope = scopeFormInputSchema.safeParse({
     scopeOrgId: getFormString(formData, "scopeOrgId"),
@@ -3543,6 +3584,31 @@ async function uploadSessionAssetMutation(
     })
   }
 
+  let fileBytes: Uint8Array
+
+  try {
+    fileBytes = new Uint8Array(await assetFile.arrayBuffer())
+  } catch {
+    return buildUploadSessionAssetActionError({
+      error: "invalid_input",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
+  }
+
+  if (
+    !hasValidSessionAssetFileSignature({
+      assetType: parsedInput.data.assetType,
+      fileBytes,
+    })
+  ) {
+    return buildUploadSessionAssetActionError({
+      error: "invalid_input",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
+  }
+
   if (
     !canManageTeamSessions({
       context,
@@ -3582,7 +3648,6 @@ async function uploadSessionAssetMutation(
 
   try {
     const storageAdmin = createAdminSupabaseClient()
-    const fileBytes = new Uint8Array(await assetFile.arrayBuffer())
     const { error: storageError } = await storageAdmin.storage
       .from(storageBucket)
       .upload(storagePath, fileBytes, {

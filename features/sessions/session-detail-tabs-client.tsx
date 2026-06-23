@@ -4,6 +4,7 @@ import * as React from "react"
 import dynamic from "next/dynamic"
 import { Loader2Icon, MinusIcon, PlusIcon } from "lucide-react"
 import { useFormStatus } from "react-dom"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -435,6 +436,25 @@ type SessionDetailTabLoadError = {
   tab: SessionDetailTab
 }
 
+type SessionAssetTab = "images" | "analytics"
+
+function appendUniqueSessionAssets<T extends { id: string }>(
+  currentAssets: T[],
+  nextAssets: T[],
+): T[] {
+  const seenAssetIds = new Set(currentAssets.map((asset) => asset.id))
+  const uniqueNextAssets = nextAssets.filter((asset) => {
+    if (seenAssetIds.has(asset.id)) {
+      return false
+    }
+
+    seenAssetIds.add(asset.id)
+    return true
+  })
+
+  return [...currentAssets, ...uniqueNextAssets]
+}
+
 function applySessionDetailTabData(input: {
   data: SessionDetailTabPayload
   state: SessionDetailTabDataState
@@ -478,6 +498,39 @@ function applySessionDetailTabData(input: {
   return {
     ...input.state,
     gear: input.data as SessionDetailGearTabData,
+  }
+}
+
+function appendSessionAssetTabData(input: {
+  data: SessionDetailTabPayload
+  state: SessionDetailTabDataState
+  tab: SessionAssetTab
+}): SessionDetailTabDataState {
+  if (input.tab === "images") {
+    const nextData = input.data as SessionDetailImagesTabData
+    const currentImages = input.state.images?.images ?? []
+
+    return {
+      ...input.state,
+      images: {
+        ...nextData,
+        images: appendUniqueSessionAssets(currentImages, nextData.images),
+      },
+    }
+  }
+
+  const nextData = input.data as SessionDetailAnalyticsTabData
+  const currentAnalyticsFiles = input.state.analytics?.analyticsFiles ?? []
+
+  return {
+    ...input.state,
+    analytics: {
+      ...nextData,
+      analyticsFiles: appendUniqueSessionAssets(
+        currentAnalyticsFiles,
+        nextData.analyticsFiles,
+      ),
+    },
   }
 }
 
@@ -525,6 +578,7 @@ function hasSessionDetailTabData(
 }
 
 function buildSessionDetailTabDataUrl(input: {
+  assetOffset?: number
   scope: NavigationScope
   sessionId: string
   tab: SessionDetailTab
@@ -537,10 +591,15 @@ function buildSessionDetailTabDataUrl(input: {
     params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scope.activeTeamId)
   }
 
+  if (typeof input.assetOffset === "number" && input.assetOffset > 0) {
+    params.set("assetOffset", String(input.assetOffset))
+  }
+
   return `/api/team-sessions/${encodeURIComponent(input.sessionId)}/tab-data?${params.toString()}`
 }
 
 async function fetchSessionDetailTabData(input: {
+  assetOffset?: number
   scope: NavigationScope
   sessionId: string
   tab: SessionDetailTab
@@ -602,6 +661,9 @@ export function SessionDetailTabsClient(input: {
     }),
   )
   const [loadError, setLoadError] = React.useState<SessionDetailTabLoadError | null>(null)
+  const [loadingMoreAssetTab, setLoadingMoreAssetTab] = React.useState<SessionAssetTab | null>(
+    null,
+  )
   const inFlightTabsRef = React.useRef<Set<SessionDetailTab>>(new Set())
   const requestVersionRef = React.useRef(0)
 
@@ -617,6 +679,7 @@ export function SessionDetailTabsClient(input: {
       }),
     )
     setLoadError(null)
+    setLoadingMoreAssetTab(null)
   }, [input.goals, input.initialTab, input.initialTabData])
 
   const loadTabData = React.useCallback(
@@ -674,6 +737,57 @@ export function SessionDetailTabsClient(input: {
   const retrySelectedTab = React.useCallback(() => {
     void loadTabData(selectedTab, { force: true })
   }, [loadTabData, selectedTab])
+
+  const loadMoreAssets = React.useCallback(
+    async (tab: SessionAssetTab) => {
+      const currentAssetCount =
+        tab === "images" ? tabData.images?.images.length : tabData.analytics?.analyticsFiles.length
+      const assetTotalCount =
+        tab === "images" ? tabData.images?.assetTotalCount : tabData.analytics?.assetTotalCount
+
+      if (
+        typeof currentAssetCount !== "number" ||
+        typeof assetTotalCount !== "number" ||
+        currentAssetCount >= assetTotalCount ||
+        loadingMoreAssetTab
+      ) {
+        return
+      }
+
+      const requestVersion = requestVersionRef.current
+      setLoadingMoreAssetTab(tab)
+
+      try {
+        const nextTabData = await fetchSessionDetailTabData({
+          assetOffset: currentAssetCount,
+          scope: input.scope,
+          sessionId: input.sessionId,
+          tab,
+        })
+
+        if (requestVersion !== requestVersionRef.current) {
+          return
+        }
+
+        setTabData((currentState) =>
+          appendSessionAssetTabData({
+            data: nextTabData,
+            state: currentState,
+            tab,
+          }),
+        )
+      } catch {
+        if (requestVersion === requestVersionRef.current) {
+          toast.error("Could not load more assets.")
+        }
+      } finally {
+        if (requestVersion === requestVersionRef.current) {
+          setLoadingMoreAssetTab(null)
+        }
+      }
+    },
+    [input.scope, input.sessionId, loadingMoreAssetTab, tabData.analytics, tabData.images],
+  )
 
   function renderPendingTab(tab: SessionDetailTab) {
     if (loadError?.tab === tab) {
@@ -759,7 +873,11 @@ export function SessionDetailTabsClient(input: {
                 accept="image/*"
                 buttonLabel="Upload image"
                 assets={tabData.images.images}
+                assetLimit={tabData.images.assetLimit}
+                assetTotalCount={tabData.images.assetTotalCount}
                 emptyMessage="No images uploaded for this session yet."
+                isLoadingMore={loadingMoreAssetTab === "images"}
+                onLoadMore={() => void loadMoreAssets("images")}
                 canManageSession={input.canManageSession}
               />
             ) : (
@@ -780,7 +898,11 @@ export function SessionDetailTabsClient(input: {
                 accept="application/pdf,.pdf"
                 buttonLabel="Upload PDF"
                 assets={tabData.analytics.analyticsFiles}
+                assetLimit={tabData.analytics.assetLimit}
+                assetTotalCount={tabData.analytics.assetTotalCount}
                 emptyMessage="No analytics PDFs uploaded for this session yet."
+                isLoadingMore={loadingMoreAssetTab === "analytics"}
+                onLoadMore={() => void loadMoreAssets("analytics")}
                 canManageSession={input.canManageSession}
               />
             ) : (

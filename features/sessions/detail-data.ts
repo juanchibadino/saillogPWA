@@ -7,6 +7,10 @@ import {
   logSessionDetailTiming,
   startSessionDetailTiming,
 } from "@/features/sessions/detail-timing"
+import {
+  NAVIGATION_SCOPE_ORG_QUERY_KEY,
+  NAVIGATION_SCOPE_TEAM_QUERY_KEY,
+} from "@/lib/navigation/constants"
 import type {
   SessionDetailAsset,
   SessionDetailAnalyticsTabData,
@@ -156,6 +160,7 @@ const TEAM_STANDARD_MOVES_SELECT_COLUMNS = "id,name,description,is_active"
 const SESSION_STANDARD_MOVES_SELECT_COLUMNS = "session_id,team_standard_move_id"
 const TEAM_VENUE_WIND_PATTERNS_SELECT_COLUMNS = "id,name,description,is_active"
 const SESSION_WIND_PATTERNS_SELECT_COLUMNS = "session_id,team_venue_wind_pattern_id"
+const SESSION_DETAIL_ASSET_PAGE_SIZE = 24
 export type SessionDetailShellData = Pick<
   SessionDetailData,
   "team" | "venue" | "camp" | "session"
@@ -167,9 +172,22 @@ export type SessionDetailDeferredData = Omit<
 >
 
 type SessionDetailScopedInput = {
+  activeOrganizationId: string
   activeTeamId: string
   teamVenueId: string
   sessionId: string
+}
+
+function buildAssetContentUrl(input: {
+  activeOrganizationId: string
+  activeTeamId: string
+  assetId: string
+}): string {
+  const params = new URLSearchParams()
+  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.activeOrganizationId)
+  params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.activeTeamId)
+
+  return `/api/session-assets/${encodeURIComponent(input.assetId)}/content?${params.toString()}`
 }
 
 function createSessionDetailScopedLogger(input: {
@@ -286,10 +304,18 @@ function buildResults(row: SessionRegattaResultRow | null): SessionDetailResults
   }
 }
 
-async function attachAssetSignedUrls(assets: SessionAssetRow[]): Promise<SessionDetailAsset[]> {
-  return assets.map((asset) => ({
+async function attachAssetSignedUrls(input: {
+  activeOrganizationId: string
+  activeTeamId: string
+  assets: SessionAssetRow[]
+}): Promise<SessionDetailAsset[]> {
+  return input.assets.map((asset) => ({
     ...asset,
-    signedUrl: `/api/session-assets/${asset.id}/content`,
+    signedUrl: buildAssetContentUrl({
+      activeOrganizationId: input.activeOrganizationId,
+      activeTeamId: input.activeTeamId,
+      assetId: asset.id,
+    }),
   }))
 }
 
@@ -708,9 +734,10 @@ export async function getSessionDetailResultsTabData(
 }
 
 export async function getSessionDetailImagesTabData(
-  input: SessionDetailScopedInput,
+  input: SessionDetailScopedInput & { assetOffset?: number },
 ): Promise<SessionDetailImagesTabData> {
   const startedAt = startSessionDetailTiming()
+  const assetOffset = Math.max(0, input.assetOffset ?? 0)
   const logTabTiming = createSessionDetailScopedLogger({
     phase: "load_tab",
     startedAt,
@@ -722,12 +749,13 @@ export async function getSessionDetailImagesTabData(
     },
   })
   const supabase = await createServerSupabaseClient()
-  const { data: assetRows, error: assetsError } = await supabase
+  const { count: assetTotalCount, data: assetRows, error: assetsError } = await supabase
     .from("session_assets")
-    .select(SESSION_ASSETS_SELECT_COLUMNS)
+    .select(SESSION_ASSETS_SELECT_COLUMNS, { count: "exact" })
     .eq("session_id", input.sessionId)
     .eq("asset_type", "photo")
     .order("created_at", { ascending: false })
+    .range(assetOffset, assetOffset + SESSION_DETAIL_ASSET_PAGE_SIZE - 1)
 
   if (assetsError) {
     throwSessionDetailScopedTimingError(
@@ -738,16 +766,30 @@ export async function getSessionDetailImagesTabData(
   }
 
   const assets: SessionAssetRow[] = (assetRows ?? []) as SessionAssetRow[]
-  const images = await attachAssetSignedUrls(assets)
+  const images = await attachAssetSignedUrls({
+    activeOrganizationId: input.activeOrganizationId,
+    activeTeamId: input.activeTeamId,
+    assets,
+  })
 
-  logTabTiming("success", "loaded", undefined, { assetCount: images.length })
-  return { images }
+  logTabTiming("success", "loaded", undefined, {
+    assetCount: images.length,
+    assetOffset,
+    assetTotalCount: assetTotalCount ?? images.length,
+  })
+  return {
+    images,
+    assetLimit: SESSION_DETAIL_ASSET_PAGE_SIZE,
+    assetOffset,
+    assetTotalCount: assetTotalCount ?? images.length,
+  }
 }
 
 export async function getSessionDetailAnalyticsTabData(
-  input: SessionDetailScopedInput,
+  input: SessionDetailScopedInput & { assetOffset?: number },
 ): Promise<SessionDetailAnalyticsTabData> {
   const startedAt = startSessionDetailTiming()
+  const assetOffset = Math.max(0, input.assetOffset ?? 0)
   const logTabTiming = createSessionDetailScopedLogger({
     phase: "load_tab",
     startedAt,
@@ -759,12 +801,13 @@ export async function getSessionDetailAnalyticsTabData(
     },
   })
   const supabase = await createServerSupabaseClient()
-  const { data: assetRows, error: assetsError } = await supabase
+  const { count: assetTotalCount, data: assetRows, error: assetsError } = await supabase
     .from("session_assets")
-    .select(SESSION_ASSETS_SELECT_COLUMNS)
+    .select(SESSION_ASSETS_SELECT_COLUMNS, { count: "exact" })
     .eq("session_id", input.sessionId)
     .neq("asset_type", "photo")
     .order("created_at", { ascending: false })
+    .range(assetOffset, assetOffset + SESSION_DETAIL_ASSET_PAGE_SIZE - 1)
 
   if (assetsError) {
     throwSessionDetailScopedTimingError(
@@ -775,10 +818,23 @@ export async function getSessionDetailAnalyticsTabData(
   }
 
   const assets: SessionAssetRow[] = (assetRows ?? []) as SessionAssetRow[]
-  const analyticsFiles = await attachAssetSignedUrls(assets)
+  const analyticsFiles = await attachAssetSignedUrls({
+    activeOrganizationId: input.activeOrganizationId,
+    activeTeamId: input.activeTeamId,
+    assets,
+  })
 
-  logTabTiming("success", "loaded", undefined, { assetCount: analyticsFiles.length })
-  return { analyticsFiles }
+  logTabTiming("success", "loaded", undefined, {
+    assetCount: analyticsFiles.length,
+    assetOffset,
+    assetTotalCount: assetTotalCount ?? analyticsFiles.length,
+  })
+  return {
+    analyticsFiles,
+    assetLimit: SESSION_DETAIL_ASSET_PAGE_SIZE,
+    assetOffset,
+    assetTotalCount: assetTotalCount ?? analyticsFiles.length,
+  }
 }
 
 export async function getSessionDetailGearTabData(
@@ -975,6 +1031,7 @@ export async function getSessionDetailGoalsTabData(input: {
 
 export async function getSessionDetailTabData(
   input: SessionDetailScopedInput & {
+    assetOffset?: number
     goals: string | null
     tab: SessionDetailTab
   },
@@ -1064,6 +1121,7 @@ export async function getSessionDetailData(input: {
   }
 
   const deferredData = await getSessionDetailDeferredData({
+    activeOrganizationId: input.activeOrganizationId,
     activeTeamId: shellData.team.id,
     teamVenueId: shellData.camp.team_venue_id,
     sessionId: shellData.session.id,

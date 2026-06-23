@@ -401,6 +401,7 @@ export default async function SessionDetailPage({
     teamId: scope.activeTeamId,
   })
   const scopedDetailInput = {
+    activeOrganizationId: scope.activeOrgId,
     activeTeamId: detailData.team.id,
     teamVenueId: detailData.camp.team_venue_id,
     sessionId: detailData.session.id,

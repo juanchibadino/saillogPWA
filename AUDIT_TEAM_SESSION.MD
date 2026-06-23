@@ -435,13 +435,14 @@ Goal: improve Security, Scalability, and correctness under partial failure.
 
 Goal: improve Security and scalability of Images/Analytics.
 
-- Verify file magic bytes for WebP/images and PDFs, not only MIME type and file
-  extension.
-- Add active org/team scope checks to the asset content route or resolve asset
-  access through the same scoped session chain used by mutations.
-- Consider returning signed URLs in a bounded batch only for visible assets, or
-  cache short-lived signed URL resolution where safe.
-- Add explicit asset count limits or pagination in the session detail UI.
+- Status: implemented 2026-06-23.
+- Verified file magic bytes for server-side WebP image uploads and PDF analytics
+  uploads before anything is written to storage.
+- Added active org/team scope checks to the asset content route and resolved
+  asset access through asset -> session -> camp -> team venue -> team/venue.
+- Returned asset content redirect URLs with the current org/team scope attached.
+- Added bounded 24-item asset pages for Images and Analytics, total counts, and
+  a `Load more` control in the session detail UI.
 - Expected score movement: Security `4.5 -> 5`, Performance `4.5 -> 4.7`,
   Scalability `4.3 -> 4.5`.
 

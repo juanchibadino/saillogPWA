@@ -4,6 +4,25 @@ Last updated: 2026-06-23
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
 
+## 2026-06-23 - Team session audit Step 6
+
+- Hardened `/team-sessions/[id]` Images and Analytics asset access by attaching
+  the active org/team scope to asset content URLs and rechecking the asset ->
+  session -> camp -> team venue -> team/venue chain in
+  `app/api/session-assets/[id]/content/route.ts`.
+- Added server-side WebP and PDF magic-byte validation in
+  `features/sessions/actions.ts` before uploading session assets to Supabase
+  Storage.
+- Added 24-item paginated asset payloads, asset total counts, and a `Load more`
+  control across `features/sessions/detail-data.ts`,
+  `features/sessions/session-detail-tabs-client.tsx`, and
+  `features/sessions/detail/assets-panel.tsx`.
+- Updated `AUDIT_TEAM_SESSION.MD` Step 6 status.
+- Validation: `npm run lint` passes with existing warnings in
+  `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`; `npx tsc --noEmit`;
+  `npm run build`; `git diff --check`.
+
 ## 2026-06-23 - Team session audit Step 5
 
 - Added `supabase/migrations/028_transaction_safe_session_saves.sql` with transaction-safe RPCs for session setup saves/reorders and session gear link replacement.

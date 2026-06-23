@@ -921,7 +921,11 @@ export function SessionAssetsPanel(input: {
   accept: string
   buttonLabel: string
   assets: SessionDetailAsset[]
+  assetLimit: number
+  assetTotalCount: number
   canManageSession: boolean
+  isLoadingMore?: boolean
+  onLoadMore?: () => void
 }) {
   const router = useRouter()
   const inputId = React.useId()
@@ -929,6 +933,7 @@ export function SessionAssetsPanel(input: {
   const [pendingUpload, setPendingUpload] = React.useState<PendingAssetUpload | null>(null)
   const isUploading = pendingUpload !== null
   const description = input.description?.trim()
+  const hasMoreAssets = input.assets.length < input.assetTotalCount
 
   async function handleSelectedFile(file: File): Promise<void> {
     setPendingUpload({
@@ -1029,6 +1034,30 @@ export function SessionAssetsPanel(input: {
         scope={input.scope}
         sessionId={input.sessionId}
       />
+
+      {input.assetTotalCount > input.assetLimit ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+          <span>
+            Showing {input.assets.length} of {input.assetTotalCount}.
+          </span>
+          {hasMoreAssets && input.onLoadMore ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={input.isLoadingMore}
+              onClick={input.onLoadMore}
+            >
+              {input.isLoadingMore ? (
+                <Loader2Icon className="size-4 animate-spin" />
+              ) : (
+                <PlusIcon className="size-4" />
+              )}
+              Load more
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }

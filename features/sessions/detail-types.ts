@@ -72,6 +72,12 @@ export type SessionDetailAsset = SessionDetailAssetMetadata & {
   signedUrl: string | null
 }
 
+export type SessionDetailAssetPage = {
+  assetLimit: number
+  assetOffset: number
+  assetTotalCount: number
+}
+
 export type SessionDetailGearItem = Pick<
   GearItemRow,
   "id" | "name" | "gear_type" | "status" | "condition" | "serial_number" | "barcode"
@@ -122,9 +128,11 @@ export type SessionDetailGoalsTabData = {
 
 export type SessionDetailResultsTabData = Pick<SessionDetailData, "results">
 
-export type SessionDetailImagesTabData = Pick<SessionDetailData, "images">
+export type SessionDetailImagesTabData = Pick<SessionDetailData, "images"> &
+  SessionDetailAssetPage
 
-export type SessionDetailAnalyticsTabData = Pick<SessionDetailData, "analyticsFiles">
+export type SessionDetailAnalyticsTabData = Pick<SessionDetailData, "analyticsFiles"> &
+  SessionDetailAssetPage
 
 export type SessionDetailGearTabData = Pick<
   SessionDetailData,
