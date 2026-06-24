@@ -15,6 +15,7 @@ import {
   startSessionDetailTiming,
   type SessionDetailTimingStatus,
 } from "@/features/sessions/detail-timing"
+import { getSessionDetailInfoTabData } from "@/features/sessions/detail-data"
 import { createAdminSupabaseClient } from "@/lib/supabase/admin"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { scopeFormInputSchema } from "@/lib/validation/navigation"
@@ -36,8 +37,8 @@ import {
   updateSessionSetupInputSchema,
   uploadSessionAssetInputSchema,
 } from "@/lib/validation/sessions"
-import type { SessionDetailInfo } from "@/features/sessions/detail-types"
-import type { Database, Json } from "@/types/database"
+import type { SessionDetailInfoTabData } from "@/features/sessions/detail-types"
+import type { Database } from "@/types/database"
 
 const SESSION_PHOTOS_BUCKET = "session-photos"
 const SESSION_FILES_BUCKET = "session-files"
@@ -191,37 +192,6 @@ function addMinutesToIsoTimestamp(isoTimestamp: string, minutes: number): string
   const date = new Date(isoTimestamp)
   date.setUTCMinutes(date.getUTCMinutes() + minutes)
   return date.toISOString()
-}
-
-function formatSessionInfoJsonNote(value: Json | null | undefined): string | null {
-  if (value === null || value === undefined) {
-    return null
-  }
-
-  if (typeof value === "string") {
-    return normalizeOptionalText(value)
-  }
-
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value)
-  }
-
-  if (Array.isArray(value)) {
-    const items = value
-      .map((item) => formatSessionInfoJsonNote(item))
-      .filter((item): item is string => item !== null)
-
-    return items.length > 0 ? items.join(", ") : null
-  }
-
-  const objectEntries = Object.entries(value)
-    .map(([key, nestedValue]) => {
-      const nestedText = formatSessionInfoJsonNote(nestedValue)
-      return nestedText ? `${key}: ${nestedText}` : null
-    })
-    .filter((item): item is string => item !== null)
-
-  return objectEntries.length > 0 ? objectEntries.join(" | ") : null
 }
 
 type SessionSetupPayloadEntry = {
@@ -1204,13 +1174,7 @@ type SessionInfoAvailableWindPattern = {
   isActive: boolean
 }
 
-type SessionInfoActionSnapshot = {
-  info: SessionDetailInfo
-  availableStandardMoves: SessionInfoAvailableStandardMove[]
-  linkedStandardMoveIds: string[]
-  availableWindPatterns: SessionInfoAvailableWindPattern[]
-  linkedWindPatternIds: string[]
-}
+type SessionInfoActionSnapshot = SessionDetailInfoTabData
 
 export type UpdateSessionInfoActionResult =
   | ({ ok: true } & SessionInfoActionSnapshot)
@@ -1395,28 +1359,12 @@ export async function createSessionStandardMoveAction(
     return buildCreateSessionStandardMoveActionError("create_failed")
   }
 
-  const { data: teamStandardMovesData, error: teamStandardMovesError } = await supabase
-    .from("team_standard_moves")
-    .select("id,name,description,is_active")
-    .eq("team_id", scope.scopeTeamId)
-    .order("name", { ascending: true })
-
-  if (teamStandardMovesError) {
-    return buildCreateSessionStandardMoveActionError("create_failed")
-  }
-
   const standardMove = {
     id: moveMutation.data.id,
     name: moveMutation.data.name,
     description: moveMutation.data.description,
     isActive: moveMutation.data.is_active,
   }
-  const availableStandardMoves = (teamStandardMovesData ?? []).map((move) => ({
-    id: move.id,
-    name: move.name,
-    description: move.description,
-    isActive: move.is_active,
-  }))
 
   revalidateSessionSlices({
     sessionId,
@@ -1427,7 +1375,7 @@ export async function createSessionStandardMoveAction(
   return {
     ok: true,
     standardMove,
-    availableStandardMoves,
+    availableStandardMoves: [standardMove],
   }
 }
 
@@ -1511,28 +1459,12 @@ export async function createSessionWindPatternAction(
     return buildCreateSessionWindPatternActionError("create_failed")
   }
 
-  const { data: teamVenueWindPatternsData, error: teamVenueWindPatternsError } = await supabase
-    .from("team_venue_wind_patterns")
-    .select("id,name,description,is_active")
-    .eq("team_venue_id", scopedSession.teamVenue.id)
-    .order("name", { ascending: true })
-
-  if (teamVenueWindPatternsError) {
-    return buildCreateSessionWindPatternActionError("create_failed")
-  }
-
   const windPattern = {
     id: patternMutation.data.id,
     name: patternMutation.data.name,
     description: patternMutation.data.description,
     isActive: patternMutation.data.is_active,
   }
-  const availableWindPatterns = (teamVenueWindPatternsData ?? []).map((pattern) => ({
-    id: pattern.id,
-    name: pattern.name,
-    description: pattern.description,
-    isActive: pattern.is_active,
-  }))
 
   revalidateSessionSlices({
     sessionId,
@@ -1543,7 +1475,7 @@ export async function createSessionWindPatternAction(
   return {
     ok: true,
     windPattern,
-    availableWindPatterns,
+    availableWindPatterns: [windPattern],
   }
 }
 
@@ -1612,23 +1544,6 @@ async function updateSessionInfoMutation(formData: FormData): Promise<UpdateSess
   const selectedWindPatternIds = [...new Set(parsedInput.data.windPatternIds)]
 
   const supabase = await createServerSupabaseClient()
-  const { data: existingReviewForLegacy, error: existingReviewForLegacyError } = await supabase
-    .from("session_reviews")
-    .select("wind_patterns")
-    .eq("session_id", parsedInput.data.sessionId)
-    .maybeSingle()
-
-  if (existingReviewForLegacyError) {
-    return buildSessionInfoActionError({
-      error: "update_failed",
-      scope,
-      sessionId: parsedInput.data.sessionId,
-    })
-  }
-
-  const legacyWindPatterns = formatSessionInfoJsonNote(
-    existingReviewForLegacy?.wind_patterns as Json | null | undefined,
-  )
   const [reviewMutation, setupMutation] = await Promise.all([
     supabase.from("session_reviews").upsert(
       {
@@ -1828,93 +1743,34 @@ async function updateSessionInfoMutation(formData: FormData): Promise<UpdateSess
     }
   }
 
-  const [
-    { data: teamStandardMovesData, error: teamStandardMovesError },
-    { data: teamVenueWindPatternsData, error: teamVenueWindPatternsError },
-  ] = await Promise.all([
-    supabase
-      .from("team_standard_moves")
-      .select("id,name,description,is_active")
-      .eq("team_id", scope.scopeTeamId)
-      .order("name", { ascending: true }),
-    supabase
-      .from("team_venue_wind_patterns")
-      .select("id,name,description,is_active")
-      .eq("team_venue_id", scopedSession.teamVenue.id)
-      .order("name", { ascending: true }),
-  ])
-
-  if (teamStandardMovesError) {
-    return buildSessionInfoActionError({
-      error: "update_failed",
-      scope,
-      sessionId: parsedInput.data.sessionId,
-    })
-  }
-
-  if (teamVenueWindPatternsError) {
-    return buildSessionInfoActionError({
-      error: "update_failed",
-      scope,
-      sessionId: parsedInput.data.sessionId,
-    })
-  }
-
-  const availableStandardMoves = (teamStandardMovesData ?? []).map((standardMove) => ({
-    id: standardMove.id,
-    name: standardMove.name,
-    description: standardMove.description,
-    isActive: standardMove.is_active,
-  }))
-  const standardMoveById = new Map(
-    availableStandardMoves.map((standardMove) => [standardMove.id, standardMove]),
-  )
-  const linkedStandardMoveIds = desiredStandardMoveIdList.filter((standardMoveId) =>
-    standardMoveById.has(standardMoveId),
-  )
-  const standardMoves = linkedStandardMoveIds
-    .map((standardMoveId) => standardMoveById.get(standardMoveId)?.name ?? null)
-    .filter((standardMoveName): standardMoveName is string => standardMoveName !== null)
-    .sort((left, right) => left.localeCompare(right))
-  const availableWindPatterns = (teamVenueWindPatternsData ?? []).map((windPattern) => ({
-    id: windPattern.id,
-    name: windPattern.name,
-    description: windPattern.description,
-    isActive: windPattern.is_active,
-  }))
-  const windPatternById = new Map(
-    availableWindPatterns.map((windPattern) => [windPattern.id, windPattern]),
-  )
-  const linkedWindPatternIds = desiredWindPatternIdList.filter((windPatternId) =>
-    windPatternById.has(windPatternId),
-  )
-  const windPatterns = linkedWindPatternIds
-    .map((windPatternId) => windPatternById.get(windPatternId)?.name ?? null)
-    .filter((windPatternName): windPatternName is string => windPatternName !== null)
-    .sort((left, right) => left.localeCompare(right))
-
   revalidateSessionSlices({
     sessionId: parsedInput.data.sessionId,
     campId: scopedSession.camp.id,
     teamVenueId: scopedSession.teamVenue.id,
   })
 
+  let infoSnapshot: SessionDetailInfoTabData
+
+  try {
+    infoSnapshot = await getSessionDetailInfoTabData({
+      activeOrganizationId: scope.scopeOrgId,
+      activeTeamId: scope.scopeTeamId,
+      sessionId: parsedInput.data.sessionId,
+      teamVenueId: scopedSession.teamVenue.id,
+    })
+  } catch {
+    return buildSessionInfoActionError({
+      error: "update_failed",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
+  }
+
   return {
     ok: true,
     sessionId: parsedInput.data.sessionId,
     scope,
-    info: {
-      bestOfSession,
-      toWork,
-      standardMoves,
-      windPatterns,
-      legacyWindPatterns,
-      freeNotes,
-    },
-    availableStandardMoves,
-    linkedStandardMoveIds,
-    availableWindPatterns,
-    linkedWindPatternIds,
+    ...infoSnapshot,
   }
 }
 
@@ -1962,8 +1818,10 @@ export async function saveSessionInfoAction(
     info: result.info,
     availableStandardMoves: result.availableStandardMoves,
     linkedStandardMoveIds: result.linkedStandardMoveIds,
+    standardMoveCatalogPage: result.standardMoveCatalogPage,
     availableWindPatterns: result.availableWindPatterns,
     linkedWindPatternIds: result.linkedWindPatternIds,
+    windPatternCatalogPage: result.windPatternCatalogPage,
   }
 }
 

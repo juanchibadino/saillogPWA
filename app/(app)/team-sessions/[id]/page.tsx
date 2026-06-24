@@ -10,13 +10,9 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   getSessionDetailShellData,
-  getSessionDetailSetupData,
   getSessionDetailTabData,
 } from "@/features/sessions/detail-data"
-import type {
-  SessionDetailSetupData,
-  SessionDetailTabPayload,
-} from "@/features/sessions/detail-types"
+import type { SessionDetailTabPayload } from "@/features/sessions/detail-types"
 import {
   SessionDetailTabsClient,
   SessionHeaderActions,
@@ -188,28 +184,6 @@ function formatSessionDetailTabLabel(tab: SessionDetailTab): string {
   return tab.charAt(0).toUpperCase() + tab.slice(1)
 }
 
-function SessionHeaderActionsFallback() {
-  return (
-    <div className="flex items-center gap-2" aria-busy="true">
-      <button
-        type="button"
-        disabled
-        className="inline-flex h-7 items-center justify-center gap-1 rounded-lg border border-border bg-background px-2.5 text-[0.8rem] font-medium text-muted-foreground opacity-70"
-      >
-        <Loader2Icon aria-hidden="true" className="size-3.5 animate-spin" />
-        <span>Setup</span>
-      </button>
-      <button
-        type="button"
-        disabled
-        className="inline-flex h-7 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-[0.8rem] font-medium text-muted-foreground opacity-70"
-      >
-        Edit
-      </button>
-    </div>
-  )
-}
-
 function SessionDetailTabsFallback({
   selectedTab,
 }: {
@@ -270,34 +244,6 @@ function SessionDetailTabsFallback({
         </div>
       </section>
     </div>
-  )
-}
-
-async function SessionHeaderActionsSlot(input: {
-  setupDataPromise: Promise<SessionDetailSetupData>
-  sessionId: string
-  scope: NonNullable<Awaited<ReturnType<typeof resolveNavigationScope>>["scope"]>
-  sessionType: "training" | "regatta"
-  sessionDate: string
-  dockOutAt: string | null
-  dockInAt: string | null
-  netTimeMinutes: number | null
-  canManageSession: boolean
-}) {
-  const setupData = await input.setupDataPromise
-
-  return (
-    <SessionHeaderActions
-      sessionId={input.sessionId}
-      scope={input.scope}
-      setupDialogItems={setupData.setupDialogItems}
-      sessionType={input.sessionType}
-      sessionDate={input.sessionDate}
-      dockOutAt={input.dockOutAt}
-      dockInAt={input.dockInAt}
-      netTimeMinutes={input.netTimeMinutes}
-      canManageSession={input.canManageSession}
-    />
   )
 }
 
@@ -411,9 +357,6 @@ export default async function SessionDetailPage({
     goals: detailData.session.goals,
     tab: selectedTab,
   })
-  const setupDataPromise = canManageSession
-    ? getSessionDetailSetupData(scopedDetailInput)
-    : Promise.resolve<SessionDetailSetupData>({ setupDialogItems: [] })
 
   const sessionTypeLabel = formatSessionTypeLabel(detailData.session.session_type)
   const sessionDateLabel = formatDateLabel(detailData.session.session_date)
@@ -442,19 +385,16 @@ export default async function SessionDetailPage({
           </div>
 
           {canManageSession ? (
-            <Suspense fallback={<SessionHeaderActionsFallback />}>
-              <SessionHeaderActionsSlot
-                setupDataPromise={setupDataPromise}
-                sessionId={detailData.session.id}
-                scope={scope}
-                sessionType={detailData.session.session_type}
-                sessionDate={detailData.session.session_date}
-                dockOutAt={detailData.session.dock_out_at}
-                dockInAt={detailData.session.dock_in_at}
-                netTimeMinutes={detailData.session.net_time_minutes}
-                canManageSession={canManageSession}
-              />
-            </Suspense>
+            <SessionHeaderActions
+              sessionId={detailData.session.id}
+              scope={scope}
+              sessionType={detailData.session.session_type}
+              sessionDate={detailData.session.session_date}
+              dockOutAt={detailData.session.dock_out_at}
+              dockInAt={detailData.session.dock_in_at}
+              netTimeMinutes={detailData.session.net_time_minutes}
+              canManageSession={canManageSession}
+            />
           ) : null}
         </div>
 

@@ -3,22 +3,6 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import {
-  DndContext,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core"
-import {
-  SortableContext,
-  arrayMove,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable"
-import { CSS } from "@dnd-kit/utilities"
-import {
-  GripVerticalIcon,
   Loader2Icon,
   PencilIcon,
   PlusIcon,
@@ -43,7 +27,6 @@ import {
   DrawerFooter,
   DrawerHeader,
   DrawerTitle,
-  DrawerTrigger,
 } from "@/components/ui/drawer"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -503,8 +486,12 @@ function buildBoatSetupOrderIds(items: SessionSetupDialogItem[]): string[] {
   return groupSetupItems(items).boat.map((item) => item.id)
 }
 
-function areStringArraysEqual(left: string[], right: string[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index])
+function hasSetupItemValue(item: SessionSetupDialogItem): boolean {
+  if (item.inputKind === "text") {
+    return item.textValue.trim().length > 0
+  }
+
+  return item.selectedOptions.length > 0
 }
 
 function normalizeSetupTextValue(value: string): string | null {
@@ -672,37 +659,6 @@ function SetupScopeHiddenFields(input: {
   )
 }
 
-function SortableBoatSetupRow(input: {
-  itemId: string
-  children: (input: {
-    dragHandleProps: React.HTMLAttributes<HTMLButtonElement>
-    isDragging: boolean
-  }) => React.ReactNode
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: input.itemId,
-  })
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-      }}
-      className={isDragging ? "opacity-70" : undefined}
-    >
-      {input.children({
-        dragHandleProps: {
-          ...attributes,
-          ...listeners,
-        },
-        isDragging,
-      })}
-    </div>
-  )
-}
-
 function SetupDialogFooter(input: {
   isEditMode: boolean
   isSaving: boolean
@@ -711,6 +667,8 @@ function SetupDialogFooter(input: {
 }) {
   const { pending } = useFormStatus()
   const isPending = pending || input.isSaving
+  const drawerButtonClassName = input.surface === "drawer" ? "h-11 w-full" : undefined
+  const buttonSize = input.surface === "drawer" ? "default" : "sm"
 
   const content = (
     <>
@@ -719,8 +677,8 @@ function SetupDialogFooter(input: {
           key="setup-edit"
           type="button"
           variant="outline"
-          size="sm"
-          className={input.surface === "drawer" ? "w-full" : undefined}
+          size={buttonSize}
+          className={drawerButtonClassName}
           onClick={(event) => {
             event.preventDefault()
             event.stopPropagation()
@@ -735,7 +693,7 @@ function SetupDialogFooter(input: {
           key="setup-save"
           type="submit"
           disabled={isPending}
-          className={input.surface === "drawer" ? "w-full" : undefined}
+          className={drawerButtonClassName}
         >
           {isPending ? (
             <>
@@ -763,49 +721,57 @@ function SetupDialogFooter(input: {
   )
 }
 
+function SetupDialogFieldset(props: { children: React.ReactNode; isSaving: boolean }) {
+  const { pending } = useFormStatus()
+
+  return (
+    <fieldset
+      disabled={pending || props.isSaving}
+      className="m-0 min-h-0 flex-1 overflow-hidden border-0 p-0"
+    >
+      {props.children}
+    </fieldset>
+  )
+}
+
+function EditSetupMetricFieldset(props: { children: React.ReactNode }) {
+  const { pending } = useFormStatus()
+
+  return <fieldset disabled={pending} className="m-0 space-y-4 border-0 p-0">{props.children}</fieldset>
+}
+
+function EditSetupMetricSubmitButton(props: { className?: string }) {
+  const { pending } = useFormStatus()
+
+  return (
+    <Button type="submit" disabled={pending} className={props.className}>
+      {pending ? (
+        <>
+          <Loader2Icon className="size-4 animate-spin" />
+          Saving...
+        </>
+      ) : (
+        "Save"
+      )}
+    </Button>
+  )
+}
+
 export function SetupDialog(input: {
   sessionId: string
   scope: NavigationScope
   items: SessionSetupDialogItem[]
+  isLoading?: boolean
+  loadError?: string | null
+  onOpen?: () => void
+  onRetry?: () => void
 }) {
-  function SetupDialogFieldset(props: { children: React.ReactNode; isSaving: boolean }) {
-    const { pending } = useFormStatus()
-
-    return (
-      <fieldset
-        disabled={pending || props.isSaving}
-        className="m-0 min-h-0 flex-1 overflow-hidden border-0 p-0"
-      >
-        {props.children}
-      </fieldset>
-    )
-  }
-
-  function EditSetupMetricFieldset(props: { children: React.ReactNode }) {
-    const { pending } = useFormStatus()
-
-    return <fieldset disabled={pending} className="m-0 border-0 p-0">{props.children}</fieldset>
-  }
-
-  function EditSetupMetricSubmitButton() {
-    const { pending } = useFormStatus()
-
-    return (
-      <Button type="submit" disabled={pending}>
-        {pending ? (
-          <>
-            <Loader2Icon className="size-4 animate-spin" />
-            Saving...
-          </>
-        ) : (
-          "Save"
-        )}
-      </Button>
-    )
-  }
-
   const [setupItems, setSetupItems] = React.useState<SessionSetupDialogItem[]>(input.items)
   const groupedItems = React.useMemo(() => groupSetupItems(setupItems), [setupItems])
+  const valuedGroupedItems = React.useMemo(
+    () => groupSetupItems(setupItems.filter(hasSetupItemValue)),
+    [setupItems],
+  )
   const initialBoatOrderIds = React.useMemo(
     () => buildBoatSetupOrderIds(setupItems),
     [setupItems],
@@ -824,6 +790,7 @@ export function SetupDialog(input: {
   const [boatOrderIds, setBoatOrderIds] = React.useState<string[]>(initialBoatOrderIds)
   const [isSavingSetup, setIsSavingSetup] = React.useState(false)
   const previousInputItemsRef = React.useRef(input.items)
+  const metricDialogPortalContainerRef = React.useRef<HTMLDivElement | null>(null)
 
   const [isCreateMetricDialogOpen, setIsCreateMetricDialogOpen] = React.useState(false)
   const [createMetricStep, setCreateMetricStep] = React.useState<"kind" | "details">("kind")
@@ -842,12 +809,6 @@ export function SetupDialog(input: {
 
   const [deletingMetricId, setDeletingMetricId] = React.useState<string | null>(null)
   const isMobile = useIsMobile()
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
-    }),
-  )
 
   React.useEffect(() => {
     if (previousInputItemsRef.current === input.items) {
@@ -877,16 +838,6 @@ export function SetupDialog(input: {
     [setupPayloadEntries],
   )
 
-  const hasBoatOrderChange = React.useMemo(
-    () => !areStringArraysEqual(boatOrderIds, buildBoatSetupOrderIds(setupItems)),
-    [boatOrderIds, setupItems],
-  )
-
-  const orderedItemIdsPayload = React.useMemo(
-    () => (hasBoatOrderChange ? JSON.stringify(boatOrderIds) : null),
-    [boatOrderIds, hasBoatOrderChange],
-  )
-
   const orderedBoatItems = React.useMemo(
     () =>
       boatOrderIds
@@ -899,6 +850,10 @@ export function SetupDialog(input: {
     editingMetricId !== null ? boatItemById.get(editingMetricId) ?? null : null
   const deletingMetric =
     deletingMetricId !== null ? boatItemById.get(deletingMetricId) ?? null : null
+  const visibleWeatherItems = isEditMode ? groupedItems.weather : valuedGroupedItems.weather
+  const visibleBoatItems = isEditMode ? groupedItems.boat : valuedGroupedItems.boat
+  const hasReadOnlySetupValues =
+    valuedGroupedItems.weather.length > 0 || valuedGroupedItems.boat.length > 0
 
   const createMetricOptionsPayload = React.useMemo(
     () =>
@@ -938,6 +893,9 @@ export function SetupDialog(input: {
 
   function handleOpenChange(nextOpen: boolean) {
     setIsOpen(nextOpen)
+    if (nextOpen) {
+      input.onOpen?.()
+    }
     resetDialogState()
   }
 
@@ -948,7 +906,7 @@ export function SetupDialog(input: {
       return
     }
 
-    if (setupPayloadEntries.length === 0 && !orderedItemIdsPayload) {
+    if (setupPayloadEntries.length === 0) {
       setIsEditMode(false)
       setIsOpen(false)
       return
@@ -1088,25 +1046,6 @@ export function SetupDialog(input: {
           twsEditedOptionIds: rebalanced.editedOptionIds,
         },
       }
-    })
-  }
-
-  function handleBoatDragEnd(event: DragEndEvent) {
-    const { active, over } = event
-
-    if (!over || active.id === over.id) {
-      return
-    }
-
-    setBoatOrderIds((previousOrder) => {
-      const oldIndex = previousOrder.indexOf(String(active.id))
-      const newIndex = previousOrder.indexOf(String(over.id))
-
-      if (oldIndex < 0 || newIndex < 0) {
-        return previousOrder
-      }
-
-      return arrayMove(previousOrder, oldIndex, newIndex)
     })
   }
 
@@ -1300,15 +1239,13 @@ export function SetupDialog(input: {
   function renderEditableMetricRow(inputRow: {
     item: SessionSetupDialogItem
     showTemplateControls: boolean
-    dragHandleProps?: React.HTMLAttributes<HTMLButtonElement>
-    isDragging?: boolean
   }) {
     const hint = renderFieldHint(inputRow.item)
 
     return (
       <div
         key={inputRow.item.id}
-        className={`space-y-3 rounded-lg ${inputRow.isDragging ? "ring-1 ring-foreground/20" : ""}`}
+        className="space-y-3 rounded-lg"
       >
         <div className="flex items-center justify-between gap-3">
           <Label
@@ -1323,29 +1260,12 @@ export function SetupDialog(input: {
               <Button
                 type="button"
                 variant="ghost"
-                size="icon-sm"
+                size="icon-lg"
+                className={isMobile ? "size-10 rounded-xl" : undefined}
                 aria-label={`Edit setup metric ${inputRow.item.label}`}
                 onClick={() => openEditMetricDialog(inputRow.item)}
               >
                 <PencilIcon />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`Delete setup metric ${inputRow.item.label}`}
-                onClick={() => setDeletingMetricId(inputRow.item.id)}
-              >
-                <Trash2Icon />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`Reorder setup metric ${inputRow.item.label}`}
-                {...inputRow.dragHandleProps}
-              >
-                <GripVerticalIcon />
               </Button>
             </div>
           ) : null}
@@ -1367,6 +1287,29 @@ export function SetupDialog(input: {
     )
   }
 
+  const setupLoadState = input.isLoading ? (
+    <div className="flex min-h-44 flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-4 text-center">
+      <Loader2Icon className="size-5 animate-spin text-muted-foreground" />
+      <div className="space-y-1">
+        <p className="text-sm font-medium">Loading Setup</p>
+        <p className="text-sm text-muted-foreground">Fetching the current setup metrics.</p>
+      </div>
+    </div>
+  ) : input.loadError ? (
+    <div
+      role="alert"
+      className="flex min-h-44 flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-4 text-center"
+    >
+      <div className="space-y-1">
+        <p className="text-sm font-medium">Could not load Setup.</p>
+        <p className="text-sm text-muted-foreground">{input.loadError}</p>
+      </div>
+      <Button type="button" variant="outline" size="sm" onClick={input.onRetry}>
+        Retry
+      </Button>
+    </div>
+  ) : null
+
   const setupForm = (
     <form
       action={updateSessionSetupAction}
@@ -1375,100 +1318,88 @@ export function SetupDialog(input: {
     >
           <SetupScopeHiddenFields sessionId={input.sessionId} scope={input.scope} />
           <input type="hidden" name="setupPayload" value={payloadValue} />
-          {orderedItemIdsPayload ? (
-            <input
-              type="hidden"
-              name="orderedItemIdsPayload"
-              value={orderedItemIdsPayload}
-            />
-          ) : null}
 
           <SetupDialogFieldset isSaving={isSavingSetup}>
             <div className="no-scrollbar h-full space-y-6 overflow-y-auto px-4 pb-4 pr-5">
-              {setupItems.length === 0 ? (
+              {setupLoadState ? (
+                setupLoadState
+              ) : setupItems.length === 0 ? (
                 <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
                   No setup metrics are configured for this team yet.
                 </div>
+              ) : !isEditMode && !hasReadOnlySetupValues ? (
+                <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
+                  No setup values recorded yet.
+                </div>
               ) : (
                 <>
-                  {renderSection(
-                    "Weather",
-                    <div className="space-y-3">
-                      {groupedItems.weather.map((item) =>
-                        isEditMode ? (
-                          renderEditableMetricRow({
-                            item,
-                            showTemplateControls: false,
-                          })
-                        ) : (
-                          <div key={item.id} className="rounded-lg border p-3">
-                            <div className="flex items-start justify-between gap-3">
-                              <p className="text-sm font-medium">{item.label}</p>
-                              <div className="min-w-0 flex-1 text-right">
-                                {renderReadOnlyField(item)}
-                              </div>
-                            </div>
-                          </div>
-                        ),
-                      )}
-                    </div>,
-                  )}
-
-                  {renderSection(
-                    "Boat",
-                    <div className="space-y-3">
-                      {groupedItems.boat.length === 0 ? (
-                        <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
-                          No Boat metrics configured for this team yet.
-                        </div>
-                      ) : isEditMode ? (
-                        <DndContext
-                          sensors={sensors}
-                          collisionDetection={closestCenter}
-                          onDragEnd={handleBoatDragEnd}
-                        >
-                          <SortableContext
-                            items={boatOrderIds}
-                            strategy={verticalListSortingStrategy}
-                          >
-                            <div className="space-y-3">
-                              {orderedBoatItems.map((item) => (
-                                <SortableBoatSetupRow key={item.id} itemId={item.id}>
-                                  {({ dragHandleProps, isDragging }) =>
-                                    renderEditableMetricRow({
-                                      item,
-                                      showTemplateControls: true,
-                                      dragHandleProps,
-                                      isDragging,
-                                    })
-                                  }
-                                </SortableBoatSetupRow>
-                              ))}
-                            </div>
-                          </SortableContext>
-                        </DndContext>
-                      ) : (
+                  {visibleWeatherItems.length > 0
+                    ? renderSection(
+                        "Weather",
                         <div className="space-y-3">
-                          {groupedItems.boat.map((item) => (
-                            <div key={item.id} className="rounded-lg border p-3">
-                              <div className="flex items-start justify-between gap-3">
-                                <p className="text-sm font-medium">{item.label}</p>
-                                <div className="min-w-0 flex-1 text-right">
-                                  {renderReadOnlyField(item)}
+                          {visibleWeatherItems.map((item) => {
+                            if (isEditMode) {
+                              return renderEditableMetricRow({
+                                item,
+                                showTemplateControls: false,
+                              })
+                            }
+
+                            return (
+                              <div key={item.id} className="rounded-lg border p-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <p className="text-sm font-medium">{item.label}</p>
+                                  <div className="min-w-0 flex-1 text-right">
+                                    {renderReadOnlyField(item)}
+                                  </div>
                                 </div>
                               </div>
+                            )
+                          })}
+                        </div>,
+                      )
+                    : null}
+
+                  {isEditMode || visibleBoatItems.length > 0
+                    ? renderSection(
+                        "Boat",
+                        <div className="space-y-3">
+                          {groupedItems.boat.length === 0 ? (
+                            <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
+                              No Boat metrics configured for this team yet.
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>,
-                  )}
+                          ) : isEditMode ? (
+                            <div className="space-y-3">
+                              {orderedBoatItems.map((item) =>
+                                renderEditableMetricRow({
+                                  item,
+                                  showTemplateControls: true,
+                                }),
+                              )}
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {visibleBoatItems.map((item) => (
+                                <div key={item.id} className="rounded-lg border p-3">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <p className="text-sm font-medium">{item.label}</p>
+                                    <div className="min-w-0 flex-1 text-right">
+                                      {renderReadOnlyField(item)}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>,
+                      )
+                    : null}
 
                   {isEditMode ? (
                     <Button
                       type="button"
                       variant="outline"
-                      className="w-full border-dashed"
+                      className={`w-full border-dashed ${isMobile ? "h-11" : ""}`}
                       onClick={openCreateMetricDialog}
                     >
                       <PlusIcon className="size-4" />
@@ -1480,23 +1411,32 @@ export function SetupDialog(input: {
             </div>
           </SetupDialogFieldset>
 
-          <SetupDialogFooter
-            isEditMode={isEditMode}
-            isSaving={isSavingSetup}
-            onEnterEditMode={() => setIsEditMode(true)}
-            surface={isMobile ? "drawer" : "sheet"}
-          />
+          {setupLoadState ? null : (
+            <SetupDialogFooter
+              isEditMode={isEditMode}
+              isSaving={isSavingSetup}
+              onEnterEditMode={() => setIsEditMode(true)}
+              surface={isMobile ? "drawer" : "sheet"}
+            />
+          )}
         </form>
   )
 
   const setupSurface = isMobile ? (
     <Drawer open={isOpen} onOpenChange={handleOpenChange}>
-      <DrawerTrigger asChild>
-        <Button type="button" variant="outline" size="default" className="h-9 px-3">
-          Setup
-        </Button>
-      </DrawerTrigger>
+      <Button
+        type="button"
+        variant="outline"
+        size="default"
+        className="h-9 px-3"
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        onClick={() => handleOpenChange(true)}
+      >
+        Setup
+      </Button>
       <DrawerContent className="h-[85dvh] overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+        <div ref={metricDialogPortalContainerRef} />
         <DrawerHeader className="shrink-0">
           <DrawerTitle>Session setup</DrawerTitle>
         </DrawerHeader>
@@ -1509,6 +1449,7 @@ export function SetupDialog(input: {
         Setup
       </SheetTrigger>
       <SheetContent side="right" className="h-full overflow-hidden sm:max-w-5xl">
+        <div ref={metricDialogPortalContainerRef} />
         <SheetHeader className="shrink-0">
           <SheetTitle>Session setup</SheetTitle>
         </SheetHeader>
@@ -1533,7 +1474,10 @@ export function SetupDialog(input: {
             }
           }}
         >
-          <DialogContent className="sm:max-w-lg">
+          <DialogContent
+            className="max-h-[calc(85dvh-2rem)] overflow-y-auto sm:max-w-lg"
+            portalContainer={metricDialogPortalContainerRef}
+          >
             <DialogHeader>
               <DialogTitle>Add setup metric</DialogTitle>
               <DialogDescription>
@@ -1548,6 +1492,7 @@ export function SetupDialog(input: {
                   <Button
                     type="button"
                     variant="outline"
+                    className={isMobile ? "h-11" : undefined}
                     onClick={() => {
                       setCreateMetricKind("single_select")
                       setCreateMetricStep("details")
@@ -1558,6 +1503,7 @@ export function SetupDialog(input: {
                   <Button
                     type="button"
                     variant="outline"
+                    className={isMobile ? "h-11" : undefined}
                     onClick={() => {
                       setCreateMetricKind("multi_select")
                       setCreateMetricStep("details")
@@ -1568,6 +1514,7 @@ export function SetupDialog(input: {
                   <Button
                     type="button"
                     variant="outline"
+                    className={isMobile ? "h-11" : undefined}
                     onClick={() => {
                       setCreateMetricKind("text")
                       setCreateMetricStep("details")
@@ -1590,6 +1537,7 @@ export function SetupDialog(input: {
                     name="label"
                     value={createMetricLabel}
                     onChange={(event) => setCreateMetricLabel(event.target.value)}
+                    className={isMobile ? "h-11" : undefined}
                     placeholder="e.g. Mast bend"
                     maxLength={120}
                     required
@@ -1603,6 +1551,7 @@ export function SetupDialog(input: {
                       id="create-setup-metric-options"
                       value={createMetricOptionsText}
                       onChange={(event) => setCreateMetricOptionsText(event.target.value)}
+                      className="max-h-56 overflow-y-auto [field-sizing:fixed]"
                       rows={6}
                       placeholder={"Option A\nOption B\nOption C"}
                     />
@@ -1613,6 +1562,7 @@ export function SetupDialog(input: {
                   <Button
                     type="button"
                     variant="outline"
+                    className={isMobile ? "h-11" : undefined}
                     onClick={() => {
                       setCreateMetricStep("kind")
                       setCreateMetricKind(null)
@@ -1620,7 +1570,9 @@ export function SetupDialog(input: {
                   >
                     Back
                   </Button>
-                  <Button type="submit">Create metric</Button>
+                  <Button type="submit" className={isMobile ? "h-11" : undefined}>
+                    Create metric
+                  </Button>
                 </DialogFooter>
               </form>
             )}
@@ -1635,7 +1587,10 @@ export function SetupDialog(input: {
             }
           }}
         >
-          <DialogContent className="sm:max-w-lg">
+          <DialogContent
+            className="max-h-[calc(85dvh-2rem)] overflow-y-auto sm:max-w-lg"
+            portalContainer={metricDialogPortalContainerRef}
+          >
             <DialogHeader>
               <DialogTitle>Edit setup metric</DialogTitle>
               <DialogDescription>
@@ -1656,6 +1611,7 @@ export function SetupDialog(input: {
                     name="label"
                     value={editingMetricLabel}
                     onChange={(event) => setEditingMetricLabel(event.target.value)}
+                    className={isMobile ? "h-11" : undefined}
                     maxLength={120}
                     required
                   />
@@ -1672,7 +1628,7 @@ export function SetupDialog(input: {
                         event.target.value as "single_select" | "multi_select" | "text",
                       )
                     }
-                    className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none ring-ring/50 focus-visible:ring-[3px]"
+                    className="h-11 w-full rounded-lg border border-input bg-background px-3 text-base outline-none ring-ring/50 focus-visible:ring-[3px] md:text-sm"
                   >
                     <option value="single_select">Single Select</option>
                     <option value="multi_select">Multi Select</option>
@@ -1687,15 +1643,32 @@ export function SetupDialog(input: {
                       id="edit-setup-metric-options"
                       value={editingMetricOptionsText}
                       onChange={(event) => setEditingMetricOptionsText(event.target.value)}
+                      className="max-h-56 overflow-y-auto [field-sizing:fixed]"
                       rows={6}
                       placeholder={"Option A\nOption B\nOption C"}
                     />
                   </div>
                 ) : null}
 
-                <DialogFooter>
-                  <EditSetupMetricSubmitButton />
-                </DialogFooter>
+                <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    className={isMobile ? "h-11" : undefined}
+                    onClick={() => {
+                      if (!editingMetric) {
+                        return
+                      }
+
+                      setDeletingMetricId(editingMetric.id)
+                      setEditingMetricId(null)
+                    }}
+                  >
+                    <Trash2Icon className="size-4" />
+                    Delete metric
+                  </Button>
+                  <EditSetupMetricSubmitButton className={isMobile ? "h-11" : undefined} />
+                </div>
               </EditSetupMetricFieldset>
             </form>
           </DialogContent>
@@ -1709,7 +1682,10 @@ export function SetupDialog(input: {
             }
           }}
         >
-          <DialogContent className="sm:max-w-md">
+          <DialogContent
+            className="max-h-[calc(85dvh-2rem)] overflow-y-auto sm:max-w-md"
+            portalContainer={metricDialogPortalContainerRef}
+          >
             <DialogHeader>
               <DialogTitle>Delete setup metric</DialogTitle>
               <DialogDescription>
@@ -1726,7 +1702,11 @@ export function SetupDialog(input: {
               <input type="hidden" name="itemId" value={deletingMetric?.id ?? ""} />
 
               <DialogFooter>
-                <Button type="submit" variant="destructive">
+                <Button
+                  type="submit"
+                  variant="destructive"
+                  className={isMobile ? "h-11" : undefined}
+                >
                   Delete metric
                 </Button>
               </DialogFooter>

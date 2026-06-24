@@ -56,8 +56,19 @@ import {
   saveSessionInfoAction,
   updateSessionInfoAction,
 } from "@/features/sessions/actions"
+import type {
+  SessionDetailCatalogPage,
+  SessionDetailStandardMove,
+  SessionDetailStandardMovesCatalogData,
+  SessionDetailWindPattern,
+  SessionDetailWindPatternsCatalogData,
+} from "@/features/sessions/detail-types"
 import { generateStandardMoveNameFromDescription } from "@/lib/standard-moves"
 import { useIsMobile } from "@/hooks/use-mobile"
+import {
+  NAVIGATION_SCOPE_ORG_QUERY_KEY,
+  NAVIGATION_SCOPE_TEAM_QUERY_KEY,
+} from "@/lib/navigation/constants"
 import type { NavigationScope } from "@/lib/navigation/types"
 
 function renderTextValue(value: string | null): string {
@@ -182,18 +193,167 @@ export type SessionInfoState = {
   freeNotes: string | null
 }
 
-export type SessionInfoStandardMove = {
-  id: string
-  name: string
-  description: string | null
-  isActive: boolean
+export type SessionInfoStandardMove = SessionDetailStandardMove
+
+export type SessionInfoWindPattern = SessionDetailWindPattern
+
+type SessionInfoCatalogLoadMode = "append" | "replace"
+
+type SessionInfoCatalogErrorPayload = {
+  detail?: unknown
+  error?: unknown
 }
 
-export type SessionInfoWindPattern = {
-  id: string
-  name: string
-  description: string | null
-  isActive: boolean
+type StandardMovesCatalogResponse = {
+  catalog: "standardMoves"
+  data: SessionDetailStandardMovesCatalogData
+}
+
+type WindPatternsCatalogResponse = {
+  catalog: "windPatterns"
+  data: SessionDetailWindPatternsCatalogData
+}
+
+function mergeCatalogOptionsById<T extends { id: string; name: string }>(
+  currentOptions: T[],
+  nextOptions: T[],
+): T[] {
+  const optionsById = new Map<string, T>()
+
+  for (const option of [...currentOptions, ...nextOptions]) {
+    optionsById.set(option.id, option)
+  }
+
+  return [...optionsById.values()].sort((left, right) => left.name.localeCompare(right.name))
+}
+
+function resolveCachedOptionsByIds<T extends { id: string }>(
+  options: T[],
+  ids: string[],
+): T[] {
+  const optionById = new Map(options.map((option) => [option.id, option]))
+
+  return ids
+    .map((id) => optionById.get(id) ?? null)
+    .filter((option): option is T => option !== null)
+}
+
+function buildSessionInfoCatalogUrl(input: {
+  catalog: "standardMoves" | "windPatterns"
+  linkedIds: string[]
+  scope: NavigationScope
+  search: string
+  sessionId: string
+  offset: number
+}): string {
+  const params = new URLSearchParams()
+  params.set("catalog", input.catalog)
+  params.set("offset", String(input.offset))
+  params.set("search", input.search)
+  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.scope.activeOrgId)
+
+  if (input.scope.activeTeamId) {
+    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scope.activeTeamId)
+  }
+
+  const linkedParam =
+    input.catalog === "standardMoves" ? "linkedStandardMoveId" : "linkedWindPatternId"
+
+  for (const linkedId of input.linkedIds) {
+    params.append(linkedParam, linkedId)
+  }
+
+  return `/api/team-sessions/${encodeURIComponent(input.sessionId)}/catalog?${params.toString()}`
+}
+
+async function resolveSessionInfoCatalogErrorMessage(response: Response): Promise<string> {
+  let payload: SessionInfoCatalogErrorPayload | null = null
+
+  try {
+    payload = (await response.json()) as SessionInfoCatalogErrorPayload
+  } catch {
+    payload = null
+  }
+
+  const errorCode = typeof payload?.error === "string" ? payload.error : null
+
+  if (response.status === 401 || errorCode === "unauthorized") {
+    return "Your session expired. Sign in again, then retry search."
+  }
+
+  if (response.status === 403 || errorCode === "scope_required") {
+    return "This search needs an active team scope."
+  }
+
+  if (response.status === 404 || errorCode === "session_not_found") {
+    return "This session is unavailable in the active team scope."
+  }
+
+  return "Could not load more catalog items."
+}
+
+async function fetchStandardMovesCatalog(input: {
+  linkedStandardMoveIds: string[]
+  scope: NavigationScope
+  search: string
+  sessionId: string
+  offset: number
+}): Promise<SessionDetailStandardMovesCatalogData> {
+  const response = await fetch(
+    buildSessionInfoCatalogUrl({
+      catalog: "standardMoves",
+      linkedIds: input.linkedStandardMoveIds,
+      scope: input.scope,
+      search: input.search,
+      sessionId: input.sessionId,
+      offset: input.offset,
+    }),
+    {
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+      },
+    },
+  )
+
+  if (!response.ok) {
+    throw new Error(await resolveSessionInfoCatalogErrorMessage(response))
+  }
+
+  const payload = (await response.json()) as StandardMovesCatalogResponse
+  return payload.data
+}
+
+async function fetchWindPatternsCatalog(input: {
+  linkedWindPatternIds: string[]
+  scope: NavigationScope
+  search: string
+  sessionId: string
+  offset: number
+}): Promise<SessionDetailWindPatternsCatalogData> {
+  const response = await fetch(
+    buildSessionInfoCatalogUrl({
+      catalog: "windPatterns",
+      linkedIds: input.linkedWindPatternIds,
+      scope: input.scope,
+      search: input.search,
+      sessionId: input.sessionId,
+      offset: input.offset,
+    }),
+    {
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+      },
+    },
+  )
+
+  if (!response.ok) {
+    throw new Error(await resolveSessionInfoCatalogErrorMessage(response))
+  }
+
+  const payload = (await response.json()) as WindPatternsCatalogResponse
+  return payload.data
 }
 
 function resolveLinkedStandardMoveBadges(input: {
@@ -573,6 +733,7 @@ function InfoEditDialog(input: {
     description: string | null
     isActive: boolean
   }[]
+  standardMoveCatalogPage: SessionDetailCatalogPage
   linkedStandardMoveIds: string[]
   availableWindPatterns: {
     id: string
@@ -580,6 +741,7 @@ function InfoEditDialog(input: {
     description: string | null
     isActive: boolean
   }[]
+  windPatternCatalogPage: SessionDetailCatalogPage
   linkedWindPatternIds: string[]
   windPatterns: string[]
   legacyWindPatterns: string | null
@@ -591,6 +753,16 @@ function InfoEditDialog(input: {
   onWindPatternCreate: (input: {
     windPattern: SessionInfoWindPattern
     availableWindPatterns: SessionInfoWindPattern[]
+  }) => void
+  onStandardMoveCatalogLoad: (input: {
+    availableStandardMoves: SessionInfoStandardMove[]
+    mode: SessionInfoCatalogLoadMode
+    page: SessionDetailCatalogPage
+  }) => void
+  onWindPatternCatalogLoad: (input: {
+    availableWindPatterns: SessionInfoWindPattern[]
+    mode: SessionInfoCatalogLoadMode
+    page: SessionDetailCatalogPage
   }) => void
   onSave: (draft: SessionInfoSaveDraft) => Promise<boolean>
 }) {
@@ -609,46 +781,51 @@ function InfoEditDialog(input: {
   const [freeNotes, setFreeNotes] = React.useState(input.freeNotes ?? "")
   const [standardMoveSearch, setStandardMoveSearch] = React.useState("")
   const [windPatternSearch, setWindPatternSearch] = React.useState("")
+  const [standardMoveCatalogOptions, setStandardMoveCatalogOptions] = React.useState<
+    SessionInfoStandardMove[]
+  >(input.availableStandardMoves)
+  const [standardMoveCatalogPage, setStandardMoveCatalogPage] =
+    React.useState<SessionDetailCatalogPage>(input.standardMoveCatalogPage)
+  const [windPatternCatalogOptions, setWindPatternCatalogOptions] = React.useState<
+    SessionInfoWindPattern[]
+  >(input.availableWindPatterns)
+  const [windPatternCatalogPage, setWindPatternCatalogPage] =
+    React.useState<SessionDetailCatalogPage>(input.windPatternCatalogPage)
+  const [isStandardMoveCatalogLoading, setIsStandardMoveCatalogLoading] =
+    React.useState(false)
+  const [isWindPatternCatalogLoading, setIsWindPatternCatalogLoading] = React.useState(false)
+  const [standardMoveCatalogError, setStandardMoveCatalogError] = React.useState<string | null>(
+    null,
+  )
+  const [windPatternCatalogError, setWindPatternCatalogError] = React.useState<string | null>(
+    null,
+  )
+  const standardMoveCatalogRequestVersionRef = React.useRef(0)
+  const windPatternCatalogRequestVersionRef = React.useRef(0)
   const isMobile = useIsMobile()
   const hasQuickCreateDescription = newStandardMoveDescription.trim().length > 0
-  const standardMoveOptions = input.availableStandardMoves.filter(
+  const standardMoveOptions = mergeCatalogOptionsById(
+    standardMoveCatalogOptions,
+    input.availableStandardMoves.filter((standardMove) =>
+      standardMoveIds.includes(standardMove.id),
+    ),
+  ).filter(
     (standardMove) =>
-      standardMove.isActive || input.linkedStandardMoveIds.includes(standardMove.id),
+      standardMove.isActive ||
+      input.linkedStandardMoveIds.includes(standardMove.id) ||
+      standardMoveIds.includes(standardMove.id),
   )
-  const normalizedStandardMoveSearch = standardMoveSearch.trim().toLowerCase()
-  const filteredStandardMoveOptions =
-    normalizedStandardMoveSearch.length === 0
-      ? standardMoveOptions
-      : standardMoveOptions.filter((standardMove) => {
-          const searchableText = [
-            standardMove.name,
-            standardMove.description ?? "",
-            standardMove.isActive ? "" : "archived",
-          ]
-            .join(" ")
-            .toLowerCase()
-
-          return searchableText.includes(normalizedStandardMoveSearch)
-        })
-  const windPatternOptions = input.availableWindPatterns.filter(
+  const windPatternOptions = mergeCatalogOptionsById(
+    windPatternCatalogOptions,
+    input.availableWindPatterns.filter((windPattern) =>
+      windPatternIds.includes(windPattern.id),
+    ),
+  ).filter(
     (windPattern) =>
-      windPattern.isActive || input.linkedWindPatternIds.includes(windPattern.id),
+      windPattern.isActive ||
+      input.linkedWindPatternIds.includes(windPattern.id) ||
+      windPatternIds.includes(windPattern.id),
   )
-  const normalizedWindPatternSearch = windPatternSearch.trim().toLowerCase()
-  const filteredWindPatternOptions =
-    normalizedWindPatternSearch.length === 0
-      ? windPatternOptions
-      : windPatternOptions.filter((windPattern) => {
-          const searchableText = [
-            windPattern.name,
-            windPattern.description ?? "",
-            windPattern.isActive ? "" : "archived",
-          ]
-            .join(" ")
-            .toLowerCase()
-
-          return searchableText.includes(normalizedWindPatternSearch)
-        })
   const copy = resolveInfoEditCopy(input.section)
   const canCreateStandardMove =
     hasQuickCreateDescription && !isCreatingStandardMove && Boolean(input.scope.activeTeamId)
@@ -695,6 +872,194 @@ function InfoEditDialog(input: {
 
     setWindPatternIds(input.linkedWindPatternIds)
   }, [input.linkedWindPatternIds, isOpen, isSaving])
+
+  React.useEffect(() => {
+    if (isOpen || isSaving) {
+      return
+    }
+
+    setStandardMoveCatalogOptions(input.availableStandardMoves)
+    setStandardMoveCatalogPage(input.standardMoveCatalogPage)
+    setStandardMoveCatalogError(null)
+  }, [input.availableStandardMoves, input.standardMoveCatalogPage, isOpen, isSaving])
+
+  React.useEffect(() => {
+    if (isOpen || isSaving) {
+      return
+    }
+
+    setWindPatternCatalogOptions(input.availableWindPatterns)
+    setWindPatternCatalogPage(input.windPatternCatalogPage)
+    setWindPatternCatalogError(null)
+  }, [input.availableWindPatterns, input.windPatternCatalogPage, isOpen, isSaving])
+
+  const loadStandardMoveCatalog = React.useCallback(
+    async (request: {
+      mode: SessionInfoCatalogLoadMode
+      offset: number
+      search: string
+    }) => {
+      const requestVersion = standardMoveCatalogRequestVersionRef.current + 1
+      standardMoveCatalogRequestVersionRef.current = requestVersion
+      setIsStandardMoveCatalogLoading(true)
+      setStandardMoveCatalogError(null)
+
+      try {
+        const result = await fetchStandardMovesCatalog({
+          linkedStandardMoveIds: standardMoveIds,
+          scope: input.scope,
+          search: request.search,
+          sessionId: input.sessionId,
+          offset: request.offset,
+        })
+
+        if (requestVersion !== standardMoveCatalogRequestVersionRef.current) {
+          return
+        }
+
+        setStandardMoveCatalogOptions((currentOptions) =>
+          request.mode === "append"
+            ? mergeCatalogOptionsById(currentOptions, result.availableStandardMoves)
+            : result.availableStandardMoves,
+        )
+        setStandardMoveCatalogPage(result.standardMoveCatalogPage)
+        input.onStandardMoveCatalogLoad({
+          availableStandardMoves: result.availableStandardMoves,
+          mode: request.mode,
+          page: result.standardMoveCatalogPage,
+        })
+      } catch (error) {
+        if (requestVersion !== standardMoveCatalogRequestVersionRef.current) {
+          return
+        }
+
+        setStandardMoveCatalogError(
+          error instanceof Error ? error.message : "Could not load standard moves.",
+        )
+      } finally {
+        if (requestVersion === standardMoveCatalogRequestVersionRef.current) {
+          setIsStandardMoveCatalogLoading(false)
+        }
+      }
+    },
+    [input, standardMoveIds],
+  )
+
+  const loadWindPatternCatalog = React.useCallback(
+    async (request: {
+      mode: SessionInfoCatalogLoadMode
+      offset: number
+      search: string
+    }) => {
+      const requestVersion = windPatternCatalogRequestVersionRef.current + 1
+      windPatternCatalogRequestVersionRef.current = requestVersion
+      setIsWindPatternCatalogLoading(true)
+      setWindPatternCatalogError(null)
+
+      try {
+        const result = await fetchWindPatternsCatalog({
+          linkedWindPatternIds: windPatternIds,
+          scope: input.scope,
+          search: request.search,
+          sessionId: input.sessionId,
+          offset: request.offset,
+        })
+
+        if (requestVersion !== windPatternCatalogRequestVersionRef.current) {
+          return
+        }
+
+        setWindPatternCatalogOptions((currentOptions) =>
+          request.mode === "append"
+            ? mergeCatalogOptionsById(currentOptions, result.availableWindPatterns)
+            : result.availableWindPatterns,
+        )
+        setWindPatternCatalogPage(result.windPatternCatalogPage)
+        input.onWindPatternCatalogLoad({
+          availableWindPatterns: result.availableWindPatterns,
+          mode: request.mode,
+          page: result.windPatternCatalogPage,
+        })
+      } catch (error) {
+        if (requestVersion !== windPatternCatalogRequestVersionRef.current) {
+          return
+        }
+
+        setWindPatternCatalogError(
+          error instanceof Error ? error.message : "Could not load wind patterns.",
+        )
+      } finally {
+        if (requestVersion === windPatternCatalogRequestVersionRef.current) {
+          setIsWindPatternCatalogLoading(false)
+        }
+      }
+    },
+    [input, windPatternIds],
+  )
+
+  React.useEffect(() => {
+    if (!isOpen || input.section !== "standardMoves") {
+      return
+    }
+
+    const normalizedSearch = standardMoveSearch.trim()
+
+    if (
+      normalizedSearch === standardMoveCatalogPage.search &&
+      standardMoveCatalogPage.offset === 0
+    ) {
+      return
+    }
+
+    const searchTimer = window.setTimeout(() => {
+      void loadStandardMoveCatalog({
+        mode: "replace",
+        offset: 0,
+        search: normalizedSearch,
+      })
+    }, 250)
+
+    return () => window.clearTimeout(searchTimer)
+  }, [
+    input.section,
+    isOpen,
+    loadStandardMoveCatalog,
+    standardMoveCatalogPage.offset,
+    standardMoveCatalogPage.search,
+    standardMoveSearch,
+  ])
+
+  React.useEffect(() => {
+    if (!isOpen || input.section !== "windPatterns") {
+      return
+    }
+
+    const normalizedSearch = windPatternSearch.trim()
+
+    if (
+      normalizedSearch === windPatternCatalogPage.search &&
+      windPatternCatalogPage.offset === 0
+    ) {
+      return
+    }
+
+    const searchTimer = window.setTimeout(() => {
+      void loadWindPatternCatalog({
+        mode: "replace",
+        offset: 0,
+        search: normalizedSearch,
+      })
+    }, 250)
+
+    return () => window.clearTimeout(searchTimer)
+  }, [
+    input.section,
+    isOpen,
+    loadWindPatternCatalog,
+    windPatternCatalogPage.offset,
+    windPatternCatalogPage.search,
+    windPatternSearch,
+  ])
 
   function resetQuickCreateState() {
     setNewStandardMoveName("")
@@ -754,6 +1119,9 @@ function InfoEditDialog(input: {
           windPattern: result.windPattern,
           availableWindPatterns: result.availableWindPatterns,
         })
+        setWindPatternCatalogOptions((currentOptions) =>
+          mergeCatalogOptionsById(currentOptions, [result.windPattern]),
+        )
         setWindPatternIds((currentWindPatternIds) =>
           currentWindPatternIds.includes(result.windPattern.id)
             ? currentWindPatternIds
@@ -777,6 +1145,9 @@ function InfoEditDialog(input: {
         standardMove: result.standardMove,
         availableStandardMoves: result.availableStandardMoves,
       })
+      setStandardMoveCatalogOptions((currentOptions) =>
+        mergeCatalogOptionsById(currentOptions, [result.standardMove]),
+      )
       setStandardMoveIds((currentStandardMoveIds) =>
         currentStandardMoveIds.includes(result.standardMove.id)
           ? currentStandardMoveIds
@@ -1103,68 +1474,102 @@ function InfoEditDialog(input: {
                 role="group"
                 aria-label="Std. Moves"
               >
-                {standardMoveOptions.length === 0 ? (
-                  <p className="px-3 py-2 text-xs text-muted-foreground">
-                    No standard moves available yet.
+                {isStandardMoveCatalogLoading && standardMoveOptions.length === 0 ? (
+                  <p className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+                    <Loader2Icon className="size-4 animate-spin" />
+                    Loading standard moves...
                   </p>
-                ) : filteredStandardMoveOptions.length === 0 ? (
+                ) : standardMoveOptions.length === 0 ? (
+                  <p className="px-3 py-2 text-xs text-muted-foreground">
+                    {standardMoveSearch.trim().length > 0
+                      ? "No standard moves match this search."
+                      : "No standard moves available yet."}
+                  </p>
+                ) : standardMoveCatalogError ? (
                   <p className="px-3 py-2 text-sm text-muted-foreground">
-                    No standard moves match this search.
+                    {standardMoveCatalogError}
                   </p>
                 ) : (
-                  <Accordion className="gap-1">
-                    {filteredStandardMoveOptions.map((standardMove) => {
-                      const isSelected = standardMoveIds.includes(standardMove.id)
-                      const hasDescription =
-                        standardMove.description !== null &&
-                        standardMove.description.trim().length > 0
+                  <div className="space-y-2">
+                    <Accordion className="gap-1">
+                      {standardMoveOptions.map((standardMove) => {
+                        const isSelected = standardMoveIds.includes(standardMove.id)
+                        const hasDescription =
+                          standardMove.description !== null &&
+                          standardMove.description.trim().length > 0
 
-                      return (
-                        <AccordionItem
-                          key={standardMove.id}
-                          value={standardMove.id}
-                          className="rounded-md border-0"
-                        >
-                          <div className="flex min-h-12 items-center gap-3 rounded-md px-2 py-2 text-xs transition-colors hover:bg-muted/60">
-                            <Checkbox
-                              name="standardMoveId"
-                              value={standardMove.id}
-                              checked={isSelected}
-                              onCheckedChange={(checked) => {
-                                setStandardMoveIds((currentStandardMoveIds) => {
-                                  if (checked) {
-                                    return currentStandardMoveIds.includes(standardMove.id)
-                                      ? currentStandardMoveIds
-                                      : [...currentStandardMoveIds, standardMove.id]
-                                  }
+                        return (
+                          <AccordionItem
+                            key={standardMove.id}
+                            value={standardMove.id}
+                            className="rounded-md border-0"
+                          >
+                            <div className="flex min-h-12 items-center gap-3 rounded-md px-2 py-2 text-xs transition-colors hover:bg-muted/60">
+                              <Checkbox
+                                name="standardMoveId"
+                                value={standardMove.id}
+                                checked={isSelected}
+                                onCheckedChange={(checked) => {
+                                  setStandardMoveIds((currentStandardMoveIds) => {
+                                    if (checked) {
+                                      return currentStandardMoveIds.includes(standardMove.id)
+                                        ? currentStandardMoveIds
+                                        : [...currentStandardMoveIds, standardMove.id]
+                                    }
 
-                                  return currentStandardMoveIds.filter(
-                                    (standardMoveId) => standardMoveId !== standardMove.id,
-                                  )
-                                })
-                              }}
-                            />
-                            <div className="min-w-0 flex-1">
-                              <AccordionTrigger
-                                className="w-full py-0 text-sm hover:no-underline [&_[data-slot=accordion-trigger-icon]]:size-4"
-                                disabled={!hasDescription && standardMove.isActive}
-                              >
-                                <span className="truncate">{standardMove.name}</span>
-                              </AccordionTrigger>
+                                    return currentStandardMoveIds.filter(
+                                      (standardMoveId) => standardMoveId !== standardMove.id,
+                                    )
+                                  })
+                                }}
+                              />
+                              <div className="min-w-0 flex-1">
+                                <AccordionTrigger
+                                  className="w-full py-0 text-sm hover:no-underline [&_[data-slot=accordion-trigger-icon]]:size-4"
+                                  disabled={!hasDescription && standardMove.isActive}
+                                >
+                                  <span className="truncate">{standardMove.name}</span>
+                                </AccordionTrigger>
+                              </div>
                             </div>
-                          </div>
-                          <AccordionContent className="pl-11 pr-2 pb-3 text-sm text-muted-foreground">
-                            {hasDescription ? (
-                              <p className="whitespace-pre-wrap">{standardMove.description}</p>
-                            ) : null}
-                            {!standardMove.isActive ? (
-                              <p className={hasDescription ? "mt-2" : undefined}>Archived</p>
-                            ) : null}
-                          </AccordionContent>
-                        </AccordionItem>
-                      )
-                    })}
-                  </Accordion>
+                            <AccordionContent className="pl-11 pr-2 pb-3 text-sm text-muted-foreground">
+                              {hasDescription ? (
+                                <p className="whitespace-pre-wrap">{standardMove.description}</p>
+                              ) : null}
+                              {!standardMove.isActive ? (
+                                <p className={hasDescription ? "mt-2" : undefined}>Archived</p>
+                              ) : null}
+                            </AccordionContent>
+                          </AccordionItem>
+                        )
+                      })}
+                    </Accordion>
+
+                    {standardMoveCatalogPage.nextOffset !== null ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={isStandardMoveCatalogLoading}
+                        onClick={() =>
+                          void loadStandardMoveCatalog({
+                            mode: "append",
+                            offset: standardMoveCatalogPage.nextOffset ?? 0,
+                            search: standardMoveSearch.trim(),
+                          })
+                        }
+                      >
+                        {isStandardMoveCatalogLoading ? (
+                          <>
+                            <Loader2Icon className="size-4 animate-spin" />
+                            Loading...
+                          </>
+                        ) : (
+                          "Load more"
+                        )}
+                      </Button>
+                    ) : null}
+                  </div>
                 )}
               </div>
             </div>
@@ -1188,69 +1593,103 @@ function InfoEditDialog(input: {
               role="group"
               aria-label="Wind Patterns"
             >
-              {windPatternOptions.length === 0 ? (
-                <p className="px-3 py-2 text-xs text-muted-foreground">
-                  No wind patterns available yet.
+              {isWindPatternCatalogLoading && windPatternOptions.length === 0 ? (
+                <p className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+                  <Loader2Icon className="size-4 animate-spin" />
+                  Loading wind patterns...
                 </p>
-              ) : filteredWindPatternOptions.length === 0 ? (
+              ) : windPatternOptions.length === 0 ? (
+                <p className="px-3 py-2 text-xs text-muted-foreground">
+                  {windPatternSearch.trim().length > 0
+                    ? "No wind patterns match this search."
+                    : "No wind patterns available yet."}
+                </p>
+              ) : windPatternCatalogError ? (
                 <p className="px-3 py-2 text-sm text-muted-foreground">
-                  No wind patterns match this search.
+                  {windPatternCatalogError}
                 </p>
               ) : (
-                <Accordion className="gap-1">
-                  {filteredWindPatternOptions.map((windPattern) => {
-                    const isSelected = windPatternIds.includes(windPattern.id)
-                    const hasDescription =
-                      windPattern.description !== null &&
-                      windPattern.description.trim().length > 0
+                <div className="space-y-2">
+                  <Accordion className="gap-1">
+                    {windPatternOptions.map((windPattern) => {
+                      const isSelected = windPatternIds.includes(windPattern.id)
+                      const hasDescription =
+                        windPattern.description !== null &&
+                        windPattern.description.trim().length > 0
 
-                    return (
-                      <AccordionItem
-                        key={windPattern.id}
-                        value={windPattern.id}
-                        className="rounded-md border-0"
-                      >
-                        <div className="flex min-h-12 items-center gap-3 rounded-md px-2 py-2 text-xs transition-colors hover:bg-muted/60">
-                          <Checkbox
-                            name="windPatternId"
-                            value={windPattern.id}
-                            checked={isSelected}
-                            disabled={!windPattern.isActive && !isSelected}
-                            onCheckedChange={(checked) => {
-                              setWindPatternIds((currentWindPatternIds) => {
-                                if (checked) {
-                                  return currentWindPatternIds.includes(windPattern.id)
-                                    ? currentWindPatternIds
-                                    : [...currentWindPatternIds, windPattern.id]
-                                }
+                      return (
+                        <AccordionItem
+                          key={windPattern.id}
+                          value={windPattern.id}
+                          className="rounded-md border-0"
+                        >
+                          <div className="flex min-h-12 items-center gap-3 rounded-md px-2 py-2 text-xs transition-colors hover:bg-muted/60">
+                            <Checkbox
+                              name="windPatternId"
+                              value={windPattern.id}
+                              checked={isSelected}
+                              disabled={!windPattern.isActive && !isSelected}
+                              onCheckedChange={(checked) => {
+                                setWindPatternIds((currentWindPatternIds) => {
+                                  if (checked) {
+                                    return currentWindPatternIds.includes(windPattern.id)
+                                      ? currentWindPatternIds
+                                      : [...currentWindPatternIds, windPattern.id]
+                                  }
 
-                                return currentWindPatternIds.filter(
-                                  (windPatternId) => windPatternId !== windPattern.id,
-                                )
-                              })
-                            }}
-                          />
-                          <div className="min-w-0 flex-1">
-                            <AccordionTrigger
-                              className="w-full py-0 text-sm hover:no-underline [&_[data-slot=accordion-trigger-icon]]:size-4"
-                              disabled={!hasDescription && windPattern.isActive}
-                            >
-                              <span className="truncate">{windPattern.name}</span>
-                            </AccordionTrigger>
+                                  return currentWindPatternIds.filter(
+                                    (windPatternId) => windPatternId !== windPattern.id,
+                                  )
+                                })
+                              }}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <AccordionTrigger
+                                className="w-full py-0 text-sm hover:no-underline [&_[data-slot=accordion-trigger-icon]]:size-4"
+                                disabled={!hasDescription && windPattern.isActive}
+                              >
+                                <span className="truncate">{windPattern.name}</span>
+                              </AccordionTrigger>
+                            </div>
                           </div>
-                        </div>
-                        <AccordionContent className="pl-11 pr-2 pb-3 text-sm text-muted-foreground">
-                          {hasDescription ? (
-                            <p className="whitespace-pre-wrap">{windPattern.description}</p>
-                          ) : null}
-                          {!windPattern.isActive ? (
-                            <p className={hasDescription ? "mt-2" : undefined}>Archived</p>
-                          ) : null}
-                        </AccordionContent>
-                      </AccordionItem>
-                    )
-                  })}
-                </Accordion>
+                          <AccordionContent className="pl-11 pr-2 pb-3 text-sm text-muted-foreground">
+                            {hasDescription ? (
+                              <p className="whitespace-pre-wrap">{windPattern.description}</p>
+                            ) : null}
+                            {!windPattern.isActive ? (
+                              <p className={hasDescription ? "mt-2" : undefined}>Archived</p>
+                            ) : null}
+                          </AccordionContent>
+                        </AccordionItem>
+                      )
+                    })}
+                  </Accordion>
+
+                  {windPatternCatalogPage.nextOffset !== null ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isWindPatternCatalogLoading}
+                      onClick={() =>
+                        void loadWindPatternCatalog({
+                          mode: "append",
+                          offset: windPatternCatalogPage.nextOffset ?? 0,
+                          search: windPatternSearch.trim(),
+                        })
+                      }
+                    >
+                      {isWindPatternCatalogLoading ? (
+                        <>
+                          <Loader2Icon className="size-4 animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        "Load more"
+                      )}
+                    </Button>
+                  ) : null}
+                </div>
               )}
             </div>
           </div>
@@ -1331,8 +1770,10 @@ export type SessionInfoPanelProps = {
   info: SessionInfoState
   availableStandardMoves: SessionInfoStandardMove[]
   linkedStandardMoveIds: string[]
+  standardMoveCatalogPage: SessionDetailCatalogPage
   availableWindPatterns: SessionInfoWindPattern[]
   linkedWindPatternIds: string[]
+  windPatternCatalogPage: SessionDetailCatalogPage
   canManageSession: boolean
 }
 
@@ -1345,12 +1786,16 @@ export function SessionInfoPanel(input: SessionInfoPanelProps) {
   const [linkedStandardMoveIds, setLinkedStandardMoveIds] = React.useState<string[]>(
     input.linkedStandardMoveIds,
   )
+  const [standardMoveCatalogPage, setStandardMoveCatalogPage] =
+    React.useState<SessionDetailCatalogPage>(input.standardMoveCatalogPage)
   const [availableWindPatterns, setAvailableWindPatterns] = React.useState<
     SessionInfoWindPattern[]
   >(input.availableWindPatterns)
   const [linkedWindPatternIds, setLinkedWindPatternIds] = React.useState<string[]>(
     input.linkedWindPatternIds,
   )
+  const [windPatternCatalogPage, setWindPatternCatalogPage] =
+    React.useState<SessionDetailCatalogPage>(input.windPatternCatalogPage)
 
   React.useEffect(() => {
     setInfo(input.info)
@@ -1361,12 +1806,20 @@ export function SessionInfoPanel(input: SessionInfoPanelProps) {
   }, [input.availableStandardMoves])
 
   React.useEffect(() => {
+    setStandardMoveCatalogPage(input.standardMoveCatalogPage)
+  }, [input.standardMoveCatalogPage])
+
+  React.useEffect(() => {
     setLinkedStandardMoveIds(input.linkedStandardMoveIds)
   }, [input.linkedStandardMoveIds])
 
   React.useEffect(() => {
     setAvailableWindPatterns(input.availableWindPatterns)
   }, [input.availableWindPatterns])
+
+  React.useEffect(() => {
+    setWindPatternCatalogPage(input.windPatternCatalogPage)
+  }, [input.windPatternCatalogPage])
 
   React.useEffect(() => {
     setLinkedWindPatternIds(input.linkedWindPatternIds)
@@ -1404,8 +1857,10 @@ export function SessionInfoPanel(input: SessionInfoPanelProps) {
         setInfo(result.info)
         setAvailableStandardMoves(result.availableStandardMoves)
         setLinkedStandardMoveIds(result.linkedStandardMoveIds)
+        setStandardMoveCatalogPage(result.standardMoveCatalogPage)
         setAvailableWindPatterns(result.availableWindPatterns)
         setLinkedWindPatternIds(result.linkedWindPatternIds)
+        setWindPatternCatalogPage(result.windPatternCatalogPage)
         toast.success("Session info saved.", { id: toastId })
         router.refresh()
         return true
@@ -1425,18 +1880,33 @@ export function SessionInfoPanel(input: SessionInfoPanelProps) {
       standardMove: SessionInfoStandardMove
       availableStandardMoves: SessionInfoStandardMove[]
     }) => {
-      const hasCreatedMove = result.availableStandardMoves.some(
-        (standardMove) => standardMove.id === result.standardMove.id,
+      setAvailableStandardMoves((currentMoves) =>
+        mergeCatalogOptionsById(currentMoves, [
+          ...result.availableStandardMoves,
+          result.standardMove,
+        ]),
       )
-      const nextAvailableStandardMoves = hasCreatedMove
-        ? result.availableStandardMoves
-        : [...result.availableStandardMoves, result.standardMove].sort((left, right) =>
-            left.name.localeCompare(right.name),
-          )
-
-      setAvailableStandardMoves(nextAvailableStandardMoves)
     },
     [],
+  )
+
+  const handleStandardMoveCatalogLoad = React.useCallback(
+    (result: {
+      availableStandardMoves: SessionInfoStandardMove[]
+      mode: SessionInfoCatalogLoadMode
+      page: SessionDetailCatalogPage
+    }) => {
+      setAvailableStandardMoves((currentMoves) =>
+        result.mode === "append"
+          ? mergeCatalogOptionsById(currentMoves, result.availableStandardMoves)
+          : mergeCatalogOptionsById(
+              result.availableStandardMoves,
+              resolveCachedOptionsByIds(currentMoves, linkedStandardMoveIds),
+            ),
+      )
+      setStandardMoveCatalogPage(result.page)
+    },
+    [linkedStandardMoveIds],
   )
 
   const handleWindPatternCreate = React.useCallback(
@@ -1444,18 +1914,33 @@ export function SessionInfoPanel(input: SessionInfoPanelProps) {
       windPattern: SessionInfoWindPattern
       availableWindPatterns: SessionInfoWindPattern[]
     }) => {
-      const hasCreatedPattern = result.availableWindPatterns.some(
-        (windPattern) => windPattern.id === result.windPattern.id,
+      setAvailableWindPatterns((currentPatterns) =>
+        mergeCatalogOptionsById(currentPatterns, [
+          ...result.availableWindPatterns,
+          result.windPattern,
+        ]),
       )
-      const nextAvailableWindPatterns = hasCreatedPattern
-        ? result.availableWindPatterns
-        : [...result.availableWindPatterns, result.windPattern].sort((left, right) =>
-            left.name.localeCompare(right.name),
-          )
-
-      setAvailableWindPatterns(nextAvailableWindPatterns)
     },
     [],
+  )
+
+  const handleWindPatternCatalogLoad = React.useCallback(
+    (result: {
+      availableWindPatterns: SessionInfoWindPattern[]
+      mode: SessionInfoCatalogLoadMode
+      page: SessionDetailCatalogPage
+    }) => {
+      setAvailableWindPatterns((currentPatterns) =>
+        result.mode === "append"
+          ? mergeCatalogOptionsById(currentPatterns, result.availableWindPatterns)
+          : mergeCatalogOptionsById(
+              result.availableWindPatterns,
+              resolveCachedOptionsByIds(currentPatterns, linkedWindPatternIds),
+            ),
+      )
+      setWindPatternCatalogPage(result.page)
+    },
+    [linkedWindPatternIds],
   )
 
   return (
@@ -1473,14 +1958,18 @@ export function SessionInfoPanel(input: SessionInfoPanelProps) {
               bestOfSession={info.bestOfSession}
               toWork={info.toWork}
               availableStandardMoves={availableStandardMoves}
+              standardMoveCatalogPage={standardMoveCatalogPage}
               linkedStandardMoveIds={linkedStandardMoveIds}
               availableWindPatterns={availableWindPatterns}
+              windPatternCatalogPage={windPatternCatalogPage}
               linkedWindPatternIds={linkedWindPatternIds}
               windPatterns={info.windPatterns}
               legacyWindPatterns={info.legacyWindPatterns}
               freeNotes={info.freeNotes}
               onStandardMoveCreate={handleStandardMoveCreate}
               onWindPatternCreate={handleWindPatternCreate}
+              onStandardMoveCatalogLoad={handleStandardMoveCatalogLoad}
+              onWindPatternCatalogLoad={handleWindPatternCatalogLoad}
               onSave={handleInfoSave}
             />
           ) : null}
@@ -1527,14 +2016,18 @@ export function SessionInfoPanel(input: SessionInfoPanelProps) {
               bestOfSession={info.bestOfSession}
               toWork={info.toWork}
               availableStandardMoves={availableStandardMoves}
+              standardMoveCatalogPage={standardMoveCatalogPage}
               linkedStandardMoveIds={linkedStandardMoveIds}
               availableWindPatterns={availableWindPatterns}
+              windPatternCatalogPage={windPatternCatalogPage}
               linkedWindPatternIds={linkedWindPatternIds}
               windPatterns={info.windPatterns}
               legacyWindPatterns={info.legacyWindPatterns}
               freeNotes={info.freeNotes}
               onStandardMoveCreate={handleStandardMoveCreate}
               onWindPatternCreate={handleWindPatternCreate}
+              onStandardMoveCatalogLoad={handleStandardMoveCatalogLoad}
+              onWindPatternCatalogLoad={handleWindPatternCatalogLoad}
               onSave={handleInfoSave}
             />
           ) : null}
@@ -1562,14 +2055,18 @@ export function SessionInfoPanel(input: SessionInfoPanelProps) {
               bestOfSession={info.bestOfSession}
               toWork={info.toWork}
               availableStandardMoves={availableStandardMoves}
+              standardMoveCatalogPage={standardMoveCatalogPage}
               linkedStandardMoveIds={linkedStandardMoveIds}
               availableWindPatterns={availableWindPatterns}
+              windPatternCatalogPage={windPatternCatalogPage}
               linkedWindPatternIds={linkedWindPatternIds}
               windPatterns={info.windPatterns}
               legacyWindPatterns={info.legacyWindPatterns}
               freeNotes={info.freeNotes}
               onStandardMoveCreate={handleStandardMoveCreate}
               onWindPatternCreate={handleWindPatternCreate}
+              onStandardMoveCatalogLoad={handleStandardMoveCatalogLoad}
+              onWindPatternCatalogLoad={handleWindPatternCatalogLoad}
               onSave={handleInfoSave}
             />
           ) : null}

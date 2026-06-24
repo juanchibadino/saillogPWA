@@ -14,10 +14,12 @@ import {
 import type {
   SessionDetailAsset,
   SessionDetailAnalyticsTabData,
-  SessionDetailCamp,
   SessionDetailData,
+  SessionDetailCatalogPage,
+  SessionDetailGearCatalogData,
   SessionDetailGearItem,
   SessionDetailGearTabData,
+  SessionDetailGearTypeFilter,
   SessionDetailGoalsTabData,
   SessionDetailImagesTabData,
   SessionDetailInfo,
@@ -27,10 +29,12 @@ import type {
   SessionDetailSetupData,
   SessionDetailSession,
   SessionDetailAssetMetadata,
+  SessionDetailStandardMove,
+  SessionDetailStandardMovesCatalogData,
   SessionSetupDialogItem,
   SessionDetailTabPayload,
-  SessionDetailTeam,
-  SessionDetailVenue,
+  SessionDetailWindPattern,
+  SessionDetailWindPatternsCatalogData,
 } from "@/features/sessions/detail-types"
 import type { SessionDetailTab } from "@/features/sessions/navigation"
 
@@ -145,7 +149,9 @@ const VENUE_SELECT_COLUMNS = "id,name,city,country,organization_id"
 const SESSION_REVIEW_SELECT_COLUMNS = "session_id,best_of_session,to_work,wind_patterns"
 const SESSION_SETUP_SELECT_COLUMNS = "session_id,free_notes"
 const SESSION_REGATTA_RESULTS_SELECT_COLUMNS = "session_id,result_notes"
-const SESSION_ASSETS_SELECT_COLUMNS =
+const SESSION_ASSETS_BASE_SELECT_COLUMNS =
+  "id,asset_type,bucket,storage_path,file_name,mime_type,size_bytes,created_at"
+const SESSION_ASSETS_WITH_THUMBNAILS_SELECT_COLUMNS =
   "id,asset_type,bucket,storage_path,file_name,mime_type,size_bytes,thumbnail_bucket,thumbnail_storage_path,thumbnail_mime_type,thumbnail_size_bytes,created_at"
 const GEAR_ITEMS_SELECT_COLUMNS = "id,name,gear_type,status,condition,serial_number,barcode"
 const SESSION_GEAR_USAGE_SELECT_COLUMNS = "gear_item_id"
@@ -160,10 +166,44 @@ const TEAM_STANDARD_MOVES_SELECT_COLUMNS = "id,name,description,is_active"
 const SESSION_STANDARD_MOVES_SELECT_COLUMNS = "session_id,team_standard_move_id"
 const TEAM_VENUE_WIND_PATTERNS_SELECT_COLUMNS = "id,name,description,is_active"
 const SESSION_WIND_PATTERNS_SELECT_COLUMNS = "session_id,team_venue_wind_pattern_id"
+const SESSION_DETAIL_SHELL_SELECT = `
+  ${SESSION_SELECT_COLUMNS},
+  camps (
+    ${CAMP_SELECT_COLUMNS},
+    team_venues (
+      ${TEAM_VENUE_SELECT_COLUMNS},
+      teams (${TEAM_SELECT_COLUMNS}),
+      venues (${VENUE_SELECT_COLUMNS})
+    )
+  )
+`
 const SESSION_DETAIL_ASSET_PAGE_SIZE = 24
+const SESSION_DETAIL_INFO_CATALOG_PAGE_SIZE = 30
+const SESSION_DETAIL_GEAR_CATALOG_PAGE_SIZE = 24
 const SESSION_ASSET_SIGNED_URL_SECONDS = 5 * 60
+const CATALOG_LINKED_ID_MAX = 200
+const CATALOG_SEARCH_MAX_LENGTH = 80
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const SESSION_DETAIL_GEAR_TYPE_FILTERS: SessionDetailGearTypeFilter[] = [
+  "all",
+  "sails",
+  "spars_and_foils",
+  "running_rigging",
+  "hardware_and_fittings",
+]
 
 type ServerSupabaseClient = Awaited<ReturnType<typeof createServerSupabaseClient>>
+
+type SessionAssetThumbnailColumns = Pick<
+  SessionAssetRow,
+  "thumbnail_bucket" | "thumbnail_storage_path" | "thumbnail_mime_type" | "thumbnail_size_bytes"
+>
+
+type SessionAssetQueryRow = Omit<SessionAssetRow, keyof SessionAssetThumbnailColumns> &
+  Partial<SessionAssetThumbnailColumns>
+
+type SessionAssetTypeFilter = "photo" | "non_photo"
 
 export type SessionDetailShellData = Pick<
   SessionDetailData,
@@ -180,6 +220,31 @@ type SessionDetailScopedInput = {
   activeTeamId: string
   teamVenueId: string
   sessionId: string
+}
+
+type SessionDetailShellJoinedRow = SessionRow & {
+  camps:
+    | (CampRow & {
+        team_venues:
+          | (TeamVenueRow & {
+              teams: TeamRow | null
+              venues: VenueRow | null
+            })
+          | null
+      })
+    | null
+}
+
+export function resolveSessionDetailGearTypeFilter(
+  value: string | null | undefined,
+): SessionDetailGearTypeFilter {
+  if (!value) {
+    return "all"
+  }
+
+  return SESSION_DETAIL_GEAR_TYPE_FILTERS.includes(value as SessionDetailGearTypeFilter)
+    ? (value as SessionDetailGearTypeFilter)
+    : "all"
 }
 
 function buildAssetContentUrl(input: {
@@ -240,6 +305,94 @@ function throwSessionDetailScopedTimingError(
   throw new Error(message)
 }
 
+function isMissingSessionAssetThumbnailColumnError(message: string): boolean {
+  const normalizedMessage = message.toLowerCase()
+
+  return (
+    normalizedMessage.includes("session_assets.thumbnail_") &&
+    normalizedMessage.includes("does not exist")
+  )
+}
+
+function normalizeSessionAssetRow(row: SessionAssetQueryRow): SessionAssetRow {
+  return {
+    ...row,
+    thumbnail_bucket: row.thumbnail_bucket ?? null,
+    thumbnail_storage_path: row.thumbnail_storage_path ?? null,
+    thumbnail_mime_type: row.thumbnail_mime_type ?? null,
+    thumbnail_size_bytes: row.thumbnail_size_bytes ?? null,
+  }
+}
+
+function buildSessionAssetsQuery(input: {
+  assetOffset: number
+  assetTypeFilter: SessionAssetTypeFilter
+  selectColumns: string
+  sessionId: string
+  supabase: ServerSupabaseClient
+}) {
+  const query = input.supabase
+    .from("session_assets")
+    .select(input.selectColumns, { count: "exact" })
+    .eq("session_id", input.sessionId)
+
+  const filteredQuery =
+    input.assetTypeFilter === "photo"
+      ? query.eq("asset_type", "photo")
+      : query.neq("asset_type", "photo")
+
+  return filteredQuery
+    .order("created_at", { ascending: false })
+    .range(input.assetOffset, input.assetOffset + SESSION_DETAIL_ASSET_PAGE_SIZE - 1)
+}
+
+async function loadSessionAssetPage(input: {
+  assetOffset: number
+  assetTypeFilter: SessionAssetTypeFilter
+  sessionId: string
+  supabase: ServerSupabaseClient
+}): Promise<{
+  assetTotalCount: number
+  assets: SessionAssetRow[]
+  thumbnailColumnsAvailable: boolean
+}> {
+  const thumbnailResult = await buildSessionAssetsQuery({
+    ...input,
+    selectColumns: SESSION_ASSETS_WITH_THUMBNAILS_SELECT_COLUMNS,
+  })
+
+  if (!thumbnailResult.error) {
+    return {
+      assetTotalCount: thumbnailResult.count ?? thumbnailResult.data?.length ?? 0,
+      assets: ((thumbnailResult.data ?? []) as unknown as SessionAssetQueryRow[]).map(
+        normalizeSessionAssetRow,
+      ),
+      thumbnailColumnsAvailable: true,
+    }
+  }
+
+  if (!isMissingSessionAssetThumbnailColumnError(thumbnailResult.error.message)) {
+    throw new Error(thumbnailResult.error.message)
+  }
+
+  const baseResult = await buildSessionAssetsQuery({
+    ...input,
+    selectColumns: SESSION_ASSETS_BASE_SELECT_COLUMNS,
+  })
+
+  if (baseResult.error) {
+    throw new Error(baseResult.error.message)
+  }
+
+  return {
+    assetTotalCount: baseResult.count ?? baseResult.data?.length ?? 0,
+    assets: ((baseResult.data ?? []) as unknown as SessionAssetQueryRow[]).map(
+      normalizeSessionAssetRow,
+    ),
+    thumbnailColumnsAvailable: false,
+  }
+}
+
 function normalizeText(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
     return null
@@ -247,6 +400,85 @@ function normalizeText(value: string | null | undefined): string | null {
 
   const normalized = value.trim()
   return normalized.length > 0 ? normalized : null
+}
+
+function normalizeCatalogSearch(value: string | null | undefined): string {
+  if (typeof value !== "string") {
+    return ""
+  }
+
+  return value
+    .replace(/[,%()]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, CATALOG_SEARCH_MAX_LENGTH)
+}
+
+function normalizeCatalogOffset(value: number | null | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 0
+  }
+
+  return Math.max(0, Math.floor(value))
+}
+
+function normalizeCatalogLinkedIds(ids: string[] | null | undefined): string[] {
+  return [...new Set(ids ?? [])]
+    .filter((id) => UUID_PATTERN.test(id))
+    .slice(0, CATALOG_LINKED_ID_MAX)
+}
+
+function buildCatalogPage(input: {
+  limit: number
+  offset: number
+  rowCount: number
+  search: string
+  totalCount: number
+}): SessionDetailCatalogPage {
+  const nextOffset = input.offset + input.rowCount
+
+  return {
+    limit: input.limit,
+    nextOffset: nextOffset < input.totalCount ? nextOffset : null,
+    offset: input.offset,
+    search: input.search,
+    totalCount: input.totalCount,
+  }
+}
+
+function sortCatalogRowsByName<T extends { name: string }>(rows: T[]): T[] {
+  return [...rows].sort((left, right) => left.name.localeCompare(right.name))
+}
+
+function mergeCatalogRowsById<T extends { id: string; name: string }>(
+  primaryRows: T[],
+  extraRows: T[],
+): T[] {
+  const rowsById = new Map<string, T>()
+
+  for (const row of [...primaryRows, ...extraRows]) {
+    rowsById.set(row.id, row)
+  }
+
+  return sortCatalogRowsByName([...rowsById.values()])
+}
+
+function mapStandardMove(row: TeamStandardMoveRow): SessionDetailStandardMove {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    isActive: row.is_active,
+  }
+}
+
+function mapWindPattern(row: TeamVenueWindPatternRow): SessionDetailWindPattern {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    isActive: row.is_active,
+  }
 }
 
 function formatJsonNote(value: Json | null | undefined): string | null {
@@ -313,6 +545,250 @@ function buildResults(row: SessionRegattaResultRow | null): SessionDetailResults
   return {
     resultNotes: normalizeText(row?.result_notes),
   }
+}
+
+async function querySessionDetailStandardMovesCatalog(input: {
+  activeTeamId: string
+  linkedStandardMoveIds?: string[]
+  offset?: number
+  search?: string | null
+  supabase: ServerSupabaseClient
+}): Promise<SessionDetailStandardMovesCatalogData> {
+  const offset = normalizeCatalogOffset(input.offset)
+  const search = normalizeCatalogSearch(input.search)
+  const baseQuery = input.supabase
+    .from("team_standard_moves")
+    .select(TEAM_STANDARD_MOVES_SELECT_COLUMNS, { count: "exact" })
+    .eq("team_id", input.activeTeamId)
+    .eq("is_active", true)
+  const filteredQuery =
+    search.length > 0 ? baseQuery.ilike("name", `%${search}%`) : baseQuery
+  const { count, data: pageRowsData, error: pageRowsError } = await filteredQuery
+    .order("name", { ascending: true })
+    .range(offset, offset + SESSION_DETAIL_INFO_CATALOG_PAGE_SIZE - 1)
+
+  if (pageRowsError) {
+    throw new Error(`Could not load standard move catalog: ${pageRowsError.message}`)
+  }
+
+  const linkedStandardMoveIds = normalizeCatalogLinkedIds(input.linkedStandardMoveIds)
+  let linkedRows: TeamStandardMoveRow[] = []
+
+  if (linkedStandardMoveIds.length > 0) {
+    const { data: linkedRowsData, error: linkedRowsError } = await input.supabase
+      .from("team_standard_moves")
+      .select(TEAM_STANDARD_MOVES_SELECT_COLUMNS)
+      .eq("team_id", input.activeTeamId)
+      .in("id", linkedStandardMoveIds)
+
+    if (linkedRowsError) {
+      throw new Error(`Could not load linked standard moves: ${linkedRowsError.message}`)
+    }
+
+    linkedRows = (linkedRowsData ?? []) as TeamStandardMoveRow[]
+  }
+
+  const pageRows = (pageRowsData ?? []) as TeamStandardMoveRow[]
+  const mergedRows = mergeCatalogRowsById(pageRows, linkedRows)
+
+  return {
+    availableStandardMoves: mergedRows.map(mapStandardMove),
+    standardMoveCatalogPage: buildCatalogPage({
+      limit: SESSION_DETAIL_INFO_CATALOG_PAGE_SIZE,
+      offset,
+      rowCount: pageRows.length,
+      search,
+      totalCount: count ?? pageRows.length,
+    }),
+  }
+}
+
+async function querySessionDetailWindPatternsCatalog(input: {
+  linkedWindPatternIds?: string[]
+  offset?: number
+  search?: string | null
+  supabase: ServerSupabaseClient
+  teamVenueId: string
+}): Promise<SessionDetailWindPatternsCatalogData> {
+  const offset = normalizeCatalogOffset(input.offset)
+  const search = normalizeCatalogSearch(input.search)
+  const baseQuery = input.supabase
+    .from("team_venue_wind_patterns")
+    .select(TEAM_VENUE_WIND_PATTERNS_SELECT_COLUMNS, { count: "exact" })
+    .eq("team_venue_id", input.teamVenueId)
+    .eq("is_active", true)
+  const filteredQuery =
+    search.length > 0 ? baseQuery.ilike("name", `%${search}%`) : baseQuery
+  const { count, data: pageRowsData, error: pageRowsError } = await filteredQuery
+    .order("name", { ascending: true })
+    .range(offset, offset + SESSION_DETAIL_INFO_CATALOG_PAGE_SIZE - 1)
+
+  if (pageRowsError) {
+    throw new Error(`Could not load wind pattern catalog: ${pageRowsError.message}`)
+  }
+
+  const linkedWindPatternIds = normalizeCatalogLinkedIds(input.linkedWindPatternIds)
+  let linkedRows: TeamVenueWindPatternRow[] = []
+
+  if (linkedWindPatternIds.length > 0) {
+    const { data: linkedRowsData, error: linkedRowsError } = await input.supabase
+      .from("team_venue_wind_patterns")
+      .select(TEAM_VENUE_WIND_PATTERNS_SELECT_COLUMNS)
+      .eq("team_venue_id", input.teamVenueId)
+      .in("id", linkedWindPatternIds)
+
+    if (linkedRowsError) {
+      throw new Error(`Could not load linked wind patterns: ${linkedRowsError.message}`)
+    }
+
+    linkedRows = (linkedRowsData ?? []) as TeamVenueWindPatternRow[]
+  }
+
+  const pageRows = (pageRowsData ?? []) as TeamVenueWindPatternRow[]
+  const mergedRows = mergeCatalogRowsById(pageRows, linkedRows)
+
+  return {
+    availableWindPatterns: mergedRows.map(mapWindPattern),
+    windPatternCatalogPage: buildCatalogPage({
+      limit: SESSION_DETAIL_INFO_CATALOG_PAGE_SIZE,
+      offset,
+      rowCount: pageRows.length,
+      search,
+      totalCount: count ?? pageRows.length,
+    }),
+  }
+}
+
+async function querySessionDetailGearCatalog(input: {
+  activeTeamId: string
+  gearType?: SessionDetailGearTypeFilter
+  linkedGearItemIds?: string[]
+  offset?: number
+  search?: string | null
+  supabase: ServerSupabaseClient
+}): Promise<SessionDetailGearCatalogData> {
+  const gearType = input.gearType ?? "all"
+  const offset = normalizeCatalogOffset(input.offset)
+  const search = normalizeCatalogSearch(input.search)
+  const baseQuery = input.supabase
+    .from("gear_items")
+    .select(GEAR_ITEMS_SELECT_COLUMNS, { count: "exact" })
+    .eq("team_id", input.activeTeamId)
+  const typeQuery =
+    gearType === "all" ? baseQuery : baseQuery.eq("gear_type", gearType)
+  const filteredQuery =
+    search.length > 0
+      ? typeQuery.or(
+          `name.ilike.%${search}%,serial_number.ilike.%${search}%,barcode.ilike.%${search}%`,
+        )
+      : typeQuery
+  const { count, data: pageRowsData, error: pageRowsError } = await filteredQuery
+    .order("name", { ascending: true })
+    .range(offset, offset + SESSION_DETAIL_GEAR_CATALOG_PAGE_SIZE - 1)
+
+  if (pageRowsError) {
+    throw new Error(`Could not load gear catalog: ${pageRowsError.message}`)
+  }
+
+  const linkedGearItemIds = normalizeCatalogLinkedIds(input.linkedGearItemIds)
+  let linkedRows: GearItemRow[] = []
+
+  if (linkedGearItemIds.length > 0) {
+    const { data: linkedRowsData, error: linkedRowsError } = await input.supabase
+      .from("gear_items")
+      .select(GEAR_ITEMS_SELECT_COLUMNS)
+      .eq("team_id", input.activeTeamId)
+      .in("id", linkedGearItemIds)
+
+    if (linkedRowsError) {
+      throw new Error(`Could not load linked gear items: ${linkedRowsError.message}`)
+    }
+
+    linkedRows = (linkedRowsData ?? []) as GearItemRow[]
+  }
+
+  const pageRows = (pageRowsData ?? []) as GearItemRow[]
+  const mergedRows = mergeCatalogRowsById(pageRows, linkedRows)
+
+  return {
+    gearCatalogPage: buildCatalogPage({
+      limit: SESSION_DETAIL_GEAR_CATALOG_PAGE_SIZE,
+      offset,
+      rowCount: pageRows.length,
+      search,
+      totalCount: count ?? pageRows.length,
+    }),
+    gearItems: mergedRows,
+    gearType,
+  }
+}
+
+export async function getSessionDetailStandardMovesCatalogData(input: {
+  activeTeamId: string
+  linkedStandardMoveIds?: string[]
+  offset?: number
+  search?: string | null
+}): Promise<SessionDetailStandardMovesCatalogData> {
+  const supabase = await createServerSupabaseClient()
+
+  return querySessionDetailStandardMovesCatalog({
+    ...input,
+    supabase,
+  })
+}
+
+export async function getSessionDetailWindPatternsCatalogData(input: {
+  linkedWindPatternIds?: string[]
+  offset?: number
+  search?: string | null
+  teamVenueId: string
+}): Promise<SessionDetailWindPatternsCatalogData> {
+  const supabase = await createServerSupabaseClient()
+
+  return querySessionDetailWindPatternsCatalog({
+    ...input,
+    supabase,
+  })
+}
+
+export async function getSessionDetailGearCatalogData(input: {
+  activeTeamId: string
+  gearType?: SessionDetailGearTypeFilter
+  linkedGearItemIds?: string[]
+  offset?: number
+  search?: string | null
+}): Promise<SessionDetailGearCatalogData> {
+  const supabase = await createServerSupabaseClient()
+
+  return querySessionDetailGearCatalog({
+    ...input,
+    supabase,
+  })
+}
+
+export async function getSessionDetailGearItemByBarcode(input: {
+  activeTeamId: string
+  barcode: string
+}): Promise<SessionDetailGearItem | null> {
+  const barcode = normalizeCatalogSearch(input.barcode)
+
+  if (barcode.length === 0) {
+    return null
+  }
+
+  const supabase = await createServerSupabaseClient()
+  const { data, error } = await supabase
+    .from("gear_items")
+    .select(GEAR_ITEMS_SELECT_COLUMNS)
+    .eq("team_id", input.activeTeamId)
+    .ilike("barcode", barcode)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(`Could not load gear item by barcode: ${error.message}`)
+  }
+
+  return (data as GearItemRow | null) ?? null
 }
 
 function attachAssetContentUrls(input: {
@@ -527,6 +1003,7 @@ export async function getSessionDetailShellData(input: {
       metadata: {
         outcome,
         activeOrganizationId: input.activeOrganizationId,
+        queryShape: "joined_shell",
       },
     })
   }
@@ -541,110 +1018,56 @@ export async function getSessionDetailShellData(input: {
   }
 
   const supabase = await createServerSupabaseClient()
-  const { data: sessionRow, error: sessionError } = await supabase
+  const { data, error: shellError } = await supabase
     .from("sessions")
-    .select(SESSION_SELECT_COLUMNS)
+    .select(SESSION_DETAIL_SHELL_SELECT)
     .eq("id", input.sessionId)
     .maybeSingle()
 
-  if (sessionError) {
+  if (shellError) {
     throwShellTimingError(
-      "session_query_error",
-      `Could not load session detail: ${sessionError.message}`,
+      "shell_query_error",
+      `Could not load session detail shell: ${shellError.message}`,
     )
   }
 
-  if (!sessionRow) {
+  const shellRow = data as SessionDetailShellJoinedRow | null
+
+  if (!shellRow) {
     logShellTiming("success", "session_not_found")
     return null
   }
 
-  const session: SessionDetailSession = sessionRow as SessionRow
-
-  const { data: campRow, error: campError } = await supabase
-    .from("camps")
-    .select(CAMP_SELECT_COLUMNS)
-    .eq("id", session.camp_id)
-    .maybeSingle()
-
-  if (campError) {
-    throwShellTimingError(
-      "camp_query_error",
-      `Could not load camp for session detail: ${campError.message}`,
-    )
-  }
+  const { camps: campRow, ...sessionRow } = shellRow
+  const session: SessionDetailSession = sessionRow
 
   if (!campRow) {
     logShellTiming("success", "camp_not_found")
     return null
   }
 
-  const camp: SessionDetailCamp = campRow as CampRow
+  const { team_venues: teamVenueRow, ...camp } = campRow
 
-  const { data: teamVenueRow, error: teamVenueError } = await supabase
-    .from("team_venues")
-    .select(TEAM_VENUE_SELECT_COLUMNS)
-    .eq("id", camp.team_venue_id)
-    .eq("team_id", input.activeTeamId)
-    .maybeSingle()
-
-  if (teamVenueError) {
-    throwShellTimingError(
-      "team_venue_query_error",
-      `Could not load team venue for session detail: ${teamVenueError.message}`,
-    )
-  }
-
-  if (!teamVenueRow) {
+  if (!teamVenueRow || teamVenueRow.team_id !== input.activeTeamId) {
     logShellTiming("success", "team_venue_not_found")
     return null
   }
 
-  const teamVenue: TeamVenueRow = teamVenueRow
+  const { teams: teamRow, venues: venueRow } = teamVenueRow
 
-  const [
-    { data: teamRow, error: teamError },
-    { data: venueRow, error: venueError },
-  ] = await Promise.all([
-    supabase
-      .from("teams")
-      .select(TEAM_SELECT_COLUMNS)
-      .eq("id", teamVenue.team_id)
-      .eq("organization_id", input.activeOrganizationId)
-      .maybeSingle(),
-    supabase
-      .from("venues")
-      .select(VENUE_SELECT_COLUMNS)
-      .eq("id", teamVenue.venue_id)
-      .eq("organization_id", input.activeOrganizationId)
-      .maybeSingle(),
-  ])
-
-  if (teamError) {
-    throwShellTimingError(
-      "team_query_error",
-      `Could not load team for session detail: ${teamError.message}`,
-    )
-  }
-
-  if (venueError) {
-    throwShellTimingError(
-      "venue_query_error",
-      `Could not load venue for session detail: ${venueError.message}`,
-    )
-  }
-
-  if (!teamRow || !venueRow) {
+  if (
+    !teamRow ||
+    !venueRow ||
+    teamRow.organization_id !== input.activeOrganizationId ||
+    venueRow.organization_id !== input.activeOrganizationId
+  ) {
     logShellTiming("success", "team_or_venue_not_found")
     return null
   }
 
-  const team: SessionDetailTeam = teamRow as TeamRow
-  const venue: SessionDetailVenue = venueRow as VenueRow
-
   const shellData = {
-    team,
-    venue,
+    team: teamRow,
+    venue: venueRow,
     camp,
     session,
   }
@@ -672,9 +1095,7 @@ export async function getSessionDetailInfoTabData(
   const [
     { data: reviewRow, error: reviewError },
     { data: setupRow, error: setupError },
-    { data: teamStandardMovesData, error: teamStandardMovesError },
     { data: sessionStandardMovesData, error: sessionStandardMovesError },
-    { data: teamVenueWindPatternsData, error: teamVenueWindPatternsError },
     { data: sessionWindPatternsData, error: sessionWindPatternsError },
   ] = await Promise.all([
     supabase
@@ -688,19 +1109,9 @@ export async function getSessionDetailInfoTabData(
       .eq("session_id", input.sessionId)
       .maybeSingle(),
     supabase
-      .from("team_standard_moves")
-      .select(TEAM_STANDARD_MOVES_SELECT_COLUMNS)
-      .eq("team_id", input.activeTeamId)
-      .order("name", { ascending: true }),
-    supabase
       .from("session_standard_moves")
       .select(SESSION_STANDARD_MOVES_SELECT_COLUMNS)
       .eq("session_id", input.sessionId),
-    supabase
-      .from("team_venue_wind_patterns")
-      .select(TEAM_VENUE_WIND_PATTERNS_SELECT_COLUMNS)
-      .eq("team_venue_id", input.teamVenueId)
-      .order("name", { ascending: true }),
     supabase
       .from("session_wind_patterns")
       .select(SESSION_WIND_PATTERNS_SELECT_COLUMNS)
@@ -723,27 +1134,11 @@ export async function getSessionDetailInfoTabData(
     )
   }
 
-  if (teamStandardMovesError) {
-    throwSessionDetailScopedTimingError(
-      logTabTiming,
-      "team_standard_moves_query_error",
-      `Could not load team standard moves for session detail: ${teamStandardMovesError.message}`,
-    )
-  }
-
   if (sessionStandardMovesError) {
     throwSessionDetailScopedTimingError(
       logTabTiming,
       "session_standard_moves_query_error",
       `Could not load session standard move links for session detail: ${sessionStandardMovesError.message}`,
-    )
-  }
-
-  if (teamVenueWindPatternsError) {
-    throwSessionDetailScopedTimingError(
-      logTabTiming,
-      "team_venue_wind_patterns_query_error",
-      `Could not load venue wind patterns for session detail: ${teamVenueWindPatternsError.message}`,
     )
   }
 
@@ -755,27 +1150,60 @@ export async function getSessionDetailInfoTabData(
     )
   }
 
-  const teamStandardMoves = (teamStandardMovesData ?? []) as TeamStandardMoveRow[]
   const sessionStandardMoves = (sessionStandardMovesData ?? []) as SessionStandardMoveRow[]
-  const teamVenueWindPatterns =
-    (teamVenueWindPatternsData ?? []) as TeamVenueWindPatternRow[]
   const sessionWindPatterns = (sessionWindPatternsData ?? []) as SessionWindPatternRow[]
-  const standardMoveById = new Map(
-    teamStandardMoves.map((standardMove) => [standardMove.id, standardMove]),
-  )
-  const linkedStandardMoveIds = [
+  const rawLinkedStandardMoveIds = [
     ...new Set(sessionStandardMoves.map((row) => row.team_standard_move_id)),
-  ].filter((standardMoveId) => standardMoveById.has(standardMoveId))
+  ]
+  const rawLinkedWindPatternIds = [
+    ...new Set(sessionWindPatterns.map((row) => row.team_venue_wind_pattern_id)),
+  ]
+  let standardMovesCatalog: SessionDetailStandardMovesCatalogData
+  let windPatternsCatalog: SessionDetailWindPatternsCatalogData
+
+  try {
+    ;[standardMovesCatalog, windPatternsCatalog] = await Promise.all([
+      querySessionDetailStandardMovesCatalog({
+        activeTeamId: input.activeTeamId,
+        linkedStandardMoveIds: rawLinkedStandardMoveIds,
+        supabase,
+      }),
+      querySessionDetailWindPatternsCatalog({
+        linkedWindPatternIds: rawLinkedWindPatternIds,
+        supabase,
+        teamVenueId: input.teamVenueId,
+      }),
+    ])
+  } catch (error) {
+    throwSessionDetailScopedTimingError(
+      logTabTiming,
+      "catalog_query_error",
+      getSessionDetailTimingErrorMessage(error),
+    )
+  }
+
+  const standardMoveById = new Map(
+    standardMovesCatalog.availableStandardMoves.map((standardMove) => [
+      standardMove.id,
+      standardMove,
+    ]),
+  )
+  const linkedStandardMoveIds = rawLinkedStandardMoveIds.filter((standardMoveId) =>
+    standardMoveById.has(standardMoveId),
+  )
   const linkedStandardMoveNames = linkedStandardMoveIds
     .map((standardMoveId) => standardMoveById.get(standardMoveId)?.name ?? null)
     .filter((standardMoveName): standardMoveName is string => standardMoveName !== null)
     .sort((left, right) => left.localeCompare(right))
   const windPatternById = new Map(
-    teamVenueWindPatterns.map((windPattern) => [windPattern.id, windPattern]),
+    windPatternsCatalog.availableWindPatterns.map((windPattern) => [
+      windPattern.id,
+      windPattern,
+    ]),
   )
-  const linkedWindPatternIds = [
-    ...new Set(sessionWindPatterns.map((row) => row.team_venue_wind_pattern_id)),
-  ].filter((windPatternId) => windPatternById.has(windPatternId))
+  const linkedWindPatternIds = rawLinkedWindPatternIds.filter((windPatternId) =>
+    windPatternById.has(windPatternId),
+  )
   const linkedWindPatternNames = linkedWindPatternIds
     .map((windPatternId) => windPatternById.get(windPatternId)?.name ?? null)
     .filter((windPatternName): windPatternName is string => windPatternName !== null)
@@ -788,25 +1216,19 @@ export async function getSessionDetailInfoTabData(
       standardMoveNames: linkedStandardMoveNames,
       windPatternNames: linkedWindPatternNames,
     }),
-    availableStandardMoves: teamStandardMoves.map((standardMove) => ({
-      id: standardMove.id,
-      name: standardMove.name,
-      description: standardMove.description,
-      isActive: standardMove.is_active,
-    })),
+    availableStandardMoves: standardMovesCatalog.availableStandardMoves,
     linkedStandardMoveIds,
-    availableWindPatterns: teamVenueWindPatterns.map((windPattern) => ({
-      id: windPattern.id,
-      name: windPattern.name,
-      description: windPattern.description,
-      isActive: windPattern.is_active,
-    })),
+    standardMoveCatalogPage: standardMovesCatalog.standardMoveCatalogPage,
+    availableWindPatterns: windPatternsCatalog.availableWindPatterns,
     linkedWindPatternIds,
+    windPatternCatalogPage: windPatternsCatalog.windPatternCatalogPage,
   }
 
   logTabTiming("success", "loaded", undefined, {
-    standardMoveCount: teamStandardMoves.length,
-    windPatternCount: teamVenueWindPatterns.length,
+    standardMoveCount: tabData.availableStandardMoves.length,
+    standardMoveTotalCount: tabData.standardMoveCatalogPage.totalCount,
+    windPatternCount: tabData.availableWindPatterns.length,
+    windPatternTotalCount: tabData.windPatternCatalogPage.totalCount,
   })
 
   return tabData
@@ -865,42 +1287,44 @@ export async function getSessionDetailImagesTabData(
     },
   })
   const supabase = await createServerSupabaseClient()
-  const { count: assetTotalCount, data: assetRows, error: assetsError } = await supabase
-    .from("session_assets")
-    .select(SESSION_ASSETS_SELECT_COLUMNS, { count: "exact" })
-    .eq("session_id", input.sessionId)
-    .eq("asset_type", "photo")
-    .order("created_at", { ascending: false })
-    .range(assetOffset, assetOffset + SESSION_DETAIL_ASSET_PAGE_SIZE - 1)
+  let assetPage: Awaited<ReturnType<typeof loadSessionAssetPage>>
 
-  if (assetsError) {
+  try {
+    assetPage = await loadSessionAssetPage({
+      assetOffset,
+      assetTypeFilter: "photo",
+      sessionId: input.sessionId,
+      supabase,
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown asset query error"
     throwSessionDetailScopedTimingError(
       logTabTiming,
       "assets_query_error",
-      `Could not load image assets for session detail: ${assetsError.message}`,
+      `Could not load image assets for session detail: ${message}`,
     )
   }
 
-  const assets: SessionAssetRow[] = (assetRows ?? []) as SessionAssetRow[]
   const images = await attachImageAssetUrls({
     activeOrganizationId: input.activeOrganizationId,
     activeTeamId: input.activeTeamId,
-    assets,
+    assets: assetPage.assets,
     supabase,
   })
 
   logTabTiming("success", "loaded", undefined, {
     assetCount: images.length,
     assetOffset,
-    assetTotalCount: assetTotalCount ?? images.length,
+    assetTotalCount: assetPage.assetTotalCount,
     signedUrlCount: images.filter((asset) => Boolean(asset.signedUrl)).length,
     thumbnailUrlCount: images.filter((asset) => Boolean(asset.thumbnailSignedUrl)).length,
+    thumbnailColumnsAvailable: assetPage.thumbnailColumnsAvailable,
   })
   return {
     images,
     assetLimit: SESSION_DETAIL_ASSET_PAGE_SIZE,
     assetOffset,
-    assetTotalCount: assetTotalCount ?? images.length,
+    assetTotalCount: assetPage.assetTotalCount,
   }
 }
 
@@ -920,40 +1344,42 @@ export async function getSessionDetailAnalyticsTabData(
     },
   })
   const supabase = await createServerSupabaseClient()
-  const { count: assetTotalCount, data: assetRows, error: assetsError } = await supabase
-    .from("session_assets")
-    .select(SESSION_ASSETS_SELECT_COLUMNS, { count: "exact" })
-    .eq("session_id", input.sessionId)
-    .neq("asset_type", "photo")
-    .order("created_at", { ascending: false })
-    .range(assetOffset, assetOffset + SESSION_DETAIL_ASSET_PAGE_SIZE - 1)
+  let assetPage: Awaited<ReturnType<typeof loadSessionAssetPage>>
 
-  if (assetsError) {
+  try {
+    assetPage = await loadSessionAssetPage({
+      assetOffset,
+      assetTypeFilter: "non_photo",
+      sessionId: input.sessionId,
+      supabase,
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown asset query error"
     throwSessionDetailScopedTimingError(
       logTabTiming,
       "assets_query_error",
-      `Could not load analytics assets for session detail: ${assetsError.message}`,
+      `Could not load analytics assets for session detail: ${message}`,
     )
   }
 
-  const assets: SessionAssetRow[] = (assetRows ?? []) as SessionAssetRow[]
   const analyticsFiles = attachAssetContentUrls({
     activeOrganizationId: input.activeOrganizationId,
     activeTeamId: input.activeTeamId,
-    assets,
+    assets: assetPage.assets,
   })
 
   logTabTiming("success", "loaded", undefined, {
     assetCount: analyticsFiles.length,
     assetOffset,
-    assetTotalCount: assetTotalCount ?? analyticsFiles.length,
+    assetTotalCount: assetPage.assetTotalCount,
     signedUrlCount: 0,
+    thumbnailColumnsAvailable: assetPage.thumbnailColumnsAvailable,
   })
   return {
     analyticsFiles,
     assetLimit: SESSION_DETAIL_ASSET_PAGE_SIZE,
     assetOffset,
-    assetTotalCount: assetTotalCount ?? analyticsFiles.length,
+    assetTotalCount: assetPage.assetTotalCount,
   }
 }
 
@@ -972,28 +1398,10 @@ export async function getSessionDetailGearTabData(
     },
   })
   const supabase = await createServerSupabaseClient()
-  const [
-    { data: gearItemsData, error: gearItemsError },
-    { data: sessionGearUsageData, error: sessionGearUsageError },
-  ] = await Promise.all([
-    supabase
-      .from("gear_items")
-      .select(GEAR_ITEMS_SELECT_COLUMNS)
-      .eq("team_id", input.activeTeamId)
-      .order("name", { ascending: true }),
-    supabase
-      .from("session_gear_usage")
-      .select(SESSION_GEAR_USAGE_SELECT_COLUMNS)
-      .eq("session_id", input.sessionId),
-  ])
-
-  if (gearItemsError) {
-    throwSessionDetailScopedTimingError(
-      logTabTiming,
-      "gear_items_query_error",
-      `Could not load gear items for session detail: ${gearItemsError.message}`,
-    )
-  }
+  const { data: sessionGearUsageData, error: sessionGearUsageError } = await supabase
+    .from("session_gear_usage")
+    .select(SESSION_GEAR_USAGE_SELECT_COLUMNS)
+    .eq("session_id", input.sessionId)
 
   if (sessionGearUsageError) {
     throwSessionDetailScopedTimingError(
@@ -1003,21 +1411,40 @@ export async function getSessionDetailGearTabData(
     )
   }
 
-  const gearItems: GearItemRow[] = (gearItemsData ?? []) as GearItemRow[]
   const sessionGearUsageRows: SessionGearUsageRow[] =
     (sessionGearUsageData ?? []) as SessionGearUsageRow[]
-  const gearItemIds = new Set(gearItems.map((item) => item.id))
-  const linkedGearItemIds = [
-    ...new Set(sessionGearUsageRows.map((row) => row.gear_item_id)),
-  ].filter((gearItemId) => gearItemIds.has(gearItemId))
+  const rawLinkedGearItemIds = [...new Set(sessionGearUsageRows.map((row) => row.gear_item_id))]
+  let gearCatalog: SessionDetailGearCatalogData
+
+  try {
+    gearCatalog = await querySessionDetailGearCatalog({
+      activeTeamId: input.activeTeamId,
+      linkedGearItemIds: rawLinkedGearItemIds,
+      supabase,
+    })
+  } catch (error) {
+    throwSessionDetailScopedTimingError(
+      logTabTiming,
+      "gear_catalog_query_error",
+      getSessionDetailTimingErrorMessage(error),
+    )
+  }
+
+  const gearItemIds = new Set(gearCatalog.gearItems.map((item) => item.id))
+  const linkedGearItemIds = rawLinkedGearItemIds.filter((gearItemId) =>
+    gearItemIds.has(gearItemId),
+  )
 
   logTabTiming("success", "loaded", undefined, {
-    gearItemCount: gearItems.length,
+    gearItemCount: gearCatalog.gearItems.length,
+    gearItemTotalCount: gearCatalog.gearCatalogPage.totalCount,
     linkedGearItemCount: linkedGearItemIds.length,
   })
 
   return {
-    gearItems,
+    gearCatalogPage: gearCatalog.gearCatalogPage,
+    gearItems: gearCatalog.gearItems,
+    gearType: gearCatalog.gearType,
     linkedGearItemIds,
   }
 }

@@ -242,7 +242,7 @@ export function Multiselect(input: {
         hasMatchingItems,
       }}
     >
-      <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenu modal={false} open={open} onOpenChange={setOpen}>
         {input.children}
       </DropdownMenu>
     </MultiselectContext.Provider>

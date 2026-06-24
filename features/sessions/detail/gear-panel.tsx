@@ -2,11 +2,12 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { CameraIcon, Loader2Icon } from "lucide-react"
+import { CameraIcon, Loader2Icon, SearchIcon } from "lucide-react"
 import { useFormStatus } from "react-dom"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   Dialog,
   DialogContent,
@@ -38,10 +39,150 @@ import {
   saveSessionGearUsageAction,
   updateSessionGearUsageAction,
 } from "@/features/sessions/actions"
-import type { SessionDetailGearItem } from "@/features/sessions/detail-types"
+import type {
+  SessionDetailCatalogPage,
+  SessionDetailGearCatalogData,
+  SessionDetailGearItem,
+  SessionDetailGearTypeFilter,
+} from "@/features/sessions/detail-types"
 import { useIsMobile } from "@/hooks/use-mobile"
+import {
+  NAVIGATION_SCOPE_ORG_QUERY_KEY,
+  NAVIGATION_SCOPE_TEAM_QUERY_KEY,
+} from "@/lib/navigation/constants"
 import type { NavigationScope } from "@/lib/navigation/types"
 import { cn } from "@/lib/utils"
+
+type SessionGearCatalogErrorPayload = {
+  detail?: unknown
+  error?: unknown
+}
+
+type SessionGearCatalogResponse = {
+  catalog: "gear"
+  data: SessionDetailGearCatalogData
+}
+
+type SessionGearBarcodeResponse = {
+  catalog: "gearBarcode"
+  data: {
+    gearItem: SessionDetailGearItem | null
+  }
+}
+
+function mergeGearItemsById(
+  currentItems: SessionDetailGearItem[],
+  nextItems: SessionDetailGearItem[],
+): SessionDetailGearItem[] {
+  const itemsById = new Map<string, SessionDetailGearItem>()
+
+  for (const item of [...currentItems, ...nextItems]) {
+    itemsById.set(item.id, item)
+  }
+
+  return [...itemsById.values()].sort((left, right) => left.name.localeCompare(right.name))
+}
+
+function buildSessionGearCatalogUrl(input: {
+  barcode?: string
+  gearType?: SessionDetailGearTypeFilter
+  linkedGearItemIds?: string[]
+  offset?: number
+  scope: NavigationScope
+  search?: string
+  sessionId: string
+}): string {
+  const params = new URLSearchParams()
+  params.set("catalog", input.barcode ? "gearBarcode" : "gear")
+  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.scope.activeOrgId)
+
+  if (input.scope.activeTeamId) {
+    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scope.activeTeamId)
+  }
+
+  if (input.barcode) {
+    params.set("barcode", input.barcode)
+  } else {
+    params.set("gearType", input.gearType ?? "all")
+    params.set("offset", String(input.offset ?? 0))
+    params.set("search", input.search ?? "")
+
+    for (const linkedGearItemId of input.linkedGearItemIds ?? []) {
+      params.append("linkedGearItemId", linkedGearItemId)
+    }
+  }
+
+  return `/api/team-sessions/${encodeURIComponent(input.sessionId)}/catalog?${params.toString()}`
+}
+
+async function resolveSessionGearCatalogErrorMessage(response: Response): Promise<string> {
+  let payload: SessionGearCatalogErrorPayload | null = null
+
+  try {
+    payload = (await response.json()) as SessionGearCatalogErrorPayload
+  } catch {
+    payload = null
+  }
+
+  const errorCode = typeof payload?.error === "string" ? payload.error : null
+
+  if (response.status === 401 || errorCode === "unauthorized") {
+    return "Your session expired. Sign in again, then retry gear search."
+  }
+
+  if (response.status === 403 || errorCode === "scope_required") {
+    return "This gear search needs an active team scope."
+  }
+
+  if (response.status === 404 || errorCode === "session_not_found") {
+    return "This session is unavailable in the active team scope."
+  }
+
+  return "Could not load gear."
+}
+
+async function fetchSessionGearCatalog(input: {
+  gearType: SessionDetailGearTypeFilter
+  linkedGearItemIds: string[]
+  offset: number
+  scope: NavigationScope
+  search: string
+  sessionId: string
+}): Promise<SessionDetailGearCatalogData> {
+  const response = await fetch(buildSessionGearCatalogUrl(input), {
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(await resolveSessionGearCatalogErrorMessage(response))
+  }
+
+  const payload = (await response.json()) as SessionGearCatalogResponse
+  return payload.data
+}
+
+async function fetchSessionGearByBarcode(input: {
+  barcode: string
+  scope: NavigationScope
+  sessionId: string
+}): Promise<SessionDetailGearItem | null> {
+  const response = await fetch(buildSessionGearCatalogUrl(input), {
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(await resolveSessionGearCatalogErrorMessage(response))
+  }
+
+  const payload = (await response.json()) as SessionGearBarcodeResponse
+  return payload.data.gearItem
+}
 
 function formatGearTypeLabel(value: SessionDetailGearItem["gear_type"]): string {
   if (value === "sails") {
@@ -433,56 +574,162 @@ function SessionGearDialogFooter({
 }
 
 function SessionGearLinkDialog(input: {
+  gearCatalogPage: SessionDetailCatalogPage
+  gearType: SessionDetailGearTypeFilter
   sessionId: string
   scope: NavigationScope
   gearItems: SessionDetailGearItem[]
   linkedGearItemIds: string[]
+  onCatalogLoad: (input: {
+    gearCatalogPage: SessionDetailCatalogPage
+    gearItems: SessionDetailGearItem[]
+    gearType: SessionDetailGearTypeFilter
+    mode: "append" | "replace"
+  }) => void
   onSaved: (linkedGearItemIds: string[]) => void
 }) {
   const [isOpen, setIsOpen] = React.useState(false)
   const [selectorTab, setSelectorTab] = React.useState<SessionGearSelectorTab>("all")
+  const [gearSearch, setGearSearch] = React.useState("")
+  const [catalogGearItems, setCatalogGearItems] = React.useState<SessionDetailGearItem[]>(
+    input.gearItems,
+  )
+  const [catalogGearPage, setCatalogGearPage] = React.useState<SessionDetailCatalogPage>(
+    input.gearCatalogPage,
+  )
+  const [catalogGearType, setCatalogGearType] =
+    React.useState<SessionDetailGearTypeFilter>(input.gearType)
+  const [isGearCatalogLoading, setIsGearCatalogLoading] = React.useState(false)
+  const [gearCatalogError, setGearCatalogError] = React.useState<string | null>(null)
   const [selectedGearItemIds, setSelectedGearItemIds] = React.useState<string[]>(() =>
     [...new Set(input.linkedGearItemIds)],
   )
   const [isSavingGear, setIsSavingGear] = React.useState(false)
   const [scanFeedbackMessage, setScanFeedbackMessage] = React.useState<string | null>(null)
   const [scanFeedbackType, setScanFeedbackType] = React.useState<"success" | "error">("success")
+  const gearCatalogRequestVersionRef = React.useRef(0)
+  const wasOpenRef = React.useRef(false)
   const router = useRouter()
   const isMobile = useIsMobile()
-  const availableGearTypes = React.useMemo(() => {
-    const presentTypes = new Set(input.gearItems.map((gearItem) => gearItem.gear_type))
-    return GEAR_TYPE_TAB_ORDER.filter((gearType) => presentTypes.has(gearType))
-  }, [input.gearItems])
-
-  const gearItemsByType = React.useMemo(() => {
-    const groupedItems = new Map<SessionDetailGearItem["gear_type"], SessionDetailGearItem[]>()
-
-    for (const gearType of availableGearTypes) {
-      groupedItems.set(gearType, [])
-    }
-
-    for (const gearItem of input.gearItems) {
-      const existingItems = groupedItems.get(gearItem.gear_type)
-
-      if (!existingItems) {
-        continue
-      }
-
-      existingItems.push(gearItem)
-    }
-
-    return groupedItems
-  }, [availableGearTypes, input.gearItems])
+  const availableGearTypes = GEAR_TYPE_TAB_ORDER
 
   React.useEffect(() => {
     if (!isOpen) {
+      wasOpenRef.current = false
       return
     }
 
+    if (wasOpenRef.current) {
+      return
+    }
+
+    wasOpenRef.current = true
     setSelectedGearItemIds([...new Set(input.linkedGearItemIds)])
     setSelectorTab("all")
+    setGearSearch("")
+    setCatalogGearItems(input.gearItems)
+    setCatalogGearPage(input.gearCatalogPage)
+    setCatalogGearType(input.gearType)
+    setGearCatalogError(null)
     setScanFeedbackMessage(null)
-  }, [availableGearTypes, isOpen, input.linkedGearItemIds])
+  }, [
+    isOpen,
+    input.gearCatalogPage,
+    input.gearItems,
+    input.gearType,
+    input.linkedGearItemIds,
+  ])
+
+  const loadGearCatalog = React.useCallback(
+    async (request: {
+      gearType: SessionDetailGearTypeFilter
+      mode: "append" | "replace"
+      offset: number
+      search: string
+    }) => {
+      const requestVersion = gearCatalogRequestVersionRef.current + 1
+      gearCatalogRequestVersionRef.current = requestVersion
+      setIsGearCatalogLoading(true)
+      setGearCatalogError(null)
+
+      try {
+        const result = await fetchSessionGearCatalog({
+          gearType: request.gearType,
+          linkedGearItemIds: selectedGearItemIds,
+          offset: request.offset,
+          scope: input.scope,
+          search: request.search,
+          sessionId: input.sessionId,
+        })
+
+        if (requestVersion !== gearCatalogRequestVersionRef.current) {
+          return
+        }
+
+        setCatalogGearItems((currentItems) =>
+          request.mode === "append"
+            ? mergeGearItemsById(currentItems, result.gearItems)
+            : result.gearItems,
+        )
+        setCatalogGearPage(result.gearCatalogPage)
+        setCatalogGearType(result.gearType)
+        input.onCatalogLoad({
+          gearCatalogPage: result.gearCatalogPage,
+          gearItems: result.gearItems,
+          gearType: result.gearType,
+          mode: request.mode,
+        })
+      } catch (error) {
+        if (requestVersion !== gearCatalogRequestVersionRef.current) {
+          return
+        }
+
+        setGearCatalogError(error instanceof Error ? error.message : "Could not load gear.")
+      } finally {
+        if (requestVersion === gearCatalogRequestVersionRef.current) {
+          setIsGearCatalogLoading(false)
+        }
+      }
+    },
+    [input, selectedGearItemIds],
+  )
+
+  React.useEffect(() => {
+    if (!isOpen || selectorTab === "linked") {
+      return
+    }
+
+    const gearType =
+      selectorTab === "all" ? "all" : (selectorTab as SessionDetailGearTypeFilter)
+    const normalizedSearch = gearSearch.trim()
+
+    if (
+      catalogGearType === gearType &&
+      normalizedSearch === catalogGearPage.search &&
+      catalogGearPage.offset === 0
+    ) {
+      return
+    }
+
+    const searchTimer = window.setTimeout(() => {
+      void loadGearCatalog({
+        gearType,
+        mode: "replace",
+        offset: 0,
+        search: normalizedSearch,
+      })
+    }, 250)
+
+    return () => window.clearTimeout(searchTimer)
+  }, [
+    catalogGearPage.offset,
+    catalogGearPage.search,
+    catalogGearType,
+    gearSearch,
+    isOpen,
+    loadGearCatalog,
+    selectorTab,
+  ])
 
   function handleCheckedChange(gearItemId: string, checked: boolean): void {
     setScanFeedbackMessage(null)
@@ -500,7 +747,7 @@ function SessionGearLinkDialog(input: {
     })
   }
 
-  function handleBarcodeScanned(barcodeValue: string): void {
+  async function handleBarcodeScanned(barcodeValue: string): Promise<void> {
     const normalizedBarcode = normalizeBarcodeValue(barcodeValue).toLowerCase()
 
     if (normalizedBarcode.length === 0) {
@@ -509,28 +756,38 @@ function SessionGearLinkDialog(input: {
       return
     }
 
-    const matchedGearItem = input.gearItems.find((gearItem) => {
-      if (!gearItem.barcode) {
-        return false
+    try {
+      const matchedGearItem = await fetchSessionGearByBarcode({
+        barcode: normalizedBarcode,
+        scope: input.scope,
+        sessionId: input.sessionId,
+      })
+
+      if (!matchedGearItem) {
+        setScanFeedbackType("error")
+        setScanFeedbackMessage("Barcode is not registered")
+        return
       }
 
-      return normalizeBarcodeValue(gearItem.barcode).toLowerCase() === normalizedBarcode
-    })
-
-    if (!matchedGearItem) {
+      setCatalogGearItems((currentItems) => mergeGearItemsById(currentItems, [matchedGearItem]))
+      input.onCatalogLoad({
+        gearCatalogPage: catalogGearPage,
+        gearItems: [matchedGearItem],
+        gearType: catalogGearType,
+        mode: "append",
+      })
+      setSelectedGearItemIds((currentIds) =>
+        currentIds.includes(matchedGearItem.id)
+          ? currentIds
+          : [...currentIds, matchedGearItem.id],
+      )
+      setSelectorTab("linked")
+      setScanFeedbackType("success")
+      setScanFeedbackMessage(`Linked: ${matchedGearItem.name}`)
+    } catch {
       setScanFeedbackType("error")
-      setScanFeedbackMessage("Barcode is not registered")
-      return
+      setScanFeedbackMessage("Could not check this barcode.")
     }
-
-    setSelectedGearItemIds((currentIds) =>
-      currentIds.includes(matchedGearItem.id)
-        ? currentIds
-        : [...currentIds, matchedGearItem.id],
-    )
-    setSelectorTab("linked")
-    setScanFeedbackType("success")
-    setScanFeedbackMessage(`Linked: ${matchedGearItem.name}`)
   }
 
   async function handleGearSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
@@ -568,7 +825,8 @@ function SessionGearLinkDialog(input: {
   }
 
   const selectedGearItemIdSet = new Set(selectedGearItemIds)
-  const linkedGearItems = input.gearItems.filter((gearItem) =>
+  const cachedGearItems = mergeGearItemsById(input.gearItems, catalogGearItems)
+  const linkedGearItems = cachedGearItems.filter((gearItem) =>
     selectedGearItemIdSet.has(gearItem.id),
   )
   const activeSelectorTab: SessionGearSelectorTab =
@@ -577,6 +835,12 @@ function SessionGearLinkDialog(input: {
     availableGearTypes.includes(selectorTab as SessionDetailGearItem["gear_type"])
       ? selectorTab
       : "all"
+  const visibleGearItems =
+    activeSelectorTab === "linked"
+      ? linkedGearItems
+      : activeSelectorTab === "all"
+        ? catalogGearItems
+        : catalogGearItems.filter((gearItem) => gearItem.gear_type === activeSelectorTab)
 
   function renderGearCard(gearItem: SessionDetailGearItem) {
     const isSelected = selectedGearItemIdSet.has(gearItem.id)
@@ -635,7 +899,7 @@ function SessionGearLinkDialog(input: {
         className="min-h-0 flex-1 overflow-y-auto px-4"
         isSaving={isSavingGear}
       >
-        {input.gearItems.length === 0 ? (
+        {catalogGearPage.totalCount === 0 && gearSearch.trim().length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No gear items exist for this team yet. Add items in Team Gear first.
           </p>
@@ -646,19 +910,47 @@ function SessionGearLinkDialog(input: {
             className="min-h-0 space-y-3"
           >
             <TabsList className="h-auto w-full flex-wrap justify-start gap-1">
-              <TabsTrigger value="all">All Gear ({input.gearItems.length})</TabsTrigger>
+              <TabsTrigger value="all">All Gear</TabsTrigger>
               <TabsTrigger value="linked">Linked ({linkedGearItems.length})</TabsTrigger>
               {availableGearTypes.map((gearType) => (
                 <TabsTrigger key={gearType} value={gearType} className="capitalize">
-                  {formatGearTypeLabel(gearType)} ({gearItemsByType.get(gearType)?.length ?? 0})
+                  {formatGearTypeLabel(gearType)}
                 </TabsTrigger>
               ))}
             </TabsList>
 
-            <TabsContent value="all" className="space-y-3">
-              <div className="space-y-3 pr-1">
-                {input.gearItems.map((gearItem) => renderGearCard(gearItem))}
+            {activeSelectorTab !== "linked" ? (
+              <div className="relative">
+                <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={gearSearch}
+                  onChange={(event) => setGearSearch(event.target.value)}
+                  placeholder="Search gear"
+                  className="pl-9"
+                  aria-label="Search gear"
+                />
               </div>
+            ) : null}
+
+            <TabsContent value="all" className="space-y-3">
+              {gearCatalogError ? (
+                <p className="text-sm text-muted-foreground">{gearCatalogError}</p>
+              ) : isGearCatalogLoading && visibleGearItems.length === 0 ? (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2Icon className="size-4 animate-spin" />
+                  Loading gear...
+                </p>
+              ) : visibleGearItems.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {gearSearch.trim().length > 0
+                    ? "No gear matches this search."
+                    : "No gear items available."}
+                </p>
+              ) : (
+                <div className="space-y-3 pr-1">
+                  {visibleGearItems.map((gearItem) => renderGearCard(gearItem))}
+                </div>
+              )}
             </TabsContent>
 
             <TabsContent value="linked" className="space-y-3">
@@ -675,13 +967,55 @@ function SessionGearLinkDialog(input: {
 
             {availableGearTypes.map((gearType) => (
               <TabsContent key={gearType} value={gearType} className="space-y-3">
-                <div className="space-y-3 pr-1">
-                  {(gearItemsByType.get(gearType) ?? []).map((gearItem) =>
-                    renderGearCard(gearItem),
-                  )}
-                </div>
+                {gearCatalogError ? (
+                  <p className="text-sm text-muted-foreground">{gearCatalogError}</p>
+                ) : isGearCatalogLoading && visibleGearItems.length === 0 ? (
+                  <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2Icon className="size-4 animate-spin" />
+                    Loading gear...
+                  </p>
+                ) : visibleGearItems.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    {gearSearch.trim().length > 0
+                      ? "No gear matches this search."
+                      : `No ${formatGearTypeLabel(gearType).toLowerCase()} gear available.`}
+                  </p>
+                ) : (
+                  <div className="space-y-3 pr-1">
+                    {visibleGearItems.map((gearItem) => renderGearCard(gearItem))}
+                  </div>
+                )}
               </TabsContent>
             ))}
+
+            {activeSelectorTab !== "linked" && catalogGearPage.nextOffset !== null ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isGearCatalogLoading}
+                onClick={() =>
+                  void loadGearCatalog({
+                    gearType:
+                      activeSelectorTab === "all"
+                        ? "all"
+                        : (activeSelectorTab as SessionDetailGearTypeFilter),
+                    mode: "append",
+                    offset: catalogGearPage.nextOffset ?? 0,
+                    search: gearSearch.trim(),
+                  })
+                }
+              >
+                {isGearCatalogLoading ? (
+                  <>
+                    <Loader2Icon className="size-4 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  "Load more"
+                )}
+              </Button>
+            ) : null}
           </Tabs>
         )}
       </SessionGearDialogFields>
@@ -786,19 +1120,58 @@ function SessionGearPanel(input: {
 export type SessionGearTabPanelProps = {
   sessionId: string
   scope: NavigationScope
+  gearCatalogPage: SessionDetailCatalogPage
   gearItems: SessionDetailGearItem[]
+  gearType: SessionDetailGearTypeFilter
   linkedGearItemIds: string[]
   canManageSession: boolean
 }
 
 export function SessionGearTabPanel(input: SessionGearTabPanelProps) {
+  const [gearItems, setGearItems] = React.useState<SessionDetailGearItem[]>(input.gearItems)
+  const [gearCatalogPage, setGearCatalogPage] =
+    React.useState<SessionDetailCatalogPage>(input.gearCatalogPage)
+  const [gearType, setGearType] = React.useState<SessionDetailGearTypeFilter>(input.gearType)
   const [linkedGearItemIds, setLinkedGearItemIds] = React.useState<string[]>(() =>
     [...new Set(input.linkedGearItemIds)],
   )
 
   React.useEffect(() => {
+    setGearItems(input.gearItems)
+  }, [input.gearItems])
+
+  React.useEffect(() => {
+    setGearCatalogPage(input.gearCatalogPage)
+  }, [input.gearCatalogPage])
+
+  React.useEffect(() => {
+    setGearType(input.gearType)
+  }, [input.gearType])
+
+  React.useEffect(() => {
     setLinkedGearItemIds([...new Set(input.linkedGearItemIds)])
   }, [input.linkedGearItemIds])
+
+  const handleGearCatalogLoad = React.useCallback(
+    (result: {
+      gearCatalogPage: SessionDetailCatalogPage
+      gearItems: SessionDetailGearItem[]
+      gearType: SessionDetailGearTypeFilter
+      mode: "append" | "replace"
+    }) => {
+      setGearItems((currentItems) =>
+        result.mode === "append"
+          ? mergeGearItemsById(currentItems, result.gearItems)
+          : mergeGearItemsById(
+              result.gearItems,
+              currentItems.filter((gearItem) => linkedGearItemIds.includes(gearItem.id)),
+            ),
+      )
+      setGearCatalogPage(result.gearCatalogPage)
+      setGearType(result.gearType)
+    },
+    [linkedGearItemIds],
+  )
 
   return (
     <div className="space-y-4">
@@ -806,25 +1179,28 @@ export function SessionGearTabPanel(input: SessionGearTabPanelProps) {
         <div>
           <h3 className="text-base font-semibold">Gear</h3>
         </div>
-        {input.canManageSession && input.gearItems.length > 0 ? (
+        {input.canManageSession && (gearItems.length > 0 || gearCatalogPage.totalCount > 0) ? (
           <SessionGearLinkDialog
+            gearCatalogPage={gearCatalogPage}
+            gearType={gearType}
             sessionId={input.sessionId}
             scope={input.scope}
-            gearItems={input.gearItems}
+            gearItems={gearItems}
             linkedGearItemIds={linkedGearItemIds}
+            onCatalogLoad={handleGearCatalogLoad}
             onSaved={setLinkedGearItemIds}
           />
         ) : null}
       </div>
 
-      {input.canManageSession && input.gearItems.length === 0 ? (
+      {input.canManageSession && gearItems.length === 0 && gearCatalogPage.totalCount === 0 ? (
         <p className="text-sm text-muted-foreground">
           No gear items exist for this team yet. Add items in Team Gear first.
         </p>
       ) : null}
 
       <SessionGearPanel
-        gearItems={input.gearItems}
+        gearItems={gearItems}
         linkedGearItemIds={linkedGearItemIds}
       />
     </div>

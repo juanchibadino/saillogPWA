@@ -45,7 +45,7 @@ import type {
   SessionDetailImagesTabData,
   SessionDetailInfoTabData,
   SessionDetailResultsTabData,
-  SessionSetupDialogItem,
+  SessionDetailSetupData,
   SessionDetailTabDataByTab,
   SessionDetailTabPayload,
 } from "@/features/sessions/detail-types"
@@ -383,7 +383,6 @@ function EditSessionMetadataDialog(input: {
 export function SessionHeaderActions(input: {
   sessionId: string
   scope: NavigationScope
-  setupDialogItems: SessionSetupDialogItem[]
   sessionType: "training" | "regatta"
   sessionDate: string
   dockOutAt: string | null
@@ -391,6 +390,63 @@ export function SessionHeaderActions(input: {
   netTimeMinutes: number | null
   canManageSession: boolean
 }) {
+  const [setupData, setSetupData] = React.useState<SessionDetailSetupData | null>(null)
+  const [setupLoadError, setSetupLoadError] = React.useState<string | null>(null)
+  const [isSetupLoading, setIsSetupLoading] = React.useState(false)
+  const setupInFlightRef = React.useRef(false)
+  const setupRequestVersionRef = React.useRef(0)
+
+  React.useEffect(() => {
+    setupRequestVersionRef.current += 1
+    setupInFlightRef.current = false
+    setSetupData(null)
+    setSetupLoadError(null)
+    setIsSetupLoading(false)
+  }, [input.scope.activeOrgId, input.scope.activeTeamId, input.sessionId])
+
+  const loadSetupData = React.useCallback(
+    async (options?: { force?: boolean }) => {
+      if (!options?.force && setupData) {
+        return
+      }
+
+      if (setupInFlightRef.current) {
+        return
+      }
+
+      const requestVersion = setupRequestVersionRef.current
+      setupInFlightRef.current = true
+      setIsSetupLoading(true)
+      setSetupLoadError(null)
+
+      try {
+        const nextSetupData = await fetchSessionDetailSetupData({
+          scope: input.scope,
+          sessionId: input.sessionId,
+        })
+
+        if (requestVersion !== setupRequestVersionRef.current) {
+          return
+        }
+
+        setSetupData(nextSetupData)
+      } catch (error) {
+        if (requestVersion !== setupRequestVersionRef.current) {
+          return
+        }
+
+        const message = error instanceof Error ? error.message : "Could not load Setup."
+        setSetupLoadError(message)
+      } finally {
+        if (requestVersion === setupRequestVersionRef.current) {
+          setupInFlightRef.current = false
+          setIsSetupLoading(false)
+        }
+      }
+    },
+    [input.scope, input.sessionId, setupData],
+  )
+
   if (!input.canManageSession) {
     return null
   }
@@ -400,7 +456,11 @@ export function SessionHeaderActions(input: {
       <SetupDialog
         sessionId={input.sessionId}
         scope={input.scope}
-        items={input.setupDialogItems}
+        items={setupData?.setupDialogItems ?? []}
+        isLoading={isSetupLoading && !setupData}
+        loadError={setupData ? null : setupLoadError}
+        onOpen={() => void loadSetupData()}
+        onRetry={() => void loadSetupData({ force: true })}
       />
       <EditSessionMetadataDialog
         sessionId={input.sessionId}
@@ -442,6 +502,10 @@ type SessionDetailTabErrorPayload = {
 }
 
 type SessionAssetTab = "images" | "analytics"
+
+type SessionDetailSetupDataResponse = {
+  data: SessionDetailSetupData
+}
 
 function appendUniqueSessionAssets<T extends { id: string }>(
   currentAssets: T[],
@@ -603,6 +667,20 @@ function buildSessionDetailTabDataUrl(input: {
   return `/api/team-sessions/${encodeURIComponent(input.sessionId)}/tab-data?${params.toString()}`
 }
 
+function buildSessionDetailSetupDataUrl(input: {
+  scope: NavigationScope
+  sessionId: string
+}): string {
+  const params = new URLSearchParams()
+  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.scope.activeOrgId)
+
+  if (input.scope.activeTeamId) {
+    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scope.activeTeamId)
+  }
+
+  return `/api/team-sessions/${encodeURIComponent(input.sessionId)}/setup?${params.toString()}`
+}
+
 async function fetchSessionDetailTabData(input: {
   assetOffset?: number
   scope: NavigationScope
@@ -626,6 +704,25 @@ async function fetchSessionDetailTabData(input: {
     throw new Error("The loaded tab data did not match the selected tab.")
   }
 
+  return payload.data
+}
+
+async function fetchSessionDetailSetupData(input: {
+  scope: NavigationScope
+  sessionId: string
+}): Promise<SessionDetailSetupData> {
+  const response = await fetch(buildSessionDetailSetupDataUrl(input), {
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(await resolveSessionDetailSetupErrorMessage(response))
+  }
+
+  const payload = (await response.json()) as SessionDetailSetupDataResponse
   return payload.data
 }
 
@@ -657,6 +754,36 @@ async function resolveSessionDetailTabErrorMessage(response: Response): Promise<
   }
 
   return "This tab hit a runtime error while loading. Retry just this tab."
+}
+
+async function resolveSessionDetailSetupErrorMessage(response: Response): Promise<string> {
+  let payload: SessionDetailTabErrorPayload | null = null
+
+  try {
+    payload = (await response.json()) as SessionDetailTabErrorPayload
+  } catch {
+    payload = null
+  }
+
+  const errorCode = typeof payload?.error === "string" ? payload.error : null
+
+  if (response.status === 401 || errorCode === "unauthorized") {
+    return "Your session expired. Sign in again, then retry Setup."
+  }
+
+  if (response.status === 403 || errorCode === "forbidden" || errorCode === "scope_required") {
+    return "You do not have permission to manage Setup in the active team scope."
+  }
+
+  if (response.status === 404 || errorCode === "session_not_found") {
+    return "This session is unavailable in the active team scope."
+  }
+
+  if (response.status === 400) {
+    return "This Setup request is invalid. Refresh the page and try again."
+  }
+
+  return "Setup hit a runtime error while loading. Retry just Setup."
 }
 
 function SessionTabDataError(input: {
@@ -863,8 +990,10 @@ export function SessionDetailTabsClient(input: {
                 info={tabData.info.info}
                 availableStandardMoves={tabData.info.availableStandardMoves}
                 linkedStandardMoveIds={tabData.info.linkedStandardMoveIds}
+                standardMoveCatalogPage={tabData.info.standardMoveCatalogPage}
                 availableWindPatterns={tabData.info.availableWindPatterns}
                 linkedWindPatternIds={tabData.info.linkedWindPatternIds}
+                windPatternCatalogPage={tabData.info.windPatternCatalogPage}
                 canManageSession={input.canManageSession}
               />
             ) : (
@@ -959,7 +1088,9 @@ export function SessionDetailTabsClient(input: {
               <SessionGearTabPanel
                 sessionId={input.sessionId}
                 scope={input.scope}
+                gearCatalogPage={tabData.gear.gearCatalogPage}
                 gearItems={tabData.gear.gearItems}
+                gearType={tabData.gear.gearType}
                 linkedGearItemIds={tabData.gear.linkedGearItemIds}
                 canManageSession={input.canManageSession}
               />

@@ -91,10 +91,50 @@ export type SessionDetailAssetPage = {
   assetTotalCount: number
 }
 
+export type SessionDetailCatalogPage = {
+  limit: number
+  nextOffset: number | null
+  offset: number
+  search: string
+  totalCount: number
+}
+
 export type SessionDetailGearItem = Pick<
   GearItemRow,
   "id" | "name" | "gear_type" | "status" | "condition" | "serial_number" | "barcode"
 >
+
+export type SessionDetailGearTypeFilter = "all" | GearItemRow["gear_type"]
+
+export type SessionDetailStandardMove = {
+  id: string
+  name: string
+  description: string | null
+  isActive: boolean
+}
+
+export type SessionDetailWindPattern = {
+  id: string
+  name: string
+  description: string | null
+  isActive: boolean
+}
+
+export type SessionDetailStandardMovesCatalogData = {
+  availableStandardMoves: SessionDetailStandardMove[]
+  standardMoveCatalogPage: SessionDetailCatalogPage
+}
+
+export type SessionDetailWindPatternsCatalogData = {
+  availableWindPatterns: SessionDetailWindPattern[]
+  windPatternCatalogPage: SessionDetailCatalogPage
+}
+
+export type SessionDetailGearCatalogData = {
+  gearCatalogPage: SessionDetailCatalogPage
+  gearItems: SessionDetailGearItem[]
+  gearType: SessionDetailGearTypeFilter
+}
 
 export type SessionDetailData = {
   team: SessionDetailTeam
@@ -102,25 +142,19 @@ export type SessionDetailData = {
   camp: SessionDetailCamp
   session: SessionDetailSession
   info: SessionDetailInfo
-  availableStandardMoves: {
-    id: string
-    name: string
-    description: string | null
-    isActive: boolean
-  }[]
+  availableStandardMoves: SessionDetailStandardMove[]
   linkedStandardMoveIds: string[]
-  availableWindPatterns: {
-    id: string
-    name: string
-    description: string | null
-    isActive: boolean
-  }[]
+  standardMoveCatalogPage: SessionDetailCatalogPage
+  availableWindPatterns: SessionDetailWindPattern[]
   linkedWindPatternIds: string[]
+  windPatternCatalogPage: SessionDetailCatalogPage
   results: SessionDetailResults
   setupDialogItems: SessionSetupDialogItem[]
   images: SessionDetailAsset[]
   analyticsFiles: SessionDetailAsset[]
   gearItems: SessionDetailGearItem[]
+  gearCatalogPage: SessionDetailCatalogPage
+  gearType: SessionDetailGearTypeFilter
   linkedGearItemIds: string[]
 }
 
@@ -131,8 +165,10 @@ export type SessionDetailInfoTabData = Pick<
   | "info"
   | "availableStandardMoves"
   | "linkedStandardMoveIds"
+  | "standardMoveCatalogPage"
   | "availableWindPatterns"
   | "linkedWindPatternIds"
+  | "windPatternCatalogPage"
 >
 
 export type SessionDetailGoalsTabData = {
@@ -149,7 +185,7 @@ export type SessionDetailAnalyticsTabData = Pick<SessionDetailData, "analyticsFi
 
 export type SessionDetailGearTabData = Pick<
   SessionDetailData,
-  "gearItems" | "linkedGearItemIds"
+  "gearCatalogPage" | "gearItems" | "gearType" | "linkedGearItemIds"
 >
 
 export type SessionDetailTabDataByTab = {

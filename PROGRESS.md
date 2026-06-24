@@ -1,8 +1,140 @@
 # PROGRESS.md
 
-Last updated: 2026-06-23
+Last updated: 2026-06-24
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
+
+## 2026-06-24 - Mobile Setup edit dropdown fix
+
+- Fixed mobile Setup edit mode for `/team-sessions/[id]` by rendering the Setup
+  mobile trigger as a controlled button instead of the Drawer trigger wrapper.
+- Updated shared dropdown menus to render above Drawer/Sheet overlays with
+  pointer events enabled, and made `Multiselect` dropdowns non-modal so nested
+  TWD and Boat setup option menus can be tapped inside the mobile Drawer.
+- Stabilized the Setup edit form fieldset helpers at module scope so text
+  inputs and option selections no longer remount the form, drop focus, or reset
+  the Setup scroll position after every draft change.
+- Scoped nested setup metric create/edit/delete dialogs to the active
+  Drawer/Sheet and constrained their mobile height/options textarea so metric
+  inputs, options, and close controls remain tappable inside the Samsung J6
+  viewport.
+- Browser verification with Samsung J6 viewport `360x740` on session
+  `426f673c-ad6f-46ff-a2c1-a468efcb305d` confirmed adding `SE 135º` to TWD,
+  typing `mobile playwright day` in Type of Day, and adding `-2` to Primaries
+  all update `setupPayload`.
+- Follow-up browser verification on the same viewport/session confirmed Type of
+  Day accepts `alpha beta gamma` without losing focus, Primaries option
+  selection no longer resets the Setup scroller to the top, and the Primaries
+  metric edit dialog accepts label/options input and closes by tap.
+- Refined the mobile Setup Drawer summary so the initial read-only view only
+  renders metrics with recorded values, removed Boat metric drag/reorder
+  controls and their `@dnd-kit` dependencies, moved Delete into the edit metric
+  flow, and made mobile Drawer action buttons taller.
+- Adjusted the edit metric dialog spacing and control heights so the metric
+  name, input kind, options, Delete, and Save controls share the same mobile
+  rhythm.
+- Browser verification with Samsung J6 viewport `360x740` on the same session
+  confirmed the read-only Setup summary has no dash placeholders, mobile action
+  buttons measure 44px, row delete/reorder buttons are absent, Delete appears
+  inside the Primaries edit dialog, and the input-kind select is taller.
+- Validation: `npm run lint` passes with existing warnings in
+  `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`; `./node_modules/.bin/tsc --noEmit`;
+  `npm run build`; `git diff --check`; `git diff --cached --check`.
+
+## 2026-06-23 - Team session asset tab runtime fallback
+
+- Updated `features/sessions/detail-data.ts` so Images and Analytics first use
+  thumbnail-aware `session_assets` selects, then fall back to the legacy asset
+  columns when a database is missing the optional thumbnail migration columns.
+- Kept the tab payload shape stable by normalizing missing thumbnail metadata to
+  `null`, so the existing asset panels can render while older databases are
+  brought up to date.
+- Browser verification on `localhost:3000` with the reported session confirmed
+  both `tab-data?tab=images` and `tab-data?tab=analytics` return `200`, and the
+  Images and Analytics tabs render their asset lists without the runtime error
+  fallback.
+- Validation: `./node_modules/.bin/tsc --noEmit`; `npm run lint` passes with
+  existing warnings in `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`; `npm run build`;
+  `git diff --check`.
+
+## 2026-06-23 - Team session audit Step 4 implementation
+
+- Added `app/api/team-sessions/[id]/catalog/route.ts` for scoped bounded
+  catalog loading behind the existing active org/team/session checks.
+- Updated `features/sessions/detail-data.ts` and
+  `features/sessions/detail-types.ts` so Info and Gear tab payloads include
+  explicit catalog page metadata and preserve already-linked rows outside the
+  current page.
+- Updated `features/sessions/detail/info-panel.tsx` so Standard Moves and Wind
+  Patterns search/load a 30-item server page with `Load more` inside the
+  existing mobile Drawer / desktop Sheet editors.
+- Updated `features/sessions/detail/gear-panel.tsx` so Gear links use a
+  24-item server page, category-specific loading, search, `Load more`, and
+  scoped barcode lookup instead of requiring the full team gear catalog.
+- Updated `features/sessions/actions.ts` so save and quick-create responses no
+  longer refetch full Info catalogs after mutations.
+- Added `supabase/migrations/030_bound_session_catalog_indexes.sql` for the new
+  catalog paging/filter paths.
+- Browser verification on the existing local dev server at `localhost:3000`
+  confirmed `/team-sessions/[id]` renders without a Next.js overlay, Info
+  Standard Moves search calls the scoped catalog endpoint while preserving
+  already-linked rows, Gear loads through `tab-data?tab=gear`, Gear search calls
+  the bounded catalog endpoint, category tabs call category-specific catalog
+  requests, and barcode lookup returns a scoped gear row.
+- Fixed a Gear dialog reset found during browser verification: catalog result
+  updates no longer clear the active search while the Sheet remains open.
+- Validation: `./node_modules/.bin/tsc --noEmit`; `npm run lint` passes with
+  existing warnings in `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`; `npm run build`;
+  `git diff --check`.
+
+## 2026-06-23 - Team session audit Step 3 implementation
+
+- Removed the initial manager-render `getSessionDetailSetupData()` call from
+  `app/(app)/team-sessions/[id]/page.tsx`.
+- Added `app/api/team-sessions/[id]/setup/route.ts` to fetch Setup data only
+  after the user opens the Setup Drawer/Sheet, with authenticated access,
+  active scope, session scope, and `canManageTeamSessions()` checks.
+- Updated `features/sessions/session-detail-tabs-client.tsx` to lazy-fetch and
+  cache Setup data for the current visit, with retry and scoped error messages.
+- Updated `features/sessions/detail/setup-dialog.tsx` to show loading and retry
+  states inside the existing mobile Drawer / desktop Sheet before metrics are
+  available.
+- Updated `AUDIT_TEAM_SESSION.MD` to mark Step 3 as implemented and make bounded
+  large catalogs the next Team Session audit priority.
+- Validation: `npm run lint`; `./node_modules/.bin/tsc --noEmit`;
+  `npm run build`; `git diff --check`.
+
+## 2026-06-23 - Team session audit Step 2 implementation
+
+- Collapsed the `/team-sessions/[id]` shell data path in
+  `features/sessions/detail-data.ts` from sequential session, camp, team venue,
+  team, and venue reads into one embedded Supabase shell query.
+- Preserved the active team and active organization checks before rendering the
+  detail shell, so out-of-scope sessions still return the existing unavailable
+  state.
+- Added `queryShape: "joined_shell"` to the `load_shell` timing metadata for
+  comparison against prior timing logs.
+- Updated `AUDIT_TEAM_SESSION.MD` to mark Step 2 as implemented and keep Setup
+  lazy-loading as the next Team Session audit priority.
+- Validation: `./node_modules/.bin/tsc --noEmit`; `npm run build`;
+  `git diff --check`.
+
+## 2026-06-23 - Team session audit Step 1 implementation
+
+- Installed `@vercel/speed-insights` and mounted
+  `SpeedInsights` from `@vercel/speed-insights/next` once in `app/layout.tsx`.
+- Kept the existing `/team-sessions/[id]` `team_session_timing` structured logs
+  in place so Vercel Speed Insights can be compared with shell, tab, setup,
+  asset signing, and save-action timings after deploy.
+- Updated `AUDIT_TEAM_SESSION.MD` to mark Step 1 as implemented and keep
+  post-deploy real-user metric review as the remaining measurement task.
+- Validation: `npm run lint` passes with existing warnings in
+  `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`; `npx tsc --noEmit`;
+  `npm run build`.
 
 ## 2026-06-23 - Team session audit Step 9 implementation
 
