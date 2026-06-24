@@ -413,7 +413,7 @@ function StandardMoveTooltipBadge(props: {
           <span className="max-w-[16rem] truncate">{props.standardMove.name}</span>
         </Badge>
       </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-sm whitespace-normal text-left leading-relaxed">
+      <TooltipContent side="top" className="text-left leading-relaxed sm:max-w-sm">
         <p>{tooltipText}</p>
       </TooltipContent>
     </Tooltip>
@@ -502,7 +502,7 @@ function WindPatternTooltipBadge(props: {
           <span className="max-w-[16rem] truncate">{props.windPattern.name}</span>
         </Badge>
       </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-sm whitespace-normal text-left leading-relaxed">
+      <TooltipContent side="top" className="text-left leading-relaxed sm:max-w-sm">
         <p>{tooltipText}</p>
       </TooltipContent>
     </Tooltip>

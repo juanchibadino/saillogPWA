@@ -49,6 +49,29 @@
 }
 
 :root {
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+  --mobile-header-height: 3.5rem;
+  --mobile-header-total-height: calc(
+    var(--mobile-header-height) + var(--safe-area-top)
+  );
+  --mobile-bottom-nav-height: 4.5rem;
+  --mobile-bottom-nav-total-height: calc(
+    var(--mobile-bottom-nav-height) + var(--safe-area-bottom)
+  );
+  --mobile-content-bottom-padding: calc(
+    var(--mobile-bottom-nav-height) + var(--safe-area-bottom) + 2.5rem
+  );
+  --mobile-floating-action-bottom: calc(
+    var(--mobile-bottom-nav-height) + var(--safe-area-bottom) + 2rem
+  );
+  --mobile-drawer-max-height: min(
+    88dvh,
+    calc(100dvh - var(--safe-area-top) - 0.75rem)
+  );
+  --mobile-drawer-full-height: calc(100dvh - var(--safe-area-top) - 3rem);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
@@ -131,8 +154,14 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    height: 100%;
+    background: var(--background);
+    color: var(--foreground);
+  }
   body {
     @apply bg-background text-foreground;
+    min-height: 100vh;
   }
   html {
     @apply font-sans;
@@ -167,6 +196,45 @@
   }
 }
 
+.safe-bottom {
+  padding-bottom: var(--safe-area-bottom);
+}
+
+.safe-top {
+  padding-top: var(--safe-area-top);
+}
+
+.safe-x {
+  padding-left: var(--safe-area-left);
+  padding-right: var(--safe-area-right);
+}
+
+.mobile-safe-header {
+  height: var(--mobile-header-total-height);
+  padding-top: var(--safe-area-top);
+}
+
+.mobile-shell-content {
+  padding-bottom: var(--mobile-content-bottom-padding);
+}
+
+.mobile-bottom-nav {
+  min-height: var(--mobile-bottom-nav-total-height);
+  padding-bottom: var(--safe-area-bottom);
+}
+
+.mobile-bottom-nav-grid,
+.mobile-bottom-nav-row {
+  height: var(--mobile-bottom-nav-height);
+}
+
+.mobile-floating-action {
+  position: fixed;
+  right: 1rem;
+  bottom: var(--mobile-floating-action-bottom);
+  z-index: 50;
+}
+
 @media (max-width: 767px) {
   html,
   body {
@@ -177,5 +245,16 @@
   html::-webkit-scrollbar,
   body::-webkit-scrollbar {
     display: none;
+  }
+}
+
+@media (min-width: 768px) {
+  .mobile-safe-header {
+    height: 3rem;
+    padding-top: 0;
+  }
+
+  .mobile-shell-content {
+    padding-bottom: 2rem;
   }
 }

@@ -4,6 +4,77 @@ Last updated: 2026-06-24
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
 
+## 2026-06-24 - Mobile tooltip viewport cap
+
+- Updated the shared Tooltip wrapper to cap popup width to the mobile viewport
+  (`100vw - 2rem`), wrap long text, and use collision padding so opened
+  tooltips stay inside the screen.
+- Updated Team Session Info Standard Move and Wind Pattern tooltips so their
+  wider `max-w-sm` treatment applies only from `sm` upward.
+- Validation: `./node_modules/.bin/eslint components/ui/tooltip.tsx
+  features/sessions/detail/info-panel.tsx`; `./node_modules/.bin/tsc --noEmit`;
+  Playwright CSS check at `360x740` confirmed a long tooltip resolves to `328px`
+  wide with no viewport overflow.
+
+## 2026-06-24 - Mobile bottom nav active color
+
+- Changed the selected mobile bottom nav item from primary blue to neutral
+  foreground colors: white in dark theme and black in light theme.
+- Removed the conflicting base `text-muted-foreground` class from active links
+  so the active link no longer hydrates with competing text-color classes.
+- Validation: `./node_modules/.bin/eslint components/app-mobile-bottom-nav.tsx`;
+  `./node_modules/.bin/tsc --noEmit`;
+  Playwright computed-style check confirmed `text-foreground` resolves light in
+  dark mode and dark in light mode; class-string check confirmed the active
+  item has no `text-muted-foreground` or `text-primary`; `git diff --check -- PROGRESS.md`.
+
+## 2026-06-24 - RomaFC safe-area shell alignment
+
+- Copied the RomaFC safe-area approach into Sailog: shared `--safe-area-*`
+  variables, `viewport-fit=cover`, `black-translucent` iOS status bar,
+  `mobile-safe-header`, `mobile-bottom-nav`, `mobile-shell-content`,
+  `mobile-floating-action`, and drawer sizing variables.
+- Moved the private app shell to the RomaFC-style fixed viewport with only the
+  inner content region scrolling, while leaving public pages outside that fixed
+  shell so `/sign-in` and the landing page can keep normal page behavior.
+- Updated mobile headers, Drawer/Sheet footers, Setup FABs, and the mobile
+  bottom nav to use the shared safe-area classes instead of per-component
+  `env(safe-area-inset-*)` calculations.
+- Browser verification with mobile viewport `360x740` on
+  `/team-sessions/426f673c-ad6f-46ff-a2c1-a468efcb305d` confirmed `safe-area`
+  variables are present, the header is `56px`, content scrolls inside the shell,
+  the bottom nav is `73px`, Sessions stays active, and the setup FAB sits above
+  the nav.
+- Browser verification opened the setup Drawer and confirmed the shared drawer
+  max height resolved to `629px` with a safe footer padding.
+- Browser verification with desktop viewport `1024x768` confirmed the bottom nav
+  remains hidden and the private content still scrolls inside the shell; mobile
+  `/sign-in` also rendered without an overlay or blank state.
+- Validation: `./node_modules/.bin/tsc --noEmit`; `npm run lint` passes with
+  existing warnings in `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`; `npm run build`;
+  `git diff --check`.
+
+## 2026-06-24 - Mobile bottom navigation
+
+- Added a mobile-only bottom navigation with Home, Venues, Camps, and Sessions
+  mapped to the existing team routes and scoped org/team query parameters.
+- Matched the requested closed/open behavior: inactive items render as icon-only
+  controls, while the active route shows the icon, label, and rounded active
+  background.
+- Added shared mobile nav safe-area variables and bottom content padding based on
+  the existing RomaFC shell pattern, without changing the desktop sidebar layout.
+- Browser verification with mobile viewport `360x740` confirmed Home, Venues,
+  Camps, and Sessions each show exactly one active pill on their route while
+  inactive items stay icon-only; `/team-sessions/[id]` keeps Sessions active and
+  the setup FAB clears the new bar.
+- Browser verification with desktop viewport `1024x768` confirmed the bottom
+  nav remains hidden.
+- Validation: `./node_modules/.bin/tsc --noEmit`; `npm run lint` passes with
+  existing warnings in `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`; `npm run build`;
+  `git diff --check`.
+
 ## 2026-06-24 - Theme color follows app mode
 
 - Replaced the static blue mobile browser/PWA theme color with light/dark

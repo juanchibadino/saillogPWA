@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { resolveNavigationScope } from "@/lib/navigation/scope";
 import type { ResolvedNavigationScope } from "@/lib/navigation/types";
 import { AppSidebar } from "@/components/app-sidebar";
+import { AppMobileBottomNav } from "@/components/app-mobile-bottom-nav";
 import { SiteHeader } from "@/components/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
@@ -76,7 +77,7 @@ export default async function AppLayout({
   });
 
   return (
-    <SidebarProvider>
+    <SidebarProvider className="fixed inset-0 min-h-0 overflow-hidden">
       <AppSidebar
         variant="inset"
         canAccessApp={canAccessApp}
@@ -88,10 +89,10 @@ export default async function AppLayout({
           avatarUrl: context.profile?.photo_url ?? null,
         }}
       />
-      <SidebarInset>
+      <SidebarInset className="h-full min-h-0 overflow-hidden">
         <SiteHeader navigation={navigation} />
-        <div className="flex flex-1 flex-col">
-          <div className="@container/main flex flex-1 flex-col gap-4 p-4 md:gap-6 md:p-6">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <div className="@container/main mobile-shell-content flex min-h-full flex-col gap-4 p-4 md:gap-6 md:p-6">
             {canAccessApp ? (
               children
             ) : (
@@ -108,6 +109,7 @@ export default async function AppLayout({
             )}
           </div>
         </div>
+        <AppMobileBottomNav canAccessApp={canAccessApp} navigation={navigation} />
       </SidebarInset>
     </SidebarProvider>
   );

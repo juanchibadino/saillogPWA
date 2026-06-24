@@ -1744,7 +1744,7 @@ export function SetupDialog(input: {
         type="button"
         variant="default"
         size="icon"
-        className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-4 z-[45] size-14 rounded-full shadow-lg shadow-black/20 md:hidden"
+        className="mobile-floating-action size-14 rounded-full shadow-lg shadow-black/20 md:hidden"
         aria-label="Open session setup"
         aria-haspopup="dialog"
         aria-expanded={isOpen}
