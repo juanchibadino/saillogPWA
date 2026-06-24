@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import dynamic from "next/dynamic"
-import { Loader2Icon, MinusIcon, PlusIcon } from "lucide-react"
+import { Loader2Icon, MinusIcon, PlusIcon, Settings2Icon } from "lucide-react"
 import { useFormStatus } from "react-dom"
 import { toast } from "sonner"
 
@@ -82,6 +82,32 @@ const MIN_SESSION_DURATION_MINUTES = SESSION_DURATION_STEP_MINUTES
 const DEFAULT_SESSION_DURATION_MINUTES = 60
 const MAX_SESSION_DURATION_MINUTES = 24 * 60
 
+function SetupDialogLoadingFallback() {
+  return (
+    <>
+      <Button
+        type="button"
+        variant="default"
+        size="icon"
+        className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-4 z-[45] size-14 rounded-full shadow-lg shadow-black/20 md:hidden"
+        aria-label="Loading session setup"
+        disabled
+      >
+        <Settings2Icon className="size-6" />
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="hidden md:inline-flex"
+        disabled
+      >
+        Setup
+      </Button>
+    </>
+  )
+}
+
 function clampSessionDurationMinutes(minutes: number): number {
   return Math.min(Math.max(minutes, MIN_SESSION_DURATION_MINUTES), MAX_SESSION_DURATION_MINUTES)
 }
@@ -135,13 +161,7 @@ function formatSessionDurationHoursValue(minutes: number): string {
 
 const SetupDialog = dynamic<SetupDialogProps>(
   () => import("@/features/sessions/detail/setup-dialog").then((module) => module.SetupDialog),
-  {
-    loading: () => (
-      <Button type="button" variant="outline" size="sm" disabled>
-        Setup
-      </Button>
-    ),
-  },
+  { loading: () => <SetupDialogLoadingFallback /> },
 )
 
 const SessionInfoPanel = dynamic<SessionInfoPanelProps>(

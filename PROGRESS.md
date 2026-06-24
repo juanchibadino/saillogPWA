@@ -4,6 +4,69 @@ Last updated: 2026-06-24
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
 
+## 2026-06-24 - Theme color follows app mode
+
+- Replaced the static blue mobile browser/PWA theme color with light/dark
+  viewport colors so initial load uses white in light mode and near-black in
+  dark mode.
+- Added a client theme-color sync component under the existing `next-themes`
+  provider so manual theme toggles also update `meta[name="theme-color"]`.
+- Browser verification on mobile `360x740` confirmed dark mode sets
+  `meta[name="theme-color"]` to `#0a0a0a`, toggling to light sets it to
+  `#ffffff`, and the browser console had no warnings/errors.
+- Validation: `./node_modules/.bin/tsc --noEmit`; `npm run lint` passes with
+  existing warnings in `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`; `npm run build`;
+  `git diff --check`.
+
+## 2026-06-24 - Mobile session tabs full width
+
+- Updated `/team-sessions/[id]` mobile detail tabs so the tab bar always spans
+  the full available width, including when some tabs move into the `More`
+  overflow menu.
+- Increased the mobile tab bar height from 40px to 44px and kept visible tab
+  triggers equal-width inside the available space.
+- Browser verification with Samsung J6 viewport `360x740` on session
+  `426f673c-ad6f-46ff-a2c1-a468efcb305d` measured the mobile tab bar at
+  328px wide by 44px tall, matching its 328px container; visible tabs were
+  equal-width and the browser console had no warnings/errors.
+- Validation: `./node_modules/.bin/tsc --noEmit`; `npm run lint` passes with
+  existing warnings in `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`; `npm run build`;
+  `git diff --check`.
+
+## 2026-06-24 - Setup metric edit replaces drawer content
+
+- Updated mobile Setup metric editing so selecting a Boat metric edit action
+  replaces the current Setup Drawer content with the metric editor instead of
+  opening a nested dialog.
+- Centered the mobile Setup Drawer title while keeping the metric-edit back
+  button from shifting the title off center.
+- Saving the metric now returns to the Setup Drawer without closing the drawer;
+  the server action returns the updated metric/options payload to keep local
+  option IDs in sync without a redirect.
+- Moved metric delete into the same fixed footer row as Save, with Delete taking
+  the smaller 1/4 column and Save taking the larger 3/4 column.
+- Replaced the mobile Setup text button with a fixed bottom-right setup FAB
+  using a lucide settings icon, positioned above the mobile bottom navigation
+  safe area while keeping the desktop Setup button unchanged.
+- Matched the dynamic Setup loading fallback to the same mobile FAB affordance
+  so the old text button does not flash on mobile while the setup chunk loads.
+- Browser verification with Samsung J6 viewport `360x740` on session
+  `426f673c-ad6f-46ff-a2c1-a468efcb305d` confirmed no visible mobile `Setup`
+  text button remains, the setup FAB renders as a 56px circle 76px above the
+  bottom edge, tapping it opens the `Session setup` Drawer, and the browser
+  console stays clear of warnings/errors for this interaction.
+- Browser verification with Samsung J6 viewport `360x740` on session
+  `426f673c-ad6f-46ff-a2c1-a468efcb305d` confirmed the `Lowers` metric editor
+  replaces the Setup drawer content, Delete measures 76px while Save measures
+  244px, saving the unchanged metric returns to the Setup drawer, and no nested
+  dialog content remains after save.
+- Validation: `./node_modules/.bin/tsc --noEmit`; `npm run lint` passes with
+  existing warnings in `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`; `npm run build`;
+  `git diff --check`.
+
 ## 2026-06-24 - Mobile Setup edit dropdown fix
 
 - Fixed mobile Setup edit mode for `/team-sessions/[id]` by rendering the Setup

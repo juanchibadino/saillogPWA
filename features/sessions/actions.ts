@@ -37,7 +37,10 @@ import {
   updateSessionSetupInputSchema,
   uploadSessionAssetInputSchema,
 } from "@/lib/validation/sessions"
-import type { SessionDetailInfoTabData } from "@/features/sessions/detail-types"
+import type {
+  SessionDetailInfoTabData,
+  SessionSetupDialogItem,
+} from "@/features/sessions/detail-types"
 import type { Database } from "@/types/database"
 
 const SESSION_PHOTOS_BUCKET = "session-photos"
@@ -2129,6 +2132,40 @@ export type UpdateSessionSetupActionResult =
       message: string
     }
 
+export type TeamSetupMetricActionItem = Pick<
+  SessionSetupDialogItem,
+  | "id"
+  | "key"
+  | "label"
+  | "inputKind"
+  | "metricGroup"
+  | "isFixed"
+  | "position"
+  | "options"
+>
+
+export type UpdateTeamSetupMetricActionResult =
+  | {
+      ok: true
+      item: TeamSetupMetricActionItem
+    }
+  | {
+      ok: false
+      error: SessionSetupActionError
+      message: string
+    }
+
+export type DeleteTeamSetupMetricActionResult =
+  | {
+      ok: true
+      itemId: string
+    }
+  | {
+      ok: false
+      error: SessionSetupActionError
+      message: string
+    }
+
 type UpdateSessionSetupMutationResult =
   | {
       ok: true
@@ -2160,6 +2197,70 @@ function buildSessionSetupActionError(input: {
     message: SESSION_SETUP_ERROR_MESSAGES[input.error],
     scope: input.scope,
     sessionId: input.sessionId,
+  }
+}
+
+function buildUpdateTeamSetupMetricActionError(
+  error: SessionSetupActionError,
+): UpdateTeamSetupMetricActionResult {
+  return {
+    ok: false,
+    error,
+    message: SESSION_SETUP_ERROR_MESSAGES[error],
+  }
+}
+
+function buildDeleteTeamSetupMetricActionError(
+  error: SessionSetupActionError,
+): DeleteTeamSetupMetricActionResult {
+  return {
+    ok: false,
+    error,
+    message: SESSION_SETUP_ERROR_MESSAGES[error],
+  }
+}
+
+async function fetchTeamSetupMetricActionItem(input: {
+  itemId: string
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>
+  teamId: string
+}): Promise<TeamSetupMetricActionItem | null> {
+  const { data: itemRow, error: itemRowError } = await input.supabase
+    .from("team_setup_items")
+    .select("id,key,label,input_kind,metric_group,is_fixed,position")
+    .eq("id", input.itemId)
+    .eq("team_id", input.teamId)
+    .eq("is_active", true)
+    .maybeSingle()
+
+  if (!itemRow || itemRowError) {
+    return null
+  }
+
+  const { data: optionRows, error: optionRowsError } = await input.supabase
+    .from("team_setup_item_options")
+    .select("id,value,label,position")
+    .eq("team_setup_item_id", input.itemId)
+    .eq("is_active", true)
+    .order("position", { ascending: true })
+
+  if (!optionRows || optionRowsError) {
+    return null
+  }
+
+  return {
+    id: itemRow.id,
+    key: itemRow.key,
+    label: itemRow.label,
+    inputKind: itemRow.input_kind,
+    metricGroup: itemRow.metric_group,
+    isFixed: itemRow.is_fixed,
+    position: itemRow.position,
+    options: optionRows.map((optionRow) => ({
+      id: optionRow.id,
+      value: optionRow.value,
+      label: optionRow.label,
+    })),
   }
 }
 
@@ -2738,18 +2839,15 @@ export async function createTeamSetupMetricAction(formData: FormData): Promise<v
   )
 }
 
-export async function updateTeamSetupMetricAction(formData: FormData): Promise<void> {
+export async function updateTeamSetupMetricAction(
+  formData: FormData,
+): Promise<UpdateTeamSetupMetricActionResult> {
   const scope = getScopeFromFormData(formData)
   const sessionId = getFormString(formData, "sessionId")
   const parsedOptions = parseStringArrayPayload(getFormString(formData, "optionsPayload"))
 
   if (!sessionId || !parsedOptions) {
-    redirect(
-      buildTeamSessionsRedirectPath({
-        error: "invalid_input",
-        ...scope,
-      }),
-    )
+    return buildUpdateTeamSetupMetricActionError("invalid_input")
   }
 
   const parsedInput = updateTeamSetupMetricInputSchema.safeParse({
@@ -2761,13 +2859,7 @@ export async function updateTeamSetupMetricAction(formData: FormData): Promise<v
   })
 
   if (!parsedInput.success || !scope.scopeOrgId || !scope.scopeTeamId) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId,
-        error: "invalid_input",
-        ...scope,
-      }),
-    )
+    return buildUpdateTeamSetupMetricActionError("invalid_input")
   }
 
   const scopedSession = await ensureCanManageScopedSessionSetup({
@@ -2776,36 +2868,18 @@ export async function updateTeamSetupMetricAction(formData: FormData): Promise<v
   })
 
   if (!scopedSession) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "forbidden",
-        ...scope,
-      }),
-    )
+    return buildUpdateTeamSetupMetricActionError("forbidden")
   }
 
   const normalizedLabel = normalizeTeamSetupMetricLabel(parsedInput.data.label)
   const normalizedOptions = normalizeTeamSetupMetricOptions(parsedInput.data.options)
 
   if (parsedInput.data.inputKind === "text" && normalizedOptions.length > 0) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "invalid_input",
-        ...scope,
-      }),
-    )
+    return buildUpdateTeamSetupMetricActionError("invalid_input")
   }
 
   if (parsedInput.data.inputKind !== "text" && normalizedOptions.length === 0) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "invalid_input",
-        ...scope,
-      }),
-    )
+    return buildUpdateTeamSetupMetricActionError("invalid_input")
   }
 
   const supabase = await createServerSupabaseClient()
@@ -2817,13 +2891,7 @@ export async function updateTeamSetupMetricAction(formData: FormData): Promise<v
     .maybeSingle()
 
   if (itemRowError || !itemRow || itemRow.metric_group !== "boat" || itemRow.is_fixed) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "forbidden",
-        ...scope,
-      }),
-    )
+    return buildUpdateTeamSetupMetricActionError("forbidden")
   }
 
   const { error: updateItemError } = await supabase
@@ -2837,13 +2905,7 @@ export async function updateTeamSetupMetricAction(formData: FormData): Promise<v
     .eq("id", parsedInput.data.itemId)
 
   if (updateItemError) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "update_failed",
-        ...scope,
-      }),
-    )
+    return buildUpdateTeamSetupMetricActionError("update_failed")
   }
 
   const { error: deactivateOptionsError } = await supabase
@@ -2852,13 +2914,7 @@ export async function updateTeamSetupMetricAction(formData: FormData): Promise<v
     .eq("team_setup_item_id", parsedInput.data.itemId)
 
   if (deactivateOptionsError) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "update_failed",
-        ...scope,
-      }),
-    )
+    return buildUpdateTeamSetupMetricActionError("update_failed")
   }
 
   if (parsedInput.data.inputKind !== "text" && normalizedOptions.length > 0) {
@@ -2879,15 +2935,19 @@ export async function updateTeamSetupMetricAction(formData: FormData): Promise<v
         )
 
       if (upsertOptionError) {
-        redirect(
-          buildSessionDetailRedirectPath({
-            sessionId: parsedInput.data.sessionId,
-            error: "update_failed",
-            ...scope,
-          }),
-        )
+        return buildUpdateTeamSetupMetricActionError("update_failed")
       }
     }
+  }
+
+  const updatedItem = await fetchTeamSetupMetricActionItem({
+    itemId: parsedInput.data.itemId,
+    supabase,
+    teamId: scope.scopeTeamId,
+  })
+
+  if (!updatedItem) {
+    return buildUpdateTeamSetupMetricActionError("update_failed")
   }
 
   revalidateSessionSlices({
@@ -2896,16 +2956,15 @@ export async function updateTeamSetupMetricAction(formData: FormData): Promise<v
     teamVenueId: scopedSession.teamVenue.id,
   })
 
-  redirect(
-    buildSessionDetailRedirectPath({
-      sessionId: parsedInput.data.sessionId,
-      status: "setup_metric_updated",
-      ...scope,
-    }),
-  )
+  return {
+    ok: true,
+    item: updatedItem,
+  }
 }
 
-export async function deleteTeamSetupMetricAction(formData: FormData): Promise<void> {
+export async function deleteTeamSetupMetricAction(
+  formData: FormData,
+): Promise<DeleteTeamSetupMetricActionResult> {
   const scope = getScopeFromFormData(formData)
   const sessionId = getFormString(formData, "sessionId")
 
@@ -2915,13 +2974,7 @@ export async function deleteTeamSetupMetricAction(formData: FormData): Promise<v
   })
 
   if (!parsedInput.success || !scope.scopeOrgId || !scope.scopeTeamId) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: sessionId ?? "",
-        error: "invalid_input",
-        ...scope,
-      }),
-    )
+    return buildDeleteTeamSetupMetricActionError("invalid_input")
   }
 
   const scopedSession = await ensureCanManageScopedSessionSetup({
@@ -2930,13 +2983,7 @@ export async function deleteTeamSetupMetricAction(formData: FormData): Promise<v
   })
 
   if (!scopedSession) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "forbidden",
-        ...scope,
-      }),
-    )
+    return buildDeleteTeamSetupMetricActionError("forbidden")
   }
 
   const supabase = await createServerSupabaseClient()
@@ -2948,13 +2995,7 @@ export async function deleteTeamSetupMetricAction(formData: FormData): Promise<v
     .maybeSingle()
 
   if (itemRowError || !itemRow || itemRow.metric_group !== "boat" || itemRow.is_fixed) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "forbidden",
-        ...scope,
-      }),
-    )
+    return buildDeleteTeamSetupMetricActionError("forbidden")
   }
 
   const { error: deactivateItemError } = await supabase
@@ -2968,13 +3009,7 @@ export async function deleteTeamSetupMetricAction(formData: FormData): Promise<v
     .eq("team_setup_item_id", parsedInput.data.itemId)
 
   if (deactivateItemError || deactivateOptionsError) {
-    redirect(
-      buildSessionDetailRedirectPath({
-        sessionId: parsedInput.data.sessionId,
-        error: "update_failed",
-        ...scope,
-      }),
-    )
+    return buildDeleteTeamSetupMetricActionError("update_failed")
   }
 
   revalidateSessionSlices({
@@ -2983,13 +3018,10 @@ export async function deleteTeamSetupMetricAction(formData: FormData): Promise<v
     teamVenueId: scopedSession.teamVenue.id,
   })
 
-  redirect(
-    buildSessionDetailRedirectPath({
-      sessionId: parsedInput.data.sessionId,
-      status: "setup_metric_deleted",
-      ...scope,
-    }),
-  )
+  return {
+    ok: true,
+    itemId: parsedInput.data.itemId,
+  }
 }
 
 export async function reorderTeamSetupMetricsAction(formData: FormData): Promise<void> {

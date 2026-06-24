@@ -15,7 +15,6 @@ import {
   SESSION_DETAIL_TABS,
   type SessionDetailTab,
 } from "@/features/sessions/navigation"
-import { cn } from "@/lib/utils"
 
 export function resolveSessionDetailTab(value: string): SessionDetailTab {
   return SESSION_DETAIL_TABS.includes(value as SessionDetailTab)
@@ -263,26 +262,15 @@ export function MobileSessionDetailTabsList(input: {
 
   return (
     <div ref={containerRef} className="w-full">
-      <div
-        className={cn(
-          "inline-flex h-10 max-w-full items-center rounded-lg bg-muted p-[3px] text-muted-foreground",
-          allTabsVisible ? "w-full" : "w-fit",
-        )}
-      >
+      <div className="flex h-11 w-full max-w-full items-center rounded-lg bg-muted p-[3px] text-muted-foreground">
         <TabsList
-          className={cn(
-            "h-full min-w-0 rounded-md bg-transparent p-0",
-            allTabsVisible ? "w-full flex-1" : "w-fit shrink-0",
-          )}
+          className="h-full min-w-0 flex-1 rounded-md bg-transparent p-0 group-data-horizontal/tabs:h-full"
         >
           {visibleTabs.map((tab) => (
             <TabsTrigger
               key={tab}
               value={tab}
-              className={cn(
-                "capitalize",
-                allTabsVisible ? "min-w-0 flex-1 px-2" : "min-w-fit shrink-0",
-              )}
+              className="min-w-0 basis-0 px-2 capitalize"
             >
               {formatSessionDetailTabLabel(tab)}
             </TabsTrigger>
@@ -297,7 +285,7 @@ export function MobileSessionDetailTabsList(input: {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-[calc(100%-1px)] shrink-0 rounded-md px-2 text-foreground/60 hover:text-foreground"
+                  className="h-full shrink-0 rounded-md px-2.5 text-foreground/60 hover:text-foreground"
                 />
               }
             >
@@ -326,7 +314,7 @@ export function MobileSessionDetailTabsList(input: {
         aria-hidden="true"
         className="pointer-events-none fixed top-0 left-0 -z-10 opacity-0"
       >
-        <div className="inline-flex h-10 items-center rounded-lg bg-muted p-[3px] text-muted-foreground">
+        <div className="inline-flex h-11 items-center rounded-lg bg-muted p-[3px] text-muted-foreground">
           {SESSION_DETAIL_TABS.map((tab) => (
             <button
               key={tab}
@@ -345,7 +333,7 @@ export function MobileSessionDetailTabsList(input: {
             className={buttonVariants({
               variant: "ghost",
               size: "sm",
-              className: "h-[calc(100%-1px)] rounded-md px-2",
+              className: "h-full rounded-md px-2.5",
             })}
           >
             <span>More</span>

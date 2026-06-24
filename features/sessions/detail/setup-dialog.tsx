@@ -3,9 +3,11 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import {
+  ArrowLeftIcon,
   Loader2Icon,
   PencilIcon,
   PlusIcon,
+  Settings2Icon,
   Trash2Icon,
 } from "lucide-react"
 import { useFormStatus } from "react-dom"
@@ -24,6 +26,7 @@ import {
 import {
   Drawer,
   DrawerContent,
+  DrawerDescription,
   DrawerFooter,
   DrawerHeader,
   DrawerTitle,
@@ -56,6 +59,7 @@ import {
   updateSessionSetupAction,
   updateTeamSetupMetricAction,
 } from "@/features/sessions/actions"
+import type { TeamSetupMetricActionItem } from "@/features/sessions/actions"
 import type { SessionSetupDialogItem } from "@/features/sessions/detail-types"
 import { useIsMobile } from "@/hooks/use-mobile"
 import type { NavigationScope } from "@/lib/navigation/types"
@@ -643,6 +647,51 @@ function parseMetricOptionsFromText(value: string): string[] {
   return [...uniqueOptions]
 }
 
+function mergeUpdatedSetupMetricItem(input: {
+  currentItem: SessionSetupDialogItem
+  updatedItem: TeamSetupMetricActionItem
+}): SessionSetupDialogItem {
+  const activeOptionIds = new Set(input.updatedItem.options.map((option) => option.id))
+
+  return {
+    ...input.currentItem,
+    ...input.updatedItem,
+    selectedOptions:
+      input.updatedItem.inputKind === "text"
+        ? []
+        : input.currentItem.selectedOptions.filter((selectedOption) =>
+            activeOptionIds.has(selectedOption.optionId),
+          ),
+    textValue:
+      input.updatedItem.inputKind === "text" ? input.currentItem.textValue : "",
+  }
+}
+
+function mergeUpdatedSetupMetricDraft(input: {
+  currentDraft: SetupDraftItem
+  updatedItem: TeamSetupMetricActionItem
+}): SetupDraftItem {
+  const activeOptionIds = new Set(input.updatedItem.options.map((option) => option.id))
+
+  if (input.updatedItem.inputKind === "text") {
+    return {
+      textValue: input.currentDraft.textValue,
+      selectedOptions: [],
+      twsEditedOptionIds: [],
+    }
+  }
+
+  return {
+    textValue: "",
+    selectedOptions: input.currentDraft.selectedOptions.filter((selectedOption) =>
+      activeOptionIds.has(selectedOption.optionId),
+    ),
+    twsEditedOptionIds: input.currentDraft.twsEditedOptionIds.filter((optionId) =>
+      activeOptionIds.has(optionId),
+    ),
+  }
+}
+
 function SetupScopeHiddenFields(input: {
   sessionId: string
   scope: NavigationScope
@@ -734,18 +783,28 @@ function SetupDialogFieldset(props: { children: React.ReactNode; isSaving: boole
   )
 }
 
-function EditSetupMetricFieldset(props: { children: React.ReactNode }) {
-  const { pending } = useFormStatus()
-
-  return <fieldset disabled={pending} className="m-0 space-y-4 border-0 p-0">{props.children}</fieldset>
+function EditSetupMetricFieldset(props: {
+  children: React.ReactNode
+  isPending: boolean
+}) {
+  return (
+    <fieldset
+      disabled={props.isPending}
+      className="m-0 min-h-0 flex-1 overflow-hidden border-0 p-0"
+    >
+      {props.children}
+    </fieldset>
+  )
 }
 
-function EditSetupMetricSubmitButton(props: { className?: string }) {
-  const { pending } = useFormStatus()
-
+function EditSetupMetricSubmitButton(props: {
+  className?: string
+  disabled: boolean
+  isSaving: boolean
+}) {
   return (
-    <Button type="submit" disabled={pending} className={props.className}>
-      {pending ? (
+    <Button type="submit" disabled={props.disabled} className={props.className}>
+      {props.isSaving ? (
         <>
           <Loader2Icon className="size-4 animate-spin" />
           Saving...
@@ -806,8 +865,8 @@ export function SetupDialog(input: {
     "single_select" | "multi_select" | "text"
   >("multi_select")
   const [editingMetricOptionsText, setEditingMetricOptionsText] = React.useState("")
-
-  const [deletingMetricId, setDeletingMetricId] = React.useState<string | null>(null)
+  const [isSavingMetric, setIsSavingMetric] = React.useState(false)
+  const [isDeletingMetric, setIsDeletingMetric] = React.useState(false)
   const isMobile = useIsMobile()
 
   React.useEffect(() => {
@@ -848,8 +907,7 @@ export function SetupDialog(input: {
 
   const editingMetric =
     editingMetricId !== null ? boatItemById.get(editingMetricId) ?? null : null
-  const deletingMetric =
-    deletingMetricId !== null ? boatItemById.get(deletingMetricId) ?? null : null
+  const isMetricPending = isSavingMetric || isDeletingMetric
   const visibleWeatherItems = isEditMode ? groupedItems.weather : valuedGroupedItems.weather
   const visibleBoatItems = isEditMode ? groupedItems.boat : valuedGroupedItems.boat
   const hasReadOnlySetupValues =
@@ -888,7 +946,6 @@ export function SetupDialog(input: {
     setEditingMetricLabel("")
     setEditingMetricKind("multi_select")
     setEditingMetricOptionsText("")
-    setDeletingMetricId(null)
   }
 
   function handleOpenChange(nextOpen: boolean) {
@@ -1066,6 +1123,129 @@ export function SetupDialog(input: {
     setEditingMetricLabel(item.label)
     setEditingMetricKind(item.inputKind)
     setEditingMetricOptionsText(item.options.map((option) => option.label).join("\n"))
+  }
+
+  function closeMetricEditor() {
+    setEditingMetricId(null)
+    setEditingMetricLabel("")
+    setEditingMetricKind("multi_select")
+    setEditingMetricOptionsText("")
+  }
+
+  function buildMetricDeleteFormData(itemId: string): FormData {
+    const formData = new FormData()
+
+    formData.set("sessionId", input.sessionId)
+    formData.set("scopeOrgId", input.scope.activeOrgId)
+
+    if (input.scope.activeTeamId) {
+      formData.set("scopeTeamId", input.scope.activeTeamId)
+    }
+
+    formData.set("scopeTab", "info")
+    formData.set("itemId", itemId)
+
+    return formData
+  }
+
+  async function handleMetricSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!editingMetric || isMetricPending) {
+      return
+    }
+
+    const formData = new FormData(event.currentTarget)
+    const toastId = `setup-metric-save:${editingMetric.id}`
+
+    setIsSavingMetric(true)
+
+    try {
+      const result = await updateTeamSetupMetricAction(formData)
+
+      if (!result.ok) {
+        toast.error(result.message, { id: toastId })
+        return
+      }
+
+      setSetupItems((previousItems) =>
+        previousItems.map((item) =>
+          item.id === result.item.id
+            ? mergeUpdatedSetupMetricItem({
+                currentItem: item,
+                updatedItem: result.item,
+              })
+            : item,
+        ),
+      )
+      setDraftByItemId((previousDraftByItemId) => {
+        const currentDraft = previousDraftByItemId[result.item.id] ?? {
+          textValue: "",
+          selectedOptions: [],
+          twsEditedOptionIds: [],
+        }
+
+        return {
+          ...previousDraftByItemId,
+          [result.item.id]: mergeUpdatedSetupMetricDraft({
+            currentDraft,
+            updatedItem: result.item,
+          }),
+        }
+      })
+      closeMetricEditor()
+      input.onRetry?.()
+      router.refresh()
+      toast.success("Setup metric updated.", { id: toastId })
+    } catch {
+      toast.error("Could not update this session setup. Confirm permissions and try again.", {
+        id: toastId,
+      })
+    } finally {
+      setIsSavingMetric(false)
+    }
+  }
+
+  async function handleMetricDelete() {
+    if (!editingMetric || isMetricPending) {
+      return
+    }
+
+    const formData = buildMetricDeleteFormData(editingMetric.id)
+    const toastId = `setup-metric-delete:${editingMetric.id}`
+
+    setIsDeletingMetric(true)
+
+    try {
+      const result = await deleteTeamSetupMetricAction(formData)
+
+      if (!result.ok) {
+        toast.error(result.message, { id: toastId })
+        return
+      }
+
+      setSetupItems((previousItems) =>
+        previousItems.filter((item) => item.id !== result.itemId),
+      )
+      setDraftByItemId((previousDraftByItemId) => {
+        const nextDraftByItemId = { ...previousDraftByItemId }
+        delete nextDraftByItemId[result.itemId]
+        return nextDraftByItemId
+      })
+      setBoatOrderIds((previousOrderIds) =>
+        previousOrderIds.filter((itemId) => itemId !== result.itemId),
+      )
+      closeMetricEditor()
+      input.onRetry?.()
+      router.refresh()
+      toast.success("Setup metric deleted.", { id: toastId })
+    } catch {
+      toast.error("Could not update this session setup. Confirm permissions and try again.", {
+        id: toastId,
+      })
+    } finally {
+      setIsDeletingMetric(false)
+    }
   }
 
   function renderField(item: SessionSetupDialogItem): React.ReactNode {
@@ -1422,38 +1602,177 @@ export function SetupDialog(input: {
         </form>
   )
 
+  const metricEditFooterContent = (
+    <div className="grid w-full grid-cols-4 gap-2">
+      <Button
+        type="button"
+        variant="destructive"
+        disabled={isMetricPending}
+        className={`col-span-1 min-w-0 px-2 ${isMobile ? "h-11" : "h-10"}`}
+        aria-label="Delete metric"
+        onClick={handleMetricDelete}
+      >
+        {isDeletingMetric ? (
+          <Loader2Icon className="size-4 animate-spin" />
+        ) : (
+          <>
+            <Trash2Icon className="size-4" />
+            <span className="hidden sm:inline">Delete</span>
+          </>
+        )}
+      </Button>
+      <EditSetupMetricSubmitButton
+        className={`col-span-3 ${isMobile ? "h-11" : "h-10"}`}
+        disabled={isMetricPending}
+        isSaving={isSavingMetric}
+      />
+    </div>
+  )
+
+  const metricEditForm = editingMetric ? (
+    <form onSubmit={handleMetricSubmit} className="flex min-h-0 flex-1 flex-col">
+      <SetupScopeHiddenFields sessionId={input.sessionId} scope={input.scope} />
+      <input type="hidden" name="itemId" value={editingMetric.id} />
+      <input type="hidden" name="optionsPayload" value={updateMetricOptionsPayload} />
+
+      <EditSetupMetricFieldset isPending={isMetricPending}>
+        <div className="no-scrollbar h-full space-y-4 overflow-y-auto px-4 pb-4 pr-5">
+          <div className="space-y-2">
+            <Label htmlFor="edit-setup-metric-label">Metric name</Label>
+            <Input
+              id="edit-setup-metric-label"
+              name="label"
+              value={editingMetricLabel}
+              onChange={(event) => setEditingMetricLabel(event.target.value)}
+              className={isMobile ? "h-11" : undefined}
+              maxLength={120}
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="edit-setup-metric-kind">Input kind</Label>
+            <select
+              id="edit-setup-metric-kind"
+              name="inputKind"
+              value={editingMetricKind}
+              onChange={(event) =>
+                setEditingMetricKind(
+                  event.target.value as "single_select" | "multi_select" | "text",
+                )
+              }
+              className="h-11 w-full rounded-lg border border-input bg-background px-3 text-base outline-none ring-ring/50 focus-visible:ring-[3px] md:text-sm"
+            >
+              <option value="single_select">Single Select</option>
+              <option value="multi_select">Multi Select</option>
+              <option value="text">Text</option>
+            </select>
+          </div>
+
+          {editingMetricKind !== "text" ? (
+            <div className="space-y-2">
+              <Label htmlFor="edit-setup-metric-options">Options (one per line)</Label>
+              <Textarea
+                id="edit-setup-metric-options"
+                value={editingMetricOptionsText}
+                onChange={(event) => setEditingMetricOptionsText(event.target.value)}
+                className="max-h-56 overflow-y-auto [field-sizing:fixed]"
+                rows={6}
+                placeholder={"Option A\nOption B\nOption C"}
+              />
+            </div>
+          ) : null}
+        </div>
+      </EditSetupMetricFieldset>
+
+      {isMobile ? (
+        <DrawerFooter className="shrink-0 border-t">{metricEditFooterContent}</DrawerFooter>
+      ) : (
+        <SheetFooter className="shrink-0 border-t sm:justify-start">
+          {metricEditFooterContent}
+        </SheetFooter>
+      )}
+    </form>
+  ) : null
+
+  const setupSurfaceContent = editingMetric ? metricEditForm : setupForm
+  const setupSurfaceTitle = editingMetric ? "Edit setup metric" : "Session setup"
+  const setupSurfaceDescription = editingMetric
+    ? "Update the selected setup metric."
+    : "Review and update session setup metrics."
+  const setupDrawerHeaderContent = (
+    <div className="relative flex min-h-9 items-center justify-center px-10">
+      {editingMetric ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="absolute left-0 top-1/2 size-9 -translate-y-1/2 rounded-xl"
+          onClick={closeMetricEditor}
+        >
+          <ArrowLeftIcon className="size-4" />
+          <span className="sr-only">Back to setup</span>
+        </Button>
+      ) : null}
+      <DrawerTitle className="text-center">{setupSurfaceTitle}</DrawerTitle>
+      <DrawerDescription className="sr-only">{setupSurfaceDescription}</DrawerDescription>
+    </div>
+  )
+  const setupSheetHeaderContent = (
+    <div className="flex min-w-0 items-center gap-2">
+      {editingMetric ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="size-9 shrink-0 rounded-xl"
+          onClick={closeMetricEditor}
+        >
+          <ArrowLeftIcon className="size-4" />
+          <span className="sr-only">Back to setup</span>
+        </Button>
+      ) : null}
+      <div className="min-w-0 text-left">
+        <SheetTitle>{setupSurfaceTitle}</SheetTitle>
+      </div>
+    </div>
+  )
+
   const setupSurface = isMobile ? (
     <Drawer open={isOpen} onOpenChange={handleOpenChange}>
       <Button
         type="button"
-        variant="outline"
-        size="default"
-        className="h-9 px-3"
+        variant="default"
+        size="icon"
+        className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-4 z-[45] size-14 rounded-full shadow-lg shadow-black/20 md:hidden"
+        aria-label="Open session setup"
         aria-haspopup="dialog"
         aria-expanded={isOpen}
         onClick={() => handleOpenChange(true)}
       >
-        Setup
+        <Settings2Icon className="size-6" />
       </Button>
       <DrawerContent className="h-[85dvh] overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
         <div ref={metricDialogPortalContainerRef} />
-        <DrawerHeader className="shrink-0">
-          <DrawerTitle>Session setup</DrawerTitle>
+        <DrawerHeader className="shrink-0 border-b px-4 py-3">
+          {setupDrawerHeaderContent}
         </DrawerHeader>
-        {setupForm}
+        {setupSurfaceContent}
       </DrawerContent>
     </Drawer>
   ) : (
     <Sheet open={isOpen} onOpenChange={handleOpenChange}>
-      <SheetTrigger render={<Button type="button" variant="outline" size="sm" />}>
+      <SheetTrigger
+        render={<Button type="button" variant="outline" size="sm" className="hidden md:inline-flex" />}
+      >
         Setup
       </SheetTrigger>
       <SheetContent side="right" className="h-full overflow-hidden sm:max-w-5xl">
         <div ref={metricDialogPortalContainerRef} />
-        <SheetHeader className="shrink-0">
-          <SheetTitle>Session setup</SheetTitle>
+        <SheetHeader className="shrink-0 border-b pr-14">
+          {setupSheetHeaderContent}
         </SheetHeader>
-        {setupForm}
+        {setupSurfaceContent}
       </SheetContent>
     </Sheet>
   )
@@ -1579,140 +1898,6 @@ export function SetupDialog(input: {
           </DialogContent>
         </Dialog>
 
-        <Dialog
-          open={editingMetric !== null}
-          onOpenChange={(nextOpen) => {
-            if (!nextOpen) {
-              setEditingMetricId(null)
-            }
-          }}
-        >
-          <DialogContent
-            className="max-h-[calc(85dvh-2rem)] overflow-y-auto sm:max-w-lg"
-            portalContainer={metricDialogPortalContainerRef}
-          >
-            <DialogHeader>
-              <DialogTitle>Edit setup metric</DialogTitle>
-              <DialogDescription>
-                Update Boat metric label, input kind, and options.
-              </DialogDescription>
-            </DialogHeader>
-
-            <form action={updateTeamSetupMetricAction} className="space-y-4">
-              <SetupScopeHiddenFields sessionId={input.sessionId} scope={input.scope} />
-              <input type="hidden" name="itemId" value={editingMetric?.id ?? ""} />
-              <input type="hidden" name="optionsPayload" value={updateMetricOptionsPayload} />
-
-              <EditSetupMetricFieldset>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-setup-metric-label">Metric name</Label>
-                  <Input
-                    id="edit-setup-metric-label"
-                    name="label"
-                    value={editingMetricLabel}
-                    onChange={(event) => setEditingMetricLabel(event.target.value)}
-                    className={isMobile ? "h-11" : undefined}
-                    maxLength={120}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="edit-setup-metric-kind">Input kind</Label>
-                  <select
-                    id="edit-setup-metric-kind"
-                    name="inputKind"
-                    value={editingMetricKind}
-                    onChange={(event) =>
-                      setEditingMetricKind(
-                        event.target.value as "single_select" | "multi_select" | "text",
-                      )
-                    }
-                    className="h-11 w-full rounded-lg border border-input bg-background px-3 text-base outline-none ring-ring/50 focus-visible:ring-[3px] md:text-sm"
-                  >
-                    <option value="single_select">Single Select</option>
-                    <option value="multi_select">Multi Select</option>
-                    <option value="text">Text</option>
-                  </select>
-                </div>
-
-                {editingMetricKind !== "text" ? (
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-setup-metric-options">Options (one per line)</Label>
-                    <Textarea
-                      id="edit-setup-metric-options"
-                      value={editingMetricOptionsText}
-                      onChange={(event) => setEditingMetricOptionsText(event.target.value)}
-                      className="max-h-56 overflow-y-auto [field-sizing:fixed]"
-                      rows={6}
-                      placeholder={"Option A\nOption B\nOption C"}
-                    />
-                  </div>
-                ) : null}
-
-                <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    className={isMobile ? "h-11" : undefined}
-                    onClick={() => {
-                      if (!editingMetric) {
-                        return
-                      }
-
-                      setDeletingMetricId(editingMetric.id)
-                      setEditingMetricId(null)
-                    }}
-                  >
-                    <Trash2Icon className="size-4" />
-                    Delete metric
-                  </Button>
-                  <EditSetupMetricSubmitButton className={isMobile ? "h-11" : undefined} />
-                </div>
-              </EditSetupMetricFieldset>
-            </form>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog
-          open={deletingMetric !== null}
-          onOpenChange={(nextOpen) => {
-            if (!nextOpen) {
-              setDeletingMetricId(null)
-            }
-          }}
-        >
-          <DialogContent
-            className="max-h-[calc(85dvh-2rem)] overflow-y-auto sm:max-w-md"
-            portalContainer={metricDialogPortalContainerRef}
-          >
-            <DialogHeader>
-              <DialogTitle>Delete setup metric</DialogTitle>
-              <DialogDescription>
-                This hides the metric for future setup entries and keeps historical session data.
-              </DialogDescription>
-            </DialogHeader>
-
-            <p className="text-sm">
-              Delete <span className="font-semibold">{deletingMetric?.label ?? "this metric"}</span>?
-            </p>
-
-            <form action={deleteTeamSetupMetricAction} className="space-y-4">
-              <SetupScopeHiddenFields sessionId={input.sessionId} scope={input.scope} />
-              <input type="hidden" name="itemId" value={deletingMetric?.id ?? ""} />
-
-              <DialogFooter>
-                <Button
-                  type="submit"
-                  variant="destructive"
-                  className={isMobile ? "h-11" : undefined}
-                >
-                  Delete metric
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
     </>
   )
 }
