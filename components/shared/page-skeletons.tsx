@@ -1,3 +1,5 @@
+import { ChevronDownIcon } from "lucide-react"
+
 import { Skeleton } from "@/components/ui/skeleton"
 
 function SkeletonCard() {
@@ -448,7 +450,8 @@ export function OrganizationReportsPageSkeleton() {
 
 export function SessionDetailPageSkeleton() {
   const summaryLabels = ["Type", "Date", "Dock Out", "Duration"]
-  const tabLabels = ["Info", "Goals", "Results", "Images", "Analytics", "Gear"]
+  const mobileTabLabels = ["Info", "Goals", "Results", "Images"]
+  const desktopTabLabels = ["Info", "Goals", "Results", "Images", "Analytics", "Gear"]
 
   return (
     <div className="space-y-6">
@@ -506,22 +509,30 @@ export function SessionDetailPageSkeleton() {
       </section>
 
       <div className="space-y-4">
-        <div className="flex h-10 max-w-full items-center gap-1 overflow-x-auto rounded-lg bg-muted p-1 md:hidden">
-          {tabLabels.map((label, index) => (
+        <div className="flex h-11 w-full max-w-full items-center overflow-hidden rounded-lg bg-muted p-[3px] text-muted-foreground md:hidden">
+          {mobileTabLabels.map((label, index) => (
             <button
               key={`session-detail-mobile-tab-${label}`}
               type="button"
               disabled
-              className="inline-flex h-8 min-w-fit items-center justify-center rounded-md px-2 text-sm font-medium text-muted-foreground data-[active=true]:bg-background data-[active=true]:text-foreground"
+              className="inline-flex h-[calc(100%-1px)] min-w-0 flex-1 basis-0 items-center justify-center truncate rounded-md px-2 text-sm font-medium text-muted-foreground data-[active=true]:bg-background data-[active=true]:text-foreground"
               data-active={index === 0 ? "true" : undefined}
             >
               {label}
             </button>
           ))}
+          <button
+            type="button"
+            disabled
+            className="inline-flex h-[calc(100%-1px)] shrink-0 items-center justify-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-muted-foreground"
+          >
+            <span>More</span>
+            <ChevronDownIcon className="size-4" />
+          </button>
         </div>
 
         <div className="hidden h-10 items-center gap-1 rounded-lg bg-muted p-1 md:inline-flex">
-          {tabLabels.map((label, index) => (
+          {desktopTabLabels.map((label, index) => (
             <button
               key={`session-detail-desktop-tab-${label}`}
               type="button"
@@ -536,16 +547,7 @@ export function SessionDetailPageSkeleton() {
 
         <section className="rounded-xl border bg-card p-4 sm:p-6">
           <div className="space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="space-y-2">
-                <h3 className="text-base font-semibold">Info</h3>
-                <Skeleton className="h-4 w-72 max-w-full" />
-              </div>
-              <span
-                aria-hidden="true"
-                className="mt-1 size-4 animate-spin rounded-full border-2 border-muted-foreground/25 border-t-muted-foreground"
-              />
-            </div>
+            <Skeleton className="h-4 w-72 max-w-full" />
 
             <div className="grid gap-3 sm:grid-cols-2">
               <Skeleton className="h-28 rounded-lg" />

@@ -1,5 +1,5 @@
 import { Suspense } from "react"
-import { Loader2Icon } from "lucide-react"
+import { ChevronDownIcon } from "lucide-react"
 
 import {
   Card,
@@ -184,28 +184,53 @@ function formatSessionDetailTabLabel(tab: SessionDetailTab): string {
   return tab.charAt(0).toUpperCase() + tab.slice(1)
 }
 
+const MOBILE_SESSION_DETAIL_FALLBACK_TABS: SessionDetailTab[] = [
+  "info",
+  "goals",
+  "results",
+  "images",
+]
+
+function getMobileSessionDetailFallbackTabs(
+  selectedTab: SessionDetailTab,
+): SessionDetailTab[] {
+  if (MOBILE_SESSION_DETAIL_FALLBACK_TABS.includes(selectedTab)) {
+    return MOBILE_SESSION_DETAIL_FALLBACK_TABS
+  }
+
+  return ["info", "goals", "results", selectedTab]
+}
+
 function SessionDetailTabsFallback({
   selectedTab,
 }: {
   selectedTab: SessionDetailTab
 }) {
-  const selectedTabLabel = formatSessionDetailTabLabel(selectedTab)
+  const mobileTabs = getMobileSessionDetailFallbackTabs(selectedTab)
 
   return (
     <div className="space-y-4" aria-busy="true">
       <div className="md:hidden">
-        <div className="flex h-10 max-w-full items-center gap-1 overflow-x-auto rounded-lg bg-muted p-1">
-          {SESSION_DETAIL_TABS.map((tab) => (
+        <div className="flex h-11 w-full max-w-full items-center overflow-hidden rounded-lg bg-muted p-[3px] text-muted-foreground">
+          {mobileTabs.map((tab) => (
             <button
               key={`mobile-tab-loading-${tab}`}
               type="button"
               disabled
-              className="inline-flex h-8 min-w-fit items-center justify-center rounded-md px-2 text-sm font-medium text-muted-foreground data-[active=true]:bg-background data-[active=true]:text-foreground"
+              className="inline-flex h-[calc(100%-1px)] min-w-0 flex-1 basis-0 items-center justify-center truncate rounded-md px-2 text-sm font-medium text-muted-foreground data-[active=true]:bg-background data-[active=true]:text-foreground"
               data-active={tab === selectedTab ? "true" : undefined}
             >
               {formatSessionDetailTabLabel(tab)}
             </button>
           ))}
+          <button
+            type="button"
+            disabled
+            className="inline-flex h-[calc(100%-1px)] shrink-0 items-center justify-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-muted-foreground"
+          >
+            <span>More</span>
+            <ChevronDownIcon className="size-4" />
+          </button>
         </div>
       </div>
 
@@ -225,16 +250,7 @@ function SessionDetailTabsFallback({
 
       <section className="rounded-xl border bg-card p-4 sm:p-6">
         <div className="space-y-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="space-y-2">
-              <h3 className="text-base font-semibold">{selectedTabLabel}</h3>
-              <Skeleton className="h-4 w-72 max-w-full" />
-            </div>
-            <Loader2Icon
-              aria-label={`Loading ${selectedTabLabel}`}
-              className="mt-1 size-4 animate-spin text-muted-foreground"
-            />
-          </div>
+          <Skeleton className="h-4 w-72 max-w-full" />
 
           <div className="grid gap-3 sm:grid-cols-2">
             <Skeleton className="h-28 rounded-lg" />

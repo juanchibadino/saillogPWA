@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { resolveNavigationScope } from "@/lib/navigation/scope";
 import type { ResolvedNavigationScope } from "@/lib/navigation/types";
 import { AppSidebar } from "@/components/app-sidebar";
-import { AppMobileBottomNav } from "@/components/app-mobile-bottom-nav";
+import { AppMobileBottomNavClient } from "@/components/app-mobile-bottom-nav-client";
 import { SiteHeader } from "@/components/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
@@ -109,7 +109,7 @@ export default async function AppLayout({
             )}
           </div>
         </div>
-        <AppMobileBottomNav canAccessApp={canAccessApp} navigation={navigation} />
+        <AppMobileBottomNavClient canAccessApp={canAccessApp} navigation={navigation} />
       </SidebarInset>
     </SidebarProvider>
   );

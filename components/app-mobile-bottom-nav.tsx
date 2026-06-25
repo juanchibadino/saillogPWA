@@ -121,11 +121,6 @@ export function AppMobileBottomNav({
 }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const [hydratedPathname, setHydratedPathname] = React.useState<string | null>(null)
-
-  React.useEffect(() => {
-    setHydratedPathname(pathname)
-  }, [pathname])
 
   if (!canAccessApp) {
     return null
@@ -144,9 +139,14 @@ export function AppMobileBottomNav({
       <div className="mobile-bottom-nav-grid mx-auto flex max-w-md items-center justify-between gap-2 px-4 py-2">
         {mobileNavItems.map((item) => {
           const Icon = item.icon
-          const active = hydratedPathname
-            ? isItemActive(hydratedPathname, item.url)
-            : false
+          const active = isItemActive(pathname, item.url)
+          const linkClassName = [
+            "inline-flex h-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl transition-[width,padding,gap,background-color,color] duration-300 ease-out motion-reduce:transition-none",
+            "hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+            active
+              ? "w-[7rem] gap-2 bg-foreground/10 px-3 text-foreground"
+              : "w-11 gap-0 px-0 text-muted-foreground",
+          ].join(" ")
 
           return (
             <Link
@@ -154,18 +154,20 @@ export function AppMobileBottomNav({
               href={buildScopedHref(item.url, scope)}
               aria-current={active ? "page" : undefined}
               aria-label={item.title}
-              className={[
-                "inline-flex h-11 shrink-0 items-center justify-center rounded-2xl transition-colors",
-                "hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                active
-                  ? "max-w-[7rem] gap-2 bg-foreground/10 px-3 text-foreground"
-                  : "w-11 text-muted-foreground",
-              ].join(" ")}
+              className={linkClassName}
             >
               <Icon className="size-5 shrink-0" aria-hidden="true" />
-              {active ? (
-                <span className="truncate text-sm font-medium">{item.title}</span>
-              ) : null}
+              <span
+                aria-hidden={!active}
+                className={[
+                  "overflow-hidden whitespace-nowrap text-sm font-medium transition-[max-width,opacity,transform] duration-300 ease-out motion-reduce:transition-none",
+                  active
+                    ? "max-w-[4.75rem] translate-x-0 opacity-100"
+                    : "max-w-0 -translate-x-1 opacity-0",
+                ].join(" ")}
+              >
+                {item.title}
+              </span>
             </Link>
           )
         })}

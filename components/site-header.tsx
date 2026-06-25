@@ -13,7 +13,6 @@ import { ArrowLeftIcon } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { InstallAppButton } from "@/components/pwa/install-app-button"
 import { PwaDebugPanel } from "@/components/pwa/pwa-debug-panel"
-import { useIsMobile } from "@/hooks/use-mobile"
 import {
   NAVIGATION_SCOPE_ORG_QUERY_KEY,
   NAVIGATION_SCOPE_TEAM_QUERY_KEY,
@@ -439,7 +438,6 @@ export function SiteHeader({
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const isMobile = useIsMobile()
   const isPwaDebugEnabled =
     searchParams.get("pwaDebug") === "1" || searchParams.get("pwaDebug") === "true"
   const [venueNameById, setVenueNameById] = useState<
@@ -492,8 +490,7 @@ export function SiteHeader({
       ?.name ?? "No team selected"
   const teamHomeHref = buildScopedHref("/team-home", activeScope)
   const venuesHref = buildScopedHref("/venues", activeScope)
-  const phaseOneMobileHeaderEnabled =
-    isMobile && shouldUsePhaseOneMobileHeader(pathname)
+  const phaseOneMobileHeaderEligible = shouldUsePhaseOneMobileHeader(pathname)
   const mobileBackFallbackHref = buildScopedHref(
     resolveMobileBackFallbackPath(pathname),
     activeScope,
@@ -661,30 +658,12 @@ export function SiteHeader({
     router.push(mobileBackFallbackHref)
   }
 
-  if (phaseOneMobileHeaderEnabled) {
-    const showMobileSidebarTrigger =
-      pathname.startsWith("/team-sessions") || pathname === "/team-venues"
+  const desktopHeaderClassName = phaseOneMobileHeaderEligible
+    ? "mobile-safe-header z-30 hidden shrink-0 items-center gap-2 border-b bg-background/95 backdrop-blur transition-[width,height] ease-linear supports-[backdrop-filter]:bg-background/80 md:flex md:bg-background"
+    : "mobile-safe-header z-30 flex shrink-0 items-center gap-2 border-b bg-background/95 backdrop-blur transition-[width,height] ease-linear supports-[backdrop-filter]:bg-background/80 md:bg-background"
 
-    return (
-      <header className="mobile-safe-header z-30 flex shrink-0 items-center border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:bg-background">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={handleMobileBack}
-          aria-label="Go back"
-          className="-ml-1"
-        >
-          <ArrowLeftIcon className="size-4" />
-        </Button>
-        <h1 className="ml-2 flex-1 truncate text-base font-medium">{mobileHeaderTitle}</h1>
-        {showMobileSidebarTrigger ? <SidebarTrigger className="ml-1" /> : null}
-      </header>
-    )
-  }
-
-  return (
-    <header className="mobile-safe-header z-30 flex shrink-0 items-center gap-2 border-b bg-background/95 backdrop-blur transition-[width,height] ease-linear supports-[backdrop-filter]:bg-background/80 md:bg-background">
+  const desktopHeader = (
+    <header className={desktopHeaderClassName}>
       <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">
         <SidebarTrigger className="-ml-1" />
         <Separator
@@ -762,4 +741,31 @@ export function SiteHeader({
       </div>
     </header>
   )
+
+  if (phaseOneMobileHeaderEligible) {
+    const showMobileSidebarTrigger =
+      pathname.startsWith("/team-sessions") || pathname === "/team-venues"
+
+    return (
+      <>
+        <header className="mobile-safe-header z-30 flex shrink-0 items-center border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:hidden md:bg-background">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={handleMobileBack}
+            aria-label="Go back"
+            className="-ml-1"
+          >
+            <ArrowLeftIcon className="size-4" />
+          </Button>
+          <h1 className="ml-2 flex-1 truncate text-base font-medium">{mobileHeaderTitle}</h1>
+          {showMobileSidebarTrigger ? <SidebarTrigger className="ml-1" /> : null}
+        </header>
+        {desktopHeader}
+      </>
+    )
+  }
+
+  return desktopHeader
 }

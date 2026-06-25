@@ -1,8 +1,34 @@
 # PROGRESS.md
 
-Last updated: 2026-06-24
+Last updated: 2026-06-25
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
+
+## 2026-06-25 - Team Session mobile loading state
+
+- Updated the `/team-sessions/[id]` mobile header fallback so the detail route
+  keeps the back button, date/time label, and menu trigger on mobile instead of
+  briefly exposing the desktop theme controls.
+- Updated both the route skeleton and deferred tab fallback so the mobile tabs
+  render `Info`, `Goals`, `Results`, `Images`, and `More` without horizontal
+  scrolling.
+- Removed the fallback card `Info` title and spinner, leaving only skeleton
+  content while the selected tab data resolves.
+- Validation: `npm run lint` passes with existing warnings in
+  `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`; `npm run build`;
+  `git diff --check`; authenticated browser verification at `375x667`
+  confirmed `Mar 29 12:00 PM`, back/menu controls, `More`, and no horizontal
+  overflow on `/team-sessions/[id]`.
+
+## 2026-06-25 - Mobile bottom nav client state
+
+- Moved the mobile bottom navigation behind a client-only dynamic wrapper so
+  active route styling is resolved after client navigation state is available.
+- Simplified active item detection to use the current pathname directly and
+  animated the active label width/opacity without changing the desktop sidebar.
+- Validation covered with the same `npm run lint`, `npm run build`,
+  `git diff --check`, and mobile browser verification pass above.
 
 ## 2026-06-24 - Mobile tooltip viewport cap
 
