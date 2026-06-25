@@ -1,17 +1,12 @@
 import { Suspense } from "react"
 import { ChevronDownIcon } from "lucide-react"
 
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   getSessionDetailShellData,
   getSessionDetailTabData,
 } from "@/features/sessions/detail-data"
+import { SessionDetailSummaryCards } from "@/features/sessions/detail/session-summary-cards"
 import type { SessionDetailTabPayload } from "@/features/sessions/detail-types"
 import {
   SessionDetailTabsClient,
@@ -376,11 +371,13 @@ export default async function SessionDetailPage({
 
   const sessionTypeLabel = formatSessionTypeLabel(detailData.session.session_type)
   const sessionDateLabel = formatDateLabel(detailData.session.session_date)
+  const dockOutLabel = formatTimeLabel(detailData.session.dock_out_at)
   const durationMinutes = resolveDurationMinutes({
     dockOutAt: detailData.session.dock_out_at,
     dockInAt: detailData.session.dock_in_at,
     fallbackNetTimeMinutes: detailData.session.net_time_minutes,
   })
+  const durationLabel = formatDurationLabel(durationMinutes)
 
   return (
     <div className="space-y-6">
@@ -414,67 +411,12 @@ export default async function SessionDetailPage({
           ) : null}
         </div>
 
-        <Card className="overflow-hidden p-0 md:hidden">
-          <div className="divide-y divide-border px-6 py-3">
-            <div className="flex min-h-12 items-center justify-between gap-4">
-              <p className="text-sm text-muted-foreground">Type</p>
-              <p className="text-right text-sm font-semibold">{sessionTypeLabel}</p>
-            </div>
-
-            <div className="flex min-h-12 items-center justify-between gap-4">
-              <p className="text-sm text-muted-foreground">Date</p>
-              <p className="text-right text-sm font-semibold">{sessionDateLabel}</p>
-            </div>
-
-            <div className="flex min-h-12 items-center justify-between gap-4">
-              <p className="text-sm text-muted-foreground">Dock Out</p>
-              <p className="text-right text-sm font-semibold tabular-nums">
-                {formatTimeLabel(detailData.session.dock_out_at)}
-              </p>
-            </div>
-
-            <div className="flex min-h-12 items-center justify-between gap-4">
-              <p className="text-sm text-muted-foreground">Duration</p>
-              <p className="text-right text-sm font-semibold tabular-nums">
-                {formatDurationLabel(durationMinutes)}
-              </p>
-            </div>
-          </div>
-        </Card>
-
-        <div className="hidden gap-4 md:grid md:grid-cols-4">
-          <Card>
-            <CardHeader>
-              <CardDescription>Type</CardDescription>
-              <CardTitle className="text-xl font-semibold">{sessionTypeLabel}</CardTitle>
-            </CardHeader>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardDescription>Date</CardDescription>
-              <CardTitle className="text-xl font-semibold">{sessionDateLabel}</CardTitle>
-            </CardHeader>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardDescription>Dock Out</CardDescription>
-              <CardTitle className="text-xl font-semibold tabular-nums">
-                {formatTimeLabel(detailData.session.dock_out_at)}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardDescription>Duration</CardDescription>
-              <CardTitle className="text-xl font-semibold tabular-nums">
-                {formatDurationLabel(durationMinutes)}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-        </div>
+        <SessionDetailSummaryCards
+          sessionTypeLabel={sessionTypeLabel}
+          sessionDateLabel={sessionDateLabel}
+          dockOutLabel={dockOutLabel}
+          durationLabel={durationLabel}
+        />
       </section>
 
       <Suspense fallback={<SessionDetailTabsFallback selectedTab={selectedTab} />}>

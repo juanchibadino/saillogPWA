@@ -6,6 +6,9 @@ Branch: `main`
 
 ## 2026-06-25 - Team Session nested dialog click fix
 
+- Added a scroll-aware Team Session detail summary wrapper so the Type / Date /
+  Dock Out / Duration card collapses once the page scrolls, keeping the tab
+  content higher in the viewport while preserving server-side data loading.
 - Fixed nested Team Session edit dialogs so the Gear scanner and Info quick
   create dialogs for Wind Patterns / Std. Moves stay clickable above their
   parent Drawer or Sheet.
@@ -70,6 +73,23 @@ Branch: `main`
   Drawer title/description, fixed `85dvh` Drawer body, textarea filling the
   available height, standard `h-11 w-full` save CTA, and hoisted helper
   components to keep textarea focus while typing.
+- Follow-up applied the no-visible-title mobile Drawer pattern to Setup edit,
+  Boat Metrics, and metric edit views in `setup-dialog.tsx`; titles remain
+  accessible and the shared Drawer handle margin applies.
+- Follow-up restored Setup Drawer scrolling after the header/title change by
+  replacing nested `h-full` scroll bodies with flex-safe scroll containers and
+  making Setup/metric edit fieldsets `flex flex-col`.
+- Follow-up restored visible Setup subview titles for Boat Metrics and metric
+  edit next to the back arrow, and disabled the active button y-translation so
+  the arrow no longer jumps downward when tapped.
+- Follow-up replaced editable TWS allocation percentage inputs in Setup with
+  `-`/`+` stepper buttons, moved the `%` label after the `+` action, and made
+  increases round through 5-point steps (`33` -> `35`, `34` -> `40`) while
+  keeping the value display read-only.
+- Follow-up fixed TWS stepper rebalance after repeated edits: the clicked
+  bucket now keeps priority and the required compensation comes from other
+  buckets, so `-`/`+` controls do not freeze once edited values already sum to
+  `100`.
 
 ## 2026-06-25 - Team Session asset tab refresh
 

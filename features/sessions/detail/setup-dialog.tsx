@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation"
 import {
   ArrowLeftIcon,
   Loader2Icon,
+  MinusIcon,
   PencilIcon,
+  PlusIcon,
   Settings2Icon,
   Trash2Icon,
 } from "lucide-react"
@@ -321,11 +323,33 @@ function rebalanceTwsDraftSelection(input: {
 
   if (input.changedOptionId && fixedTotal > 100) {
     const changedOptionId = input.changedOptionId
-    const otherFixedTotal =
-      fixedTotal - (nextPercentByOptionId.get(changedOptionId) ?? 0)
-    const cappedChangedValue = Math.max(0, 100 - otherFixedTotal)
-    nextPercentByOptionId.set(changedOptionId, cappedChangedValue)
-    fixedTotal = otherFixedTotal + cappedChangedValue
+    let overflow = fixedTotal - 100
+    const reduceOptionIds = fixedOptionIds
+      .filter((optionId) => optionId !== changedOptionId)
+      .reverse()
+
+    for (const optionId of reduceOptionIds) {
+      if (overflow === 0) {
+        break
+      }
+
+      const currentValue = nextPercentByOptionId.get(optionId) ?? 0
+      const decrement = Math.min(currentValue, overflow)
+      nextPercentByOptionId.set(optionId, currentValue - decrement)
+      overflow -= decrement
+    }
+
+    if (overflow > 0) {
+      const currentValue = nextPercentByOptionId.get(changedOptionId) ?? 0
+      const decrement = Math.min(currentValue, overflow)
+      nextPercentByOptionId.set(changedOptionId, currentValue - decrement)
+      overflow -= decrement
+    }
+
+    fixedTotal = fixedOptionIds.reduce(
+      (total, optionId) => total + (nextPercentByOptionId.get(optionId) ?? 0),
+      0,
+    )
   }
 
   if (fixedTotal > 100 && !input.changedOptionId) {
@@ -358,15 +382,28 @@ function rebalanceTwsDraftSelection(input: {
 
     remainder = 0
   } else {
-    const adjustableOptionId =
-      input.changedOptionId ?? fixedOptionIds[fixedOptionIds.length - 1] ?? null
+    const addOptionIds = input.changedOptionId
+      ? fixedOptionIds.filter((optionId) => optionId !== input.changedOptionId).reverse()
+      : fixedOptionIds.slice().reverse()
 
-    if (adjustableOptionId) {
-      const adjustedValue = clampPercentInteger(
-        (nextPercentByOptionId.get(adjustableOptionId) ?? 0) + remainder,
-      )
-      nextPercentByOptionId.set(adjustableOptionId, adjustedValue)
-      remainder = 0
+    for (const optionId of addOptionIds) {
+      if (remainder === 0) {
+        break
+      }
+
+      const currentValue = nextPercentByOptionId.get(optionId) ?? 0
+      const capacity = Math.max(0, 100 - currentValue)
+      const increment = Math.min(capacity, remainder)
+      nextPercentByOptionId.set(optionId, currentValue + increment)
+      remainder -= increment
+    }
+
+    if (remainder > 0 && input.changedOptionId) {
+      const currentValue = nextPercentByOptionId.get(input.changedOptionId) ?? 0
+      const capacity = Math.max(0, 100 - currentValue)
+      const increment = Math.min(capacity, remainder)
+      nextPercentByOptionId.set(input.changedOptionId, currentValue + increment)
+      remainder -= increment
     }
   }
 
@@ -385,8 +422,8 @@ function rebalanceTwsDraftSelection(input: {
     })),
     preferredAddOptionIds: [
       ...uneditedOptionIds,
+      ...selectedOptionIds.filter((optionId) => optionId !== input.changedOptionId),
       ...(input.changedOptionId ? [input.changedOptionId] : []),
-      ...selectedOptionIds,
     ],
   })
 
@@ -780,7 +817,7 @@ function SetupDialogFieldset(props: { children: React.ReactNode; isSaving: boole
   return (
     <fieldset
       disabled={pending || props.isSaving}
-      className="m-0 min-h-0 flex-1 overflow-hidden border-0 p-0"
+      className="m-0 flex min-h-0 flex-1 flex-col overflow-hidden border-0 p-0"
     >
       {props.children}
     </fieldset>
@@ -794,7 +831,7 @@ function EditSetupMetricFieldset(props: {
   return (
     <fieldset
       disabled={props.isPending}
-      className="m-0 min-h-0 flex-1 overflow-hidden border-0 p-0"
+      className="m-0 flex min-h-0 flex-1 flex-col overflow-hidden border-0 p-0"
     >
       {props.children}
     </fieldset>
@@ -1109,6 +1146,26 @@ export function SetupDialog(input: {
     })
   }
 
+  function updateTwsPercentStep(
+    item: SessionSetupDialogItem,
+    optionId: string,
+    currentPercent: number | null,
+    delta: number,
+  ) {
+    const currentValue = clampPercentInteger(currentPercent ?? 0)
+    const currentRemainder = currentValue % 5
+    const nextPercent =
+      delta > 0
+        ? currentRemainder === 0
+          ? currentValue + 5
+          : currentValue + (currentRemainder === 4 ? 10 - currentRemainder : 5 - currentRemainder)
+        : currentRemainder === 0
+          ? currentValue - 5
+          : currentValue - currentRemainder
+
+    updateTwsPercentValue(item, optionId, String(clampPercentInteger(nextPercent)))
+  }
+
   function openEditMetricDialog(item: SessionSetupDialogItem) {
     if (item.metricGroup !== "boat" || item.isFixed) {
       return
@@ -1337,33 +1394,53 @@ export function SetupDialog(input: {
                 return null
               }
 
+              const currentPercent = selectedOption.allocationPercent ?? 0
+
               return (
-                <label
+                <div
                   key={selectedOption.optionId}
                   className="flex items-center justify-between gap-2 rounded-lg border px-2 py-1"
                 >
                   <span className="truncate text-xs text-muted-foreground">{option.label}</span>
-                  <div className="flex items-center gap-1">
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={1}
-                      inputMode="numeric"
-                      value={selectedOption.allocationPercent ?? 0}
-                      onFocus={keepMobileFieldVisible}
-                      onChange={(event) =>
-                        updateTwsPercentValue(item, selectedOption.optionId, event.target.value)
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className={isMobile ? "h-11 w-11 rounded-xl" : "size-8 rounded-xl"}
+                      disabled={currentPercent <= 0}
+                      aria-label={`Decrease ${option.label} by 5 percent`}
+                      onClick={() =>
+                        updateTwsPercentStep(item, selectedOption.optionId, currentPercent, -5)
                       }
+                    >
+                      <MinusIcon className="size-4" />
+                    </Button>
+                    <div
                       className={
                         isMobile
-                          ? "h-11 w-16 bg-muted px-2 text-center text-muted-foreground"
-                          : "h-7 w-14 bg-muted px-2 text-center text-muted-foreground"
+                          ? "flex h-11 w-16 items-center justify-center rounded-xl border bg-muted px-2 text-sm font-medium text-muted-foreground"
+                          : "flex h-8 w-14 items-center justify-center rounded-xl border bg-muted px-2 text-sm font-medium text-muted-foreground"
                       }
-                    />
+                    >
+                      {currentPercent}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className={isMobile ? "h-11 w-11 rounded-xl" : "size-8 rounded-xl"}
+                      disabled={currentPercent >= 100}
+                      aria-label={`Increase ${option.label} by 5 percent`}
+                      onClick={() =>
+                        updateTwsPercentStep(item, selectedOption.optionId, currentPercent, 5)
+                      }
+                    >
+                      <PlusIcon className="size-4" />
+                    </Button>
                     <span className="text-xs text-muted-foreground">%</span>
                   </div>
-                </label>
+                </div>
               )
             })}
           </div>
@@ -1496,7 +1573,7 @@ export function SetupDialog(input: {
 
   const boatMetricsManager = (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="no-scrollbar h-full space-y-3 overflow-y-auto px-4 pb-6 pr-5 scroll-pb-20 md:pb-4 md:scroll-pb-4">
+      <div className="no-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto px-4 pb-6 pr-5 scroll-pb-20 md:pb-4 md:scroll-pb-4">
         {orderedBoatItems.length === 0 ? (
           <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
             No Boat metrics configured for this team yet.
@@ -1541,7 +1618,7 @@ export function SetupDialog(input: {
       <input type="hidden" name="setupPayload" value={payloadValue} />
 
       <SetupDialogFieldset isSaving={isSavingSetup}>
-        <div className="no-scrollbar h-full space-y-6 overflow-y-auto px-4 pb-6 pr-5 scroll-pb-28 md:pb-4 md:scroll-pb-4">
+        <div className="no-scrollbar min-h-0 flex-1 space-y-6 overflow-y-auto px-4 pb-6 pr-5 scroll-pb-28 md:pb-4 md:scroll-pb-4">
           {setupLoadState ? (
             setupLoadState
           ) : setupItems.length === 0 ? (
@@ -1674,7 +1751,7 @@ export function SetupDialog(input: {
       <input type="hidden" name="optionsPayload" value={updateMetricOptionsPayload} />
 
       <EditSetupMetricFieldset isPending={isMetricPending}>
-        <div className="no-scrollbar h-full space-y-4 overflow-y-auto px-4 pb-6 pr-5 scroll-pb-28 md:pb-4 md:scroll-pb-4">
+        <div className="no-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-6 pr-5 scroll-pb-28 md:pb-4 md:scroll-pb-4">
           <div className="space-y-2">
             <Label htmlFor="edit-setup-metric-label">Metric name</Label>
             <Input
@@ -1761,20 +1838,20 @@ export function SetupDialog(input: {
     setSetupSurfaceView("setup")
   }
   const setupDrawerHeaderContent = (
-    <div className="relative flex min-h-9 items-center justify-center px-10">
+    <div className="relative flex min-h-11 items-center justify-center px-12">
       {canNavigateBack ? (
         <Button
           type="button"
           variant="ghost"
           size="icon-sm"
-          className="absolute left-0 top-1/2 h-11 w-11 -translate-y-1/2 rounded-xl"
+          className="absolute left-0 top-0 h-11 w-11 rounded-xl active:not-aria-[haspopup]:translate-y-0"
           onClick={handleSurfaceBack}
         >
           <ArrowLeftIcon className="size-4" />
           <span className="sr-only">Back</span>
         </Button>
       ) : null}
-      <DrawerTitle className="text-center">{setupSurfaceTitle}</DrawerTitle>
+      <DrawerTitle className="truncate text-center">{setupSurfaceTitle}</DrawerTitle>
       <DrawerDescription className="sr-only">{setupSurfaceDescription}</DrawerDescription>
     </div>
   )
@@ -1813,9 +1890,16 @@ export function SetupDialog(input: {
         <Settings2Icon className="size-6" />
       </Button>
       <DrawerContent className="h-[85dvh] overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
-        <DrawerHeader className="shrink-0 border-b drop-shadow-xs px-4 py-2">
-          {setupDrawerHeaderContent}
-        </DrawerHeader>
+        {canNavigateBack ? (
+          <DrawerHeader className="shrink-0 px-4 py-2">
+            {setupDrawerHeaderContent}
+          </DrawerHeader>
+        ) : (
+          <DrawerHeader className="sr-only">
+            <DrawerTitle>{setupSurfaceTitle}</DrawerTitle>
+            <DrawerDescription>{setupSurfaceDescription}</DrawerDescription>
+          </DrawerHeader>
+        )}
         {setupSurfaceContent}
       </DrawerContent>
     </Drawer>
