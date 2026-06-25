@@ -31,8 +31,6 @@ import {
   MultiselectBadge,
   MultiselectBadgeList,
   MultiselectContent,
-  MultiselectEmpty,
-  MultiselectInput,
   MultiselectItem,
   MultiselectTrigger,
 } from "@/components/ui/multiselect"
@@ -919,6 +917,92 @@ export function SetupDialog(input: {
     }, 120)
   }
 
+  function getActiveMobileTextEntry(): HTMLElement | null {
+    if (!isMobile || typeof document === "undefined") {
+      return null
+    }
+
+    const activeElement = document.activeElement
+
+    if (!(activeElement instanceof HTMLElement)) {
+      return null
+    }
+
+    if (
+      activeElement.matches(
+        'input:not([type="button"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]), textarea, [contenteditable="true"]',
+      )
+    ) {
+      return activeElement
+    }
+
+    return null
+  }
+
+  function replayDisclosureClickAfterKeyboardSettles(target: HTMLElement) {
+    const visualViewport = window.visualViewport
+    let timeoutId = 0
+    let settled = false
+
+    function cleanup() {
+      if (timeoutId !== 0) {
+        window.clearTimeout(timeoutId)
+      }
+
+      visualViewport?.removeEventListener("resize", handleViewportResize)
+    }
+
+    function openDisclosure() {
+      if (settled) {
+        return
+      }
+
+      settled = true
+      cleanup()
+
+      window.requestAnimationFrame(() => {
+        target.focus({ preventScroll: true })
+        target.click()
+      })
+    }
+
+    function handleViewportResize() {
+      openDisclosure()
+    }
+
+    if (visualViewport) {
+      visualViewport.addEventListener("resize", handleViewportResize, { once: true })
+      timeoutId = window.setTimeout(openDisclosure, 260)
+      return
+    }
+
+    timeoutId = window.setTimeout(openDisclosure, 180)
+  }
+
+  function deferMobileDisclosureUntilKeyboardCloses(event: React.PointerEvent<HTMLElement>) {
+    const activeTextEntry = getActiveMobileTextEntry()
+
+    if (!activeTextEntry) {
+      return
+    }
+
+    const target = event.currentTarget
+
+    if (activeTextEntry === target || target.contains(activeTextEntry)) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    activeTextEntry.blur()
+    target.scrollIntoView({
+      block: "center",
+      inline: "nearest",
+      behavior: "smooth",
+    })
+    replayDisclosureClickAfterKeyboardSettles(target)
+  }
+
   React.useEffect(() => {
     if (previousInputItemsRef.current === input.items) {
       return
@@ -1337,6 +1421,7 @@ export function SetupDialog(input: {
             placeholder={item.options.length > 0 ? "Select options" : "No options configured"}
             disabled={item.options.length === 0}
             className={isMobile ? "min-h-11 text-base" : undefined}
+            onPointerDownCapture={deferMobileDisclosureUntilKeyboardCloses}
             onFocus={keepMobileFieldVisible}
           >
             <MultiselectBadgeList>
@@ -1369,12 +1454,6 @@ export function SetupDialog(input: {
             </MultiselectBadgeList>
           </MultiselectTrigger>
           <MultiselectContent>
-            <MultiselectInput
-              placeholder="Search options..."
-              className={isMobile ? "h-11 px-3" : undefined}
-              onFocus={keepMobileFieldVisible}
-            />
-            <MultiselectEmpty>No options found.</MultiselectEmpty>
             {item.options.map((option) => (
               <MultiselectItem key={option.id} value={option.id}>
                 {option.label}

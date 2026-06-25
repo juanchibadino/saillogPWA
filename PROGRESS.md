@@ -90,6 +90,12 @@ Branch: `main`
   bucket now keeps priority and the required compensation comes from other
   buckets, so `-`/`+` controls do not freeze once edited values already sum to
   `100`.
+- Follow-up improved mobile Setup multiselect UX after text input focus: tapping
+  a setup selector now blurs the active text field, waits for the keyboard
+  viewport to settle, and then opens the selector to avoid the Drawer staying
+  shifted upward.
+- Follow-up removed search inputs from Setup edit selectors so opening a
+  selector does not introduce another keyboard focus path inside the Drawer.
 
 ## 2026-06-25 - Team Session asset tab refresh
 
