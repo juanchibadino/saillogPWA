@@ -4,6 +4,161 @@ Last updated: 2026-06-25
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
 
+## 2026-06-25 - Team Session nested dialog click fix
+
+- Fixed nested Team Session edit dialogs so the Gear scanner and Info quick
+  create dialogs for Wind Patterns / Std. Moves stay clickable above their
+  parent Drawer or Sheet.
+- Added pointer-event safety to the shared dialog portal/content wrapper and
+  taught the mobile Drawer to treat portaled Dialog/Select/Dropdown content as
+  internal interactive content instead of outside clicks.
+- Raised only the affected nested scanner/quick-create dialog layers above the
+  parent edit surfaces without changing their save/create flows.
+- Validation: scoped `eslint` on `components/ui/dialog.tsx`,
+  `components/ui/drawer.tsx`, `features/sessions/detail/info-panel.tsx`, and
+  `features/sessions/detail/gear-panel.tsx`; `git diff --check` for those
+  files; `npm run build`; `agent-browser` smoke on
+  `/team-sessions/f70b085c-287c-49dc-b55a-36a11be51066` with Test Team
+  confirmed desktop Gear scanner, desktop Std. Moves/Wind Patterns quick-create,
+  mobile Gear scanner, and mobile Wind Patterns quick-create open/close paths.
+- Follow-up fixed quick-create input focus by opening the nested Info/Gear
+  dialogs with explicit controlled buttons and portalizing their content into
+  the parent Drawer/Sheet surface; Playwright verification confirmed mobile
+  Wind Patterns and Std. Moves `Description` inputs receive `activeElement`,
+  accept typed text, and auto-generate `Name`, and the Gear scanner opens and
+  closes from the Gear Drawer.
+- Follow-up removed backdrop blur from the shared dialog overlay and the Info
+  quick-create overlay, and set explicit inline z-index values for the nested
+  dialog overlays so the popup remains visually above the backdrop.
+- Follow-up removed the Info edit Drawer/Sheet `blur-[2px]` surface filter that
+  blurred the nested quick-create popup after it was portalized inside the edit
+  surface for focus safety.
+- Follow-up changed the mobile Wind Patterns / Std. Moves quick-create flow from
+  a stacked Drawer to an in-place Drawer subview with a setup-style back arrow,
+  while keeping the desktop Dialog.
+- Follow-up aligned the shared Wind Patterns / Std. Moves quick-create modal
+  controls with mobile patterns: taller touch targets, mobile text sizing, and
+  full-width footer actions on small screens.
+- Follow-up aligned `Edit Coaching Notes` with `MOBILE_UI_PATTERNS.md`: mobile
+  textareas now use taller note sizing, focus-visible scrolling, a larger
+  `Correct` action target, and the Drawer save footer uses the standard
+  `h-11 w-full` button with a border.
+- Follow-up aligned the Standard Moves and Wind Patterns search fields with
+  `MOBILE_UI_PATTERNS.md`: mobile `h-11` search inputs, preserved left search
+  icon padding, desktop compact height, and focus-visible scrolling.
+- Follow-up removed the visible `Edit Standard Moves` surface title from the
+  Standard Moves mobile Drawer while keeping an accessible hidden title.
+- Follow-up added vertical breathing room around the shared mobile Drawer handle
+  so the top grip no longer crowds the Drawer border or first control.
+- Follow-up documented the no-visible-title catalog Drawer pattern and shared
+  Drawer handle margin rule in `MOBILE_UI_PATTERNS.md`.
+- Follow-up applied the same no-visible-title mobile Drawer treatment to
+  `Edit Wind Patterns`; the shared Drawer handle margin already applies there.
+- Follow-up generalized the no-visible-title mobile Drawer treatment across
+  `InfoEditDialog` main Drawer views in `info-panel.tsx`, while keeping titles
+  visible for back-arrow subviews such as quick-create.
+- Follow-up applied `MOBILE_UI_PATTERNS.md` to the Goals edit Drawer: hidden
+  accessible Drawer title, fixed `85dvh` Drawer body, mobile textarea sizing,
+  focus-visible scrolling, and standard `h-11 w-full` save CTA.
+- Follow-up expanded the Goals Drawer textarea to fill the available mobile
+  Drawer body height, reducing unused vertical space above the fixed Save
+  footer.
+- Follow-up fixed the Goals Drawer focus loss/runtime error by hoisting form
+  helper components out of `GoalsEditDialog`, capturing the focus target before
+  delayed scrolling, and removing the oversized mobile bottom padding.
+- Follow-up applied the same mobile Drawer fixes to Results: hidden accessible
+  Drawer title/description, fixed `85dvh` Drawer body, textarea filling the
+  available height, standard `h-11 w-full` save CTA, and hoisted helper
+  components to keep textarea focus while typing.
+
+## 2026-06-25 - Team Session asset tab refresh
+
+- Updated `features/sessions/detail/assets-panel.tsx` so image/PDF upload and
+  delete no longer call a full `router.refresh()` after success.
+- Added a tab-scoped asset refresh callback from
+  `features/sessions/session-detail-tabs-client.tsx`, reloading only the
+  current `Images` or `Analytics` tab through the existing deferred tab-data
+  path so the detail screen does not jump back to `Info`.
+- Persisted the active Team Session tab in the URL with the native History API
+  and kept same-session server refreshes from forcing `selectedTab` back to the
+  server `initialTab`.
+- Removed broad session-slice revalidation from asset upload/delete server
+  actions; the asset tab refresh now owns the immediate UI update.
+- Forced dialog backdrops to render for nested Base UI dialogs and gave the
+  asset delete confirm an explicit blurred overlay.
+- Validation: `npm run lint` passes with existing warnings in
+  `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`; `npm run build`; Playwright
+  browser check with `tester@sailog.test` uploaded and deleted
+  `codex-tab-retention-test.pdf` in `Analytics`, confirmed the URL and active
+  tab stayed on `tab=analytics`, and confirmed delete overlay
+  `backdrop-filter: blur(8px)`; `git diff --check`.
+
+## 2026-06-25 - Team Session Setup edit polish
+
+- Updated `features/sessions/detail/setup-dialog.tsx` so the main Setup edit
+  flow edits only session setup values, while Boat metric definition edits move
+  into a dedicated `Boat metrics` subview opened from the Boat section settings
+  icon.
+- Removed the in-form Boat metric creation/edit controls from the main Setup
+  value editor; the Boat metrics subview lists definitions without saved session
+  values and opens the existing metric editor from each pencil action.
+- Applied the mobile Setup sizing/focus rules from `MOBILE_UI_PATTERNS.md`:
+  `h-11` controls, larger mobile icon buttons, padded scroll regions, and a
+  local focus helper to keep active fields visible above the keyboard.
+- Follow-up polish removed the visible bottom spacer from Setup scroll bodies,
+  narrowed the TWS percentage inputs, centered them on a muted background, gave
+  the Boat settings action a muted background, and reduced `Boat metrics` rows
+  to metric name/type only.
+- Validation: `npm run lint` passes with existing warnings in
+  `app/sign-in/sign-in-content.tsx` and `features/onboarding/onboarding-flow.tsx`;
+  `npm run build`; `git diff --check`; browser smoke with `tester@sailog.test`
+  on `/team-sessions/f70b085c-287c-49dc-b55a-36a11be51066` confirmed mobile
+  Drawer edit mode, visible focused input, compact muted TWS percentage fields,
+  Boat metrics manager without option/value summaries, metric editor Back flow,
+  and desktop Sheet Boat metrics manager.
+
+## 2026-06-25 - Mobile UI standard
+
+- Expanded `MOBILE_UI_PATTERNS.md` into the mobile UI standard for Sailog,
+  covering main-action FABs, Save CTAs, mobile input/select/search heights,
+  icon-button sizing, keyboard focus visibility, and Drawer/Sheet form
+  structure.
+- Captured the current Setup/Gear conventions as canonical: mobile FABs use
+  `mobile-floating-action size-14`, mobile Save/actions use `h-11 w-full`, and
+  mobile icon buttons use `h-11 w-11`.
+- Validation: documentation-only; `git diff --check -- MOBILE_UI_PATTERNS.md
+  PROGRESS.md`.
+
+## 2026-06-25 - Team Session Gear link selector
+
+- Updated `features/sessions/detail/gear-panel.tsx` so the session Gear link
+  surface keeps the `Link gear to session` title, removes the description copy,
+  and replaces the category tabs with a single select while preserving search,
+  linked count, category filtering, barcode linking, and load-more behavior.
+- Made the scanner dialog ignore outside-click dismissal while keeping the
+  built-in close X available.
+- Matched the Gear drawer footer controls to the Setup edit drawer pattern:
+  `Scan` and `Save` now use the same full-width `h-11` treatment on mobile.
+- Validation: `npm run lint` passes with existing warnings in
+  `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`; `npm run build`;
+  `git diff --check -- features/sessions/detail/gear-panel.tsx PROGRESS.md`.
+
+## 2026-06-25 - Bottom nav Team Home gradient
+
+- Reused the shared Team Home card gradient CSS variable on the mobile bottom
+  navigation background so the fixed nav matches the card surface treatment
+  without duplicating color values.
+- Kept the existing active/inactive nav item behavior and desktop sidebar
+  unchanged.
+- Validation: `npm run lint` passes with existing warnings in
+  `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`; `npm run build`;
+  `git diff --check`; authenticated browser verification at `375x667`
+  confirmed the bottom nav and Team Home cards resolve to the same computed
+  `background-image` with no horizontal overflow.
+
 ## 2026-06-25 - Team Session mobile loading state
 
 - Updated the `/team-sessions/[id]` mobile header fallback so the detail route

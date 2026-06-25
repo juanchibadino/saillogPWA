@@ -24,45 +24,59 @@ function renderTextValue(value: string | null): string {
   return value
 }
 
+function ResultsDialogFieldset(props: {
+  children: React.ReactNode
+  className?: string
+}) {
+  const { pending } = useFormStatus()
+
+  return (
+    <fieldset disabled={pending} className={props.className ?? "space-y-4"}>
+      {props.children}
+    </fieldset>
+  )
+}
+
+function ResultsDialogSubmitButton(props: { className?: string }) {
+  const { pending } = useFormStatus()
+  const isPending = pending
+
+  return (
+    <Button type="submit" disabled={isPending} className={props.className}>
+      {isPending ? (
+        <>
+          <Loader2Icon className="size-4 animate-spin" />
+          Saving...
+        </>
+      ) : (
+        "Save"
+      )}
+    </Button>
+  )
+}
+
 function ResultsEditDialog(input: {
   sessionId: string
   scope: NavigationScope
   resultNotes: string | null
 }) {
-  function ResultsDialogFieldset(props: {
-    children: React.ReactNode
-    className?: string
-  }) {
-    const { pending } = useFormStatus()
-
-    return (
-      <fieldset disabled={pending} className={props.className ?? "space-y-4"}>
-        {props.children}
-      </fieldset>
-    )
-  }
-
   const [resultNotes, setResultNotes] = React.useState(input.resultNotes ?? "")
 
-  function ResultsDialogSubmitButton() {
-    const { pending } = useFormStatus()
-    const isPending = pending
+  function keepMobileFieldVisible(event: React.FocusEvent<HTMLElement>) {
+    const target = event.currentTarget
 
-    return (
-      <Button type="submit" disabled={isPending}>
-        {isPending ? (
-          <>
-            <Loader2Icon className="size-4 animate-spin" />
-            Saving...
-          </>
-        ) : (
-          "Save"
-        )}
-      </Button>
-    )
+    window.setTimeout(() => {
+      target.scrollIntoView({
+        block: "center",
+        inline: "nearest",
+        behavior: "smooth",
+      })
+    }, 120)
   }
 
   function renderResultsForm(surface: ResponsiveEditSurfaceKind) {
+    const isDrawer = surface === "drawer"
+
     return (
       <form action={updateSessionResultsAction} className="flex min-h-0 flex-1 flex-col">
         <input type="hidden" name="sessionId" value={input.sessionId} />
@@ -72,15 +86,23 @@ function ResultsEditDialog(input: {
         ) : null}
         <input type="hidden" name="scopeTab" value="results" />
 
-        <ResultsDialogFieldset className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-          <div className="space-y-2">
+        <ResultsDialogFieldset
+          className={
+            isDrawer
+              ? "flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-4"
+              : "min-h-0 flex-1 overflow-y-auto px-4 pb-4"
+          }
+        >
+          <div className={isDrawer ? "flex min-h-0 flex-1 flex-col gap-2" : "space-y-2"}>
             <Label htmlFor={`result-notes-${input.sessionId}`}>Result notes</Label>
             <Textarea
               id={`result-notes-${input.sessionId}`}
               name="resultNotes"
+              className={isDrawer ? "min-h-0 flex-1 resize-none scroll-my-8 text-base" : undefined}
               rows={10}
               maxLength={4000}
               value={resultNotes}
+              onFocus={isDrawer ? keepMobileFieldVisible : undefined}
               onChange={(event) => setResultNotes(event.target.value)}
               placeholder="Race result details, fleet notes, penalties, and post-race comments..."
             />
@@ -89,7 +111,7 @@ function ResultsEditDialog(input: {
 
         {surface === "drawer" ? (
           <DrawerFooter className="shrink-0 border-t">
-            <ResultsDialogSubmitButton />
+            <ResultsDialogSubmitButton className="h-11 w-full" />
           </DrawerFooter>
         ) : (
           <SheetFooter className="shrink-0 border-t">
@@ -104,6 +126,8 @@ function ResultsEditDialog(input: {
     <ResponsiveEditSurface
       title="Edit regatta results"
       description="Save race outcomes or any free-form result notes for this session."
+      drawerContentClassName="h-[85dvh] overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]"
+      hideDrawerTitle
     >
       {({ surface }) => renderResultsForm(surface)}
     </ResponsiveEditSurface>

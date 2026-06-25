@@ -30,6 +30,7 @@ export type ResponsiveEditSurfaceProps = {
   }) => React.ReactNode
   description?: React.ReactNode
   drawerContentClassName?: string
+  hideDrawerTitle?: boolean
   onOpenChange?: (open: boolean) => void
   open?: boolean
   sheetContentClassName?: string
@@ -42,6 +43,7 @@ export function ResponsiveEditSurface({
   children,
   description,
   drawerContentClassName = "max-h-[85dvh] overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]",
+  hideDrawerTitle = false,
   onOpenChange,
   open,
   sheetContentClassName = "h-full overflow-hidden sm:max-w-2xl",
@@ -60,10 +62,17 @@ export function ResponsiveEditSurface({
           </Button>
         </DrawerTrigger>
         <DrawerContent className={drawerContentClassName}>
-          <DrawerHeader className="shrink-0">
-            <DrawerTitle>{title}</DrawerTitle>
-            {description ? <DrawerDescription>{description}</DrawerDescription> : null}
-          </DrawerHeader>
+          {hideDrawerTitle ? (
+            <DrawerHeader className="sr-only">
+              <DrawerTitle>{title}</DrawerTitle>
+              {description ? <DrawerDescription>{description}</DrawerDescription> : null}
+            </DrawerHeader>
+          ) : (
+            <DrawerHeader className="shrink-0">
+              <DrawerTitle>{title}</DrawerTitle>
+              {description ? <DrawerDescription>{description}</DrawerDescription> : null}
+            </DrawerHeader>
+          )}
           {children({ isMobile, surface: "drawer" })}
         </DrawerContent>
       </Drawer>

@@ -14,27 +14,30 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import {
   Drawer,
   DrawerContent,
-  DrawerDescription,
   DrawerFooter,
   DrawerHeader,
   DrawerTitle,
   DrawerTrigger,
 } from "@/components/ui/drawer"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetFooter,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   saveSessionGearUsageAction,
   updateSessionGearUsageAction,
@@ -292,9 +295,11 @@ function normalizeBarcodeValue(value: string): string {
 }
 
 function SessionGearBarcodeScannerDialog({
+  buttonClassName,
   onDetected,
   disabled = false,
 }: {
+  buttonClassName?: string
   onDetected: (value: string) => void
   disabled?: boolean
 }) {
@@ -308,6 +313,7 @@ function SessionGearBarcodeScannerDialog({
   const frameRequestRef = React.useRef<number | null>(null)
   const isClosedRef = React.useRef(false)
   const isDetectingRef = React.useRef(false)
+  const portalContainerRef = React.useRef<HTMLSpanElement | null>(null)
 
   const stopScanner = React.useCallback(() => {
     if (frameRequestRef.current !== null) {
@@ -448,14 +454,28 @@ function SessionGearBarcodeScannerDialog({
   }, [isOpen, scheduleDetection, stopScanner])
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger
-        render={<Button type="button" variant="outline" disabled={disabled} />}
+    <Dialog modal={false} open={isOpen} onOpenChange={setIsOpen} disablePointerDismissal>
+      <span ref={portalContainerRef} className="contents">
+        <Button
+          type="button"
+          variant="outline"
+          className={buttonClassName}
+          disabled={disabled}
+          aria-haspopup="dialog"
+          aria-expanded={isOpen}
+          onClick={() => setIsOpen(true)}
+        >
+          <CameraIcon className="size-4" />
+          Scan
+        </Button>
+      </span>
+      <DialogContent
+        className="z-[70] sm:max-w-lg"
+        overlayClassName="z-[60]"
+        overlayStyle={{ zIndex: 60 }}
+        portalContainer={portalContainerRef.current ?? undefined}
+        style={{ zIndex: 70 }}
       >
-        <CameraIcon className="size-4" />
-        Scan
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Scan</DialogTitle>
           <DialogDescription>
@@ -547,15 +567,20 @@ function SessionGearDialogFooter({
 }) {
   const { pending } = useFormStatus()
   const isPending = pending || isSaving
+  const drawerButtonClassName = surface === "drawer" ? "h-11 w-full" : undefined
 
   const content = (
     <>
       <div className={surface === "sheet" ? "sm:mr-auto" : undefined}>
-        <SessionGearBarcodeScannerDialog disabled={isPending} onDetected={onScanned} />
+        <SessionGearBarcodeScannerDialog
+          buttonClassName={drawerButtonClassName}
+          disabled={isPending}
+          onDetected={onScanned}
+        />
       </div>
       <div className={surface === "sheet" ? "sm:ml-auto" : undefined}>
         <SessionGearSubmitButton
-          className={surface === "drawer" ? "w-full" : undefined}
+          className={drawerButtonClassName}
           isSaving={isSaving}
         />
       </div>
@@ -841,6 +866,12 @@ function SessionGearLinkDialog(input: {
       : activeSelectorTab === "all"
         ? catalogGearItems
         : catalogGearItems.filter((gearItem) => gearItem.gear_type === activeSelectorTab)
+  const activeSelectorLabel =
+    activeSelectorTab === "all"
+      ? "All Gear"
+      : activeSelectorTab === "linked"
+        ? `Linked (${linkedGearItems.length})`
+        : formatGearTypeLabel(activeSelectorTab)
 
   function renderGearCard(gearItem: SessionDetailGearItem) {
     const isSelected = selectedGearItemIdSet.has(gearItem.id)
@@ -870,6 +901,51 @@ function SessionGearLinkDialog(input: {
           {identifiers ? <p className="text-xs text-muted-foreground">{identifiers}</p> : null}
         </div>
       </button>
+    )
+  }
+
+  function renderGearResults() {
+    if (activeSelectorTab === "linked") {
+      return linkedGearItems.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No gear currently linked in this selection.
+        </p>
+      ) : (
+        <div className="space-y-3 pr-1">
+          {linkedGearItems.map((gearItem) => renderGearCard(gearItem))}
+        </div>
+      )
+    }
+
+    if (gearCatalogError) {
+      return <p className="text-sm text-muted-foreground">{gearCatalogError}</p>
+    }
+
+    if (isGearCatalogLoading && visibleGearItems.length === 0) {
+      return (
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2Icon className="size-4 animate-spin" />
+          Loading gear...
+        </p>
+      )
+    }
+
+    if (visibleGearItems.length === 0) {
+      return (
+        <p className="text-sm text-muted-foreground">
+          {gearSearch.trim().length > 0
+            ? "No gear matches this search."
+            : activeSelectorTab === "all"
+              ? "No gear items available."
+              : `No ${formatGearTypeLabel(activeSelectorTab).toLowerCase()} gear available.`}
+        </p>
+      )
+    }
+
+    return (
+      <div className="space-y-3 pr-1">
+        {visibleGearItems.map((gearItem) => renderGearCard(gearItem))}
+      </div>
     )
   }
 
@@ -904,20 +980,24 @@ function SessionGearLinkDialog(input: {
             No gear items exist for this team yet. Add items in Team Gear first.
           </p>
         ) : (
-          <Tabs
-            value={activeSelectorTab}
-            onValueChange={(value) => setSelectorTab(value as SessionGearSelectorTab)}
-            className="min-h-0 space-y-3"
-          >
-            <TabsList className="h-auto w-full flex-wrap justify-start gap-1">
-              <TabsTrigger value="all">All Gear</TabsTrigger>
-              <TabsTrigger value="linked">Linked ({linkedGearItems.length})</TabsTrigger>
-              {availableGearTypes.map((gearType) => (
-                <TabsTrigger key={gearType} value={gearType} className="capitalize">
-                  {formatGearTypeLabel(gearType)}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+          <div className="min-h-0 space-y-3">
+            <Select
+              value={activeSelectorTab}
+              onValueChange={(value) => setSelectorTab(value as SessionGearSelectorTab)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue>{activeSelectorLabel}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Gear</SelectItem>
+                <SelectItem value="linked">Linked ({linkedGearItems.length})</SelectItem>
+                {availableGearTypes.map((gearType) => (
+                  <SelectItem key={gearType} value={gearType}>
+                    {formatGearTypeLabel(gearType)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
             {activeSelectorTab !== "linked" ? (
               <div className="relative">
@@ -932,61 +1012,7 @@ function SessionGearLinkDialog(input: {
               </div>
             ) : null}
 
-            <TabsContent value="all" className="space-y-3">
-              {gearCatalogError ? (
-                <p className="text-sm text-muted-foreground">{gearCatalogError}</p>
-              ) : isGearCatalogLoading && visibleGearItems.length === 0 ? (
-                <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2Icon className="size-4 animate-spin" />
-                  Loading gear...
-                </p>
-              ) : visibleGearItems.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  {gearSearch.trim().length > 0
-                    ? "No gear matches this search."
-                    : "No gear items available."}
-                </p>
-              ) : (
-                <div className="space-y-3 pr-1">
-                  {visibleGearItems.map((gearItem) => renderGearCard(gearItem))}
-                </div>
-              )}
-            </TabsContent>
-
-            <TabsContent value="linked" className="space-y-3">
-              {linkedGearItems.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No gear currently linked in this selection.
-                </p>
-              ) : (
-                <div className="space-y-3 pr-1">
-                  {linkedGearItems.map((gearItem) => renderGearCard(gearItem))}
-                </div>
-              )}
-            </TabsContent>
-
-            {availableGearTypes.map((gearType) => (
-              <TabsContent key={gearType} value={gearType} className="space-y-3">
-                {gearCatalogError ? (
-                  <p className="text-sm text-muted-foreground">{gearCatalogError}</p>
-                ) : isGearCatalogLoading && visibleGearItems.length === 0 ? (
-                  <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2Icon className="size-4 animate-spin" />
-                    Loading gear...
-                  </p>
-                ) : visibleGearItems.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    {gearSearch.trim().length > 0
-                      ? "No gear matches this search."
-                      : `No ${formatGearTypeLabel(gearType).toLowerCase()} gear available.`}
-                  </p>
-                ) : (
-                  <div className="space-y-3 pr-1">
-                    {visibleGearItems.map((gearItem) => renderGearCard(gearItem))}
-                  </div>
-                )}
-              </TabsContent>
-            ))}
+            <div className="space-y-3">{renderGearResults()}</div>
 
             {activeSelectorTab !== "linked" && catalogGearPage.nextOffset !== null ? (
               <Button
@@ -1016,7 +1042,7 @@ function SessionGearLinkDialog(input: {
                 )}
               </Button>
             ) : null}
-          </Tabs>
+          </div>
         )}
       </SessionGearDialogFields>
 
@@ -1051,7 +1077,6 @@ function SessionGearLinkDialog(input: {
         <DrawerContent className="h-[85dvh] overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
           <DrawerHeader className="shrink-0">
             <DrawerTitle>Link gear to session</DrawerTitle>
-            <DrawerDescription>Select the gear used in this session.</DrawerDescription>
           </DrawerHeader>
           {gearForm}
         </DrawerContent>
@@ -1067,7 +1092,6 @@ function SessionGearLinkDialog(input: {
       <SheetContent side="right" className="h-full overflow-hidden sm:max-w-2xl">
         <SheetHeader className="shrink-0">
           <SheetTitle>Link gear to session</SheetTitle>
-          <SheetDescription>Select the gear used in this session.</SheetDescription>
         </SheetHeader>
         {gearForm}
       </SheetContent>

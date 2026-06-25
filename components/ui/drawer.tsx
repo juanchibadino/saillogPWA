@@ -52,12 +52,21 @@ function DrawerContent({
   onPointerDownOutside,
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Content>) {
-  function isDropdownMenuEventTarget(event: Event): boolean {
+  function isPortaledInteractiveEventTarget(event: Event): boolean {
     const target = event.target
 
     return (
       target instanceof HTMLElement &&
-      Boolean(target.closest('[data-slot="dropdown-menu-content"]'))
+      Boolean(
+        target.closest(
+          [
+            '[data-slot="dialog-content"]',
+            '[data-slot="dialog-overlay"]',
+            '[data-slot="dropdown-menu-content"]',
+            '[data-slot="select-content"]',
+          ].join(", "),
+        ),
+      )
     )
   }
 
@@ -73,20 +82,20 @@ function DrawerContent({
         onFocusOutside={(event) => {
           onFocusOutside?.(event)
 
-          if (isDropdownMenuEventTarget(event.detail.originalEvent)) {
+          if (isPortaledInteractiveEventTarget(event.detail.originalEvent)) {
             event.preventDefault()
           }
         }}
         onPointerDownOutside={(event) => {
           onPointerDownOutside?.(event)
 
-          if (isDropdownMenuEventTarget(event.detail.originalEvent)) {
+          if (isPortaledInteractiveEventTarget(event.detail.originalEvent)) {
             event.preventDefault()
           }
         }}
         {...props}
       >
-        <div className="mx-auto mt-4 hidden h-1 w-[100px] shrink-0 rounded-full bg-muted group-data-[vaul-drawer-direction=bottom]/drawer-content:block" />
+        <div className="mx-auto my-5 hidden h-1 w-[100px] shrink-0 rounded-full bg-muted group-data-[vaul-drawer-direction=bottom]/drawer-content:block" />
         {children}
       </DrawerPrimitive.Content>
     </DrawerPortal>

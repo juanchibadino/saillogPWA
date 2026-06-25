@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { Loader2Icon, PlusIcon, SearchIcon, SpellCheckIcon } from "lucide-react"
+import { ArrowLeftIcon, Loader2Icon, PlusIcon, SearchIcon, SpellCheckIcon } from "lucide-react"
 import { useFormStatus } from "react-dom"
 import { toast } from "sonner"
 
@@ -22,7 +22,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import {
   Drawer,
@@ -31,7 +30,6 @@ import {
   DrawerFooter,
   DrawerHeader,
   DrawerTitle,
-  DrawerTrigger,
 } from "@/components/ui/drawer"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -42,7 +40,6 @@ import {
   SheetFooter,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -712,6 +709,7 @@ function NoteCorrectButton(props: {
       type="button"
       variant="ghost"
       size="sm"
+      className="h-11 shrink-0 px-3 md:h-8"
       disabled={!canCorrect}
       onClick={() => props.onCorrect(correctedValue)}
     >
@@ -802,7 +800,25 @@ function InfoEditDialog(input: {
   )
   const standardMoveCatalogRequestVersionRef = React.useRef(0)
   const windPatternCatalogRequestVersionRef = React.useRef(0)
+  const quickCreatePortalContainerRef = React.useRef<HTMLDivElement | null>(null)
   const isMobile = useIsMobile()
+
+  function keepMobileFieldVisible(event: React.FocusEvent<HTMLElement>) {
+    if (!isMobile) {
+      return
+    }
+
+    const target = event.currentTarget
+
+    window.setTimeout(() => {
+      target.scrollIntoView({
+        block: "center",
+        inline: "nearest",
+        behavior: "smooth",
+      })
+    }, 120)
+  }
+
   const hasQuickCreateDescription = newStandardMoveDescription.trim().length > 0
   const standardMoveOptions = mergeCatalogOptionsById(
     standardMoveCatalogOptions,
@@ -1225,136 +1241,161 @@ function InfoEditDialog(input: {
     input.section === "windPatterns" ? canCreateWindPattern : canCreateStandardMove
   const quickCreateDescriptionId = `quick-${input.section}-description-${input.sessionId}`
   const quickCreateNameId = `quick-${input.section}-name-${input.sessionId}`
+  const quickCreateFields = (
+    <fieldset disabled={isCreatingStandardMove} className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor={quickCreateDescriptionId}>Description</Label>
+        <Textarea
+          id={quickCreateDescriptionId}
+          className="min-h-28 scroll-my-8 text-base md:text-sm"
+          rows={3}
+          maxLength={4000}
+          value={newStandardMoveDescription}
+          onFocus={keepMobileFieldVisible}
+          onChange={(event) => {
+            const nextDescription = event.target.value
+            setNewStandardMoveDescription(nextDescription)
+
+            if (!isQuickCreateNameManuallyEdited) {
+              if (nextDescription.trim().length === 0) {
+                setNewStandardMoveName("")
+              } else {
+                setNewStandardMoveName(
+                  generateStandardMoveNameFromDescription(
+                    nextDescription,
+                    quickCreateItemLabel,
+                  ),
+                )
+              }
+            }
+          }}
+          placeholder={quickCreateDescriptionPlaceholder}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <Label htmlFor={quickCreateNameId}>Name</Label>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-11 shrink-0 px-3 sm:h-8"
+            disabled={isCreatingStandardMove || newStandardMoveDescription.trim().length === 0}
+            onClick={() => {
+              setNewStandardMoveName(
+                generateStandardMoveNameFromDescription(
+                  newStandardMoveDescription,
+                  quickCreateItemLabel,
+                ),
+              )
+              setIsQuickCreateNameManuallyEdited(false)
+            }}
+          >
+            Use generated
+          </Button>
+        </div>
+        <Input
+          id={quickCreateNameId}
+          className="h-11 scroll-my-8 text-base md:text-sm"
+          maxLength={120}
+          value={newStandardMoveName}
+          onFocus={keepMobileFieldVisible}
+          onChange={(event) => {
+            setNewStandardMoveName(event.target.value)
+            setIsQuickCreateNameManuallyEdited(true)
+          }}
+          placeholder="Auto-generated from the description"
+        />
+      </div>
+    </fieldset>
+  )
   const quickCreatePanel =
     isCatalogSection ? (
-      <div className="shrink-0 border-t bg-popover px-4 py-3">
+      <div ref={quickCreatePortalContainerRef} className="shrink-0 border-t bg-popover px-4 py-3">
         <div className="grid gap-3 rounded-lg border p-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-h-9 items-center">
               <p className="text-sm font-medium">New {quickCreateItemLabel}</p>
             </div>
-            <Dialog
-              open={isQuickCreateDialogOpen}
-              onOpenChange={handleQuickCreateDialogOpenChange}
-            >
-              <DialogTrigger
-                render={
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={isSaving || isCreatingStandardMove}
-                  />
-                }
+            {isMobile ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isSaving || isCreatingStandardMove}
+                aria-haspopup="dialog"
+                aria-expanded={isQuickCreateDialogOpen}
+                onClick={() => handleQuickCreateDialogOpenChange(true)}
               >
                 <PlusIcon className="size-4" />
                 Quick create
-              </DialogTrigger>
-              <DialogContent
-                className="sm:max-w-xl"
-                overlayClassName="bg-black/35 backdrop-blur-md"
+              </Button>
+            ) : (
+              <Dialog
+                modal={false}
+                open={isQuickCreateDialogOpen}
+                onOpenChange={handleQuickCreateDialogOpenChange}
               >
-                <DialogHeader>
-                  <DialogTitle>{quickCreateDialogTitle}</DialogTitle>
-                  <DialogDescription>
-                    Description is required. Name is auto-generated and editable.
-                  </DialogDescription>
-                </DialogHeader>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isSaving || isCreatingStandardMove}
+                  aria-haspopup="dialog"
+                  aria-expanded={isQuickCreateDialogOpen}
+                  onClick={() => handleQuickCreateDialogOpenChange(true)}
+                >
+                  <PlusIcon className="size-4" />
+                  Quick create
+                </Button>
+                <DialogContent
+                  className="z-[70] sm:max-w-xl"
+                  overlayClassName="z-[60] bg-black/35"
+                  overlayStyle={{ zIndex: 60 }}
+                  portalContainer={quickCreatePortalContainerRef.current ?? undefined}
+                  style={{ zIndex: 70 }}
+                >
+                  <DialogHeader>
+                    <DialogTitle>{quickCreateDialogTitle}</DialogTitle>
+                    <DialogDescription>
+                      Description is required. Name is auto-generated and editable.
+                    </DialogDescription>
+                  </DialogHeader>
 
-                <div className="space-y-4">
-                  <fieldset disabled={isCreatingStandardMove} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor={quickCreateDescriptionId}>Description</Label>
-                      <Textarea
-                        id={quickCreateDescriptionId}
-                        rows={3}
-                        maxLength={4000}
-                        value={newStandardMoveDescription}
-                        onChange={(event) => {
-                          const nextDescription = event.target.value
-                          setNewStandardMoveDescription(nextDescription)
+                  <div className="space-y-4">
+                    {quickCreateFields}
 
-                          if (!isQuickCreateNameManuallyEdited) {
-                            if (nextDescription.trim().length === 0) {
-                              setNewStandardMoveName("")
-                            } else {
-                              setNewStandardMoveName(
-                                generateStandardMoveNameFromDescription(
-                                  nextDescription,
-                                  quickCreateItemLabel,
-                                ),
-                              )
-                            }
-                          }
-                        }}
-                        placeholder={quickCreateDescriptionPlaceholder}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <Label htmlFor={quickCreateNameId}>Name</Label>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          disabled={
-                            isCreatingStandardMove ||
-                            newStandardMoveDescription.trim().length === 0
-                          }
-                          onClick={() => {
-                            setNewStandardMoveName(
-                              generateStandardMoveNameFromDescription(
-                                newStandardMoveDescription,
-                                quickCreateItemLabel,
-                              ),
-                            )
-                            setIsQuickCreateNameManuallyEdited(false)
-                          }}
-                        >
-                          Use generated
-                        </Button>
-                      </div>
-                      <Input
-                        id={quickCreateNameId}
-                        maxLength={120}
-                        value={newStandardMoveName}
-                        onChange={(event) => {
-                          setNewStandardMoveName(event.target.value)
-                          setIsQuickCreateNameManuallyEdited(true)
-                        }}
-                        placeholder="Auto-generated from the description"
-                      />
-                    </div>
-                  </fieldset>
-
-                  <DialogFooter>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={isCreatingStandardMove}
-                      onClick={() => handleQuickCreateDialogOpenChange(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      type="button"
-                      disabled={!canCreateQuickItem}
-                      onClick={handleQuickCreateSubmit}
-                    >
-                      {isCreatingStandardMove ? (
-                        <>
-                          <Loader2Icon className="size-4 animate-spin" />
-                          Creating...
-                        </>
-                      ) : (
-                        "Create"
-                      )}
-                    </Button>
-                  </DialogFooter>
-                </div>
-              </DialogContent>
-            </Dialog>
+                    <DialogFooter>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-11 w-full sm:h-9 sm:w-auto"
+                        disabled={isCreatingStandardMove}
+                        onClick={() => handleQuickCreateDialogOpenChange(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        className="h-11 w-full sm:h-9 sm:w-auto"
+                        disabled={!canCreateQuickItem}
+                        onClick={handleQuickCreateSubmit}
+                      >
+                        {isCreatingStandardMove ? (
+                          <>
+                            <Loader2Icon className="size-4 animate-spin" />
+                            Creating...
+                          </>
+                        ) : (
+                          "Create"
+                        )}
+                      </Button>
+                    </DialogFooter>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
           </div>
         </div>
       </div>
@@ -1401,7 +1442,13 @@ function InfoEditDialog(input: {
         : null}
 
       <InfoDialogFieldset
-        className={isCatalogSection ? "flex flex-col gap-4" : undefined}
+        className={
+          input.section === "coaching"
+            ? "space-y-4 pb-28 md:pb-4"
+            : isCatalogSection
+              ? "flex flex-col gap-4"
+              : undefined
+        }
         isSaving={isSaving}
       >
         {input.section === "coaching" ? (
@@ -1414,12 +1461,14 @@ function InfoEditDialog(input: {
               <Textarea
                 id={`best-of-session-${input.sessionId}`}
                 name="bestOfSession"
+                className="min-h-28 scroll-my-8 text-base md:text-sm"
                 rows={3}
                 maxLength={4000}
                 autoCapitalize="sentences"
                 autoCorrect="on"
                 spellCheck
                 value={bestOfSession}
+                onFocus={keepMobileFieldVisible}
                 onChange={(event) => setBestOfSession(event.target.value)}
               />
             </div>
@@ -1432,12 +1481,14 @@ function InfoEditDialog(input: {
               <Textarea
                 id={`to-work-${input.sessionId}`}
                 name="toWork"
+                className="min-h-28 scroll-my-8 text-base md:text-sm"
                 rows={3}
                 maxLength={4000}
                 autoCapitalize="sentences"
                 autoCorrect="on"
                 spellCheck
                 value={toWork}
+                onFocus={keepMobileFieldVisible}
                 onChange={(event) => setToWork(event.target.value)}
               />
             </div>
@@ -1447,9 +1498,11 @@ function InfoEditDialog(input: {
               <Textarea
                 id={`free-notes-${input.sessionId}`}
                 name="freeNotes"
+                className="min-h-32 scroll-my-8 text-base md:text-sm"
                 rows={4}
                 maxLength={4000}
                 value={freeNotes}
+                onFocus={keepMobileFieldVisible}
                 onChange={(event) => setFreeNotes(event.target.value)}
               />
             </div>
@@ -1465,8 +1518,9 @@ function InfoEditDialog(input: {
                   value={standardMoveSearch}
                   onChange={(event) => setStandardMoveSearch(event.target.value)}
                   placeholder="Search Standard Moves"
-                  className="pl-9"
+                  className="h-11 pl-9 md:h-8"
                   aria-label="Search Standard Moves"
+                  onFocus={keepMobileFieldVisible}
                 />
               </div>
               <div
@@ -1584,8 +1638,9 @@ function InfoEditDialog(input: {
                 value={windPatternSearch}
                 onChange={(event) => setWindPatternSearch(event.target.value)}
                 placeholder="Search Wind Patterns"
-                className="pl-9"
+                className="h-11 pl-9 md:h-8"
                 aria-label="Search Wind Patterns"
+                onFocus={keepMobileFieldVisible}
               />
             </div>
             <div
@@ -1699,10 +1754,10 @@ function InfoEditDialog(input: {
       {quickCreatePanel}
 
       {isMobile ? (
-        <DrawerFooter className="shrink-0">
+        <DrawerFooter className="shrink-0 border-t">
           <InfoDialogSubmitButton
             canSubmit={canSubmitInfo}
-            className="w-full"
+            className="h-11 w-full"
             isSaving={isSaving}
             label={copy.submitLabel}
           />
@@ -1719,29 +1774,94 @@ function InfoEditDialog(input: {
       )}
     </form>
   )
-  const surfaceClassName = [
-    "transition-[filter] duration-100",
-    isQuickCreateDialogOpen ? "blur-[2px]" : "",
-  ].join(" ")
+  const showMobileQuickCreate = isMobile && isCatalogSection && isQuickCreateDialogOpen
+  const hideMobileDrawerSurfaceTitle = isMobile && !showMobileQuickCreate
+  const quickCreateMobileView = (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        {quickCreateFields}
+      </div>
+      <DrawerFooter className="shrink-0 border-t">
+        <Button
+          type="button"
+          className="h-11 w-full"
+          disabled={!canCreateQuickItem}
+          onClick={handleQuickCreateSubmit}
+        >
+          {isCreatingStandardMove ? (
+            <>
+              <Loader2Icon className="size-4 animate-spin" />
+              Creating...
+            </>
+          ) : (
+            "Create"
+          )}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11 w-full"
+          disabled={isCreatingStandardMove}
+          onClick={() => handleQuickCreateDialogOpenChange(false)}
+        >
+          Cancel
+        </Button>
+      </DrawerFooter>
+    </div>
+  )
+  const mobileDrawerHeaderContent = (
+    <div className="relative flex min-h-9 items-center justify-center px-10">
+      {showMobileQuickCreate ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="absolute left-0 top-1/2 h-11 w-11 -translate-y-1/2 rounded-xl"
+          disabled={isCreatingStandardMove}
+          onClick={() => handleQuickCreateDialogOpenChange(false)}
+        >
+          <ArrowLeftIcon className="size-4" />
+          <span className="sr-only">Back</span>
+        </Button>
+      ) : null}
+      <DrawerTitle className="text-center">
+        {showMobileQuickCreate ? quickCreateDialogTitle : copy.title}
+      </DrawerTitle>
+      {showMobileQuickCreate ? (
+        <DrawerDescription className="sr-only">
+          Description is required. Name is auto-generated and editable.
+        </DrawerDescription>
+      ) : copy.description ? (
+        <DrawerDescription className="sr-only">{copy.description}</DrawerDescription>
+      ) : null}
+    </div>
+  )
 
   if (isMobile) {
     return (
       <Drawer open={isOpen} onOpenChange={handleInfoOpenChange}>
-        <DrawerTrigger asChild>
-          <Button type="button" variant="outline" size="default" className="h-9 px-3">
-            {copy.triggerLabel}
-          </Button>
-        </DrawerTrigger>
-        <DrawerContent
-          className={`h-[85dvh] overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh] ${surfaceClassName}`}
+        <Button
+          type="button"
+          variant="outline"
+          size="default"
+          className="h-9 px-3"
+          aria-haspopup="dialog"
+          aria-expanded={isOpen}
+          onClick={() => handleInfoOpenChange(true)}
         >
-          <DrawerHeader className="shrink-0">
-            <DrawerTitle>{copy.title}</DrawerTitle>
-            {copy.description ? (
-              <DrawerDescription>{copy.description}</DrawerDescription>
-            ) : null}
-          </DrawerHeader>
-          {infoForm}
+          {copy.triggerLabel}
+        </Button>
+        <DrawerContent className="h-[85dvh] overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+          {hideMobileDrawerSurfaceTitle ? (
+            <DrawerHeader className="sr-only">
+              <DrawerTitle>{copy.title}</DrawerTitle>
+            </DrawerHeader>
+          ) : (
+            <DrawerHeader className="shrink-0 border-b px-4 py-2">
+              {mobileDrawerHeaderContent}
+            </DrawerHeader>
+          )}
+          {showMobileQuickCreate ? quickCreateMobileView : infoForm}
         </DrawerContent>
       </Drawer>
     )
@@ -1749,10 +1869,17 @@ function InfoEditDialog(input: {
 
   return (
     <Sheet open={isOpen} onOpenChange={handleInfoOpenChange}>
-      <SheetTrigger render={<Button type="button" variant="outline" size="sm" />}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        onClick={() => handleInfoOpenChange(true)}
+      >
         {copy.triggerLabel}
-      </SheetTrigger>
-      <SheetContent side="right" className={`h-full overflow-hidden sm:max-w-2xl ${surfaceClassName}`}>
+      </Button>
+      <SheetContent side="right" className="h-full overflow-hidden sm:max-w-2xl">
         <SheetHeader className="shrink-0">
           <SheetTitle>{copy.title}</SheetTitle>
           {copy.description ? <SheetDescription>{copy.description}</SheetDescription> : null}

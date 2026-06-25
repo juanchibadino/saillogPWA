@@ -3647,12 +3647,6 @@ async function uploadSessionAssetMutation(
     })
   }
 
-  revalidateSessionSlices({
-    sessionId: parsedInput.data.sessionId,
-    campId: scopedSession.camp.id,
-    teamVenueId: scopedSession.teamVenue.id,
-  })
-
   return {
     ok: true,
     sessionId: parsedInput.data.sessionId,
@@ -3831,12 +3825,6 @@ export async function deleteSessionAssetAction(
   } catch {
     // The asset row is already deleted; storage cleanup is best-effort.
   }
-
-  revalidateSessionSlices({
-    sessionId: parsedInput.data.sessionId,
-    campId: scopedSession.camp.id,
-    teamVenueId: scopedSession.teamVenue.id,
-  })
 
   logTiming({
     assetType: assetRow.asset_type,

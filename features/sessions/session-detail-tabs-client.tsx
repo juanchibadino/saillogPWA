@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import dynamic from "next/dynamic"
+import { usePathname, useSearchParams } from "next/navigation"
 import { Loader2Icon, MinusIcon, PlusIcon, Settings2Icon } from "lucide-react"
 import { useFormStatus } from "react-dom"
 import { toast } from "sonner"
@@ -837,6 +838,8 @@ export function SessionDetailTabsClient(input: {
   goals: string | null
   canManageSession: boolean
 }) {
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [selectedTab, setSelectedTab] = React.useState<SessionDetailTab>(input.initialTab)
   const [tabData, setTabData] = React.useState<SessionDetailTabDataState>(() =>
     buildSessionDetailTabDataState({
@@ -851,21 +854,58 @@ export function SessionDetailTabsClient(input: {
   )
   const inFlightTabsRef = React.useRef<Set<SessionDetailTab>>(new Set())
   const requestVersionRef = React.useRef(0)
+  const sessionIdRef = React.useRef(input.sessionId)
+
+  const updateSelectedTab = React.useCallback(
+    (tab: SessionDetailTab) => {
+      setSelectedTab(tab)
+
+      const nextParams = new URLSearchParams(searchParams.toString())
+      nextParams.set("tab", tab)
+
+      const nextSearch = nextParams.toString()
+      const nextUrl = `${pathname}${nextSearch.length > 0 ? `?${nextSearch}` : ""}${
+        window.location.hash
+      }`
+
+      window.history.replaceState(null, "", nextUrl)
+    },
+    [pathname, searchParams],
+  )
 
   React.useEffect(() => {
+    const didSessionChange = sessionIdRef.current !== input.sessionId
+    sessionIdRef.current = input.sessionId
+
     requestVersionRef.current += 1
     inFlightTabsRef.current.clear()
-    setSelectedTab(input.initialTab)
-    setTabData(
-      buildSessionDetailTabDataState({
-        goals: input.goals,
-        initialTab: input.initialTab,
-        initialTabData: input.initialTabData,
+    if (didSessionChange) {
+      setSelectedTab(input.initialTab)
+    }
+
+    setTabData((currentState) =>
+      applySessionDetailTabData({
+        data: input.initialTabData,
+        state: didSessionChange
+          ? {
+              goals: {
+                goals: input.goals,
+              },
+            }
+          : {
+              ...currentState,
+              goals: {
+                goals: input.goals,
+              },
+            },
+        tab: input.initialTab,
       }),
     )
-    setLoadError(null)
+    setLoadError((currentError) =>
+      currentError?.tab === input.initialTab ? null : currentError,
+    )
     setLoadingMoreAssetTab(null)
-  }, [input.goals, input.initialTab, input.initialTabData])
+  }, [input.goals, input.initialTab, input.initialTabData, input.sessionId])
 
   const loadTabData = React.useCallback(
     async (tab: SessionDetailTab, options?: { force?: boolean }) => {
@@ -985,11 +1025,11 @@ export function SessionDetailTabsClient(input: {
   return (
     <Tabs
       value={selectedTab}
-      onValueChange={(value) => setSelectedTab(resolveSessionDetailTab(value))}
+      onValueChange={(value) => updateSelectedTab(resolveSessionDetailTab(value))}
       className="space-y-4"
     >
       <div className="md:hidden">
-        <MobileSessionDetailTabsList selectedTab={selectedTab} onTabChange={setSelectedTab} />
+        <MobileSessionDetailTabsList selectedTab={selectedTab} onTabChange={updateSelectedTab} />
       </div>
 
       <TabsList className="hidden h-10 md:inline-flex">
@@ -1069,6 +1109,7 @@ export function SessionDetailTabsClient(input: {
                 emptyMessage="No images uploaded for this session yet."
                 isLoadingMore={loadingMoreAssetTab === "images"}
                 onLoadMore={() => void loadMoreAssets("images")}
+                onAssetsChanged={() => loadTabData("images", { force: true })}
                 canManageSession={input.canManageSession}
               />
             ) : (
@@ -1094,6 +1135,7 @@ export function SessionDetailTabsClient(input: {
                 emptyMessage="No analytics PDFs uploaded for this session yet."
                 isLoadingMore={loadingMoreAssetTab === "analytics"}
                 onLoadMore={() => void loadMoreAssets("analytics")}
+                onAssetsChanged={() => loadTabData("analytics", { force: true })}
                 canManageSession={input.canManageSession}
               />
             ) : (

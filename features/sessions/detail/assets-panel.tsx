@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
 import {
   DownloadIcon,
   ExternalLinkIcon,
@@ -651,11 +650,11 @@ function AssetPreviewContent(input: {
 function AssetActions(input: {
   asset: SessionDetailAsset
   canManageSession: boolean
+  onAssetsChanged: () => Promise<void> | void
   onDeletingChange: (isDeleting: boolean) => void
   scope: NavigationScope
   sessionId: string
 }) {
-  const router = useRouter()
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const [isDeleting, setIsDeleting] = React.useState(false)
   const deleteLabel = input.asset.asset_type === "photo" ? "Delete image" : "Delete file"
@@ -685,7 +684,9 @@ function AssetActions(input: {
 
       toast.success(input.asset.asset_type === "photo" ? "Image deleted." : "File deleted.")
       setDeleteDialogOpen(false)
-      router.refresh()
+      await input.onAssetsChanged()
+      setIsDeleting(false)
+      input.onDeletingChange(false)
     } catch {
       toast.error("Could not delete this file. Confirm storage is available and try again.")
       setIsDeleting(false)
@@ -742,6 +743,7 @@ function AssetActions(input: {
       </DropdownMenu>
 
       <Dialog
+        modal
         open={deleteDialogOpen}
         onOpenChange={(nextOpen) => {
           if (!isDeleting) {
@@ -749,7 +751,11 @@ function AssetActions(input: {
           }
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className="sm:max-w-md"
+          forceOverlayRender
+          overlayClassName="bg-black/20 backdrop-blur-sm supports-backdrop-filter:backdrop-blur-sm"
+        >
           <DialogHeader>
             <DialogTitle>{deleteLabel}</DialogTitle>
             <DialogDescription>
@@ -793,6 +799,7 @@ function AssetActions(input: {
 function AssetCard(input: {
   asset: SessionDetailAsset
   canManageSession: boolean
+  onAssetsChanged: () => Promise<void> | void
   scope: NavigationScope
   sessionId: string
 }) {
@@ -842,6 +849,7 @@ function AssetCard(input: {
         <AssetActions
           asset={input.asset}
           canManageSession={input.canManageSession}
+          onAssetsChanged={input.onAssetsChanged}
           onDeletingChange={setIsDeleting}
           scope={input.scope}
           sessionId={input.sessionId}
@@ -920,6 +928,7 @@ function AssetGrid(input: {
   assets: SessionDetailAsset[]
   canManageSession: boolean
   emptyMessage: string
+  onAssetsChanged: () => Promise<void> | void
   pendingUpload: PendingAssetUpload | null
   scope: NavigationScope
   sessionId: string
@@ -940,6 +949,7 @@ function AssetGrid(input: {
           key={asset.id}
           asset={asset}
           canManageSession={input.canManageSession}
+          onAssetsChanged={input.onAssetsChanged}
           scope={input.scope}
           sessionId={input.sessionId}
         />
@@ -964,8 +974,8 @@ export function SessionAssetsPanel(input: {
   canManageSession: boolean
   isLoadingMore?: boolean
   onLoadMore?: () => void
+  onAssetsChanged: () => Promise<void> | void
 }) {
-  const router = useRouter()
   const inputId = React.useId()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [pendingUpload, setPendingUpload] = React.useState<PendingAssetUpload | null>(null)
@@ -1010,7 +1020,7 @@ export function SessionAssetsPanel(input: {
       }
 
       toast.success(input.assetType === "photo" ? "Image uploaded." : "File uploaded.")
-      router.refresh()
+      await input.onAssetsChanged()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not upload this file.")
     } finally {
@@ -1072,6 +1082,7 @@ export function SessionAssetsPanel(input: {
         assets={input.assets}
         canManageSession={input.canManageSession}
         emptyMessage={input.emptyMessage}
+        onAssetsChanged={input.onAssetsChanged}
         pendingUpload={pendingUpload}
         scope={input.scope}
         sessionId={input.sessionId}

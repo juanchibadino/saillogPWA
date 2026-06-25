@@ -16,45 +16,60 @@ import {
 } from "@/features/sessions/detail/responsive-edit-surface"
 import type { NavigationScope } from "@/lib/navigation/types"
 
+function GoalsDialogFieldset(props: {
+  children: React.ReactNode
+  className?: string
+}) {
+  const { pending } = useFormStatus()
+
+  return (
+    <fieldset disabled={pending} className={props.className ?? "space-y-4"}>
+      {props.children}
+    </fieldset>
+  )
+}
+
+function GoalsDialogSubmitButton(props: { className?: string }) {
+  const { pending } = useFormStatus()
+  const isPending = pending
+
+  return (
+    <Button type="submit" disabled={isPending} className={props.className}>
+      {isPending ? (
+        <>
+          <Loader2Icon className="size-4 animate-spin" />
+          Saving...
+        </>
+      ) : (
+        "Save"
+      )}
+    </Button>
+  )
+}
+
 function GoalsEditDialog(input: {
   sessionId: string
   scope: NavigationScope
   goals: string | null
 }) {
-  function GoalsDialogFieldset(props: {
-    children: React.ReactNode
-    className?: string
-  }) {
-    const { pending } = useFormStatus()
-
-    return (
-      <fieldset disabled={pending} className={props.className ?? "space-y-4"}>
-        {props.children}
-      </fieldset>
-    )
-  }
-
-  function GoalsDialogSubmitButton() {
-    const { pending } = useFormStatus()
-    const isPending = pending
-
-    return (
-      <Button type="submit" disabled={isPending}>
-        {isPending ? (
-          <>
-            <Loader2Icon className="size-4 animate-spin" />
-            Saving...
-          </>
-        ) : (
-          "Save"
-        )}
-      </Button>
-    )
-  }
 
   const [goals, setGoals] = React.useState(input.goals ?? "")
 
+  function keepMobileFieldVisible(event: React.FocusEvent<HTMLElement>) {
+    const target = event.currentTarget
+
+    window.setTimeout(() => {
+      target.scrollIntoView({
+        block: "center",
+        inline: "nearest",
+        behavior: "smooth",
+      })
+    }, 120)
+  }
+
   function renderGoalsForm(surface: ResponsiveEditSurfaceKind) {
+    const isDrawer = surface === "drawer"
+
     return (
       <form action={updateSessionGoalsAction} className="flex min-h-0 flex-1 flex-col">
         <input type="hidden" name="sessionId" value={input.sessionId} />
@@ -64,15 +79,23 @@ function GoalsEditDialog(input: {
         ) : null}
         <input type="hidden" name="scopeTab" value="goals" />
 
-        <GoalsDialogFieldset className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-          <div className="space-y-2">
+        <GoalsDialogFieldset
+          className={
+            isDrawer
+              ? "flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-4"
+              : "min-h-0 flex-1 overflow-y-auto px-4 pb-4"
+          }
+        >
+          <div className={isDrawer ? "flex min-h-0 flex-1 flex-col gap-2" : "space-y-2"}>
             <Label htmlFor={`session-goals-${input.sessionId}`}>Goals</Label>
             <Textarea
               id={`session-goals-${input.sessionId}`}
               name="goals"
+              className={isDrawer ? "min-h-0 flex-1 resize-none scroll-my-8 text-base" : undefined}
               rows={12}
               maxLength={4000}
               value={goals}
+              onFocus={isDrawer ? keepMobileFieldVisible : undefined}
               onChange={(event) => setGoals(event.target.value)}
               placeholder="Write session goals, priorities, and execution focus..."
             />
@@ -82,7 +105,7 @@ function GoalsEditDialog(input: {
 
         {surface === "drawer" ? (
           <DrawerFooter className="shrink-0 border-t">
-            <GoalsDialogSubmitButton />
+            <GoalsDialogSubmitButton className="h-11 w-full" />
           </DrawerFooter>
         ) : (
           <SheetFooter className="shrink-0 border-t">
@@ -97,6 +120,8 @@ function GoalsEditDialog(input: {
     <ResponsiveEditSurface
       title="Edit session goals"
       description="Update the goals and execution focus for this session."
+      drawerContentClassName="h-[85dvh] overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]"
+      hideDrawerTitle
     >
       {({ surface }) => renderGoalsForm(surface)}
     </ResponsiveEditSurface>
