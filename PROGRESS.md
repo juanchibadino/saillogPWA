@@ -6,9 +6,9 @@ Branch: `main`
 
 ## 2026-06-25 - Team Session nested dialog click fix
 
-- Added a scroll-aware Team Session detail summary wrapper so the Type / Date /
-  Dock Out / Duration card collapses once the page scrolls, keeping the tab
-  content higher in the viewport while preserving server-side data loading.
+- Removed the Team Session detail summary collapse behavior; the Type / Date /
+  Dock Out / Duration card is now static again to avoid short-tab scroll
+  feedback loops.
 - Fixed nested Team Session edit dialogs so the Gear scanner and Info quick
   create dialogs for Wind Patterns / Std. Moves stay clickable above their
   parent Drawer or Sheet.
