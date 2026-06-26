@@ -1,4 +1,5 @@
 import type { AccessContext } from "@/lib/auth/access";
+import { canManageTeamSessionsFromAccess } from "@/lib/auth/capability-rules.mjs";
 import type { Database } from "@/types/database";
 
 type TeamRole = Database["public"]["Enums"]["team_role_type"];
@@ -6,7 +7,6 @@ type OrganizationRole = Database["public"]["Enums"]["organization_role_type"];
 
 const ORGANIZATION_ADMIN_ROLE: OrganizationRole = "organization_admin";
 const TEAM_STRUCTURE_MANAGER_ROLES: TeamRole[] = ["team_admin", "coach"];
-const TEAM_SESSION_MANAGER_ROLES: TeamRole[] = ["team_admin", "coach", "crew"];
 const TEAM_CAMP_DELETE_ROLES: TeamRole[] = ["coach"];
 
 function hasOrganizationRole(
@@ -70,10 +70,7 @@ export function canManageTeamSessions(input: {
   organizationId: string;
   teamId: string;
 }): boolean {
-  return (
-    canManageOrganizationOperations(input.context, input.organizationId) ||
-    hasTeamRole(input.context, input.teamId, TEAM_SESSION_MANAGER_ROLES)
-  );
+  return canManageTeamSessionsFromAccess(input);
 }
 
 export function canDeleteCamps(input: {

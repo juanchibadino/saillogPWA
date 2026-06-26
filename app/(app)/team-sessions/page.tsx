@@ -4,6 +4,11 @@ import { TeamSessionsTable } from "@/features/sessions/sessions-table"
 import { TeamSessionsToolbar } from "@/features/sessions/team-sessions-toolbar"
 import { buildTeamSessionsHref } from "@/features/sessions/navigation"
 import {
+  logTeamSessionsListTiming,
+  startTeamSessionsListTiming,
+} from "@/features/sessions/list-timing"
+import { resolveTeamSessionsListRequest } from "@/features/sessions/list-route-state.mjs"
+import {
   getTeamSessionsPageData,
   type TeamSessionCampOption,
   type TeamSessionHighlightFilter,
@@ -30,6 +35,10 @@ function getStatusMessage(status: string | undefined): string | null {
     return "Session updated successfully."
   }
 
+  if (status === "deleted") {
+    return "Session deleted successfully."
+  }
+
   return null
 }
 
@@ -50,6 +59,10 @@ function getErrorMessage(error: string | undefined): string | null {
     return "Could not update session. Confirm your permissions and try again."
   }
 
+  if (error === "delete_failed") {
+    return "Could not delete session. Confirm your permissions and try again."
+  }
+
   if (error === "plan_limit_reached") {
     return "Plan limit reached for sessions in this organization. Upgrade or change plan in Billing to continue."
   }
@@ -61,39 +74,12 @@ function getErrorMessage(error: string | undefined): string | null {
   return null
 }
 
-function parseRequestedPage(value: string | undefined): number {
-  if (!value) {
-    return 1
-  }
-
-  const parsed = Number.parseInt(value, 10)
-
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    return 1
-  }
-
-  return Math.floor(parsed)
-}
-
-function parseLoadMoreMode(value: string | undefined): boolean {
-  return value === "1"
-}
-
-function resolveHighlightFilter(
-  value: string | undefined,
-): TeamSessionHighlightFilter | undefined {
-  if (value === "yes" || value === "no") {
-    return value
-  }
-
-  return undefined
-}
-
 export default async function TeamSessionsPage({
   searchParams,
 }: {
   searchParams: TeamSessionsSearchParams
 }) {
+  const scopeStartedAt = startTeamSessionsListTiming()
   const context = await requireAuthenticatedAccessContext()
   const resolvedSearchParams = await searchParams
 
@@ -101,15 +87,15 @@ export default async function TeamSessionsPage({
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
   const requestedVenueId = getSingleSearchParamValue(resolvedSearchParams.venue)
   const requestedCampId = getSingleSearchParamValue(resolvedSearchParams.camp)
-  const requestedHighlight = resolveHighlightFilter(
-    getSingleSearchParamValue(resolvedSearchParams.highlight),
-  )
-  const requestedPage = parseRequestedPage(
-    getSingleSearchParamValue(resolvedSearchParams.page),
-  )
-  const requestedLoadMoreMode = parseLoadMoreMode(
-    getSingleSearchParamValue(resolvedSearchParams.loadMore),
-  )
+  const {
+    requestedHighlight,
+    requestedLoadMoreMode,
+    requestedPage,
+  } = resolveTeamSessionsListRequest({
+    highlightParam: getSingleSearchParamValue(resolvedSearchParams.highlight),
+    loadMoreParam: getSingleSearchParamValue(resolvedSearchParams.loadMore),
+    pageParam: getSingleSearchParamValue(resolvedSearchParams.page),
+  })
 
   const statusMessage = getStatusMessage(status)
   const errorMessage = getErrorMessage(error)
@@ -117,6 +103,16 @@ export default async function TeamSessionsPage({
   const navigation = await resolveNavigationScope({
     context,
     searchParams: resolvedSearchParams,
+  })
+  logTeamSessionsListTiming({
+    phase: "scope",
+    startedAt: scopeStartedAt,
+    activeTeamId: navigation.scope?.activeTeamId ?? null,
+    status: "success",
+    metadata: {
+      hasScope: Boolean(navigation.scope),
+      hasTeamScope: Boolean(navigation.scope?.activeTeamId),
+    },
   })
 
   if (!navigation.scope) {
@@ -300,6 +296,7 @@ export default async function TeamSessionsPage({
                 scope={scope}
                 selectedVenueId={selectedVenueId}
                 selectedCampId={selectedCampId}
+                selectedHighlight={selectedHighlight}
                 currentPage={currentPage}
                 disabled={createDisabled}
                 surface="sheet"
@@ -310,6 +307,7 @@ export default async function TeamSessionsPage({
         scope={scope}
         selectedVenueId={selectedVenueId}
         selectedCampId={selectedCampId}
+        selectedHighlight={selectedHighlight}
         currentPage={currentPage}
         pageCount={pageCount}
         hasPreviousPage={hasPreviousPage}

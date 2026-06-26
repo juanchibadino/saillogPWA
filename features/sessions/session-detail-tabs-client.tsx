@@ -27,7 +27,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { updateSessionDetailAction } from "@/features/sessions/actions"
+import { updateSessionDetailAction } from "@/features/sessions/detail-actions"
 import type { SessionAssetsPanelProps } from "@/features/sessions/detail/assets-panel"
 import type { SessionGearTabPanelProps } from "@/features/sessions/detail/gear-panel"
 import type { GoalsPanelProps } from "@/features/sessions/detail/goals-panel"

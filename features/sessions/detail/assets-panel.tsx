@@ -36,7 +36,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import {
   deleteSessionAssetAction,
   saveSessionAssetAction,
-} from "@/features/sessions/actions"
+} from "@/features/sessions/detail-actions"
 import type { SessionDetailAsset } from "@/features/sessions/detail-types"
 import type { NavigationScope } from "@/lib/navigation/types"
 import { cn } from "@/lib/utils"

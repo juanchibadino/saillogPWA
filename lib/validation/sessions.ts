@@ -43,6 +43,10 @@ export const updateSessionInputSchema = baseSessionInputSchema.extend({
   id: z.string().uuid(),
 })
 
+export const deleteSessionInputSchema = z.object({
+  id: z.string().uuid(),
+})
+
 export const updateSessionDetailInputSchema = z.object({
   id: z.string().uuid(),
   sessionType: z.enum(["training", "regatta"]),
@@ -120,6 +124,7 @@ export const deleteSessionAssetInputSchema = z.object({
 
 export type CreateSessionInput = z.infer<typeof createSessionInputSchema>
 export type UpdateSessionInput = z.infer<typeof updateSessionInputSchema>
+export type DeleteSessionInput = z.infer<typeof deleteSessionInputSchema>
 export type UpdateSessionDetailInput = z.infer<typeof updateSessionDetailInputSchema>
 export type UpdateSessionInfoInput = z.infer<typeof updateSessionInfoInputSchema>
 export type UpdateSessionResultsInput = z.infer<typeof updateSessionResultsInputSchema>

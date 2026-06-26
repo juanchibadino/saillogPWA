@@ -52,7 +52,7 @@ import {
   createSessionWindPatternAction,
   saveSessionInfoAction,
   updateSessionInfoAction,
-} from "@/features/sessions/actions"
+} from "@/features/sessions/detail-actions"
 import type {
   SessionDetailCatalogPage,
   SessionDetailStandardMove,

@@ -48,8 +48,8 @@ import {
   saveSessionSetupAction,
   updateSessionSetupAction,
   updateTeamSetupMetricAction,
-} from "@/features/sessions/actions"
-import type { TeamSetupMetricActionItem } from "@/features/sessions/actions"
+} from "@/features/sessions/detail-actions"
+import type { TeamSetupMetricActionItem } from "@/features/sessions/detail-actions"
 import type { SessionSetupDialogItem } from "@/features/sessions/detail-types"
 import { useIsMobile } from "@/hooks/use-mobile"
 import type { NavigationScope } from "@/lib/navigation/types"

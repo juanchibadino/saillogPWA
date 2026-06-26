@@ -412,7 +412,7 @@ function resolveMobileBackFallbackPath(pathname: string): string {
   }
 
   if (/^\/team-sessions\/[^/]+$/.test(pathname)) {
-    return "/team-home"
+    return "/team-camps"
   }
 
   if (pathname.startsWith("/team-venues")) {
@@ -481,6 +481,7 @@ export function SiteHeader({
         : null
   const venueDetailId = getVenueDetailId(pathname)
   const sessionDetailId = getSessionDetailId(pathname)
+  const isTeamSessionDetailHeader = Boolean(sessionDetailId)
   const activeScope = resolveActiveScope(navigation, searchParams)
   const teamsForActiveOrganization =
     activeScope.activeOrgId && navigation
@@ -651,6 +652,11 @@ export function SiteHeader({
       : buildScopedHref("/team-camps", activeScope)
 
   function handleMobileHeaderNavigation(): void {
+    if (isTeamSessionDetailHeader) {
+      router.push(sessionCampHref)
+      return
+    }
+
     if (isTeamSessionsHeader) {
       router.push(teamHomeHref)
       return
@@ -751,6 +757,11 @@ export function SiteHeader({
   if (phaseOneMobileHeaderEligible) {
     const showMobileSidebarTrigger =
       pathname.startsWith("/team-sessions") || pathname === "/team-venues"
+    const mobileHeaderNavigationLabel = isTeamSessionDetailHeader
+      ? "Go to Team Camps"
+      : isTeamSessionsHeader
+        ? "Go to Team Home"
+        : "Go back"
 
     return (
       <>
@@ -760,7 +771,7 @@ export function SiteHeader({
             variant="ghost"
             size="icon"
             onClick={handleMobileHeaderNavigation}
-            aria-label={isTeamSessionsHeader ? "Go to Team Home" : "Go back"}
+            aria-label={mobileHeaderNavigationLabel}
             className="-ml-1"
           >
             <ArrowLeftIcon className="size-4" />

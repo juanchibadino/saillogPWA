@@ -2,14 +2,22 @@
 
 import * as React from "react"
 import { useFormStatus } from "react-dom"
-import { Loader2Icon, MinusIcon, PencilIcon, PlusIcon } from "lucide-react"
+import {
+  Loader2Icon,
+  MinusIcon,
+  MoreHorizontalIcon,
+  PencilIcon,
+  PlusIcon,
+} from "lucide-react"
 
 import {
   createSessionAction,
+  deleteSessionAction,
   updateSessionAction,
-} from "@/features/sessions/actions"
+} from "@/features/sessions/list-actions"
 import type {
   TeamSessionCampOption,
+  TeamSessionHighlightFilter,
   TeamSessionListItem,
 } from "@/features/sessions/data"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -24,6 +32,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Sheet,
   SheetContent,
@@ -157,6 +171,17 @@ function parseDurationInputToMinutes(durationValue: string): string {
   return String(clampNetTimeMinutes(roundedMinutes))
 }
 
+function formatSessionDateLabel(value: string): string {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  })
+
+  return formatter.format(new Date(`${value}T00:00:00.000Z`))
+}
+
 function SessionDialogFields({
   children,
   className,
@@ -211,6 +236,23 @@ function SessionDialogSubmitButton({
   )
 }
 
+function SessionDeleteSubmitButton() {
+  const { pending } = useFormStatus()
+
+  return (
+    <Button type="submit" variant="destructive" disabled={pending} aria-busy={pending}>
+      {pending ? (
+        <>
+          <Loader2Icon className="size-4 animate-spin" />
+          Deleting...
+        </>
+      ) : (
+        "Delete"
+      )}
+    </Button>
+  )
+}
+
 function SessionDialogSubmitFooter({
   footer,
   submitLabel,
@@ -259,6 +301,7 @@ function SessionDialogForm({
   scope,
   selectedVenueId,
   selectedCampId,
+  selectedHighlight,
   currentPage,
   action,
   formId,
@@ -274,6 +317,7 @@ function SessionDialogForm({
   scope: NavigationScope
   selectedVenueId?: string
   selectedCampId?: string
+  selectedHighlight?: TeamSessionHighlightFilter
   currentPage: number
   action: (formData: FormData) => Promise<void>
   formId?: string
@@ -336,6 +380,9 @@ function SessionDialogForm({
       ) : null}
       {selectedCampId ? (
         <input type="hidden" name="scopeCampId" value={selectedCampId} />
+      ) : null}
+      {selectedHighlight ? (
+        <input type="hidden" name="scopeHighlight" value={selectedHighlight} />
       ) : null}
       {currentPage > 1 ? (
         <input type="hidden" name="scopePage" value={String(currentPage)} />
@@ -466,6 +513,7 @@ export function CreateSessionDialog({
   scope,
   selectedVenueId,
   selectedCampId,
+  selectedHighlight,
   currentPage,
   disabled,
   surface,
@@ -475,6 +523,7 @@ export function CreateSessionDialog({
   scope: NavigationScope
   selectedVenueId?: string
   selectedCampId?: string
+  selectedHighlight?: TeamSessionHighlightFilter
   currentPage: number
   disabled: boolean
   surface?: Extract<SessionFormSurface, "drawer" | "sheet">
@@ -532,6 +581,7 @@ export function CreateSessionDialog({
             scope={scope}
             selectedVenueId={selectedVenueId}
             selectedCampId={selectedCampId}
+            selectedHighlight={selectedHighlight}
             currentPage={currentPage}
             action={createSessionAction}
             formId={createFormId}
@@ -580,6 +630,7 @@ export function CreateSessionDialog({
           scope={scope}
           selectedVenueId={selectedVenueId}
           selectedCampId={selectedCampId}
+          selectedHighlight={selectedHighlight}
           currentPage={currentPage}
           formId={createFormId}
           action={createSessionAction}
@@ -598,55 +649,67 @@ export function EditSessionDialog({
   scope,
   selectedVenueId,
   selectedCampId,
+  selectedHighlight,
   currentPage,
   iconOnly = false,
   surface,
+  open,
+  onOpenChange,
+  hideTrigger = false,
 }: {
   session: EditableSession
   campOptions: TeamSessionCampOption[]
   scope: NavigationScope
   selectedVenueId?: string
   selectedCampId?: string
+  selectedHighlight?: TeamSessionHighlightFilter
   currentPage: number
   iconOnly?: boolean
   surface?: Extract<SessionFormSurface, "drawer" | "dialog">
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  hideTrigger?: boolean
 }) {
-  const [isEditDrawerOpen, setIsEditDrawerOpen] = React.useState(false)
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false)
+  const isOpenControlled = typeof open === "boolean" && typeof onOpenChange === "function"
+  const isEditOpen = isOpenControlled ? open : uncontrolledOpen
+  const setIsEditOpen = isOpenControlled ? onOpenChange : setUncontrolledOpen
   const isMobile = useIsMobile()
   const resolvedSurface = surface ?? (isMobile ? "drawer" : "dialog")
   const editFormId = `edit-session-${session.id}-${resolvedSurface}-form`
 
   if (resolvedSurface === "drawer") {
     return (
-      <Drawer open={isEditDrawerOpen} onOpenChange={setIsEditDrawerOpen}>
-        {iconOnly ? (
+      <Drawer open={isEditOpen} onOpenChange={setIsEditOpen}>
+        {!hideTrigger && iconOnly ? (
           <Button
             type="button"
             variant="outline"
             size="icon"
             aria-label="Edit session"
             aria-haspopup="dialog"
-            aria-expanded={isEditDrawerOpen}
+            aria-expanded={isEditOpen}
             className="h-11 w-11"
-            onClick={() => setIsEditDrawerOpen(true)}
+            onClick={() => setIsEditOpen(true)}
           >
             <PencilIcon className="size-4" />
             <span className="sr-only">Edit</span>
           </Button>
-        ) : (
+        ) : null}
+        {!hideTrigger && !iconOnly ? (
           <Button
             type="button"
             variant="outline"
             size="default"
             aria-haspopup="dialog"
-            aria-expanded={isEditDrawerOpen}
+            aria-expanded={isEditOpen}
             className="h-11 px-3"
-            onClick={() => setIsEditDrawerOpen(true)}
+            onClick={() => setIsEditOpen(true)}
           >
             <PencilIcon className="size-4" />
             Edit
           </Button>
-        )}
+        ) : null}
         <DrawerContent className="flex h-[85dvh] min-h-0 flex-col overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
           <DrawerTitle className="sr-only">{session.sessionDate}</DrawerTitle>
           <DrawerDescription className="sr-only">Edit session details.</DrawerDescription>
@@ -669,6 +732,7 @@ export function EditSessionDialog({
             scope={scope}
             selectedVenueId={selectedVenueId}
             selectedCampId={selectedCampId}
+            selectedHighlight={selectedHighlight}
             currentPage={currentPage}
             action={updateSessionAction}
             formId={editFormId}
@@ -682,20 +746,26 @@ export function EditSessionDialog({
   }
 
   return (
-    <Dialog>
-      <DialogTrigger
-        render={
-          iconOnly ? (
-            <Button variant="outline" size="icon-sm" aria-label="Edit session" />
-          ) : (
-            <Button variant="outline" size="sm" />
-          )
-        }
+    <Dialog open={isOpenControlled ? open : undefined} onOpenChange={setIsEditOpen}>
+      {!hideTrigger ? (
+        <DialogTrigger
+          render={
+            iconOnly ? (
+              <Button variant="outline" size="icon-sm" aria-label="Edit session" />
+            ) : (
+              <Button variant="outline" size="sm" />
+            )
+          }
+        >
+          <PencilIcon className="size-4" />
+          {iconOnly ? <span className="sr-only">Edit</span> : "Edit"}
+        </DialogTrigger>
+      ) : null}
+      <DialogContent
+        className="sm:max-w-xl"
+        forceOverlayRender
+        overlayClassName="bg-black/20 backdrop-blur-sm supports-backdrop-filter:backdrop-blur-sm"
       >
-        <PencilIcon className="size-4" />
-        {iconOnly ? <span className="sr-only">Edit</span> : "Edit"}
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{session.sessionDate}</DialogTitle>
           <DialogDescription>Edit session details.</DialogDescription>
@@ -720,6 +790,7 @@ export function EditSessionDialog({
           scope={scope}
           selectedVenueId={selectedVenueId}
           selectedCampId={selectedCampId}
+          selectedHighlight={selectedHighlight}
           currentPage={currentPage}
           action={updateSessionAction}
           footer="dialog"
@@ -727,5 +798,185 @@ export function EditSessionDialog({
         />
       </DialogContent>
     </Dialog>
+  )
+}
+
+function DeleteSessionDialog({
+  session,
+  scope,
+  selectedVenueId,
+  selectedCampId,
+  selectedHighlight,
+  currentPage,
+  open,
+  onOpenChange,
+}: {
+  session: EditableSession
+  scope: NavigationScope
+  selectedVenueId?: string
+  selectedCampId?: string
+  selectedHighlight?: TeamSessionHighlightFilter
+  currentPage: number
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const sessionLabel = formatSessionDateLabel(session.sessionDate)
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="sm:max-w-md"
+        forceOverlayRender
+        overlayClassName="bg-black/20 backdrop-blur-sm supports-backdrop-filter:backdrop-blur-sm"
+      >
+        <DialogHeader>
+          <DialogTitle>Delete session</DialogTitle>
+          <DialogDescription>
+            This will permanently delete <strong>{sessionLabel}</strong> and its
+            linked setup, results, goals, gear, wind patterns, moves, and assets.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form action={deleteSessionAction} className="space-y-4">
+          <input type="hidden" name="id" value={session.id} />
+          <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
+          {scope.activeTeamId ? (
+            <input type="hidden" name="scopeTeamId" value={scope.activeTeamId} />
+          ) : null}
+          {selectedVenueId ? (
+            <input type="hidden" name="scopeVenueId" value={selectedVenueId} />
+          ) : null}
+          {selectedCampId ? (
+            <input type="hidden" name="scopeCampId" value={selectedCampId} />
+          ) : null}
+          {selectedHighlight ? (
+            <input type="hidden" name="scopeHighlight" value={selectedHighlight} />
+          ) : null}
+          {currentPage > 1 ? (
+            <input type="hidden" name="scopePage" value={String(currentPage)} />
+          ) : null}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <SessionDeleteSubmitButton />
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+export function SessionActionsMenu({
+  session,
+  campOptions,
+  scope,
+  selectedVenueId,
+  selectedCampId,
+  selectedHighlight,
+  currentPage,
+  canEditSession,
+  canDeleteSession,
+  editSurface,
+  triggerClassName,
+}: {
+  session: EditableSession
+  campOptions: TeamSessionCampOption[]
+  scope: NavigationScope
+  selectedVenueId?: string
+  selectedCampId?: string
+  selectedHighlight?: TeamSessionHighlightFilter
+  currentPage: number
+  canEditSession: boolean
+  canDeleteSession: boolean
+  editSurface?: Extract<SessionFormSurface, "drawer" | "dialog">
+  triggerClassName?: string
+}) {
+  const [isEditOpen, setIsEditOpen] = React.useState(false)
+  const [isDeleteOpen, setIsDeleteOpen] = React.useState(false)
+
+  if (!canEditSession && !canDeleteSession) {
+    return (
+      <Button
+        variant="ghost"
+        size="icon"
+        disabled
+        aria-label="More actions unavailable"
+        className={triggerClassName}
+      >
+        <MoreHorizontalIcon className="size-4" />
+      </Button>
+    )
+  }
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={triggerClassName}
+            />
+          }
+          aria-label={`Open actions for ${formatSessionDateLabel(session.sessionDate)}`}
+        >
+          <MoreHorizontalIcon className="size-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {canEditSession ? (
+            <DropdownMenuItem
+              onClick={() => {
+                setIsEditOpen(true)
+              }}
+            >
+              Edit
+            </DropdownMenuItem>
+          ) : null}
+          {canDeleteSession ? (
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => {
+                setIsDeleteOpen(true)
+              }}
+            >
+              Delete
+            </DropdownMenuItem>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {canEditSession ? (
+        <EditSessionDialog
+          session={session}
+          campOptions={campOptions}
+          scope={scope}
+          selectedVenueId={selectedVenueId}
+          selectedCampId={selectedCampId}
+          selectedHighlight={selectedHighlight}
+          currentPage={currentPage}
+          surface={editSurface}
+          open={isEditOpen}
+          onOpenChange={setIsEditOpen}
+          hideTrigger
+        />
+      ) : null}
+
+      {canDeleteSession ? (
+        <DeleteSessionDialog
+          session={session}
+          scope={scope}
+          selectedVenueId={selectedVenueId}
+          selectedCampId={selectedCampId}
+          selectedHighlight={selectedHighlight}
+          currentPage={currentPage}
+          open={isDeleteOpen}
+          onOpenChange={setIsDeleteOpen}
+        />
+      ) : null}
+    </>
   )
 }

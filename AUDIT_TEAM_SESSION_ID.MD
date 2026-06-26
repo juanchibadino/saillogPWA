@@ -20,7 +20,7 @@ local timing hooks, loading fidelity, and interaction risk.
 | --- | ---: | --- |
 | Performance, RES-style proxy | 4.7/5 | Initial render now loads shell plus selected tab instead of all tabs. Heavy tab panels are dynamically split, shell data uses one joined fetch, Setup loads only when opened, assets are paged, image thumbnails use direct signed URLs, analytics files defer content signing until open/download, large catalogs are bounded, and Speed Insights is mounted for real-user metrics after deploy. Remaining gap is no collected live RES sample yet. |
 | UI consistency | 4.8/5 | Desktop Sheet and mobile Drawer patterns are now consistent across metadata, Setup, Info, Goals, Results, and Gear. Save buttons have visible pending states and labels are normalized to `Save` / `Saving...`. Minor copy risk remains around `Start Time (UTC)`, which may be operationally too technical. |
-| Code tidiness | 4.0/5 | The old 6034-line tab client is now a 974-line shell with focused modules under `features/sessions/detail/`. Validation and timing helpers are explicit. Remaining large files are `features/sessions/actions.ts`, `info-panel.tsx`, `setup-dialog.tsx`, and `assets-panel.tsx`. |
+| Code tidiness | 4.1/5 | The old 6034-line tab client is now a 974-line shell with focused modules under `features/sessions/detail/`. Validation and timing helpers are explicit, and detail mutations now live in `features/sessions/detail-actions.ts`. Remaining large files are `detail-actions.ts`, `info-panel.tsx`, `setup-dialog.tsx`, and `assets-panel.tsx`. |
 | Scalability | 4.7/5 | Tab-specific data loading, 24-item asset pages, asset `Load more`, bounded Info/Gear catalog pages, search, category-specific Gear loading, and transaction-safe setup/gear RPCs remove the largest scaling problems. Remaining scalability work is mostly automated coverage and post-deploy metric review. |
 | Best practices | 4.9/5 | App Router server-first access, Zod validation, route skeletons, Suspense fallbacks, route-level `error.tsx`, deferred tab retry states, structured timing logs, Speed Insights, and build/type checks are in place. Missing pieces are automated tests for these flows and post-deploy metric review. |
 | Modularity | 4.0/5 | Setup, Info, Goals, Results, Assets, Gear, mobile tabs, and shared responsive edit surfaces are now separated. The shell still owns tab cache/orchestration, and several extracted modules remain large enough to justify later internal cleanup. |
@@ -106,7 +106,8 @@ Entry points:
 - `features/sessions/detail-data.ts`
 - `features/sessions/session-detail-tabs-client.tsx`
 - `features/sessions/detail/*`
-- `features/sessions/actions.ts`
+- `features/sessions/detail-actions.ts`
+- `features/sessions/actions.ts` compatibility exports
 - `lib/validation/sessions.ts`
 
 Loading behavior:
@@ -137,9 +138,10 @@ Security behavior:
 
 1. Speed Insights is mounted, but no live RES/Core Web Vitals sample has been
    reviewed yet. This requires a deployed build and real-user traffic.
-2. `features/sessions/actions.ts` is still large and mixes multiple session
-   mutation families. The extracted panel modules are better, but `info-panel`,
-   `setup-dialog`, and `assets-panel` can still be simplified later.
+2. `features/sessions/detail-actions.ts` is still large and contains multiple
+   detail mutation families. The list/detail split is done, but `info-panel`,
+   `setup-dialog`, `assets-panel`, and the detail action families can still be
+   simplified later.
 3. Storage upload plus DB insert cannot be a single atomic transaction. The code
    now does best-effort cleanup on failure, but orphaned storage objects are
    still possible under rare partial-failure conditions.

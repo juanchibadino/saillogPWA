@@ -41,7 +41,7 @@ import {
 import {
   saveSessionGearUsageAction,
   updateSessionGearUsageAction,
-} from "@/features/sessions/actions"
+} from "@/features/sessions/detail-actions"
 import type {
   SessionDetailCatalogPage,
   SessionDetailGearCatalogData,

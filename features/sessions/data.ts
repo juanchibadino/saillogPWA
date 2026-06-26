@@ -1,5 +1,13 @@
 import "server-only"
 
+import {
+  logTeamSessionsListTiming,
+  startTeamSessionsListTiming,
+} from "@/features/sessions/list-timing"
+import {
+  normalizeSelectedId,
+  resolveSessionPagination,
+} from "@/features/sessions/list-route-state.mjs"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import type { Database } from "@/types/database"
 
@@ -113,45 +121,6 @@ function buildCampOptionLabel(input: {
   return `${input.campName} — ${input.venueName}`
 }
 
-function normalizeSelectedId(input: {
-  selectedId?: string
-  allowedIds: Set<string>
-}): string | undefined {
-  if (!input.selectedId) {
-    return undefined
-  }
-
-  if (!input.allowedIds.has(input.selectedId)) {
-    return undefined
-  }
-
-  return input.selectedId
-}
-
-function resolveSessionPagination(input: {
-  requestedPage: number
-  totalItems: number
-  accumulatePages: boolean
-}): {
-  currentPage: number
-  pageCount: number
-  hasPreviousPage: boolean
-  hasNextPage: boolean
-} {
-  const pageCount = Math.max(
-    1,
-    Math.ceil(input.totalItems / TEAM_SESSIONS_PAGE_SIZE),
-  )
-  const currentPage = Math.min(input.requestedPage, pageCount)
-
-  return {
-    currentPage,
-    pageCount,
-    hasPreviousPage: input.accumulatePages ? false : currentPage > 1,
-    hasNextPage: currentPage < pageCount,
-  }
-}
-
 export async function getTeamSessionsPageData(input: {
   activeTeamId: string
   selectedVenueId?: string
@@ -160,6 +129,7 @@ export async function getTeamSessionsPageData(input: {
   page: number
   accumulatePages?: boolean
 }): Promise<TeamSessionsPageData> {
+  const filtersStartedAt = startTeamSessionsListTiming()
   const supabase = await createServerSupabaseClient()
   const requestedPage = normalizePage(input.page)
   const accumulatePages = input.accumulatePages === true
@@ -170,6 +140,17 @@ export async function getTeamSessionsPageData(input: {
     .eq("team_id", input.activeTeamId)
 
   if (teamVenueError) {
+    logTeamSessionsListTiming({
+      phase: "filters",
+      startedAt: filtersStartedAt,
+      activeTeamId: input.activeTeamId,
+      status: "error",
+      error: teamVenueError.message,
+      metadata: {
+        requestedPage,
+        accumulatePages,
+      },
+    })
     throw new Error(`Could not load team venues for sessions: ${teamVenueError.message}`)
   }
 
@@ -186,6 +167,19 @@ export async function getTeamSessionsPageData(input: {
       .order("name", { ascending: true })
 
     if (venueError) {
+      logTeamSessionsListTiming({
+        phase: "filters",
+        startedAt: filtersStartedAt,
+        activeTeamId: input.activeTeamId,
+        status: "error",
+        error: venueError.message,
+        metadata: {
+          requestedPage,
+          accumulatePages,
+          teamVenueCount: teamVenueRows.length,
+          venueIdCount: venueIds.length,
+        },
+      })
       throw new Error(`Could not load venues for sessions: ${venueError.message}`)
     }
 
@@ -228,6 +222,39 @@ export async function getTeamSessionsPageData(input: {
       requestedPage,
       totalItems: 0,
       accumulatePages,
+      pageSize: TEAM_SESSIONS_PAGE_SIZE,
+    })
+    logTeamSessionsListTiming({
+      phase: "filters",
+      startedAt: filtersStartedAt,
+      activeTeamId: input.activeTeamId,
+      status: "success",
+      metadata: {
+        requestedPage,
+        accumulatePages,
+        teamVenueCount: teamVenueRows.length,
+        venueCount: venueRows.length,
+        filteredTeamVenueCount: filteredTeamVenueIds.length,
+        campCount: 0,
+        selectedVenue: Boolean(selectedVenueId),
+        selectedCamp: false,
+        selectedHighlight: input.selectedHighlight ?? null,
+      },
+    })
+    const sessionsStartedAt = startTeamSessionsListTiming()
+    logTeamSessionsListTiming({
+      phase: "sessions",
+      startedAt: sessionsStartedAt,
+      activeTeamId: input.activeTeamId,
+      status: "success",
+      metadata: {
+        reason: "no_team_venues",
+        sessionCampCount: 0,
+        totalItems: 0,
+        returnedItems: 0,
+        currentPage: pagination.currentPage,
+        pageCount: pagination.pageCount,
+      },
     })
 
     return {
@@ -252,6 +279,20 @@ export async function getTeamSessionsPageData(input: {
     .order("created_at", { ascending: false })
 
   if (campError) {
+    logTeamSessionsListTiming({
+      phase: "filters",
+      startedAt: filtersStartedAt,
+      activeTeamId: input.activeTeamId,
+      status: "error",
+      error: campError.message,
+      metadata: {
+        requestedPage,
+        accumulatePages,
+        teamVenueCount: teamVenueRows.length,
+        venueCount: venueRows.length,
+        filteredTeamVenueCount: filteredTeamVenueIds.length,
+      },
+    })
     throw new Error(`Could not load camps for sessions: ${campError.message}`)
   }
 
@@ -300,12 +341,47 @@ export async function getTeamSessionsPageData(input: {
   const sessionCampIds = selectedCampId
     ? [selectedCampId]
     : campFilterOptions.map((row) => row.campId)
+  logTeamSessionsListTiming({
+    phase: "filters",
+    startedAt: filtersStartedAt,
+    activeTeamId: input.activeTeamId,
+    status: "success",
+    metadata: {
+      requestedPage,
+      accumulatePages,
+      teamVenueCount: teamVenueRows.length,
+      venueCount: venueRows.length,
+      filteredTeamVenueCount: filteredTeamVenueIds.length,
+      campCount: campRows.length,
+      campFilterCount: campFilterOptions.length,
+      sessionCampCount: sessionCampIds.length,
+      selectedVenue: Boolean(selectedVenueId),
+      selectedCamp: Boolean(selectedCampId),
+      selectedHighlight: selectedHighlight ?? null,
+    },
+  })
+  const sessionsStartedAt = startTeamSessionsListTiming()
 
   if (sessionCampIds.length === 0) {
     const pagination = resolveSessionPagination({
       requestedPage,
       totalItems: 0,
       accumulatePages,
+      pageSize: TEAM_SESSIONS_PAGE_SIZE,
+    })
+    logTeamSessionsListTiming({
+      phase: "sessions",
+      startedAt: sessionsStartedAt,
+      activeTeamId: input.activeTeamId,
+      status: "success",
+      metadata: {
+        reason: "no_camps",
+        sessionCampCount: 0,
+        totalItems: 0,
+        returnedItems: 0,
+        currentPage: pagination.currentPage,
+        pageCount: pagination.pageCount,
+      },
     })
 
     return {
@@ -342,6 +418,20 @@ export async function getTeamSessionsPageData(input: {
   const { count: sessionCount, error: sessionCountError } = await sessionCountQuery
 
   if (sessionCountError) {
+    logTeamSessionsListTiming({
+      phase: "sessions",
+      startedAt: sessionsStartedAt,
+      activeTeamId: input.activeTeamId,
+      status: "error",
+      error: sessionCountError.message,
+      metadata: {
+        requestedPage,
+        accumulatePages,
+        sessionCampCount: sessionCampIds.length,
+        selectedHighlight: selectedHighlight ?? null,
+        operation: "count",
+      },
+    })
     throw new Error(`Could not count sessions: ${sessionCountError.message}`)
   }
 
@@ -349,10 +439,26 @@ export async function getTeamSessionsPageData(input: {
     requestedPage,
     totalItems: sessionCount ?? 0,
     accumulatePages,
+    pageSize: TEAM_SESSIONS_PAGE_SIZE,
   })
   const { currentPage, pageCount, hasPreviousPage, hasNextPage } = pagination
 
   if ((sessionCount ?? 0) === 0) {
+    logTeamSessionsListTiming({
+      phase: "sessions",
+      startedAt: sessionsStartedAt,
+      activeTeamId: input.activeTeamId,
+      status: "success",
+      metadata: {
+        sessionCampCount: sessionCampIds.length,
+        totalItems: 0,
+        returnedItems: 0,
+        currentPage,
+        pageCount,
+        selectedHighlight: selectedHighlight ?? null,
+      },
+    })
+
     return {
       sessions: [],
       venueFilterOptions,
@@ -397,6 +503,22 @@ export async function getTeamSessionsPageData(input: {
   const { data: sessionData, error: sessionError } = await sessionQuery.range(rangeStart, rangeEnd)
 
   if (sessionError) {
+    logTeamSessionsListTiming({
+      phase: "sessions",
+      startedAt: sessionsStartedAt,
+      activeTeamId: input.activeTeamId,
+      status: "error",
+      error: sessionError.message,
+      metadata: {
+        requestedPage,
+        accumulatePages,
+        sessionCampCount: sessionCampIds.length,
+        selectedHighlight: selectedHighlight ?? null,
+        operation: "page",
+        rangeStart,
+        rangeEnd,
+      },
+    })
     throw new Error(`Could not load sessions: ${sessionError.message}`)
   }
 
@@ -435,6 +557,24 @@ export async function getTeamSessionsPageData(input: {
       }
     })
     .filter((row): row is TeamSessionListItem => row !== null)
+
+  logTeamSessionsListTiming({
+    phase: "sessions",
+    startedAt: sessionsStartedAt,
+    activeTeamId: input.activeTeamId,
+    status: "success",
+    metadata: {
+      sessionCampCount: sessionCampIds.length,
+      totalItems: sessionCount ?? 0,
+      returnedItems: sessions.length,
+      currentPage,
+      pageCount,
+      visibleCount,
+      rangeStart,
+      rangeEnd,
+      selectedHighlight: selectedHighlight ?? null,
+    },
+  })
 
   return {
     sessions,

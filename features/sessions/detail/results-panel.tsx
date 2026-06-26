@@ -9,7 +9,7 @@ import { DrawerFooter } from "@/components/ui/drawer"
 import { Label } from "@/components/ui/label"
 import { SheetFooter } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
-import { updateSessionResultsAction } from "@/features/sessions/actions"
+import { updateSessionResultsAction } from "@/features/sessions/detail-actions"
 import {
   ResponsiveEditSurface,
   type ResponsiveEditSurfaceKind,

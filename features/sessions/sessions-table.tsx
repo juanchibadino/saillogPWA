@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Loader2Icon, MoreHorizontalIcon } from "lucide-react"
+import { Loader2Icon } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   cloneElement,
@@ -14,12 +14,14 @@ import {
 
 import type {
   TeamSessionCampOption,
+  TeamSessionHighlightFilter,
   TeamSessionListItem,
 } from "@/features/sessions/data"
 import {
   CreateSessionDialog,
-  EditSessionDialog,
+  SessionActionsMenu,
 } from "@/features/sessions/session-form-dialogs"
+import { buildTeamSessionsPageHref } from "@/features/sessions/list-route-state.mjs"
 import type { TeamSessionsToolbarNavigationProps } from "@/features/sessions/team-sessions-toolbar"
 import { buildSessionDetailHref } from "@/features/sessions/navigation"
 import type { NavigationScope } from "@/lib/navigation/types"
@@ -53,6 +55,7 @@ type TeamSessionsTableProps = {
   scope: NavigationScope
   selectedVenueId?: string
   selectedCampId?: string
+  selectedHighlight?: TeamSessionHighlightFilter
   currentPage: number
   pageCount: number
   hasPreviousPage: boolean
@@ -160,6 +163,7 @@ export function TeamSessionsTable({
   scope,
   selectedVenueId,
   selectedCampId,
+  selectedHighlight,
   currentPage,
   pageCount,
   hasPreviousPage,
@@ -200,23 +204,12 @@ export function TeamSessionsTable({
   const nextPage = Math.min(pageCount, currentPage + 1)
 
   function buildPageHref(nextPage: number, includeLoadMore = false): string {
-    const params = new URLSearchParams(searchParams.toString())
-
-    if (nextPage <= 1) {
-      params.delete("page")
-      params.delete("loadMore")
-    } else {
-      params.set("page", String(nextPage))
-
-      if (includeLoadMore) {
-        params.set("loadMore", "1")
-      } else {
-        params.delete("loadMore")
-      }
-    }
-
-    const nextSearch = params.toString()
-    return nextSearch.length > 0 ? `${pathname}?${nextSearch}` : pathname
+    return buildTeamSessionsPageHref({
+      pathname,
+      search: searchParams.toString(),
+      nextPage,
+      includeLoadMore,
+    })
   }
 
   function navigateToSession(sessionId: string, detailHref: string): void {
@@ -347,7 +340,7 @@ export function TeamSessionsTable({
                     </div>
 
                     <div
-                      className="shrink-0"
+                      className="shrink-0 self-center"
                       onClick={(event) => {
                         event.stopPropagation()
                       }}
@@ -359,27 +352,20 @@ export function TeamSessionsTable({
                         <div className="flex h-11 w-11 items-center justify-center text-muted-foreground">
                           <Loader2Icon className="size-4 animate-spin" />
                         </div>
-                      ) : canManageSessions ? (
-                        <EditSessionDialog
+                      ) : (
+                        <SessionActionsMenu
                           session={session}
                           campOptions={campOptions}
                           scope={scope}
                           selectedVenueId={selectedVenueId}
                           selectedCampId={selectedCampId}
+                          selectedHighlight={selectedHighlight}
                           currentPage={currentPage}
-                          iconOnly
-                          surface="drawer"
+                          canEditSession={canManageSessions}
+                          canDeleteSession={canManageSessions}
+                          editSurface="drawer"
+                          triggerClassName="h-11 w-11"
                         />
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          disabled
-                          aria-label="More actions unavailable"
-                          className="h-11 w-11"
-                        >
-                          <MoreHorizontalIcon className="size-4" />
-                        </Button>
                       )}
                     </div>
                   </div>
@@ -525,25 +511,19 @@ export function TeamSessionsTable({
                           <div className="flex justify-end text-muted-foreground">
                             <Loader2Icon className="size-4 animate-spin" />
                           </div>
-                        ) : canManageSessions ? (
-                          <EditSessionDialog
+                        ) : (
+                          <SessionActionsMenu
                             session={session}
                             campOptions={campOptions}
                             scope={scope}
                             selectedVenueId={selectedVenueId}
                             selectedCampId={selectedCampId}
+                            selectedHighlight={selectedHighlight}
                             currentPage={currentPage}
-                            surface="dialog"
+                            canEditSession={canManageSessions}
+                            canDeleteSession={canManageSessions}
+                            editSurface="dialog"
                           />
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            disabled
-                            aria-label="More actions unavailable"
-                          >
-                            <MoreHorizontalIcon className="size-4" />
-                          </Button>
                         )}
                       </TableCell>
                     </TableRow>
@@ -611,6 +591,7 @@ export function TeamSessionsTable({
         scope={scope}
         selectedVenueId={selectedVenueId}
         selectedCampId={selectedCampId}
+        selectedHighlight={selectedHighlight}
         currentPage={currentPage}
         disabled={createDisabled || isTableNavigationBusy}
         surface="drawer"

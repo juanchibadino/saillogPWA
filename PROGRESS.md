@@ -4,6 +4,106 @@ Last updated: 2026-06-26
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
 
+## 2026-06-26 - Team Sessions row actions menu and delete
+
+- Replaced direct row/card `Edit` controls on `/team-sessions` with a
+  horizontal-more `SessionActionsMenu` matching the Team Camps action pattern.
+- Added `Edit` and `Delete` actions for both desktop table rows and mobile
+  session cards; desktop edit remains a Dialog and mobile edit remains a
+  Drawer.
+- Added `deleteSessionAction()` in `features/sessions/list-actions.ts` with
+  input validation, active org/team/session ownership checks, redirect
+  preservation, route revalidation, and best-effort cleanup for linked Storage
+  objects after the session row is deleted.
+- Added blurred overlays for session Dialog modals used by table edit and
+  delete confirmation, plus pending `Deleting...` feedback on delete submit.
+- Updated `AUDIT_TEAM_SESSION.MD` to reflect row/card action menus and delete
+  behavior.
+- Validation: scoped `eslint`, `./node_modules/.bin/tsc --noEmit`, `npm test`,
+  `git diff --check`, and `npm run build` passed. Existing dev server on
+  `localhost:3000` returned `200 OK` for `/team-sessions`; `agent-browser` was
+  not installed, so visual automation was unavailable.
+
+## 2026-06-26 - Team Sessions action module split
+
+- Split the old broad `features/sessions/actions.ts` surface into
+  `features/sessions/list-actions.ts` for `/team-sessions` create/update
+  mutations and `features/sessions/detail-actions.ts` for
+  `/team-sessions/[id]` mutations.
+- Kept `features/sessions/actions.ts` as a compatibility export barrel while
+  updating current list and detail consumers to import from the narrower
+  modules directly.
+- Updated `AUDIT_TEAM_SESSION.MD` and `AUDIT_TEAM_SESSION_ID.MD` so the audits
+  no longer list the list/detail action split as pending.
+- Validation: `npm test`, scoped `eslint`, `./node_modules/.bin/tsc --noEmit`,
+  `git diff --check`, `npm run build`, and full `npm run lint` passed. Full
+  lint still reports the two unrelated existing unused-var warnings in
+  `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`.
+
+## 2026-06-26 - Team Sessions final audit snapshot
+
+- Rewrote `AUDIT_TEAM_SESSION.MD` as the post-implementation audit for the
+  `/team-sessions` list route.
+- Added a `Snapshot Register` with `Foto anterior` and `Foto nueva` to record
+  the baseline before the implementation sequence and the current state after
+  mobile UI, pending states, timing logs, update-scope hardening, and tests.
+- Replaced the old implemented-step backlog with a new forward-looking
+  engineering priority: collect live timing samples, optimize the data path only
+  if logs justify it, add browser/database integration coverage, and split large
+  action modules later.
+- Kept the audit scoped to `/team-sessions`; `AUDIT_TEAM_SESSION_ID.MD` remains
+  the separate detail-route audit.
+- Validation: `git diff --check`, `npm test`, `./node_modules/.bin/tsc --noEmit`,
+  and `npm run build` passed.
+
+## 2026-06-26 - Team Sessions audit Step 5 tests
+
+- Implemented `AUDIT_TEAM_SESSION.MD` Step 5 for `/team-sessions`.
+- Added `features/sessions/list-route-state.mjs` plus `node --test` coverage
+  for invalid venue/camp filter normalization, defensive list request parsing,
+  pagination, desktop page hrefs, mobile `Load more`, create/update redirect
+  params, and forbidden redirects.
+- Added `lib/auth/capability-rules.mjs` and routed
+  `canManageTeamSessions()` through it so permission tests cover the same rule
+  used before create/update actions.
+- Fixed create/update form scope preservation for the active Highlight filter
+  by carrying `scopeHighlight` through the form and redirect helper.
+- Added `npm test` without adding a new dependency.
+- Updated `AUDIT_TEAM_SESSION.MD` with the Step 5 current state and validation.
+- Validation: `npm test`, scoped `eslint`, and `./node_modules/.bin/tsc --noEmit`
+  passed.
+- Validation: `git diff --check` and `npm run build` passed.
+
+## 2026-06-26 - Team Sessions audit Step 3 and Step 4
+
+- Implemented `AUDIT_TEAM_SESSION.MD` Step 3 for `/team-sessions` by adding
+  `team_sessions_list_timing` server logs for `scope`, `filters`, and
+  `sessions` phases.
+- The list data logs now include counts/page metadata for filter construction
+  and session count/page reads without changing page size, desktop pagination,
+  or mobile `Load more` accumulation.
+- Implemented Step 4 by requiring `updateSessionAction()` to resolve the
+  existing session -> camp -> team venue -> venue chain against the active
+  org/team before updating.
+- Target camp validation now checks active team and active organization through
+  the camp -> team venue -> venue chain.
+- Updated `AUDIT_TEAM_SESSION.MD` with the current state and validation notes.
+- Validation: `./node_modules/.bin/eslint 'app/(app)/team-sessions/page.tsx'
+  features/sessions/data.ts features/sessions/list-timing.ts
+  features/sessions/actions.ts`, `./node_modules/.bin/tsc --noEmit`,
+  `git diff --check`, and `npm run build` passed.
+
+## 2026-06-26 - Team Session detail header camps navigation
+
+- Updated the mobile header action on `/team-sessions/[id]` so it returns to
+  the scoped Team Camps context instead of Team Home.
+- When the session breadcrumb is available, the header returns to the session's
+  camp detail on the `sessions` tab; otherwise it falls back to scoped
+  `/team-camps`.
+- Validation: `npx eslint components/site-header.tsx` and `git diff --check`
+  passed.
+
 ## 2026-06-26 - Team Sessions mobile header home navigation
 
 - Fixed the mobile Team Sessions header action so `/team-sessions` and
