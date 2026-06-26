@@ -1,5 +1,6 @@
 import { ChevronDownIcon } from "lucide-react"
 
+import { GradientCard } from "@/components/shared/gradient-card"
 import { Skeleton } from "@/components/ui/skeleton"
 
 function SkeletonCard() {
@@ -185,24 +186,24 @@ export function TeamSessionsPageSkeleton() {
 
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, index) => (
-            <div key={`team-sessions-mobile-row-${index}`} className="rounded-xl border bg-card p-3">
+            <GradientCard key={`team-sessions-mobile-row-${index}`} className="p-3">
               <div className="space-y-2">
                 <Skeleton className="h-4 w-36" />
                 <Skeleton className="h-3 w-44" />
                 <Skeleton className="h-3 w-52" />
               </div>
-            </div>
+            </GradientCard>
           ))}
         </div>
 
-        <div className="hidden rounded-xl border bg-card p-4 md:block">
+        <GradientCard className="hidden p-4 md:block">
           <div className="space-y-3">
             <Skeleton className="h-10 w-full" />
             {Array.from({ length: 6 }).map((_, index) => (
               <Skeleton key={`team-sessions-row-${index}`} className="h-10 w-full" />
             ))}
           </div>
-        </div>
+        </GradientCard>
       </div>
     </div>
   )
@@ -479,7 +480,7 @@ export function SessionDetailPageSkeleton() {
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-xl border bg-card p-0 md:hidden">
+        <GradientCard className="overflow-hidden p-0 md:hidden">
           <div className="divide-y divide-border px-6 py-3">
             {summaryLabels.map((label) => (
               <div
@@ -491,19 +492,19 @@ export function SessionDetailPageSkeleton() {
               </div>
             ))}
           </div>
-        </div>
+        </GradientCard>
 
         <div className="hidden gap-4 md:grid md:grid-cols-4">
           {summaryLabels.map((label) => (
-            <div
+            <GradientCard
               key={`session-detail-desktop-summary-${label}`}
-              className="rounded-xl border bg-card p-6"
+              className="p-6"
             >
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">{label}</p>
                 <Skeleton className="h-7 w-28" />
               </div>
-            </div>
+            </GradientCard>
           ))}
         </div>
       </section>

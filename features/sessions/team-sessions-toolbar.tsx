@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, type ReactNode } from "react"
-import { CheckIcon, ChevronDownIcon, FilterIcon } from "lucide-react"
+import { CheckIcon, ChevronDownIcon, FilterIcon, XIcon } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 import { Button } from "@/components/ui/button"
@@ -31,62 +31,101 @@ type TeamSessionsToolbarOption = {
   href: string
 }
 
+export type TeamSessionsToolbarNavigationProps = {
+  isNavigating?: boolean
+  onNavigate?: (href: string) => void
+}
+
 function SessionsFilterDropdown({
   label,
   options,
   selectedValue,
   disabled,
+  isNavigating = false,
+  onNavigate,
 }: {
   label: string
   options: TeamSessionsToolbarOption[]
   selectedValue: string
   disabled: boolean
-}) {
+} & TeamSessionsToolbarNavigationProps) {
   const router = useRouter()
   const hasActiveFilter = selectedValue.length > 0
+  const clearOption = options.find((option) => option.value === "")
+  const isDisabled = disabled || isNavigating
+
+  function navigateToHref(href: string): void {
+    if (isNavigating) {
+      return
+    }
+
+    if (onNavigate) {
+      onNavigate(href)
+      return
+    }
+
+    router.push(href)
+  }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={disabled}
-            className={cn(
-              hasActiveFilter &&
-                "border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 aria-expanded:bg-emerald-100 dark:border-emerald-600/50 dark:bg-emerald-900/20 dark:text-emerald-100 dark:hover:bg-emerald-900/30",
-            )}
-          />
-        }
-      >
-        <FilterIcon className="size-4" />
-        <span>{label}</span>
-        <ChevronDownIcon className="size-4" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-44">
-        {options.map((option) => {
-          const isActive = option.value === selectedValue
+    <div className="flex items-center">
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isDisabled}
+              className={cn(
+                hasActiveFilter && "rounded-r-none",
+                hasActiveFilter &&
+                  "border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 aria-expanded:bg-emerald-100 dark:border-emerald-600/50 dark:bg-emerald-900/20 dark:text-emerald-100 dark:hover:bg-emerald-900/30",
+              )}
+            />
+          }
+        >
+          <FilterIcon className="size-4" />
+          <span>{label}</span>
+          <ChevronDownIcon className="size-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-44">
+          {options.map((option) => {
+            const isActive = option.value === selectedValue
 
-          return (
-            <DropdownMenuItem
-              key={option.value}
-              onClick={() => {
-                if (!isActive) {
-                  router.push(option.href)
-                }
-              }}
-              className="gap-2"
-            >
-              <span className="flex size-4 items-center justify-center">
-                {isActive ? <CheckIcon className="size-4" /> : null}
-              </span>
-              <span className="flex-1">{option.label}</span>
-            </DropdownMenuItem>
-          )
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
+            return (
+              <DropdownMenuItem
+                key={option.value}
+                onClick={() => {
+                  if (!isActive) {
+                    navigateToHref(option.href)
+                  }
+                }}
+                disabled={isNavigating}
+                className="gap-2"
+              >
+                <span className="flex size-4 items-center justify-center">
+                  {isActive ? <CheckIcon className="size-4" /> : null}
+                </span>
+                <span className="flex-1">{option.label}</span>
+              </DropdownMenuItem>
+            )
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {hasActiveFilter && clearOption ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={isNavigating}
+          aria-label={`Clear ${label} filter`}
+          className="rounded-l-none border-l-0 px-2 text-muted-foreground hover:text-foreground"
+          onClick={() => navigateToHref(clearOption.href)}
+        >
+          <XIcon className="size-4" />
+        </Button>
+      ) : null}
+    </div>
   )
 }
 
@@ -108,6 +147,8 @@ export function TeamSessionsToolbar({
   selectedHighlight,
   venueDisabled = false,
   campDisabled = false,
+  isNavigating = false,
+  onNavigate,
   action,
 }: {
   scope: NavigationScope
@@ -120,7 +161,7 @@ export function TeamSessionsToolbar({
   venueDisabled?: boolean
   campDisabled?: boolean
   action?: ReactNode
-}) {
+} & TeamSessionsToolbarNavigationProps) {
   const router = useRouter()
   const isMobile = useIsMobile()
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
@@ -133,10 +174,23 @@ export function TeamSessionsToolbar({
     selectedCampId.length > 0 ||
     selectedHighlight.length > 0
   const hasVenueDraftChanged = draftVenueId !== selectedVenueId
-  const isCampSelectDisabled = campDisabled || hasVenueDraftChanged
+  const isCampSelectDisabled = campDisabled || hasVenueDraftChanged || isNavigating
+
+  function navigateToHref(href: string): void {
+    if (isNavigating) {
+      return
+    }
+
+    if (onNavigate) {
+      onNavigate(href)
+      return
+    }
+
+    router.push(href)
+  }
 
   function applyDraftFilters(): void {
-    router.push(
+    navigateToHref(
       buildTeamSessionsHref({
         scope,
         venueId: draftVenueId || undefined,
@@ -148,7 +202,7 @@ export function TeamSessionsToolbar({
   }
 
   function clearFilters(): void {
-    router.push(
+    navigateToHref(
       buildTeamSessionsHref({
         scope,
       }),
@@ -177,6 +231,7 @@ export function TeamSessionsToolbar({
               type="button"
               variant="secondary"
               size="default"
+              disabled={isNavigating}
               className={cn(
                 "h-11 w-11 px-0",
                 hasActiveFilter &&
@@ -208,7 +263,7 @@ export function TeamSessionsToolbar({
                     setDraftVenueId(event.target.value)
                     setDraftCampId("")
                   }}
-                  disabled={venueDisabled}
+                  disabled={venueDisabled || isNavigating}
                   className="h-11 w-full rounded-lg border border-border bg-background px-3 text-base outline-none ring-ring/50 transition-colors focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-60 md:text-sm"
                 >
                   {venueOptions.map((option) => (
@@ -257,6 +312,7 @@ export function TeamSessionsToolbar({
                   id="mobile-sessions-highlight-filter"
                   value={draftHighlight}
                   onChange={(event) => setDraftHighlight(event.target.value)}
+                  disabled={isNavigating}
                   className="h-11 w-full rounded-lg border border-border bg-background px-3 text-base outline-none ring-ring/50 transition-colors focus-visible:ring-[3px] md:text-sm"
                 >
                   {highlightOptions.map((option) => (
@@ -273,11 +329,17 @@ export function TeamSessionsToolbar({
                 type="button"
                 variant="outline"
                 className="h-11 w-full"
+                disabled={isNavigating || !hasActiveFilter}
                 onClick={clearFilters}
               >
                 Clear
               </Button>
-              <Button type="button" className="h-11 w-full" onClick={applyDraftFilters}>
+              <Button
+                type="button"
+                className="h-11 w-full"
+                disabled={isNavigating}
+                onClick={applyDraftFilters}
+              >
                 Apply
               </Button>
             </DrawerFooter>
@@ -294,18 +356,24 @@ export function TeamSessionsToolbar({
         options={venueOptions}
         selectedValue={selectedVenueId}
         disabled={venueDisabled}
+        isNavigating={isNavigating}
+        onNavigate={onNavigate}
       />
       <SessionsFilterDropdown
         label="Camp"
         options={campOptions}
         selectedValue={selectedCampId}
         disabled={campDisabled}
+        isNavigating={isNavigating}
+        onNavigate={onNavigate}
       />
       <SessionsFilterDropdown
         label="Highlight"
         options={highlightOptions}
         selectedValue={selectedHighlight}
         disabled={false}
+        isNavigating={isNavigating}
+        onNavigate={onNavigate}
       />
       {action ? <div className="flex justify-end">{action}</div> : null}
     </section>

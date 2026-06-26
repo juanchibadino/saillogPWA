@@ -150,6 +150,7 @@ export default async function TeamSessionsPage({
   let selectedCampId: string | undefined = requestedCampId
   let selectedHighlight: TeamSessionHighlightFilter | undefined = requestedHighlight
   let currentPage = requestedPage
+  let pageCount = 1
   let hasPreviousPage = requestedPage > 1
   let hasNextPage = false
 
@@ -171,6 +172,7 @@ export default async function TeamSessionsPage({
     selectedCampId = pageData.selectedCampId
     selectedHighlight = pageData.selectedHighlight
     currentPage = pageData.currentPage
+    pageCount = pageData.pageCount
     hasPreviousPage = pageData.hasPreviousPage
     hasNextPage = pageData.hasNextPage
   }
@@ -309,6 +311,7 @@ export default async function TeamSessionsPage({
         selectedVenueId={selectedVenueId}
         selectedCampId={selectedCampId}
         currentPage={currentPage}
+        pageCount={pageCount}
         hasPreviousPage={hasPreviousPage}
         hasNextPage={hasNextPage}
       />

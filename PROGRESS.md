@@ -1,8 +1,114 @@
 # PROGRESS.md
 
-Last updated: 2026-06-25
+Last updated: 2026-06-26
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
+
+## 2026-06-26 - Team Sessions mobile header home navigation
+
+- Fixed the mobile Team Sessions header action so `/team-sessions` and
+  `/team-sessions/[id]` always navigate to scoped Team Home instead of using
+  browser history as a back action.
+- Updated the mobile header action label for Team Sessions to `Go to Team Home`
+  while preserving the existing header layout.
+- Validation: `npx eslint 'components/site-header.tsx'`,
+  `./node_modules/.bin/tsc --noEmit`, `git diff --check`, and `npm run build`
+  passed.
+
+## 2026-06-26 - Team Sessions mobile filter pending
+
+- Updated mobile `/team-sessions` filter navigation so Apply/Clear keeps the
+  current cards visible, disables and dims the card list, disables `Load more`,
+  and shows one centered spinner over the cards while the filtered route loads.
+- Kept the mobile filter controls free of extra per-control spinners; the
+  visible pending state belongs to the card-list surface after the Drawer
+  closes.
+- Updated `MOBILE_CARD_LIST_UI.md` with the mobile filter pending pattern and
+  its separation from `Load more` button loading.
+- Follow-up fixed long accumulated lists by centering the filter spinner in the
+  visible mobile shell area between the fixed header and bottom navigation,
+  instead of centering against the full rendered card-list height.
+- Validation: `npx eslint 'features/sessions/sessions-table.tsx'`,
+  `./node_modules/.bin/tsc --noEmit`, `git diff --check`, and `npm run build`
+  passed.
+
+## 2026-06-26 - Team Sessions filter pending and clear controls
+
+- Updated `/team-sessions` filters so active desktop filters show a right-side
+  `X` clear button for Venue, Camp, and Highlight.
+- Routed desktop filter apply/clear through the same table navigation pending
+  state used by pagination, so filter changes disable controls, dim the table,
+  and show one centered table spinner.
+- Kept filter and pagination controls free of extra spinners to avoid duplicate
+  loading indicators.
+- Updated `TABLE_DESKTOP_PATTERNS_UI.md` and `MOBILE_CARD_LIST_UI.md` with the
+  filter pending and clear-control standards.
+- Validation: `npx eslint 'features/sessions/sessions-table.tsx'
+  'features/sessions/team-sessions-toolbar.tsx'`,
+  `./node_modules/.bin/tsc --noEmit`, `git diff --check`, and `npm run build`
+  passed.
+
+## 2026-06-26 - Team Sessions table pagination overlay
+
+- Updated desktop `/team-sessions` page transitions so pagination controls no
+  longer render competing spinners.
+- Added a single centered loading spinner over the desktop table while page
+  navigation is pending.
+- Disabled and dimmed the desktop table during page navigation while preserving
+  the current rows until the next page arrives.
+- Updated `TABLE_DESKTOP_PATTERNS_UI.md` so the desktop table standard now
+  requires one table-centered spinner and disabled pagination controls, instead
+  of spinner indicators inside pagination buttons.
+- Validation: `npx eslint 'features/sessions/sessions-table.tsx'`,
+  `./node_modules/.bin/tsc --noEmit`, `git diff --check`, and `npm run build`
+  passed.
+- Browser validation: existing dev server on `localhost:3000`, authenticated as
+  `tester@sailog.test`, desktop viewport `1280x900`; during page 1 -> page 2
+  navigation confirmed table `aria-busy="true"`, disabled table wrapper,
+  `tableSpinCount: 1`, `navSpinCount: 0`, then final URL
+  `/team-sessions?page=2` with active page `2`.
+
+## 2026-06-26 - Team Sessions pagination pending and UI pattern docs
+
+- Added a visible desktop pagination pending state in
+  `features/sessions/sessions-table.tsx`: the target page/Previous/Next control
+  shows a spinner, the pagination nav exposes `aria-busy`, and duplicate page
+  navigations are blocked while pending.
+- Added `TABLE_DESKTOP_PATTERNS_UI.md` to document the Sailog desktop table
+  pattern across performance, filters, title, pagination, actions, states,
+  cache, and accessibility.
+- Added `MOBILE_CARD_LIST_UI.md` to document the paired mobile card-list pattern
+  across accumulated loading, filters, cards, FABs, actions, states, cache, and
+  accessibility.
+- Validation: `npx eslint 'features/sessions/sessions-table.tsx'`,
+  `./node_modules/.bin/tsc --noEmit`, `git diff --check`, and `npm run build`
+  passed.
+- Browser validation: existing dev server on `localhost:3000`, authenticated as
+  `tester@sailog.test`, desktop viewport `1280x900`; confirmed
+  `/team-sessions` renders without a Next.js overlay, clicking page 2 sets the
+  pagination nav to `aria-busy="true"` and changes the target label to
+  `Loading page 2`, then finishes at `/team-sessions?page=2` with active page
+  `2`.
+
+## 2026-06-26 - Team Sessions desktop pagination
+
+- Updated `/team-sessions` list pagination so desktop shows page numbers,
+  active page state, ellipses, and Previous/Next controls instead of only
+  `Page {currentPage}`.
+- Added filtered session `pageCount` in `features/sessions/data.ts`, including
+  valid-page clamping and preserving mobile `loadMore=1` accumulation.
+- Passed `pageCount` through `app/(app)/team-sessions/page.tsx` into
+  `features/sessions/sessions-table.tsx`.
+- Preserved the existing mobile full-width `Load more sessions` behavior.
+- Validation: `npx eslint 'app/(app)/team-sessions/page.tsx'
+  'features/sessions/data.ts' 'features/sessions/sessions-table.tsx'`,
+  `./node_modules/.bin/tsc --noEmit`, `npm run build`, and `git diff --check`
+  passed.
+- Browser validation: existing dev server on `localhost:3000`, authenticated as
+  `tester@sailog.test`, desktop viewport `1280x900`; confirmed
+  `/team-sessions` renders without a Next.js overlay, shows desktop page
+  buttons `1`, `2`, `3`, and updates `aria-current` to `2` after selecting page
+  2.
 
 ## 2026-06-25 - Team Sessions submit pending states
 

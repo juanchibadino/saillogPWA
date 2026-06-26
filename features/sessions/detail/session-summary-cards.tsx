@@ -1,9 +1,5 @@
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { GradientCard } from "@/components/shared/gradient-card"
+import { CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 
 type SessionDetailSummaryCardsProps = {
@@ -28,7 +24,7 @@ export function SessionDetailSummaryCards({
 
   return (
     <>
-      <Card className="overflow-hidden p-0 md:hidden">
+      <GradientCard className="overflow-hidden p-0 md:hidden">
         <div className="divide-y divide-border px-6 py-3">
           {summaryItems.map((item) => (
             <div
@@ -47,11 +43,11 @@ export function SessionDetailSummaryCards({
             </div>
           ))}
         </div>
-      </Card>
+      </GradientCard>
 
       <div className="hidden gap-4 md:grid md:grid-cols-4">
         {summaryItems.map((item) => (
-          <Card key={`desktop-session-summary-${item.label}`}>
+          <GradientCard key={`desktop-session-summary-${item.label}`}>
             <CardHeader>
               <CardDescription>{item.label}</CardDescription>
               <CardTitle
@@ -63,7 +59,7 @@ export function SessionDetailSummaryCards({
                 {item.value}
               </CardTitle>
             </CardHeader>
-          </Card>
+          </GradientCard>
         ))}
       </div>
     </>

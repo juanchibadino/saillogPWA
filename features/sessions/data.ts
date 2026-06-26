@@ -72,6 +72,7 @@ export type TeamSessionsPageData = {
   selectedCampId?: string
   selectedHighlight?: TeamSessionHighlightFilter
   currentPage: number
+  pageCount: number
   hasPreviousPage: boolean
   hasNextPage: boolean
 }
@@ -127,6 +128,30 @@ function normalizeSelectedId(input: {
   return input.selectedId
 }
 
+function resolveSessionPagination(input: {
+  requestedPage: number
+  totalItems: number
+  accumulatePages: boolean
+}): {
+  currentPage: number
+  pageCount: number
+  hasPreviousPage: boolean
+  hasNextPage: boolean
+} {
+  const pageCount = Math.max(
+    1,
+    Math.ceil(input.totalItems / TEAM_SESSIONS_PAGE_SIZE),
+  )
+  const currentPage = Math.min(input.requestedPage, pageCount)
+
+  return {
+    currentPage,
+    pageCount,
+    hasPreviousPage: input.accumulatePages ? false : currentPage > 1,
+    hasNextPage: currentPage < pageCount,
+  }
+}
+
 export async function getTeamSessionsPageData(input: {
   activeTeamId: string
   selectedVenueId?: string
@@ -136,9 +161,8 @@ export async function getTeamSessionsPageData(input: {
   accumulatePages?: boolean
 }): Promise<TeamSessionsPageData> {
   const supabase = await createServerSupabaseClient()
-  const currentPage = normalizePage(input.page)
+  const requestedPage = normalizePage(input.page)
   const accumulatePages = input.accumulatePages === true
-  const hasPreviousPage = accumulatePages ? false : currentPage > 1
 
   const { data: teamVenueData, error: teamVenueError } = await supabase
     .from("team_venues")
@@ -200,6 +224,12 @@ export async function getTeamSessionsPageData(input: {
   const filteredTeamVenueIds = filteredTeamVenueRows.map((row) => row.id)
 
   if (filteredTeamVenueIds.length === 0) {
+    const pagination = resolveSessionPagination({
+      requestedPage,
+      totalItems: 0,
+      accumulatePages,
+    })
+
     return {
       sessions: [],
       venueFilterOptions,
@@ -207,9 +237,10 @@ export async function getTeamSessionsPageData(input: {
       campOptions: [],
       selectedVenueId,
       selectedHighlight: input.selectedHighlight,
-      currentPage,
-      hasPreviousPage,
-      hasNextPage: false,
+      currentPage: pagination.currentPage,
+      pageCount: pagination.pageCount,
+      hasPreviousPage: pagination.hasPreviousPage,
+      hasNextPage: pagination.hasNextPage,
     }
   }
 
@@ -271,6 +302,57 @@ export async function getTeamSessionsPageData(input: {
     : campFilterOptions.map((row) => row.campId)
 
   if (sessionCampIds.length === 0) {
+    const pagination = resolveSessionPagination({
+      requestedPage,
+      totalItems: 0,
+      accumulatePages,
+    })
+
+    return {
+      sessions: [],
+      venueFilterOptions,
+      campFilterOptions,
+      campOptions: buildCampOptionsForMutations({
+        selectedCampId,
+        campFilterOptions,
+      }),
+      selectedVenueId,
+      selectedCampId,
+      selectedHighlight,
+      currentPage: pagination.currentPage,
+      pageCount: pagination.pageCount,
+      hasPreviousPage: pagination.hasPreviousPage,
+      hasNextPage: pagination.hasNextPage,
+    }
+  }
+
+  let sessionCountQuery = supabase
+    .from("sessions")
+    .select("id", { count: "exact", head: true })
+    .in("camp_id", sessionCampIds)
+
+  if (selectedHighlight === "yes") {
+    sessionCountQuery = sessionCountQuery.eq("highlighted_by_coach", true)
+  }
+
+  if (selectedHighlight === "no") {
+    sessionCountQuery = sessionCountQuery.eq("highlighted_by_coach", false)
+  }
+
+  const { count: sessionCount, error: sessionCountError } = await sessionCountQuery
+
+  if (sessionCountError) {
+    throw new Error(`Could not count sessions: ${sessionCountError.message}`)
+  }
+
+  const pagination = resolveSessionPagination({
+    requestedPage,
+    totalItems: sessionCount ?? 0,
+    accumulatePages,
+  })
+  const { currentPage, pageCount, hasPreviousPage, hasNextPage } = pagination
+
+  if ((sessionCount ?? 0) === 0) {
     return {
       sessions: [],
       venueFilterOptions,
@@ -283,8 +365,9 @@ export async function getTeamSessionsPageData(input: {
       selectedCampId,
       selectedHighlight,
       currentPage,
+      pageCount,
       hasPreviousPage,
-      hasNextPage: false,
+      hasNextPage,
     }
   }
 
@@ -294,7 +377,7 @@ export async function getTeamSessionsPageData(input: {
   const rangeStart = accumulatePages
     ? 0
     : (currentPage - 1) * TEAM_SESSIONS_PAGE_SIZE
-  const rangeEnd = rangeStart + visibleCount
+  const rangeEnd = rangeStart + visibleCount - 1
 
   let sessionQuery = supabase
     .from("sessions")
@@ -317,9 +400,7 @@ export async function getTeamSessionsPageData(input: {
     throw new Error(`Could not load sessions: ${sessionError.message}`)
   }
 
-  const paginatedSessionRows: SessionRow[] = sessionData ?? []
-  const hasNextPage = paginatedSessionRows.length > visibleCount
-  const visibleSessionRows = paginatedSessionRows.slice(0, visibleCount)
+  const visibleSessionRows: SessionRow[] = sessionData ?? []
 
   const sessions: TeamSessionListItem[] = visibleSessionRows
     .map((session) => {
@@ -367,6 +448,7 @@ export async function getTeamSessionsPageData(input: {
     selectedCampId,
     selectedHighlight,
     currentPage,
+    pageCount,
     hasPreviousPage,
     hasNextPage,
   }

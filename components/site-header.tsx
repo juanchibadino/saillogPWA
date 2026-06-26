@@ -412,7 +412,7 @@ function resolveMobileBackFallbackPath(pathname: string): string {
   }
 
   if (/^\/team-sessions\/[^/]+$/.test(pathname)) {
-    return "/team-sessions"
+    return "/team-home"
   }
 
   if (pathname.startsWith("/team-venues")) {
@@ -463,6 +463,7 @@ export function SiteHeader({
           ? "Team Reports"
         : getSectionTitle(pathname)
   const isTeamHomeHeader = pathname.startsWith("/team-home")
+  const isTeamSessionsHeader = pathname.startsWith("/team-sessions")
   const teamScopeSectionLabel = pathname.startsWith("/team-venues")
     ? "Venues"
     : pathname.startsWith("/team-camps")
@@ -649,7 +650,12 @@ export function SiteHeader({
         )
       : buildScopedHref("/team-camps", activeScope)
 
-  function handleMobileBack(): void {
+  function handleMobileHeaderNavigation(): void {
+    if (isTeamSessionsHeader) {
+      router.push(teamHomeHref)
+      return
+    }
+
     if (typeof window !== "undefined" && window.history.length > 1) {
       router.back()
       return
@@ -753,8 +759,8 @@ export function SiteHeader({
             type="button"
             variant="ghost"
             size="icon"
-            onClick={handleMobileBack}
-            aria-label="Go back"
+            onClick={handleMobileHeaderNavigation}
+            aria-label={isTeamSessionsHeader ? "Go to Team Home" : "Go back"}
             className="-ml-1"
           >
             <ArrowLeftIcon className="size-4" />
