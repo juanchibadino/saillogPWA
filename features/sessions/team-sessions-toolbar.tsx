@@ -158,7 +158,8 @@ export function TeamSessionsToolbar({
 
   if (isMobile) {
     return (
-      <section className="flex w-full items-center justify-between gap-2">
+      <section className="flex w-full items-center justify-between gap-3 md:hidden">
+        <h1 className="min-w-0 text-2xl font-semibold tracking-tight">Sessions</h1>
         <Drawer
           open={isDrawerOpen}
           onOpenChange={(open) => {
@@ -177,21 +178,22 @@ export function TeamSessionsToolbar({
               variant="secondary"
               size="default"
               className={cn(
-                "h-9 px-3",
+                "h-11 w-11 px-0",
                 hasActiveFilter &&
                   "border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 aria-expanded:bg-emerald-100 dark:border-emerald-600/50 dark:bg-emerald-900/20 dark:text-emerald-100 dark:hover:bg-emerald-900/30",
               )}
+              aria-label="Filters"
             >
               <FilterIcon className="size-4" />
             </Button>
           </DrawerTrigger>
-          <DrawerContent>
-            <DrawerHeader>
+          <DrawerContent className="h-[85dvh] overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+            <DrawerHeader className="shrink-0">
               <DrawerTitle>Filters</DrawerTitle>
               <DrawerDescription>Set filters and apply.</DrawerDescription>
             </DrawerHeader>
 
-            <div className="space-y-3 px-4 pb-2">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-6">
               <div className="space-y-2">
                 <label
                   htmlFor="mobile-sessions-venue-filter"
@@ -207,7 +209,7 @@ export function TeamSessionsToolbar({
                     setDraftCampId("")
                   }}
                   disabled={venueDisabled}
-                  className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none ring-ring/50 transition-colors focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="h-11 w-full rounded-lg border border-border bg-background px-3 text-base outline-none ring-ring/50 transition-colors focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-60 md:text-sm"
                 >
                   {venueOptions.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -229,7 +231,7 @@ export function TeamSessionsToolbar({
                   value={draftCampId}
                   onChange={(event) => setDraftCampId(event.target.value)}
                   disabled={isCampSelectDisabled}
-                  className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none ring-ring/50 transition-colors focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="h-11 w-full rounded-lg border border-border bg-background px-3 text-base outline-none ring-ring/50 transition-colors focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-60 md:text-sm"
                 >
                   {campOptions.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -255,7 +257,7 @@ export function TeamSessionsToolbar({
                   id="mobile-sessions-highlight-filter"
                   value={draftHighlight}
                   onChange={(event) => setDraftHighlight(event.target.value)}
-                  className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none ring-ring/50 transition-colors focus-visible:ring-[3px]"
+                  className="h-11 w-full rounded-lg border border-border bg-background px-3 text-base outline-none ring-ring/50 transition-colors focus-visible:ring-[3px] md:text-sm"
                 >
                   {highlightOptions.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -266,24 +268,27 @@ export function TeamSessionsToolbar({
               </div>
             </div>
 
-            <DrawerFooter>
-              <Button type="button" variant="outline" onClick={clearFilters}>
+            <DrawerFooter className="shrink-0 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 w-full"
+                onClick={clearFilters}
+              >
                 Clear
               </Button>
-              <Button type="button" onClick={applyDraftFilters}>
+              <Button type="button" className="h-11 w-full" onClick={applyDraftFilters}>
                 Apply
               </Button>
             </DrawerFooter>
           </DrawerContent>
         </Drawer>
-
-        {action ? <div className="flex justify-end">{action}</div> : null}
       </section>
     )
   }
 
   return (
-    <section className="flex items-center justify-end gap-2">
+    <section className="hidden items-center justify-end gap-2 md:flex">
       <SessionsFilterDropdown
         label="Venue"
         options={venueOptions}

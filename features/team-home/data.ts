@@ -6,7 +6,6 @@ import type { Database } from "@/types/database"
 export type TeamHomeKpi = {
   label: string
   value: string
-  note: string
 }
 
 export type TeamHomeLatestSession = {
@@ -153,25 +152,18 @@ function buildKpis(input: {
     {
       label: "Total Camps",
       value: String(input.campCount),
-      note: "Current team",
     },
     {
       label: "Total Sessions",
       value: String(input.sessionCount),
-      note: "Current team",
     },
     {
       label: "Avg. Session",
       value: formatHoursAndMinutes(input.averageNetTimeMinutes),
-      note:
-        input.sessionsWithNetTime > 0
-          ? `${input.sessionsWithNetTime} sessions with net time`
-          : "No net time recorded",
     },
     {
       label: "Net Time Sailed",
       value: formatTotalNetTime(input.totalNetTimeMinutes),
-      note: "Sum of net time for team",
     },
   ]
 }
@@ -420,22 +412,18 @@ export const teamHomeMockData: TeamHomeMockData = {
     {
       label: "Total Camps",
       value: "6",
-      note: "Fixed mock KPI",
     },
     {
       label: "Total Sessions",
       value: "41",
-      note: "Fixed mock KPI",
     },
     {
       label: "Avg. Session",
       value: "02h 48m",
-      note: "Fixed mock KPI",
     },
     {
       label: "Net Time Sailed",
       value: "4d 19h 04m",
-      note: "Fixed mock KPI",
     },
   ],
   latestSessions: [

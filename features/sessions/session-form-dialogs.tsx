@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { MinusIcon, PencilIcon, PlusIcon } from "lucide-react"
+import { useFormStatus } from "react-dom"
+import { Loader2Icon, MinusIcon, PencilIcon, PlusIcon } from "lucide-react"
 
 import {
   createSessionAction,
@@ -27,6 +28,7 @@ import {
   Sheet,
   SheetContent,
   SheetDescription,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
@@ -35,12 +37,13 @@ import {
   Drawer,
   DrawerContent,
   DrawerDescription,
-  DrawerHeader,
+  DrawerFooter,
   DrawerTitle,
-  DrawerTrigger,
 } from "@/components/ui/drawer"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { cn } from "@/lib/utils"
 
 type SessionFormInitialValues = {
   id?: string
@@ -56,6 +59,9 @@ type EditableSession = Pick<
   "id" | "campId" | "sessionType" | "sessionDate" | "netTimeMinutes" | "highlightedByCoach"
 >
 
+type SessionFormSurface = "drawer" | "sheet" | "dialog"
+type SessionFormFooter = SessionFormSurface | "none"
+
 const NET_TIME_STEP_MINUTES = 15
 const MAX_NET_TIME_MINUTES = 24 * 60
 
@@ -63,33 +69,185 @@ function clampNetTimeMinutes(minutes: number): number {
   return Math.min(Math.max(minutes, 0), MAX_NET_TIME_MINUTES)
 }
 
-function formatMinutesAsHoursInput(minutesValue: string): string {
+function formatMinutesAsDurationInput(minutesValue: string): string {
   const minutes = Number.parseInt(minutesValue, 10)
 
   if (!Number.isFinite(minutes)) {
     return ""
   }
 
-  return String(Number.parseFloat((minutes / 60).toFixed(2)))
+  const clampedMinutes = clampNetTimeMinutes(minutes)
+  const hours = Math.floor(clampedMinutes / 60)
+  const remainingMinutes = clampedMinutes % 60
+
+  if (hours <= 0) {
+    return `${remainingMinutes}m`
+  }
+
+  return `${hours}h ${remainingMinutes}m`
 }
 
-function parseHoursInputToMinutes(hoursValue: string): string {
-  const normalized = hoursValue.trim().replace(",", ".")
+function parseDurationInputToMinutes(durationValue: string): string {
+  const normalized = durationValue.trim().toLowerCase().replace(",", ".")
 
   if (normalized.length === 0) {
     return ""
   }
 
-  const hours = Number.parseFloat(normalized)
+  const compactHoursMinutesMatch = normalized.match(
+    /^(\d+(?:\.\d+)?)\s*h(?:\s*(\d+(?:\.\d+)?)\s*m?)?$/,
+  )
 
-  if (!Number.isFinite(hours)) {
+  if (compactHoursMinutesMatch) {
+    const hours = Number.parseFloat(compactHoursMinutesMatch[1] ?? "0")
+    const minutes = Number.parseFloat(compactHoursMinutesMatch[2] ?? "0")
+    const roundedMinutes =
+      Math.round((hours * 60 + minutes) / NET_TIME_STEP_MINUTES) * NET_TIME_STEP_MINUTES
+
+    return String(clampNetTimeMinutes(roundedMinutes))
+  }
+
+  const unitsMatch = Array.from(
+    normalized.matchAll(
+      /(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes)\b/g,
+    ),
+  )
+
+  if (unitsMatch.length > 0) {
+    const consumed = unitsMatch.reduce((value, match) => value.replace(match[0], ""), normalized)
+
+    if (consumed.trim().length > 0) {
+      return ""
+    }
+
+    const totalMinutes = unitsMatch.reduce((minutesTotal, match) => {
+      const value = Number.parseFloat(match[1] ?? "0")
+      const unit = match[2] ?? ""
+
+      return unit.startsWith("h") ? minutesTotal + value * 60 : minutesTotal + value
+    }, 0)
+
+    const roundedMinutes =
+      Math.round(totalMinutes / NET_TIME_STEP_MINUTES) * NET_TIME_STEP_MINUTES
+
+    return String(clampNetTimeMinutes(roundedMinutes))
+  }
+
+  const clockMatch = normalized.match(/^(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)$/)
+
+  if (clockMatch) {
+    const hours = Number.parseFloat(clockMatch[1] ?? "0")
+    const minutes = Number.parseFloat(clockMatch[2] ?? "0")
+    const roundedMinutes =
+      Math.round((hours * 60 + minutes) / NET_TIME_STEP_MINUTES) * NET_TIME_STEP_MINUTES
+
+    return String(clampNetTimeMinutes(roundedMinutes))
+  }
+
+  const decimalHoursMatch = normalized.match(/^\d+(?:\.\d+)?$/)
+
+  if (!decimalHoursMatch) {
     return ""
   }
 
+  const hours = Number.parseFloat(decimalHoursMatch[0])
   const roundedMinutes =
     Math.round((hours * 60) / NET_TIME_STEP_MINUTES) * NET_TIME_STEP_MINUTES
 
   return String(clampNetTimeMinutes(roundedMinutes))
+}
+
+function SessionDialogFields({
+  children,
+  className,
+}: {
+  children: React.ReactNode
+  className?: string
+}) {
+  const { pending } = useFormStatus()
+
+  return (
+    <fieldset
+      disabled={pending}
+      className={cn(
+        "space-y-4 disabled:pointer-events-none disabled:opacity-70",
+        className,
+      )}
+    >
+      {children}
+    </fieldset>
+  )
+}
+
+function SessionDialogSubmitButton({
+  submitLabel,
+  pendingLabel,
+  canSubmit,
+  className,
+}: {
+  submitLabel: string
+  pendingLabel: string
+  canSubmit: boolean
+  className?: string
+}) {
+  const { pending } = useFormStatus()
+
+  return (
+    <Button
+      type="submit"
+      disabled={!canSubmit || pending}
+      aria-busy={pending}
+      className={className}
+    >
+      {pending ? (
+        <>
+          <Loader2Icon className="size-4 animate-spin" />
+          {pendingLabel}
+        </>
+      ) : (
+        submitLabel
+      )}
+    </Button>
+  )
+}
+
+function SessionDialogSubmitFooter({
+  footer,
+  submitLabel,
+  pendingLabel,
+  canSubmit,
+}: {
+  footer: SessionFormFooter
+  submitLabel: string
+  pendingLabel: string
+  canSubmit: boolean
+}) {
+  if (footer === "none") {
+    return null
+  }
+
+  const button = (
+    <SessionDialogSubmitButton
+      submitLabel={submitLabel}
+      pendingLabel={pendingLabel}
+      canSubmit={canSubmit}
+      className={footer === "drawer" ? "h-11 w-full" : undefined}
+    />
+  )
+
+  if (footer === "drawer") {
+    return <DrawerFooter className="shrink-0 border-t">{button}</DrawerFooter>
+  }
+
+  if (footer === "sheet") {
+    return (
+      <SheetFooter className="shrink-0 border-t sm:justify-end">
+        {button}
+      </SheetFooter>
+    )
+  }
+
+  return <DialogFooter>{button}</DialogFooter>
 }
 
 function SessionDialogForm({
@@ -97,61 +255,77 @@ function SessionDialogForm({
   initialValues,
   idPrefix,
   submitLabel,
+  pendingLabel,
   scope,
   selectedVenueId,
   selectedCampId,
   currentPage,
   action,
   formId,
-  onCanSubmitChange,
-  showSubmitFooter = true,
+  footer = "dialog",
+  fieldsClassName,
+  surface = "dialog",
 }: {
   campOptions: TeamSessionCampOption[]
   initialValues: SessionFormInitialValues
   idPrefix: string
   submitLabel: string
+  pendingLabel: string
   scope: NavigationScope
   selectedVenueId?: string
   selectedCampId?: string
   currentPage: number
   action: (formData: FormData) => Promise<void>
   formId?: string
-  onCanSubmitChange?: (canSubmit: boolean) => void
-  showSubmitFooter?: boolean
+  footer?: SessionFormFooter
+  fieldsClassName?: string
+  surface?: SessionFormSurface
 }) {
   const [campId, setCampId] = React.useState(initialValues.campId)
   const [sessionType, setSessionType] = React.useState(initialValues.sessionType)
   const [sessionDate, setSessionDate] = React.useState(initialValues.sessionDate)
-  const [netTimeHours, setNetTimeHours] = React.useState(() =>
-    formatMinutesAsHoursInput(initialValues.netTimeMinutes),
+  const [netTimeDuration, setNetTimeDuration] = React.useState(() =>
+    formatMinutesAsDurationInput(initialValues.netTimeMinutes),
   )
   const [highlightedByCoach, setHighlightedByCoach] = React.useState(
     initialValues.highlightedByCoach,
   )
 
-  const netTimeMinutes = parseHoursInputToMinutes(netTimeHours)
+  const netTimeMinutes = parseDurationInputToMinutes(netTimeDuration)
   const currentNetTimeMinutes =
     netTimeMinutes.length > 0 ? Number.parseInt(netTimeMinutes, 10) : 0
   const canSubmit = campId.length > 0 && sessionDate.length > 0
-  React.useEffect(() => {
-    onCanSubmitChange?.(canSubmit)
-  }, [canSubmit, onCanSubmitChange])
+  const isDrawerSurface = surface === "drawer"
+  const selectClassName = cn(
+    "w-full rounded-lg border border-input bg-background text-sm outline-none ring-ring/50 focus-visible:ring-[3px]",
+    isDrawerSurface ? "h-11 px-3 text-base md:text-sm" : "h-9 px-3",
+  )
+  const inputClassName = isDrawerSurface ? "h-11 px-3 text-base md:text-sm" : undefined
+  const stepButtonClassName = isDrawerSurface ? "h-11 w-11" : undefined
+  const stepButtonSize = isDrawerSurface ? "icon" : "icon-sm"
+  const hasFixedFooter = footer === "drawer" || footer === "sheet"
 
   function adjustNetTimeMinutes(deltaMinutes: number): void {
     const nextMinutes = clampNetTimeMinutes(currentNetTimeMinutes + deltaMinutes)
-    setNetTimeHours(formatMinutesAsHoursInput(String(nextMinutes)))
+    setNetTimeDuration(formatMinutesAsDurationInput(String(nextMinutes)))
   }
 
-  function normalizeNetTimeHours(): void {
-    if (netTimeHours.trim().length === 0) {
+  function normalizeNetTimeDuration(): void {
+    if (netTimeDuration.trim().length === 0) {
       return
     }
 
-    setNetTimeHours(formatMinutesAsHoursInput(netTimeMinutes))
+    setNetTimeDuration(formatMinutesAsDurationInput(netTimeMinutes))
   }
 
   return (
-    <form id={formId} action={action} className="space-y-4">
+    <form
+      id={formId}
+      action={action}
+      className={cn(
+        hasFixedFooter ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "space-y-4",
+      )}
+    >
       {initialValues.id ? <input type="hidden" name="id" value={initialValues.id} /> : null}
       <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
       {scope.activeTeamId ? (
@@ -166,114 +340,123 @@ function SessionDialogForm({
       {currentPage > 1 ? (
         <input type="hidden" name="scopePage" value={String(currentPage)} />
       ) : null}
+      <input type="hidden" name="netTimeMinutes" value={netTimeMinutes} />
 
-      <div className="space-y-2">
-        <Label htmlFor={`${idPrefix}-campId`}>Camp</Label>
-        <select
-          id={`${idPrefix}-campId`}
-          name="campId"
-          required
-          value={campId}
-          onChange={(event) => setCampId(event.target.value)}
-          className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none ring-ring/50 focus-visible:ring-[3px]"
-        >
-          <option value="">Select camp</option>
-          {campOptions.map((option) => (
-            <option key={option.campId} value={option.campId}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
+      <SessionDialogFields
+        className={cn(
+          hasFixedFooter && "min-h-0 flex-1 overflow-y-auto",
+          fieldsClassName,
+        )}
+      >
         <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}-sessionType`}>Session type</Label>
+          <Label htmlFor={`${idPrefix}-campId`}>Camp</Label>
           <select
-            id={`${idPrefix}-sessionType`}
-            name="sessionType"
+            id={`${idPrefix}-campId`}
+            name="campId"
             required
-            value={sessionType}
-            onChange={(event) =>
-              setSessionType(event.target.value as SessionFormInitialValues["sessionType"])
-            }
-            className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none ring-ring/50 focus-visible:ring-[3px]"
+            value={campId}
+            onChange={(event) => setCampId(event.target.value)}
+            className={selectClassName}
           >
-            <option value="training">Training</option>
-            <option value="regatta">Regatta</option>
+            <option value="">Select camp</option>
+            {campOptions.map((option) => (
+              <option key={option.campId} value={option.campId}>
+                {option.label}
+              </option>
+            ))}
           </select>
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}-sessionDate`}>Date</Label>
-          <Input
-            id={`${idPrefix}-sessionDate`}
-            name="sessionDate"
-            type="date"
-            required
-            value={sessionDate}
-            onChange={(event) => setSessionDate(event.target.value)}
-          />
-        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor={`${idPrefix}-sessionType`}>Session type</Label>
+            <select
+              id={`${idPrefix}-sessionType`}
+              name="sessionType"
+              required
+              value={sessionType}
+              onChange={(event) =>
+                setSessionType(event.target.value as SessionFormInitialValues["sessionType"])
+              }
+              className={selectClassName}
+            >
+              <option value="training">Training</option>
+              <option value="regatta">Regatta</option>
+            </select>
+          </div>
 
-        <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}-netTimeHours`}>Net time (hours)</Label>
-          <input type="hidden" name="netTimeMinutes" value={netTimeMinutes} />
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon-sm"
-              aria-label="Decrease net time by 15 minutes"
-              disabled={currentNetTimeMinutes <= 0}
-              onClick={() => adjustNetTimeMinutes(-NET_TIME_STEP_MINUTES)}
-            >
-              <MinusIcon className="size-4" />
-            </Button>
+          <div className="space-y-2">
+            <Label htmlFor={`${idPrefix}-sessionDate`}>Date</Label>
             <Input
-              id={`${idPrefix}-netTimeHours`}
-              type="number"
-              min={0}
-              max={24}
-              step={0.25}
-              inputMode="decimal"
-              value={netTimeHours}
-              onChange={(event) => setNetTimeHours(event.target.value)}
-              onBlur={normalizeNetTimeHours}
-              className="text-center tabular-nums"
+              id={`${idPrefix}-sessionDate`}
+              name="sessionDate"
+              type="date"
+              required
+              value={sessionDate}
+              onChange={(event) => setSessionDate(event.target.value)}
+              className={inputClassName}
             />
-            <Button
-              type="button"
-              variant="outline"
-              size="icon-sm"
-              aria-label="Increase net time by 15 minutes"
-              disabled={currentNetTimeMinutes >= MAX_NET_TIME_MINUTES}
-              onClick={() => adjustNetTimeMinutes(NET_TIME_STEP_MINUTES)}
-            >
-              <PlusIcon className="size-4" />
-            </Button>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={`${idPrefix}-netTimeDuration`}>Net time</Label>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size={stepButtonSize}
+                aria-label="Decrease net time by 15 minutes"
+                disabled={currentNetTimeMinutes <= 0}
+                className={stepButtonClassName}
+                onClick={() => adjustNetTimeMinutes(-NET_TIME_STEP_MINUTES)}
+              >
+                <MinusIcon className="size-4" />
+              </Button>
+              <Input
+                id={`${idPrefix}-netTimeDuration`}
+                type="text"
+                value={netTimeDuration}
+                onChange={(event) => setNetTimeDuration(event.target.value)}
+                onBlur={normalizeNetTimeDuration}
+                className={cn("text-center tabular-nums", inputClassName)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size={stepButtonSize}
+                aria-label="Increase net time by 15 minutes"
+                disabled={currentNetTimeMinutes >= MAX_NET_TIME_MINUTES}
+                className={stepButtonClassName}
+                onClick={() => adjustNetTimeMinutes(NET_TIME_STEP_MINUTES)}
+              >
+                <PlusIcon className="size-4" />
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
 
-      <label className="inline-flex items-center gap-2 text-sm font-medium">
-        <input
-          type="checkbox"
-          name="highlightedByCoach"
-          checked={highlightedByCoach}
-          onChange={(event) => setHighlightedByCoach(event.target.checked)}
-          className="size-4 rounded border-input"
-        />
-        Highlighted by coach
-      </label>
+        <Label
+          className={cn(
+            "flex items-center justify-between gap-4 rounded-lg border border-border/70 bg-muted/30 px-3 py-3 text-sm font-medium",
+            isDrawerSurface && "min-h-14 px-4",
+          )}
+        >
+          <span>Highlighted by coach</span>
+          <Switch
+            name="highlightedByCoach"
+            checked={highlightedByCoach}
+            onCheckedChange={setHighlightedByCoach}
+            aria-label="Highlighted by coach"
+          />
+        </Label>
+      </SessionDialogFields>
 
-      {showSubmitFooter ? (
-        <DialogFooter>
-          <Button type="submit" disabled={!canSubmit}>
-            {submitLabel}
-          </Button>
-        </DialogFooter>
-      ) : null}
+      <SessionDialogSubmitFooter
+        footer={footer}
+        submitLabel={submitLabel}
+        pendingLabel={pendingLabel}
+        canSubmit={canSubmit}
+      />
     </form>
   )
 }
@@ -285,6 +468,8 @@ export function CreateSessionDialog({
   selectedCampId,
   currentPage,
   disabled,
+  surface,
+  triggerVariant = "default",
 }: {
   campOptions: TeamSessionCampOption[]
   scope: NavigationScope
@@ -292,54 +477,68 @@ export function CreateSessionDialog({
   selectedCampId?: string
   currentPage: number
   disabled: boolean
+  surface?: Extract<SessionFormSurface, "drawer" | "sheet">
+  triggerVariant?: "default" | "fab"
 }) {
-  const [canSubmitCreate, setCanSubmitCreate] = React.useState(false)
+  const [isCreateDrawerOpen, setIsCreateDrawerOpen] = React.useState(false)
   const defaultCampId =
     campOptions.find((option) => option.campId === selectedCampId)?.campId ??
     campOptions[0]?.campId ??
     ""
   const isMobile = useIsMobile()
-  const createFormId = "create-session-form"
+  const resolvedSurface = surface ?? (isMobile ? "drawer" : "sheet")
+  const createFormId = `create-session-form-${resolvedSurface}`
 
-  if (isMobile) {
+  if (resolvedSurface === "drawer") {
+    const isFabTrigger = triggerVariant === "fab"
+
     return (
-      <Drawer>
-        <DrawerTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            size="default"
-            disabled={disabled}
-            className="h-9 px-3"
-          >
-            <PlusIcon className="size-4" />
-            New
-          </Button>
-        </DrawerTrigger>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>Create session</DrawerTitle>
-            <DrawerDescription>Add a session record to the selected camp.</DrawerDescription>
-          </DrawerHeader>
-          <div className="px-4 pb-4">
-            <SessionDialogForm
-              campOptions={campOptions}
-              initialValues={{
-                campId: defaultCampId,
-                sessionType: "training",
-                sessionDate: "",
-                netTimeMinutes: "",
-                highlightedByCoach: false,
-              }}
-              idPrefix="create-session"
-              submitLabel="Create session"
-              scope={scope}
-              selectedVenueId={selectedVenueId}
-              selectedCampId={selectedCampId}
-              currentPage={currentPage}
-              action={createSessionAction}
-            />
-          </div>
+      <Drawer open={isCreateDrawerOpen} onOpenChange={setIsCreateDrawerOpen}>
+        <Button
+          type="button"
+          variant={isFabTrigger ? "default" : "outline"}
+          size={isFabTrigger ? "icon" : "default"}
+          disabled={disabled}
+          aria-label={isFabTrigger ? "New session" : undefined}
+          aria-haspopup="dialog"
+          aria-expanded={isCreateDrawerOpen}
+          className={
+            isFabTrigger
+              ? "mobile-floating-action size-14 rounded-full shadow-lg shadow-black/20 md:hidden"
+              : "h-11 px-3"
+          }
+          onClick={() => setIsCreateDrawerOpen(true)}
+        >
+          <PlusIcon className={isFabTrigger ? "size-6" : "size-4"} />
+          {isFabTrigger ? <span className="sr-only">New session</span> : "New"}
+        </Button>
+        <DrawerContent className="flex h-[85dvh] min-h-0 flex-col overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+          <DrawerTitle className="sr-only">Create session</DrawerTitle>
+          <DrawerDescription className="sr-only">
+            Add a session record to the selected camp.
+          </DrawerDescription>
+          <SessionDialogForm
+            campOptions={campOptions}
+            initialValues={{
+              campId: defaultCampId,
+              sessionType: "training",
+              sessionDate: "",
+              netTimeMinutes: "",
+              highlightedByCoach: false,
+            }}
+            idPrefix="create-session"
+            submitLabel="Create session"
+            pendingLabel="Creating..."
+            scope={scope}
+            selectedVenueId={selectedVenueId}
+            selectedCampId={selectedCampId}
+            currentPage={currentPage}
+            action={createSessionAction}
+            formId={createFormId}
+            footer="drawer"
+            fieldsClassName="px-4 pb-6"
+            surface="drawer"
+          />
         </DrawerContent>
       </Drawer>
     )
@@ -366,35 +565,28 @@ export function CreateSessionDialog({
           <SheetDescription>Add a session record to the selected camp.</SheetDescription>
         </SheetHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-          <SessionDialogForm
-            campOptions={campOptions}
-            initialValues={{
-              campId: defaultCampId,
-              sessionType: "training",
-              sessionDate: "",
-              netTimeMinutes: "",
-              highlightedByCoach: false,
-            }}
-            idPrefix="create-session"
-            submitLabel="Create session"
-            scope={scope}
-            selectedVenueId={selectedVenueId}
-            selectedCampId={selectedCampId}
-            currentPage={currentPage}
-            formId={createFormId}
-            action={createSessionAction}
-            onCanSubmitChange={setCanSubmitCreate}
-            showSubmitFooter={false}
-          />
-        </div>
-        <div className="border-t border-border/60 bg-background px-4 pb-4">
-          <DialogFooter>
-            <Button type="submit" form={createFormId} disabled={!canSubmitCreate}>
-              Create session
-            </Button>
-          </DialogFooter>
-        </div>
+        <SessionDialogForm
+          campOptions={campOptions}
+          initialValues={{
+            campId: defaultCampId,
+            sessionType: "training",
+            sessionDate: "",
+            netTimeMinutes: "",
+            highlightedByCoach: false,
+          }}
+          idPrefix="create-session"
+          submitLabel="Create session"
+          pendingLabel="Creating..."
+          scope={scope}
+          selectedVenueId={selectedVenueId}
+          selectedCampId={selectedCampId}
+          currentPage={currentPage}
+          formId={createFormId}
+          action={createSessionAction}
+          footer="sheet"
+          fieldsClassName="px-4 pb-4"
+          surface="sheet"
+        />
       </SheetContent>
     </Sheet>
   )
@@ -408,6 +600,7 @@ export function EditSessionDialog({
   selectedCampId,
   currentPage,
   iconOnly = false,
+  surface,
 }: {
   session: EditableSession
   campOptions: TeamSessionCampOption[]
@@ -416,53 +609,73 @@ export function EditSessionDialog({
   selectedCampId?: string
   currentPage: number
   iconOnly?: boolean
+  surface?: Extract<SessionFormSurface, "drawer" | "dialog">
 }) {
+  const [isEditDrawerOpen, setIsEditDrawerOpen] = React.useState(false)
   const isMobile = useIsMobile()
+  const resolvedSurface = surface ?? (isMobile ? "drawer" : "dialog")
+  const editFormId = `edit-session-${session.id}-${resolvedSurface}-form`
 
-  if (isMobile) {
+  if (resolvedSurface === "drawer") {
     return (
-      <Drawer>
-        <DrawerTrigger asChild>
-          {iconOnly ? (
-            <Button variant="outline" size="icon-sm" aria-label="Edit session">
-              <PencilIcon className="size-4" />
-              <span className="sr-only">Edit</span>
-            </Button>
-          ) : (
-            <Button variant="outline" size="sm">
-              <PencilIcon className="size-4" />
-              Edit
-            </Button>
-          )}
-        </DrawerTrigger>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>Edit session</DrawerTitle>
-            <DrawerDescription>{session.sessionDate}</DrawerDescription>
-          </DrawerHeader>
-          <div className="px-4 pb-4">
-            <SessionDialogForm
-              campOptions={campOptions}
-              initialValues={{
-                id: session.id,
-                campId: session.campId,
-                sessionType: session.sessionType,
-                sessionDate: session.sessionDate,
-                netTimeMinutes:
-                  typeof session.netTimeMinutes === "number"
-                    ? String(session.netTimeMinutes)
-                    : "",
-                highlightedByCoach: session.highlightedByCoach,
-              }}
-              idPrefix={`edit-session-${session.id}`}
-              submitLabel="Save changes"
-              scope={scope}
-              selectedVenueId={selectedVenueId}
-              selectedCampId={selectedCampId}
-              currentPage={currentPage}
-              action={updateSessionAction}
-            />
-          </div>
+      <Drawer open={isEditDrawerOpen} onOpenChange={setIsEditDrawerOpen}>
+        {iconOnly ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="Edit session"
+            aria-haspopup="dialog"
+            aria-expanded={isEditDrawerOpen}
+            className="h-11 w-11"
+            onClick={() => setIsEditDrawerOpen(true)}
+          >
+            <PencilIcon className="size-4" />
+            <span className="sr-only">Edit</span>
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            size="default"
+            aria-haspopup="dialog"
+            aria-expanded={isEditDrawerOpen}
+            className="h-11 px-3"
+            onClick={() => setIsEditDrawerOpen(true)}
+          >
+            <PencilIcon className="size-4" />
+            Edit
+          </Button>
+        )}
+        <DrawerContent className="flex h-[85dvh] min-h-0 flex-col overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+          <DrawerTitle className="sr-only">{session.sessionDate}</DrawerTitle>
+          <DrawerDescription className="sr-only">Edit session details.</DrawerDescription>
+          <SessionDialogForm
+            campOptions={campOptions}
+            initialValues={{
+              id: session.id,
+              campId: session.campId,
+              sessionType: session.sessionType,
+              sessionDate: session.sessionDate,
+              netTimeMinutes:
+                typeof session.netTimeMinutes === "number"
+                  ? String(session.netTimeMinutes)
+                  : "",
+              highlightedByCoach: session.highlightedByCoach,
+            }}
+            idPrefix={`edit-session-${session.id}`}
+            submitLabel="Save changes"
+            pendingLabel="Saving..."
+            scope={scope}
+            selectedVenueId={selectedVenueId}
+            selectedCampId={selectedCampId}
+            currentPage={currentPage}
+            action={updateSessionAction}
+            formId={editFormId}
+            footer="drawer"
+            fieldsClassName="px-4 pb-6"
+            surface="drawer"
+          />
         </DrawerContent>
       </Drawer>
     )
@@ -484,8 +697,8 @@ export function EditSessionDialog({
       </DialogTrigger>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Edit session</DialogTitle>
-          <DialogDescription>{session.sessionDate}</DialogDescription>
+          <DialogTitle>{session.sessionDate}</DialogTitle>
+          <DialogDescription>Edit session details.</DialogDescription>
         </DialogHeader>
 
         <SessionDialogForm
@@ -503,11 +716,14 @@ export function EditSessionDialog({
           }}
           idPrefix={`edit-session-${session.id}`}
           submitLabel="Save changes"
+          pendingLabel="Saving..."
           scope={scope}
           selectedVenueId={selectedVenueId}
           selectedCampId={selectedCampId}
           currentPage={currentPage}
           action={updateSessionAction}
+          footer="dialog"
+          surface="dialog"
         />
       </DialogContent>
     </Dialog>

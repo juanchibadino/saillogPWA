@@ -294,9 +294,6 @@ export default async function TeamHomePage({
                     {kpi.value}
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  {kpi.note}
-                </CardContent>
               </GradientCard>
             ))}
           </div>

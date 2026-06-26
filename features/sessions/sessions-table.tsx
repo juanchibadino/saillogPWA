@@ -10,6 +10,7 @@ import type {
   TeamSessionListItem,
 } from "@/features/sessions/data"
 import {
+  CreateSessionDialog,
   EditSessionDialog,
 } from "@/features/sessions/session-form-dialogs"
 import { buildSessionDetailHref } from "@/features/sessions/navigation"
@@ -115,6 +116,8 @@ export function TeamSessionsTable({
     selectedVenueId,
     selectedCampId,
   })
+  const createDisabled =
+    noTeamSelected || !canManageSessions || campOptions.length === 0
 
   function buildPageHref(nextPage: number, includeLoadMore = false): string {
     const params = new URLSearchParams(searchParams.toString())
@@ -215,7 +218,7 @@ export function TeamSessionsTable({
                     }}
                   >
                     {isNavigatingToSession ? (
-                      <div className="flex size-8 items-center justify-center text-muted-foreground">
+                      <div className="flex h-11 w-11 items-center justify-center text-muted-foreground">
                         <Loader2Icon className="size-4 animate-spin" />
                       </div>
                     ) : canManageSessions ? (
@@ -227,6 +230,7 @@ export function TeamSessionsTable({
                         selectedCampId={selectedCampId}
                         currentPage={currentPage}
                         iconOnly
+                        surface="drawer"
                       />
                     ) : (
                       <Button
@@ -234,6 +238,7 @@ export function TeamSessionsTable({
                         size="icon"
                         disabled
                         aria-label="More actions unavailable"
+                        className="h-11 w-11"
                       >
                         <MoreHorizontalIcon className="size-4" />
                       </Button>
@@ -246,12 +251,14 @@ export function TeamSessionsTable({
         )}
 
         {hasNextPage ? (
-          <div className="flex justify-center pt-2">
+          <div className="pb-4 pt-3">
             <Button
               type="button"
               variant="outline"
-              size="sm"
+              size="default"
               disabled={isLoadingMore}
+              aria-label="Load more sessions"
+              className="h-11 w-full"
               onClick={() => {
                 startLoadMoreTransition(() => {
                   router.push(buildPageHref(currentPage + 1, true))
@@ -259,7 +266,7 @@ export function TeamSessionsTable({
               }}
             >
               {isLoadingMore ? <Loader2Icon className="size-4 animate-spin" /> : null}
-              <span>{isLoadingMore ? "Loading more..." : "Load more"}</span>
+              <span>{isLoadingMore ? "Loading more..." : "Load more sessions"}</span>
             </Button>
           </div>
         ) : null}
@@ -366,6 +373,7 @@ export function TeamSessionsTable({
                           selectedVenueId={selectedVenueId}
                           selectedCampId={selectedCampId}
                           currentPage={currentPage}
+                          surface="dialog"
                         />
                       ) : (
                         <Button
@@ -417,6 +425,17 @@ export function TeamSessionsTable({
           </PaginationContent>
         </Pagination>
       ) : null}
+
+      <CreateSessionDialog
+        campOptions={campOptions}
+        scope={scope}
+        selectedVenueId={selectedVenueId}
+        selectedCampId={selectedCampId}
+        currentPage={currentPage}
+        disabled={createDisabled}
+        surface="drawer"
+        triggerVariant="fab"
+      />
     </section>
   )
 }

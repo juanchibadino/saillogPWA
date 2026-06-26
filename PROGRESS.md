@@ -4,6 +4,75 @@ Last updated: 2026-06-25
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
 
+## 2026-06-25 - Team Sessions submit pending states
+
+- Implemented `AUDIT_TEAM_SESSION.MD` Step 2 for `/team-sessions`.
+- Refactored create/edit submit actions in
+  `features/sessions/session-form-dialogs.tsx` so the buttons live inside the
+  submitted form and use `useFormStatus()`.
+- Create and edit session forms now disable fields/actions while pending and
+  show spinner labels: `Creating...` and `Saving...`.
+- Follow-up fixed headerless mobile Create/Edit Drawer scrolling by making the
+  Drawer content a flex column with a constrained scroll region, without
+  restoring visible mobile Drawer headers.
+- Follow-up added hidden accessible Drawer titles/descriptions to the headerless
+  mobile Create/Edit Drawers to satisfy Vaul/Radix screen-reader requirements.
+- Follow-up switched `/team-sessions` create/update success and error feedback
+  to the shared bottom toast mode already used by `/team-sessions/[id]`.
+- Follow-up removed the old inline success/error banner branch from
+  `SessionsFeedback`; session feedback now only emits bottom toasts and clears
+  the URL params.
+- Follow-up made mobile incremental loading explicit with a full-width `h-11`
+  `Load more sessions` action below the cards, while preserving the existing
+  `loadMore=1` accumulation and `Loading more...` spinner behavior.
+- Preserved existing row/card navigation spinners.
+- Validation: scoped `eslint` on `app/(app)/team-sessions/page.tsx`,
+  `features/sessions/session-form-dialogs.tsx`, and
+  `features/sessions/sessions-feedback.tsx`; follow-up scoped `eslint` on
+  `features/sessions/sessions-table.tsx`; `./node_modules/.bin/tsc --noEmit`;
+  and `git diff --check` passed with no output/errors.
+
+## 2026-06-25 - Team Sessions mobile operational surface
+
+- Implemented `AUDIT_TEAM_SESSION.MD` Step 1 for `/team-sessions`.
+- Moved the mobile `New` session CTA out of the toolbar and into the shared
+  `mobile-floating-action size-14` FAB pattern while keeping the desktop
+  dropdown filters and desktop right Sheet trigger unchanged.
+- Updated mobile create/edit session Drawers in
+  `features/sessions/session-form-dialogs.tsx` to use fixed header/footer
+  layout, scrollable content, full-width `h-11` primary actions, `h-11`
+  form controls, `h-11 w-11` stepper/icon controls, date-first edit titles,
+  a larger Highlighted-by-coach Switch surface, and `h/m` Net time display
+  such as `1h 15m` instead of decimal hours.
+- Updated mobile session filters in
+  `features/sessions/team-sessions-toolbar.tsx` to keep toolbar scope focused
+  on filters, use `h-11` Drawer controls, and place the mobile `Session` title
+  left with the filter icon action on the right.
+- Updated mobile session card actions in `features/sessions/sessions-table.tsx`
+  to use the touch-size icon action standard and render the mobile FAB through
+  the list surface.
+- Validation: scoped `eslint` on the touched TSX files,
+  `./node_modules/.bin/tsc --noEmit`, `git diff --check`, and `npm run build`
+  passed with no output/errors.
+- Browser validation: production local server on `localhost:3003`, authenticated
+  as `tester@sailog.test`, viewport `390x844`, confirmed `/team-sessions`
+  renders without overlay, shows the mobile filter button plus `New session`
+  FAB, opens Create Session and Edit Session Drawers, opens the Filters Drawer,
+  and reports 44px controls/footer actions in those mobile Drawers.
+
+## 2026-06-25 - Team Sessions list audit
+
+- Renamed the previous `/team-sessions/[id]` audit from
+  `AUDIT_TEAM_SESSION.MD` to `AUDIT_TEAM_SESSION_ID.MD` so the filename matches
+  the Team Session detail scope.
+- Added a new `AUDIT_TEAM_SESSION.MD` for the `/team-sessions` list page,
+  covering the current desktop table, mobile cards, toolbar filters, pagination,
+  `Load more`, and `New` session CTA before starting UI changes.
+- Captured the same audit categories used by the Team Session ID audit:
+  performance, UI consistency, code tidiness, scalability, best practices,
+  modularity, security, current route shape, remaining risks, validation, and
+  next engineering priorities.
+
 ## 2026-06-25 - Team Session nested dialog click fix
 
 - Removed the Team Session detail summary collapse behavior; the Type / Date /

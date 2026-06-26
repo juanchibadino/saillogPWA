@@ -180,7 +180,11 @@ export default async function TeamSessionsPage({
 
   return (
     <div className="space-y-6">
-      <SessionsFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
+      <SessionsFeedback
+        mode="toast"
+        statusMessage={statusMessage}
+        errorMessage={errorMessage}
+      />
 
       {noTeamSelected ? (
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
@@ -296,6 +300,7 @@ export default async function TeamSessionsPage({
                 selectedCampId={selectedCampId}
                 currentPage={currentPage}
                 disabled={createDisabled}
+                surface="sheet"
               />
             }
           />
