@@ -34,6 +34,7 @@ export type TeamSessionsPageHrefInput = {
 }
 
 export type TeamSessionsRedirectInput = {
+  returnPath?: string
   status?: "created" | "updated" | "deleted"
   error?:
     | "invalid_input"

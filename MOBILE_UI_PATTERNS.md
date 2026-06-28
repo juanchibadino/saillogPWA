@@ -279,7 +279,52 @@ Current implementation references:
 Legacy note:
 - Some current mobile list toolbars still render `New` on the right. Treat that as legacy until the next mobile pass for that screen.
 
-## 10. Mobile List/Card Vs Desktop Table
+## 10. Mobile Tabs Pattern
+
+Goal:
+- Mobile tabs use the full available width and keep the active view easy to tap.
+
+Rules:
+- Mobile `TabsList` should be full width: `h-11 w-full max-w-full`.
+- Mobile `TabsTrigger` items should share the row width: `min-w-0 basis-0`.
+- Desktop tabs can stay compact: `hidden h-10 md:inline-flex`.
+- Split mobile and desktop tab lists with `md:hidden` and `hidden md:inline-flex` when the sizing differs.
+- Keep tab labels short enough to avoid wrapping.
+- Use a `More` overflow control when all mobile tabs do not fit cleanly in one row.
+- The active tab must stay visible. If a tab is selected from `More`, move it into the visible tab row.
+- `More` should be a touch-sized control with visible text plus `ChevronDownIcon`, and its menu should show the overflow tabs.
+
+Current implementation references:
+- Team Session ID overflow tabs with `More`:
+  `features/sessions/detail/mobile-tabs.tsx`
+- Camp detail full-width mobile tabs:
+  `features/camps/camp-detail-tabs-client.tsx`
+
+Canonical simple mobile tabs:
+
+```tsx
+<TabsList className="h-11 w-full max-w-full md:hidden">
+  {tabs.map((tab) => (
+    <TabsTrigger key={tab} value={tab} className="min-w-0 basis-0 px-2">
+      {label}
+    </TabsTrigger>
+  ))}
+</TabsList>
+
+<TabsList className="hidden h-10 md:inline-flex">
+  {/* compact desktop triggers */}
+</TabsList>
+```
+
+Canonical overflow behavior:
+- Start from the Team Session ID pattern when a route has more tabs than fit on
+  common mobile widths.
+- Keep visible tabs inside the full-width segmented row.
+- Put hidden tabs behind `More`.
+- Use `ResizeObserver` or an equivalent width check so the visible set adapts
+  to the viewport.
+
+## 11. Mobile List/Card Vs Desktop Table
 
 Goal:
 - Mobile: cards.
@@ -296,7 +341,7 @@ Key rules:
 - Action controls inside a card stop propagation (`onClick` and `onKeyDown`).
 - Row/card icon actions follow the `h-11 w-11` mobile icon button standard.
 
-## 11. Modal Container Pattern
+## 12. Modal Container Pattern
 
 Goal:
 - Mobile forms use Drawer.
@@ -317,7 +362,7 @@ Reuse steps:
 4. Keep the same action/form logic in both wrappers.
 5. Keep header/footer fixed and content scrollable on mobile.
 
-## 12. Progressive Loading Pattern
+## 13. Progressive Loading Pattern
 
 Goal:
 - Lists stay usable while more data loads.
@@ -339,7 +384,7 @@ Reuse steps:
 3. Render button below cards only when `hasNextPage`.
 4. Use `useTransition` for button pending state.
 
-## 13. Visual Pattern Notes
+## 14. Visual Pattern Notes
 
 Sessions card highlight:
 - Mobile highlighted cards use brighter green border and tinted background.
@@ -349,7 +394,7 @@ Filter button visual:
 - On mobile, use icon-only filter buttons when the page also has search or tabs.
 - Filter icon buttons follow the mobile icon button standard.
 
-## 14. Scrollbar Pattern
+## 15. Scrollbar Pattern
 
 Goal:
 - Hide page scrollbars on mobile while keeping content scrollable.
@@ -358,7 +403,7 @@ Current implementation:
 - `app/globals.css`
   - mobile media query (`max-width: 767px`) hides `html` and `body` scrollbars.
 
-## 15. Reuse Checklist
+## 16. Reuse Checklist
 
 When adding or refactoring a mobile team module:
 1. Main action:
@@ -370,6 +415,7 @@ When adding or refactoring a mobile team module:
 3. Toolbar:
    - search/filter/scope only on mobile
    - filter uses Drawer
+   - tabs use full-width mobile sizing and `More` for overflow
 4. Data view:
    - mobile cards and desktop table split
 5. Forms:
@@ -387,7 +433,7 @@ When adding or refactoring a mobile team module:
    - scroll region has enough bottom padding
 9. Keep desktop behavior intact.
 
-## 16. Canonical Examples
+## 17. Canonical Examples
 
 - Mobile FAB and safe area:
   - `app/globals.css`

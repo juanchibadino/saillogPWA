@@ -175,3 +175,27 @@ test("builds forbidden create and update redirects with preserved scope", () => 
     "/team-sessions?error=forbidden&org=org-1&team=team-1&venue=venue-1&camp=camp-1&highlight=yes&page=2",
   )
 })
+
+test("builds session action redirects back to camp detail when requested", () => {
+  assert.equal(
+    buildTeamSessionsRedirectPath({
+      returnPath: "/team-camps/camp-1?tab=sessions&org=org-1&team=team-1&highlight=no&page=2&loadMore=1",
+      status: "updated",
+      scopeOrgId: "org-1",
+      scopeTeamId: "team-1",
+      scopeVenueId: "venue-1",
+      scopeCampId: "camp-1",
+      scopeHighlight: "yes",
+      scopePage: 3,
+    }),
+    "/team-camps/camp-1?tab=sessions&org=org-1&team=team-1&highlight=yes&page=3&status=updated&venue=venue-1&camp=camp-1",
+  )
+  assert.equal(
+    buildTeamSessionsRedirectPath({
+      returnPath: "https://example.com/team-camps/camp-1",
+      status: "deleted",
+      scopeOrgId: "org-1",
+    }),
+    "/team-sessions?status=deleted&org=org-1",
+  )
+})

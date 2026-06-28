@@ -1,8 +1,93 @@
 # PROGRESS.md
 
-Last updated: 2026-06-26
+Last updated: 2026-06-28
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
+
+## 2026-06-28 - Team Camp Sessions list UI
+
+- Replaced the `/team-camps/[id]` Sessions tab list with the shared
+  `/team-sessions` table/cards UI: desktop table, mobile cards, row action menu,
+  desktop New button, mobile FAB, and Highlight filter bar/drawer.
+- Added camp-detail return-path support to Team Session create/update/delete
+  actions so mutations from the camp screen return to `tab=sessions`.
+- Validation: `npm test`, `./node_modules/.bin/tsc --noEmit`, `npm run lint`,
+  scoped `git diff --check`, `npm run build`, and an agent-browser smoke check
+  passed. Lint still reports the two unrelated existing unused-var warnings in
+  `app/sign-in/sign-in-content.tsx` and `features/onboarding/onboarding-flow.tsx`.
+
+## 2026-06-28 - Team Camp mobile tabs pattern
+
+- Updated `/team-camps/[id]` tabs so mobile uses a full-width `h-11` tab row
+  with equal-width triggers, while desktop keeps the compact tab list.
+- Added the mobile tabs standard to `MOBILE_UI_PATTERNS.md`, including the
+  `More` overflow pattern from Team Session ID for routes with too many tabs to
+  fit in one mobile row.
+- Validation: `./node_modules/.bin/tsc --noEmit`, `npm run lint`,
+  `git diff --check`, direct trailing-whitespace scan, and `npm run build`
+  passed. Full lint still reports the two unrelated existing unused-var
+  warnings in `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`.
+
+## 2026-06-28 - Team Camp summary cards and date range
+
+- Updated `/team-camps/[id]` summary KPIs to imitate Team Session ID gradient
+  cards: one `GradientCard` with divided rows on mobile and a desktop grid of
+  `GradientCard` KPI cards.
+- Updated Camp date range formatting from repeated long ranges like
+  `Mar 25, 2026 to Mar 29, 2026` to `Mar 25 - Mar 29 2026` in Camp detail and
+  Team Camps list surfaces.
+- Updated `AUDIT_TEAM_CAMP_ID.MD` to reflect the current summary-card state and
+  validation.
+- Validation: `./node_modules/.bin/tsc --noEmit`, `npm run lint`,
+  `git diff --check`, direct trailing-whitespace scan, `npm run build`, and a
+  local date-format smoke check passed. Full lint still reports the two
+  unrelated existing unused-var warnings in `app/sign-in/sign-in-content.tsx`
+  and `features/onboarding/onboarding-flow.tsx`.
+
+## 2026-06-28 - Team Camp Goals edit surface
+
+- Extracted the `/team-camps/[id]` Goals edit form from
+  `features/camps/camp-detail-tabs-client.tsx` into
+  `features/camps/detail/camp-goals-edit-surface.tsx`.
+- Replaced the old all-viewport Dialog with a desktop right Sheet and mobile
+  bottom Drawer, preserving `updateCampGoalsAction`, scope hidden inputs,
+  validation, and redirect behavior.
+- Added fixed header/footer layout, one scrollable form body, mobile
+  keyboard-safe textarea focus behavior, and `Save` / `Saving...` pending
+  feedback with disabled fieldset and submit button.
+- Updated `AUDIT_TEAM_CAMP_ID.MD` so Step 1 is marked implemented and Step 2
+  remains the next engineering priority.
+- Validation: `./node_modules/.bin/tsc --noEmit`, `npm run lint`,
+  `git diff --check`, direct trailing-whitespace scan, and `npm run build`
+  passed. Full lint still reports the two unrelated existing unused-var
+  warnings in `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`.
+
+## 2026-06-28 - Team Camp detail audit
+
+- Added `AUDIT_TEAM_CAMP_ID.MD` for `/team-camps/[id]`, using the
+  Team Session ID audit structure as the reference.
+- Reviewed `MOBILE_UI_PATTERNS.md`, `MOBILE_CARD_LIST_UI.md`, and
+  `TABLE_DESKTOP_PATTERNS_UI.md` against the current Camp detail page,
+  data layer, tabs client, loading skeleton, and shared mobile header.
+- Captured the current scorecard, UI pattern gaps, remaining risks, and next
+  engineering priority sequence for Goals edit, tab-data splitting,
+  Sessions table/cards, bounded Notes, and focused tests.
+- Validation: `git diff --check` passed, plus direct trailing-whitespace scan
+  passed for the new untracked audit file.
+
+## 2026-06-28 - Team Sessions desktop skeleton alignment
+
+- Updated `TeamSessionsPageSkeleton` so the `/team-sessions` loading state
+  matches the current desktop list UI: `Sessions` header, filter/action row,
+  seven-column table shell, row actions column, and pagination placeholders.
+- Hid the mobile card skeleton on desktop so the loading state no longer shows
+  both mobile cards and the desktop table at the same time.
+- Validation: `npm run lint`, `git diff --check`, and `npm run build` passed.
+  Full lint still reports the two unrelated existing unused-var warnings in
+  `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`.
 
 ## 2026-06-26 - Team Sessions row actions menu and delete
 

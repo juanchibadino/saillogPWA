@@ -45,19 +45,34 @@ type TeamCampsTableProps = {
   hasNextPage: boolean
 }
 
-function formatDateLabel(value: string): string {
+function formatDateRangeEndpoint(value: string): {
+  day: string
+  month: string
+  year: string
+} {
   const formatter = new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
     month: "short",
     day: "numeric",
+    year: "numeric",
     timeZone: "UTC",
   })
+  const parts = formatter.formatToParts(new Date(`${value}T00:00:00.000Z`))
+  const month = parts.find((part) => part.type === "month")?.value ?? ""
+  const day = parts.find((part) => part.type === "day")?.value ?? ""
+  const year = parts.find((part) => part.type === "year")?.value ?? ""
 
-  return formatter.format(new Date(`${value}T00:00:00.000Z`))
+  return { day, month, year }
 }
 
 function formatDateRange(startDate: string, endDate: string): string {
-  return `${formatDateLabel(startDate)} to ${formatDateLabel(endDate)}`
+  const start = formatDateRangeEndpoint(startDate)
+  const end = formatDateRangeEndpoint(endDate)
+
+  if (start.year === end.year) {
+    return `${start.month} ${start.day} - ${end.month} ${end.day} ${end.year}`
+  }
+
+  return `${start.month} ${start.day} ${start.year} - ${end.month} ${end.day} ${end.year}`
 }
 
 function formatCampTypeLabel(value: TeamCampListItem["campType"]): string {

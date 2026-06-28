@@ -60,6 +60,7 @@ type TeamSessionsTableProps = {
   pageCount: number
   hasPreviousPage: boolean
   hasNextPage: boolean
+  returnPath?: string
 }
 
 type TeamSessionsPaginationItem = number | "ellipsis-start" | "ellipsis-end"
@@ -168,6 +169,7 @@ export function TeamSessionsTable({
   pageCount,
   hasPreviousPage,
   hasNextPage,
+  returnPath,
 }: TeamSessionsTableProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -361,6 +363,7 @@ export function TeamSessionsTable({
                           selectedCampId={selectedCampId}
                           selectedHighlight={selectedHighlight}
                           currentPage={currentPage}
+                          returnPath={returnPath}
                           canEditSession={canManageSessions}
                           canDeleteSession={canManageSessions}
                           editSurface="drawer"
@@ -520,6 +523,7 @@ export function TeamSessionsTable({
                             selectedCampId={selectedCampId}
                             selectedHighlight={selectedHighlight}
                             currentPage={currentPage}
+                            returnPath={returnPath}
                             canEditSession={canManageSessions}
                             canDeleteSession={canManageSessions}
                             editSurface="dialog"
@@ -593,6 +597,7 @@ export function TeamSessionsTable({
         selectedCampId={selectedCampId}
         selectedHighlight={selectedHighlight}
         currentPage={currentPage}
+        returnPath={returnPath}
         disabled={createDisabled || isTableNavigationBusy}
         surface="drawer"
         triggerVariant="fab"

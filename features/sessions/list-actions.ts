@@ -20,6 +20,7 @@ import {
 } from "@/lib/validation/sessions"
 
 type SessionListActionScope = {
+  returnPath?: string
   scopeOrgId?: string
   scopeTeamId?: string
   scopeVenueId?: string
@@ -92,9 +93,11 @@ function getScopeFromFormData(formData: FormData): SessionListActionScope {
     getFormString(formData, "scopeHighlight"),
   )
   const scopePage = parseOptionalPage(getFormString(formData, "scopePage"))
+  const returnPath = getFormString(formData, "scopeReturnPath")
 
   if (!parsedScope.success) {
     return {
+      returnPath,
       scopeVenueId,
       scopeCampId,
       scopeHighlight,
@@ -104,6 +107,7 @@ function getScopeFromFormData(formData: FormData): SessionListActionScope {
 
   return {
     ...parsedScope.data,
+    returnPath,
     scopeVenueId,
     scopeCampId,
     scopeHighlight,
@@ -366,6 +370,9 @@ export async function createSessionAction(formData: FormData): Promise<void> {
 
   revalidatePath("/team-sessions")
   revalidatePath("/team-camps")
+  if (scope.scopeCampId) {
+    revalidatePath(`/team-camps/${scope.scopeCampId}`)
+  }
   revalidatePath("/team-home")
 
   redirect(
@@ -466,6 +473,9 @@ export async function updateSessionAction(formData: FormData): Promise<void> {
 
   revalidatePath("/team-sessions")
   revalidatePath("/team-camps")
+  if (scope.scopeCampId) {
+    revalidatePath(`/team-camps/${scope.scopeCampId}`)
+  }
   revalidatePath("/team-home")
 
   redirect(
@@ -557,6 +567,9 @@ export async function deleteSessionAction(formData: FormData): Promise<void> {
   revalidatePath("/team-sessions")
   revalidatePath(`/team-sessions/${parsedInput.data.id}`)
   revalidatePath("/team-camps")
+  if (scope.scopeCampId) {
+    revalidatePath(`/team-camps/${scope.scopeCampId}`)
+  }
   revalidatePath("/team-home")
 
   redirect(

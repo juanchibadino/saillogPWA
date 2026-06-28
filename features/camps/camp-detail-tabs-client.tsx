@@ -1,49 +1,31 @@
 "use client"
 
-import Link from "next/link"
 import * as React from "react"
 
-import { Button } from "@/components/ui/button"
+import { GradientCard } from "@/components/shared/gradient-card"
 import {
-  Card,
-  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Textarea } from "@/components/ui/textarea"
-import { updateCampGoalsAction } from "@/features/camps/actions"
+import { CampGoalsEditSurface } from "@/features/camps/detail/camp-goals-edit-surface"
 import type {
   CampDetailKpi,
   CampDetailNotesCard,
-  CampDetailSessionItem,
   CampDetailTab,
 } from "@/features/camps/detail-types"
-import { buildSessionDetailHref } from "@/features/sessions/navigation"
-import { CAMP_DETAIL_TABS } from "@/features/camps/navigation"
+import { buildCampDetailHref, CAMP_DETAIL_TABS } from "@/features/camps/navigation"
+import type {
+  TeamSessionCampOption,
+  TeamSessionHighlightFilter,
+  TeamSessionListItem,
+} from "@/features/sessions/data"
+import { CreateSessionDialog } from "@/features/sessions/session-form-dialogs"
+import { TeamSessionsTable } from "@/features/sessions/sessions-table"
+import { TeamSessionsToolbar } from "@/features/sessions/team-sessions-toolbar"
+import { cn } from "@/lib/utils"
 import type { NavigationScope } from "@/lib/navigation/types"
-
-const SESSIONS_PAGE_SIZE = 10
-type SessionPaginationItem = number | "ellipsis-start" | "ellipsis-end"
 
 function resolveTab(value: string): CampDetailTab {
   return CAMP_DETAIL_TABS.includes(value as CampDetailTab)
@@ -59,156 +41,138 @@ function renderNoteValue(value: string | null): string {
   return value
 }
 
-function buildSessionPaginationItems(
-  currentPage: number,
-  totalPages: number,
-): SessionPaginationItem[] {
-  if (totalPages <= 7) {
-    return Array.from({ length: totalPages }, (_, index) => index + 1)
-  }
-
-  const items: SessionPaginationItem[] = [1]
-  const middleStart = Math.max(2, currentPage - 1)
-  const middleEnd = Math.min(totalPages - 1, currentPage + 1)
-
-  if (middleStart > 2) {
-    items.push("ellipsis-start")
-  }
-
-  for (let page = middleStart; page <= middleEnd; page += 1) {
-    items.push(page)
-  }
-
-  if (middleEnd < totalPages - 1) {
-    items.push("ellipsis-end")
-  }
-
-  items.push(totalPages)
-
-  return items
+function isCampKpiTabular(label: string): boolean {
+  return label !== "Camp Dates"
 }
 
-function CampGoalsDialog({
-  campId,
-  scope,
-  goals,
-}: {
-  campId: string
-  scope: NavigationScope
-  goals: string | null
-}) {
-  const [nextGoals, setNextGoals] = React.useState(goals ?? "")
-
+function CampDetailSummaryCards({ kpis }: { kpis: CampDetailKpi[] }) {
   return (
-    <Dialog>
-      <DialogTrigger render={<Button type="button" variant="outline" size="sm" />}>
-        Edit
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Edit camp goals</DialogTitle>
-          <DialogDescription>
-            Update the current goals and priorities for this camp.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <GradientCard className="overflow-hidden p-0 md:hidden">
+        <div className="divide-y divide-border px-6 py-3">
+          {kpis.map((kpi) => (
+            <div
+              key={`mobile-camp-summary-${kpi.label}`}
+              className="flex min-h-12 items-center justify-between gap-4"
+            >
+              <p className="text-sm text-muted-foreground">{kpi.label}</p>
+              <p
+                className={cn(
+                  "text-right text-sm font-semibold",
+                  isCampKpiTabular(kpi.label) ? "tabular-nums" : null,
+                )}
+              >
+                {kpi.value}
+              </p>
+            </div>
+          ))}
+        </div>
+      </GradientCard>
 
-        <form action={updateCampGoalsAction} className="space-y-4">
-          <input type="hidden" name="campId" value={campId} />
-          <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
-          {scope.activeTeamId ? (
-            <input type="hidden" name="scopeTeamId" value={scope.activeTeamId} />
-          ) : null}
-          <input type="hidden" name="scopeTab" value="goals" />
-
-          <div className="space-y-2">
-            <Textarea
-              name="goals"
-              rows={12}
-              maxLength={4000}
-              value={nextGoals}
-              onChange={(event) => setNextGoals(event.target.value)}
-              placeholder="Write camp goals, priorities, and execution focus..."
-            />
-            <p className="text-xs text-muted-foreground">{nextGoals.length}/4000</p>
-          </div>
-
-          <DialogFooter>
-            <Button type="submit">Save goals</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+      <div className="hidden gap-4 md:grid md:grid-cols-2 lg:grid-cols-4">
+        {kpis.map((kpi) => (
+          <GradientCard key={`desktop-camp-summary-${kpi.label}`}>
+            <CardHeader>
+              <CardDescription>{kpi.label}</CardDescription>
+              <CardTitle
+                className={cn(
+                  "text-xl font-semibold",
+                  isCampKpiTabular(kpi.label) ? "tabular-nums" : null,
+                )}
+              >
+                {kpi.value}
+              </CardTitle>
+            </CardHeader>
+          </GradientCard>
+        ))}
+      </div>
+    </>
   )
 }
 
 export function CampDetailTabsClient({
   initialTab,
-  initialSessionPage,
   kpis,
   sessions,
+  campOptions,
+  sessionCurrentPage,
+  sessionPageCount,
+  hasPreviousSessionPage,
+  hasNextSessionPage,
+  selectedSessionHighlight,
   campName,
+  venueId,
+  venueName,
+  venueLocation,
   goals,
   notesCards,
+  canManageSessions,
   canManageGoals,
   scope,
   campId,
 }: {
   initialTab: CampDetailTab
-  initialSessionPage: number
   kpis: CampDetailKpi[]
-  sessions: CampDetailSessionItem[]
+  sessions: TeamSessionListItem[]
+  campOptions: TeamSessionCampOption[]
+  sessionCurrentPage: number
+  sessionPageCount: number
+  hasPreviousSessionPage: boolean
+  hasNextSessionPage: boolean
+  selectedSessionHighlight?: TeamSessionHighlightFilter
   campName: string
+  venueId: string
+  venueName: string
+  venueLocation: string
   goals: string | null
   notesCards: CampDetailNotesCard[]
+  canManageSessions: boolean
   canManageGoals: boolean
   scope: NavigationScope
   campId: string
 }) {
   const [selectedTab, setSelectedTab] = React.useState<CampDetailTab>(initialTab)
-  const totalSessionItems = sessions.length
-  const sessionPageCount = Math.max(1, Math.ceil(totalSessionItems / SESSIONS_PAGE_SIZE))
-  const normalizedInitialSessionPage = Math.max(1, Math.min(initialSessionPage, sessionPageCount))
-  const [sessionPage, setSessionPage] = React.useState<number>(normalizedInitialSessionPage)
-  const safeSessionPage = Math.max(1, Math.min(sessionPage, sessionPageCount))
-  const sessionPaginationItems = React.useMemo(
-    () => buildSessionPaginationItems(safeSessionPage, sessionPageCount),
-    [safeSessionPage, sessionPageCount],
-  )
-  const sessionsStartIndex = (safeSessionPage - 1) * SESSIONS_PAGE_SIZE
-  const paginatedSessions = React.useMemo(
-    () => sessions.slice(sessionsStartIndex, sessionsStartIndex + SESSIONS_PAGE_SIZE),
-    [sessions, sessionsStartIndex],
-  )
-  const visibleSessionsFrom = totalSessionItems > 0 ? sessionsStartIndex + 1 : 0
-  const visibleSessionsTo = sessionsStartIndex + paginatedSessions.length
+  const sessionReturnPath = buildCampDetailHref({
+    scope,
+    campId,
+    tab: "sessions",
+    highlight: selectedSessionHighlight,
+    page: sessionCurrentPage,
+  })
 
-  function setSessionPageSafely(nextPage: number): void {
-    const normalizedPage = Math.max(1, Math.min(nextPage, sessionPageCount))
-    setSessionPage(normalizedPage)
+  function buildCampSessionsHref(input: {
+    highlight?: TeamSessionHighlightFilter
+    page?: number
+    loadMore?: boolean
+  }): string {
+    return buildCampDetailHref({
+      scope,
+      campId,
+      tab: "sessions",
+      highlight: input.highlight,
+      page: input.page,
+      loadMore: input.loadMore,
+    })
   }
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {kpis.map((kpi) => (
-          <Card key={kpi.label}>
-            <CardHeader className="pb-2">
-              <CardDescription>{kpi.label}</CardDescription>
-              <CardTitle className="text-xl font-semibold tabular-nums sm:text-2xl">
-                {kpi.value}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-xs text-muted-foreground">{kpi.note}</CardContent>
-          </Card>
-        ))}
-      </div>
+      <CampDetailSummaryCards kpis={kpis} />
 
       <Tabs
         value={selectedTab}
         onValueChange={(value) => setSelectedTab(resolveTab(value))}
         className="space-y-4"
       >
-        <TabsList className="h-10">
+        <TabsList className="h-11 w-full max-w-full md:hidden">
+          {CAMP_DETAIL_TABS.map((tab) => (
+            <TabsTrigger key={tab} value={tab} className="min-w-0 basis-0 px-2 capitalize">
+              {tab}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        <TabsList className="hidden h-10 md:inline-flex">
           {CAMP_DETAIL_TABS.map((tab) => (
             <TabsTrigger key={tab} value={tab} className="min-w-fit capitalize">
               {tab}
@@ -216,98 +180,91 @@ export function CampDetailTabsClient({
           ))}
         </TabsList>
 
-        <section className="rounded-xl border bg-card p-4 sm:p-6">
-          <TabsContent value="sessions">
-            <div className="space-y-4">
-              <header className="space-y-1">
-                <h3 className="text-base font-semibold">Latest Sessions</h3>
-                <p className="text-sm text-muted-foreground">Last 10 sessions of this camp</p>
-              </header>
+        <TabsContent value="sessions">
+          <TeamSessionsTable
+            sessions={sessions}
+            campOptions={campOptions}
+            canManageSessions={canManageSessions}
+            noTeamSelected={false}
+            toolbar={
+              <TeamSessionsToolbar
+                scope={scope}
+                selectedVenueId=""
+                selectedCampId=""
+                selectedHighlight={selectedSessionHighlight ?? ""}
+                venueDisabled
+                campDisabled
+                showVenueFilter={false}
+                showCampFilter={false}
+                venueOptions={[
+                  {
+                    value: "",
+                    label: `${venueName} — ${venueLocation}`,
+                    href: buildCampSessionsHref({
+                      highlight: selectedSessionHighlight,
+                    }),
+                  },
+                ]}
+                campOptions={[
+                  {
+                    value: "",
+                    label: campName,
+                    href: buildCampSessionsHref({
+                      highlight: selectedSessionHighlight,
+                    }),
+                  },
+                ]}
+                highlightOptions={[
+                  {
+                    value: "",
+                    label: "All",
+                    href: buildCampSessionsHref({}),
+                  },
+                  {
+                    value: "yes",
+                    label: "Yes",
+                    href: buildCampSessionsHref({ highlight: "yes" }),
+                  },
+                  {
+                    value: "no",
+                    label: "No",
+                    href: buildCampSessionsHref({ highlight: "no" }),
+                  },
+                ]}
+                buildHref={({ highlight }) =>
+                  buildCampSessionsHref({
+                    highlight,
+                  })
+                }
+                action={
+                  <CreateSessionDialog
+                    campOptions={campOptions}
+                    scope={scope}
+                    selectedVenueId={venueId}
+                    selectedCampId={campId}
+                    selectedHighlight={selectedSessionHighlight}
+                    currentPage={sessionCurrentPage}
+                    returnPath={sessionReturnPath}
+                    disabled={!canManageSessions || campOptions.length === 0}
+                    surface="sheet"
+                  />
+                }
+              />
+            }
+            scope={scope}
+            selectedVenueId={venueId}
+            selectedCampId={campId}
+            selectedHighlight={selectedSessionHighlight}
+            currentPage={sessionCurrentPage}
+            pageCount={sessionPageCount}
+            hasPreviousPage={hasPreviousSessionPage}
+            hasNextPage={hasNextSessionPage}
+            returnPath={sessionReturnPath}
+          />
+        </TabsContent>
 
-              {totalSessionItems === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No sessions found for this camp.
-                </p>
-              ) : (
-                <ul className="divide-y divide-border">
-                  {paginatedSessions.map((session) => (
-                    <li key={session.id}>
-                      <Link
-                        href={buildSessionDetailHref({
-                          scope,
-                          sessionId: session.id,
-                        })}
-                        className="grid grid-cols-[minmax(0,1fr)_minmax(7rem,1fr)_auto] items-center gap-3 py-3"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium underline-offset-4 hover:underline">
-                            {session.sessionDateLabel}
-                          </p>
-                          <p className="truncate text-xs text-muted-foreground">{campName}</p>
-                        </div>
-
-                        <p className="justify-self-start text-left text-xs font-medium text-muted-foreground md:text-sm">
-                          {session.sessionTypeLabel}
-                        </p>
-
-                        <div className="text-right">
-                          <p className="shrink-0 text-sm font-semibold tabular-nums">
-                            {session.durationLabel}
-                          </p>
-                          {session.highlightedByCoach ? (
-                            <p className="text-xs text-emerald-700">Highlighted</p>
-                          ) : null}
-                        </div>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {sessionPageCount > 1 ? (
-                <div className="space-y-3 border-t pt-3">
-                  <p className="text-xs text-muted-foreground">
-                    Showing {visibleSessionsFrom}-{visibleSessionsTo} of {totalSessionItems}
-                  </p>
-
-                  <Pagination className="justify-start">
-                    <PaginationContent>
-                      <PaginationItem>
-                        <PaginationPrevious
-                          onClick={() => setSessionPageSafely(safeSessionPage - 1)}
-                          disabled={safeSessionPage === 1}
-                        />
-                      </PaginationItem>
-
-                      {sessionPaginationItems.map((pageItem) => (
-                        <PaginationItem key={`${pageItem}`}>
-                          {typeof pageItem === "number" ? (
-                            <PaginationLink
-                              isActive={pageItem === safeSessionPage}
-                              onClick={() => setSessionPageSafely(pageItem)}
-                            >
-                              {pageItem}
-                            </PaginationLink>
-                          ) : (
-                            <PaginationEllipsis />
-                          )}
-                        </PaginationItem>
-                      ))}
-
-                      <PaginationItem>
-                        <PaginationNext
-                          onClick={() => setSessionPageSafely(safeSessionPage + 1)}
-                          disabled={safeSessionPage === sessionPageCount}
-                        />
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
-                </div>
-              ) : null}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="goals">
+        <TabsContent value="goals">
+          <section className="rounded-xl border bg-card p-4 sm:p-6">
             <div className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -317,7 +274,7 @@ export function CampDetailTabsClient({
                   </p>
                 </div>
                 {canManageGoals ? (
-                  <CampGoalsDialog campId={campId} scope={scope} goals={goals} />
+                  <CampGoalsEditSurface campId={campId} scope={scope} goals={goals} />
                 ) : null}
               </div>
 
@@ -329,9 +286,11 @@ export function CampDetailTabsClient({
                 )}
               </div>
             </div>
-          </TabsContent>
+          </section>
+        </TabsContent>
 
-          <TabsContent value="notes">
+        <TabsContent value="notes">
+          <section className="rounded-xl border bg-card p-4 sm:p-6">
             <div className="space-y-4">
               <header className="space-y-1">
                 <h3 className="text-base font-semibold">Session Notes</h3>
@@ -402,8 +361,8 @@ export function CampDetailTabsClient({
                 </ul>
               )}
             </div>
-          </TabsContent>
-        </section>
+          </section>
+        </TabsContent>
       </Tabs>
     </div>
   )

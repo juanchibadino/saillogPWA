@@ -19,6 +19,10 @@ export function buildCampDetailHref(input: {
   campId: string
   tab?: CampDetailTab
   page?: number
+  loadMore?: boolean
+  highlight?: "yes" | "no"
+  status?: string
+  error?: string
 }): string {
   const params = new URLSearchParams()
   appendScopeParams(params, input.scope)
@@ -27,8 +31,24 @@ export function buildCampDetailHref(input: {
     params.set("tab", input.tab)
   }
 
+  if (input.highlight) {
+    params.set("highlight", input.highlight)
+  }
+
   if (typeof input.page === "number" && Number.isFinite(input.page) && input.page > 1) {
     params.set("page", String(Math.floor(input.page)))
+  }
+
+  if (input.loadMore) {
+    params.set("loadMore", "1")
+  }
+
+  if (input.status) {
+    params.set("status", input.status)
+  }
+
+  if (input.error) {
+    params.set("error", input.error)
   }
 
   const query = params.toString()

@@ -172,19 +172,37 @@ export function TeamCampsPageSkeleton() {
 }
 
 export function TeamSessionsPageSkeleton() {
+  const tableHeaders = [
+    "Date",
+    "Type",
+    "Camp",
+    "Venue",
+    "Net Time",
+    "Highlight",
+  ]
+  const tableGridClass =
+    "grid grid-cols-[1.1fr_0.7fr_1fr_1fr_0.75fr_0.75fr_3rem] items-center gap-4"
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-end gap-2">
-        <Skeleton className="h-8 w-20" />
-        <Skeleton className="h-8 w-20" />
-      </div>
+      <section className="space-y-4">
+        <div className="flex items-center justify-end gap-2 md:justify-between">
+          <div className="flex w-full items-center justify-between gap-3 md:hidden">
+            <Skeleton className="h-8 w-28" />
+            <Skeleton className="h-11 w-11" />
+          </div>
 
-      <div className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <Skeleton className="hidden h-6 w-24 md:block" />
+          <h2 className="hidden text-lg font-semibold md:block">Sessions</h2>
+
+          <div className="hidden items-center justify-end gap-2 md:flex">
+            <Skeleton className="h-8 w-28" />
+            <Skeleton className="h-8 w-24" />
+            <Skeleton className="h-8 w-32" />
+            <Skeleton className="h-8 w-28" />
+          </div>
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-2 md:hidden">
           {Array.from({ length: 5 }).map((_, index) => (
             <GradientCard key={`team-sessions-mobile-row-${index}`} className="p-3">
               <div className="space-y-2">
@@ -196,15 +214,43 @@ export function TeamSessionsPageSkeleton() {
           ))}
         </div>
 
-        <GradientCard className="hidden p-4 md:block">
-          <div className="space-y-3">
-            <Skeleton className="h-10 w-full" />
+        <GradientCard className="hidden overflow-hidden p-0 md:block">
+          <div
+            className={`${tableGridClass} bg-muted/40 px-4 py-3 text-sm font-medium text-muted-foreground`}
+          >
+            {tableHeaders.map((header) => (
+              <span key={`team-sessions-header-${header}`} className="truncate">
+                {header}
+              </span>
+            ))}
+            <span aria-hidden="true" />
+          </div>
+          <div className="divide-y divide-border">
             {Array.from({ length: 6 }).map((_, index) => (
-              <Skeleton key={`team-sessions-row-${index}`} className="h-10 w-full" />
+              <div
+                key={`team-sessions-desktop-row-${index}`}
+                className={`${tableGridClass} min-h-12 px-4 py-3`}
+              >
+                <Skeleton className="h-4 w-full max-w-24" />
+                <Skeleton className="h-4 w-full max-w-16" />
+                <Skeleton className="h-4 w-full max-w-32" />
+                <Skeleton className="h-4 w-full max-w-28" />
+                <Skeleton className="h-4 w-full max-w-20" />
+                <Skeleton className="h-4 w-full max-w-12" />
+                <Skeleton className="ml-auto h-8 w-8" />
+              </div>
             ))}
           </div>
         </GradientCard>
-      </div>
+
+        <div className="hidden items-center gap-1 md:flex">
+          <Skeleton className="h-9 w-24" />
+          <Skeleton className="h-9 w-9" />
+          <Skeleton className="h-9 w-9" />
+          <Skeleton className="h-9 w-9" />
+          <Skeleton className="h-9 w-16" />
+        </div>
+      </section>
     </div>
   )
 }

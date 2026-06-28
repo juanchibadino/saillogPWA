@@ -303,6 +303,7 @@ function SessionDialogForm({
   selectedCampId,
   selectedHighlight,
   currentPage,
+  returnPath,
   action,
   formId,
   footer = "dialog",
@@ -319,6 +320,7 @@ function SessionDialogForm({
   selectedCampId?: string
   selectedHighlight?: TeamSessionHighlightFilter
   currentPage: number
+  returnPath?: string
   action: (formData: FormData) => Promise<void>
   formId?: string
   footer?: SessionFormFooter
@@ -387,6 +389,9 @@ function SessionDialogForm({
       {currentPage > 1 ? (
         <input type="hidden" name="scopePage" value={String(currentPage)} />
       ) : null}
+      {returnPath ? (
+        <input type="hidden" name="scopeReturnPath" value={returnPath} />
+      ) : null}
       <input type="hidden" name="netTimeMinutes" value={netTimeMinutes} />
 
       <SessionDialogFields
@@ -445,7 +450,7 @@ function SessionDialogForm({
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-2 sm:col-span-2">
             <Label htmlFor={`${idPrefix}-netTimeDuration`}>Net time</Label>
             <div className="flex items-center gap-2">
               <Button
@@ -484,16 +489,16 @@ function SessionDialogForm({
 
         <Label
           className={cn(
-            "flex items-center justify-between gap-4 rounded-lg border border-border/70 bg-muted/30 px-3 py-3 text-sm font-medium",
-            isDrawerSurface && "min-h-14 px-4",
+            "flex items-center justify-between gap-4 rounded-lg border border-border/70 bg-muted/30 px-3 text-sm font-medium",
+            isDrawerSurface ? "min-h-14 px-4 py-3" : "h-9 py-0",
           )}
         >
-          <span>Highlighted by coach</span>
+          <span>Highlighted</span>
           <Switch
             name="highlightedByCoach"
             checked={highlightedByCoach}
             onCheckedChange={setHighlightedByCoach}
-            aria-label="Highlighted by coach"
+            aria-label="Highlighted"
           />
         </Label>
       </SessionDialogFields>
@@ -515,6 +520,7 @@ export function CreateSessionDialog({
   selectedCampId,
   selectedHighlight,
   currentPage,
+  returnPath,
   disabled,
   surface,
   triggerVariant = "default",
@@ -525,6 +531,7 @@ export function CreateSessionDialog({
   selectedCampId?: string
   selectedHighlight?: TeamSessionHighlightFilter
   currentPage: number
+  returnPath?: string
   disabled: boolean
   surface?: Extract<SessionFormSurface, "drawer" | "sheet">
   triggerVariant?: "default" | "fab"
@@ -583,6 +590,7 @@ export function CreateSessionDialog({
             selectedCampId={selectedCampId}
             selectedHighlight={selectedHighlight}
             currentPage={currentPage}
+            returnPath={returnPath}
             action={createSessionAction}
             formId={createFormId}
             footer="drawer"
@@ -632,6 +640,7 @@ export function CreateSessionDialog({
           selectedCampId={selectedCampId}
           selectedHighlight={selectedHighlight}
           currentPage={currentPage}
+          returnPath={returnPath}
           formId={createFormId}
           action={createSessionAction}
           footer="sheet"
@@ -651,6 +660,7 @@ export function EditSessionDialog({
   selectedCampId,
   selectedHighlight,
   currentPage,
+  returnPath,
   iconOnly = false,
   surface,
   open,
@@ -664,6 +674,7 @@ export function EditSessionDialog({
   selectedCampId?: string
   selectedHighlight?: TeamSessionHighlightFilter
   currentPage: number
+  returnPath?: string
   iconOnly?: boolean
   surface?: Extract<SessionFormSurface, "drawer" | "dialog">
   open?: boolean
@@ -734,6 +745,7 @@ export function EditSessionDialog({
             selectedCampId={selectedCampId}
             selectedHighlight={selectedHighlight}
             currentPage={currentPage}
+            returnPath={returnPath}
             action={updateSessionAction}
             formId={editFormId}
             footer="drawer"
@@ -792,6 +804,7 @@ export function EditSessionDialog({
           selectedCampId={selectedCampId}
           selectedHighlight={selectedHighlight}
           currentPage={currentPage}
+          returnPath={returnPath}
           action={updateSessionAction}
           footer="dialog"
           surface="dialog"
@@ -808,6 +821,7 @@ function DeleteSessionDialog({
   selectedCampId,
   selectedHighlight,
   currentPage,
+  returnPath,
   open,
   onOpenChange,
 }: {
@@ -817,6 +831,7 @@ function DeleteSessionDialog({
   selectedCampId?: string
   selectedHighlight?: TeamSessionHighlightFilter
   currentPage: number
+  returnPath?: string
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
@@ -855,6 +870,9 @@ function DeleteSessionDialog({
           {currentPage > 1 ? (
             <input type="hidden" name="scopePage" value={String(currentPage)} />
           ) : null}
+          {returnPath ? (
+            <input type="hidden" name="scopeReturnPath" value={returnPath} />
+          ) : null}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
@@ -876,6 +894,7 @@ export function SessionActionsMenu({
   selectedCampId,
   selectedHighlight,
   currentPage,
+  returnPath,
   canEditSession,
   canDeleteSession,
   editSurface,
@@ -888,6 +907,7 @@ export function SessionActionsMenu({
   selectedCampId?: string
   selectedHighlight?: TeamSessionHighlightFilter
   currentPage: number
+  returnPath?: string
   canEditSession: boolean
   canDeleteSession: boolean
   editSurface?: Extract<SessionFormSurface, "drawer" | "dialog">
@@ -958,6 +978,7 @@ export function SessionActionsMenu({
           selectedCampId={selectedCampId}
           selectedHighlight={selectedHighlight}
           currentPage={currentPage}
+          returnPath={returnPath}
           surface={editSurface}
           open={isEditOpen}
           onOpenChange={setIsEditOpen}
@@ -973,6 +994,7 @@ export function SessionActionsMenu({
           selectedCampId={selectedCampId}
           selectedHighlight={selectedHighlight}
           currentPage={currentPage}
+          returnPath={returnPath}
           open={isDeleteOpen}
           onOpenChange={setIsDeleteOpen}
         />

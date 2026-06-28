@@ -78,8 +78,28 @@ export function buildTeamSessionsPageHref(input) {
   return nextSearch.length > 0 ? `${input.pathname}?${nextSearch}` : input.pathname
 }
 
+function normalizeActionReturnPath(value) {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+    return "/team-sessions"
+  }
+
+  const url = new URL(value, "http://sailog.local")
+
+  if (url.pathname !== "/team-sessions" && !url.pathname.startsWith("/team-camps/")) {
+    return "/team-sessions"
+  }
+
+  return `${url.pathname}${url.search}`
+}
+
 export function buildTeamSessionsRedirectPath(input) {
-  const params = new URLSearchParams()
+  const returnPath = normalizeActionReturnPath(input.returnPath)
+  const url = new URL(returnPath, "http://sailog.local")
+  const params = url.searchParams
+
+  params.delete("status")
+  params.delete("error")
+  params.delete("loadMore")
 
   if (input.status) {
     params.set("status", input.status)
@@ -111,8 +131,10 @@ export function buildTeamSessionsRedirectPath(input) {
 
   if (input.scopePage && input.scopePage > 1) {
     params.set("page", String(input.scopePage))
+  } else {
+    params.delete("page")
   }
 
   const query = params.toString()
-  return query.length > 0 ? `/team-sessions?${query}` : "/team-sessions"
+  return query.length > 0 ? `${url.pathname}?${query}` : url.pathname
 }

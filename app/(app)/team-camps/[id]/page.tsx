@@ -2,8 +2,11 @@ import { CampDetailTabsClient } from "@/features/camps/camp-detail-tabs-client"
 import { CampsFeedback } from "@/features/camps/camps-feedback"
 import { getCampDetailPageData } from "@/features/camps/detail-data"
 import { CAMP_DETAIL_TABS } from "@/features/camps/navigation"
+import { getTeamSessionsPageData } from "@/features/sessions/data"
+import { resolveTeamSessionsListRequest } from "@/features/sessions/list-route-state.mjs"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import {
+  canManageTeamSessions,
   canManageTeamStructure,
 } from "@/lib/auth/capabilities"
 import {
@@ -31,23 +34,21 @@ function resolveTab(value: string | undefined): CampDetailTab {
     : DEFAULT_TAB
 }
 
-function parseRequestedPage(value: string | undefined): number {
-  if (!value) {
-    return 1
-  }
-
-  const parsed = Number.parseInt(value, 10)
-
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    return 1
-  }
-
-  return Math.floor(parsed)
-}
-
 function getStatusMessage(status: string | undefined): string | null {
   if (status === "goals_updated") {
     return "Camp goals updated successfully."
+  }
+
+  if (status === "created") {
+    return "Session created successfully."
+  }
+
+  if (status === "updated") {
+    return "Session updated successfully."
+  }
+
+  if (status === "deleted") {
+    return "Session deleted successfully."
   }
 
   return null
@@ -55,15 +56,31 @@ function getStatusMessage(status: string | undefined): string | null {
 
 function getErrorMessage(error: string | undefined): string | null {
   if (error === "invalid_input") {
-    return "The submitted goals data is invalid. Review and try again."
+    return "The submitted data is invalid. Review and try again."
   }
 
   if (error === "forbidden") {
-    return "You do not have permission to manage goals for this camp."
+    return "You do not have permission to manage this camp."
+  }
+
+  if (error === "create_failed") {
+    return "Could not create session. Confirm your permissions and try again."
   }
 
   if (error === "update_failed") {
-    return "Could not update camp goals. Confirm your permissions and try again."
+    return "Could not save changes. Confirm your permissions and try again."
+  }
+
+  if (error === "delete_failed") {
+    return "Could not delete session. Confirm your permissions and try again."
+  }
+
+  if (error === "plan_limit_reached") {
+    return "Plan limit reached for sessions in this organization. Upgrade or change plan in Billing to continue."
+  }
+
+  if (error === "payment_required") {
+    return "Your paid plan is inactive. Recover payment in Billing to continue creating sessions."
   }
 
   return null
@@ -87,9 +104,15 @@ export default async function CampDetailPage({
   const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
   const selectedTab = resolveTab(getSingleSearchParamValue(resolvedSearchParams.tab))
-  const requestedPage = parseRequestedPage(
-    getSingleSearchParamValue(resolvedSearchParams.page),
-  )
+  const {
+    requestedHighlight,
+    requestedLoadMoreMode,
+    requestedPage,
+  } = resolveTeamSessionsListRequest({
+    highlightParam: getSingleSearchParamValue(resolvedSearchParams.highlight),
+    loadMoreParam: getSingleSearchParamValue(resolvedSearchParams.loadMore),
+    pageParam: getSingleSearchParamValue(resolvedSearchParams.page),
+  })
 
   const statusMessage = getStatusMessage(status)
   const errorMessage = getErrorMessage(error)
@@ -156,6 +179,19 @@ export default async function CampDetailPage({
     organizationId: scope.activeOrgId,
     teamId: activeTeamId,
   })
+  const canManageSessions = canManageTeamSessions({
+    context,
+    organizationId: scope.activeOrgId,
+    teamId: activeTeamId,
+  })
+  const sessionListData = await getTeamSessionsPageData({
+    activeTeamId,
+    selectedVenueId: camp.venueId,
+    selectedCampId: camp.id,
+    selectedHighlight: requestedHighlight,
+    page: requestedPage,
+    accumulatePages: requestedLoadMoreMode,
+  })
 
   return (
     <div className="space-y-6">
@@ -170,12 +206,21 @@ export default async function CampDetailPage({
 
       <CampDetailTabsClient
         initialTab={selectedTab}
-        initialSessionPage={requestedPage}
         kpis={detailData.kpis}
-        sessions={detailData.sessions}
+        sessions={sessionListData.sessions}
+        campOptions={sessionListData.campOptions}
+        sessionCurrentPage={sessionListData.currentPage}
+        sessionPageCount={sessionListData.pageCount}
+        hasPreviousSessionPage={sessionListData.hasPreviousPage}
+        hasNextSessionPage={sessionListData.hasNextPage}
+        selectedSessionHighlight={sessionListData.selectedHighlight}
         campName={camp.name}
+        venueId={camp.venueId}
+        venueName={camp.venueName}
+        venueLocation={camp.venueLocation}
         goals={camp.goals}
         notesCards={detailData.notesCards}
+        canManageSessions={canManageSessions}
         canManageGoals={canManageGoals}
         scope={scope}
         campId={camp.id}
