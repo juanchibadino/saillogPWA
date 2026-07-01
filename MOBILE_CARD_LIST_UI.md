@@ -8,7 +8,7 @@ Source of truth for Sailog mobile list screens. Current reference:
 - `features/sessions/session-form-dialogs.tsx`
 - `MOBILE_UI_PATTERNS.md`
 
-Use this with `TABLE_DESKTOP_PATTERNS_UI.md`: desktop uses tables, mobile uses
+Use this with `DESKTOP_UI_PATTERNS.md`: desktop uses tables, mobile uses
 cards.
 
 ## Structure

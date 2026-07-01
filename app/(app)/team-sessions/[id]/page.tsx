@@ -1,7 +1,10 @@
 import { Suspense } from "react"
-import { ChevronDownIcon } from "lucide-react"
 
-import { Skeleton } from "@/components/ui/skeleton"
+import {
+  SessionDetailDeferredContentSkeleton,
+  SessionDetailHeaderActionsSkeleton,
+  SessionDetailTabsSkeleton,
+} from "@/components/shared/page-skeletons"
 import {
   getSessionDetailShellData,
   getSessionDetailTabData,
@@ -29,6 +32,10 @@ type SessionDetailSearchParams = Promise<
 >
 
 type SessionDetailParams = Promise<{ id: string }>
+type ResolvedSessionDetailScope = NonNullable<
+  Awaited<ReturnType<typeof resolveNavigationScope>>["scope"]
+>
+type SessionDetailShellDataPromise = ReturnType<typeof getSessionDetailShellData>
 
 function resolveTab(value: string | undefined): SessionDetailTab {
   if (!value) {
@@ -175,87 +182,12 @@ function formatSessionTypeLabel(value: "training" | "regatta"): string {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
-function formatSessionDetailTabLabel(tab: SessionDetailTab): string {
-  return tab.charAt(0).toUpperCase() + tab.slice(1)
-}
-
-const MOBILE_SESSION_DETAIL_FALLBACK_TABS: SessionDetailTab[] = [
-  "info",
-  "goals",
-  "results",
-  "images",
-]
-
-function getMobileSessionDetailFallbackTabs(
-  selectedTab: SessionDetailTab,
-): SessionDetailTab[] {
-  if (MOBILE_SESSION_DETAIL_FALLBACK_TABS.includes(selectedTab)) {
-    return MOBILE_SESSION_DETAIL_FALLBACK_TABS
-  }
-
-  return ["info", "goals", "results", selectedTab]
-}
-
 function SessionDetailTabsFallback({
   selectedTab,
 }: {
   selectedTab: SessionDetailTab
 }) {
-  const mobileTabs = getMobileSessionDetailFallbackTabs(selectedTab)
-
-  return (
-    <div className="space-y-4" aria-busy="true">
-      <div className="md:hidden">
-        <div className="flex h-11 w-full max-w-full items-center overflow-hidden rounded-lg bg-muted p-[3px] text-muted-foreground">
-          {mobileTabs.map((tab) => (
-            <button
-              key={`mobile-tab-loading-${tab}`}
-              type="button"
-              disabled
-              className="inline-flex h-[calc(100%-1px)] min-w-0 flex-1 basis-0 items-center justify-center truncate rounded-md px-2 text-sm font-medium text-muted-foreground data-[active=true]:bg-background data-[active=true]:text-foreground"
-              data-active={tab === selectedTab ? "true" : undefined}
-            >
-              {formatSessionDetailTabLabel(tab)}
-            </button>
-          ))}
-          <button
-            type="button"
-            disabled
-            className="inline-flex h-[calc(100%-1px)] shrink-0 items-center justify-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-muted-foreground"
-          >
-            <span>More</span>
-            <ChevronDownIcon className="size-4" />
-          </button>
-        </div>
-      </div>
-
-      <div className="hidden h-10 items-center gap-1 rounded-lg bg-muted p-1 md:inline-flex">
-        {SESSION_DETAIL_TABS.map((tab) => (
-          <button
-            key={`tab-loading-${tab}`}
-            type="button"
-            disabled
-            className="inline-flex h-8 min-w-fit items-center justify-center rounded-md px-3 text-sm font-medium text-muted-foreground data-[active=true]:bg-background data-[active=true]:text-foreground"
-            data-active={tab === selectedTab ? "true" : undefined}
-          >
-            {formatSessionDetailTabLabel(tab)}
-          </button>
-        ))}
-      </div>
-
-      <section className="rounded-xl border bg-card p-4 sm:p-6">
-        <div className="space-y-4">
-          <Skeleton className="h-4 w-72 max-w-full" />
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Skeleton className="h-28 rounded-lg" />
-            <Skeleton className="h-28 rounded-lg" />
-            <Skeleton className="h-20 rounded-lg sm:col-span-2" />
-          </div>
-        </div>
-      </section>
-    </div>
-  )
+  return <SessionDetailTabsSkeleton selectedTab={selectedTab} />
 }
 
 async function SessionDetailTabsSlot(input: {
@@ -279,6 +211,108 @@ async function SessionDetailTabsSlot(input: {
       goals={input.goals}
       canManageSession={input.canManageSession}
     />
+  )
+}
+
+async function SessionHeaderActionsSlot(input: {
+  canManageSession: boolean
+  detailDataPromise: SessionDetailShellDataPromise
+  scope: ResolvedSessionDetailScope
+}) {
+  if (!input.canManageSession) {
+    return null
+  }
+
+  const detailData = await input.detailDataPromise
+
+  if (!detailData) {
+    return null
+  }
+
+  return (
+    <SessionHeaderActions
+      sessionId={detailData.session.id}
+      scope={input.scope}
+      sessionType={detailData.session.session_type}
+      sessionDate={detailData.session.session_date}
+      dockOutAt={detailData.session.dock_out_at}
+      dockInAt={detailData.session.dock_in_at}
+      netTimeMinutes={detailData.session.net_time_minutes}
+      canManageSession={input.canManageSession}
+    />
+  )
+}
+
+async function SessionDetailResolvedContent(input: {
+  canManageSession: boolean
+  detailDataPromise: SessionDetailShellDataPromise
+  scope: ResolvedSessionDetailScope
+  selectedTab: SessionDetailTab
+}) {
+  const detailData = await input.detailDataPromise
+
+  if (!detailData) {
+    return (
+      <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
+        <h2 className="text-lg font-semibold text-amber-900">Session unavailable</h2>
+        <p className="mt-2 text-sm text-amber-800">
+          This session does not exist in the active team scope or is not accessible.
+        </p>
+      </section>
+    )
+  }
+
+  const scopedDetailInput = {
+    activeOrganizationId: input.scope.activeOrgId,
+    activeTeamId: detailData.team.id,
+    teamVenueId: detailData.camp.team_venue_id,
+    sessionId: detailData.session.id,
+  }
+  const selectedTabDataPromise = getSessionDetailTabData({
+    ...scopedDetailInput,
+    goals: detailData.session.goals,
+    tab: input.selectedTab,
+  })
+
+  const sessionTypeLabel = formatSessionTypeLabel(detailData.session.session_type)
+  const sessionDateLabel = formatDateLabel(detailData.session.session_date)
+  const dockOutLabel = formatTimeLabel(detailData.session.dock_out_at)
+  const durationMinutes = resolveDurationMinutes({
+    dockOutAt: detailData.session.dock_out_at,
+    dockInAt: detailData.session.dock_in_at,
+    fallbackNetTimeMinutes: detailData.session.net_time_minutes,
+  })
+  const durationLabel = formatDurationLabel(durationMinutes)
+
+  return (
+    <>
+      {!input.canManageSession ? (
+        <section className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+          <p className="text-sm text-amber-800">
+            You have read-only access in this scope. Editing and uploads are disabled.
+          </p>
+        </section>
+      ) : null}
+
+      <SessionDetailSummaryCards
+        sessionTypeLabel={sessionTypeLabel}
+        sessionDateLabel={sessionDateLabel}
+        dockOutLabel={dockOutLabel}
+        durationLabel={durationLabel}
+      />
+
+      <Suspense fallback={<SessionDetailTabsFallback selectedTab={input.selectedTab} />}>
+        <SessionDetailTabsSlot
+          initialTab={input.selectedTab}
+          initialTabDataPromise={selectedTabDataPromise}
+          scope={input.scope}
+          sessionId={detailData.session.id}
+          sessionType={detailData.session.session_type}
+          goals={detailData.session.goals}
+          canManageSession={input.canManageSession}
+        />
+      </Suspense>
+    </>
   )
 }
 
@@ -332,64 +366,20 @@ export default async function SessionDetailPage({
     )
   }
 
-  const detailData = await getSessionDetailShellData({
-    activeOrganizationId: scope.activeOrgId,
-    activeTeamId: scope.activeTeamId,
-    sessionId: resolvedParams.id,
-  })
-
-  if (!detailData) {
-    return (
-      <div className="space-y-6">
-        <SessionsFeedback mode="toast" statusMessage={statusMessage} errorMessage={errorMessage} />
-        <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
-          <h2 className="text-lg font-semibold text-amber-900">Session unavailable</h2>
-          <p className="mt-2 text-sm text-amber-800">
-            This session does not exist in the active team scope or is not accessible.
-          </p>
-        </section>
-      </div>
-    )
-  }
-
   const canManageSession = canManageTeamSessions({
     context,
     organizationId: scope.activeOrgId,
     teamId: scope.activeTeamId,
   })
-  const scopedDetailInput = {
+  const detailDataPromise = getSessionDetailShellData({
     activeOrganizationId: scope.activeOrgId,
-    activeTeamId: detailData.team.id,
-    teamVenueId: detailData.camp.team_venue_id,
-    sessionId: detailData.session.id,
-  }
-  const selectedTabDataPromise = getSessionDetailTabData({
-    ...scopedDetailInput,
-    goals: detailData.session.goals,
-    tab: selectedTab,
+    activeTeamId: scope.activeTeamId,
+    sessionId: resolvedParams.id,
   })
-
-  const sessionTypeLabel = formatSessionTypeLabel(detailData.session.session_type)
-  const sessionDateLabel = formatDateLabel(detailData.session.session_date)
-  const dockOutLabel = formatTimeLabel(detailData.session.dock_out_at)
-  const durationMinutes = resolveDurationMinutes({
-    dockOutAt: detailData.session.dock_out_at,
-    dockInAt: detailData.session.dock_in_at,
-    fallbackNetTimeMinutes: detailData.session.net_time_minutes,
-  })
-  const durationLabel = formatDurationLabel(durationMinutes)
 
   return (
     <div className="space-y-6">
       <SessionsFeedback mode="toast" statusMessage={statusMessage} errorMessage={errorMessage} />
-
-      {!canManageSession ? (
-        <section className="rounded-xl border border-amber-300 bg-amber-50 p-4">
-          <p className="text-sm text-amber-800">
-            You have read-only access in this scope. Editing and uploads are disabled.
-          </p>
-        </section>
-      ) : null}
 
       <section className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -398,36 +388,27 @@ export default async function SessionDetailPage({
           </div>
 
           {canManageSession ? (
-            <SessionHeaderActions
-              sessionId={detailData.session.id}
-              scope={scope}
-              sessionType={detailData.session.session_type}
-              sessionDate={detailData.session.session_date}
-              dockOutAt={detailData.session.dock_out_at}
-              dockInAt={detailData.session.dock_in_at}
-              netTimeMinutes={detailData.session.net_time_minutes}
-              canManageSession={canManageSession}
-            />
+            <Suspense
+              fallback={<SessionDetailHeaderActionsSkeleton canManageSession={canManageSession} />}
+            >
+              <SessionHeaderActionsSlot
+                canManageSession={canManageSession}
+                detailDataPromise={detailDataPromise}
+                scope={scope}
+              />
+            </Suspense>
           ) : null}
         </div>
-
-        <SessionDetailSummaryCards
-          sessionTypeLabel={sessionTypeLabel}
-          sessionDateLabel={sessionDateLabel}
-          dockOutLabel={dockOutLabel}
-          durationLabel={durationLabel}
-        />
       </section>
 
-      <Suspense fallback={<SessionDetailTabsFallback selectedTab={selectedTab} />}>
-        <SessionDetailTabsSlot
-          initialTab={selectedTab}
-          initialTabDataPromise={selectedTabDataPromise}
-          scope={scope}
-          sessionId={detailData.session.id}
-          sessionType={detailData.session.session_type}
-          goals={detailData.session.goals}
+      <Suspense
+        fallback={<SessionDetailDeferredContentSkeleton selectedTab={selectedTab} />}
+      >
+        <SessionDetailResolvedContent
           canManageSession={canManageSession}
+          detailDataPromise={detailDataPromise}
+          scope={scope}
+          selectedTab={selectedTab}
         />
       </Suspense>
     </div>

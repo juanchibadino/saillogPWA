@@ -1,8 +1,115 @@
 # PROGRESS.md
 
-Last updated: 2026-06-28
+Last updated: 2026-07-01
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
+
+## 2026-07-01 - Team Camp ID loading patterns
+
+- Replicated the Team Session ID loading approach on `/team-camps/[id]`: camp
+  chrome now loads separately from KPI aggregation and selected-tab payloads.
+- Updated the Camp detail page so KPIs and the selected tab stream behind
+  `Suspense`, with the camp name/location chrome rendering as soon as the
+  lighter camp/venue data is available.
+- Rebuilt the Camp detail skeletons in `components/shared/page-skeletons.tsx`
+  to mirror final mobile/desktop UI: divided KPI card, desktop KPI grid,
+  mobile tabs, Sessions toolbar/cards/FAB, desktop Sessions table/pagination,
+  Goals panel, and Notes cards.
+- Reused the Camp panel skeleton for deferred client-side tab loads in
+  `features/camps/camp-detail-tabs-client.tsx`.
+
+## 2026-07-01 - Team Session ID loading patterns
+
+- Updated `/team-sessions/[id]` so the static title renders before session shell
+  data, while header actions, summary KPIs, and selected-tab content stream
+  behind `Suspense` with route-shaped skeletons.
+- Expanded `components/shared/page-skeletons.tsx` with reusable Team Session ID
+  skeleton pieces for header actions, summary cards, tabs, and list/table-style
+  deferred panels across mobile and desktop.
+- Added `LOADING_PATTERNS.md` as the Sailog source of truth for route skeletons,
+  deferred sections, secondary loading, and compact spinner use.
+- Renamed `TABLE_DESKTOP_PATTERNS_UI.md` to `DESKTOP_UI_PATTERNS.md` and added
+  desktop header/breadcrumb rules, including Team Camp detail
+  `[Team Name] > [Venue Name] > [Camp Name]`.
+- Updated `MOBILE_UI_PATTERNS.md` with the Team Camp detail mobile header/body
+  split and mobile loading skeleton rules.
+
+## 2026-06-29 - Team Camp mobile header copy
+
+- Updated `/team-camps/[id]` mobile header behavior so the title resolves to
+  the camp name instead of generic `Team Camps`.
+- Added scoped `/api/team-camps/[id]/breadcrumb` lookup for camp name and
+  parent team-venue id, reusing the Camp detail shell scope checks.
+- Updated the camp detail mobile back action to return to the parent venue on
+  the `camps` tab.
+- Changed the route header copy to `Team Session` and reduced the supporting line
+  to location only.
+- Validation: `npm run lint` and `git diff --check` passed after the
+  `Team Session` copy correction. Full lint still reports the two unrelated
+  existing unused-var warnings in `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`.
+
+## 2026-06-28 - Team Camp mobile tab height
+
+- Updated `/team-camps/[id]` mobile tabs to match the Team Session ID fixed
+  `h-11` wrapper plus inner `TabsList h-full` pattern.
+- Updated `MOBILE_UI_PATTERNS.md` so taller mobile tabs are the canonical
+  simple tabs pattern instead of relying on the shared primitive default height.
+- Validation: `npm run lint`, `npm test`, `npm run build`, and `git diff
+  --check` passed. Full lint still reports the two unrelated existing
+  unused-var warnings in `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`.
+
+## 2026-06-28 - Team Camp route resilience and tests
+
+- Added scoped `/team-camps/[id]` route error boundary with a local retry
+  surface.
+- Added `features/camps/detail-route-state.mjs` plus `node --test` coverage for
+  Camp detail tab/page/notes-offset normalization and Goals save redirect
+  preservation.
+- Routed the Camp detail page through the shared route-state helper for initial
+  tab/page/Notes offset normalization.
+- Added `team_camp_timing` logs for `load_shell`, `load_tab`, `load_notes`, and
+  `save_camp_goals` phases.
+- Updated `AUDIT_TEAM_CAMP_ID.MD` so Step 5 is marked implemented.
+- Validation: `npm test`, `npm run lint`, `npm run build`, and `git diff
+  --check` passed. Full lint still reports the two unrelated existing
+  unused-var warnings in
+  `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`.
+
+## 2026-06-28 - Team Camp bounded Notes tab
+
+- Bounded `/team-camps/[id]` Notes loading to one camp-session chunk at a time
+  instead of loading every session plus all note/review/setup/move/wind rows
+  when the tab opens.
+- Added `notesOffset` support to `/api/team-camps/[id]/tab-data` and note
+  pagination metadata to the Camp detail tab payload.
+- Updated `CampDetailTabsClient` so Notes appends chunks with `Load more notes`,
+  visible pending/error states, unique card merging, and stale-response
+  protection.
+- Kept existing note field labels unchanged.
+- Updated `AUDIT_TEAM_CAMP_ID.MD` so Step 4 is marked implemented.
+- Validation: `npm run lint`, `git diff --check`, `npm run build`, and
+  `npm test` passed. Full lint still reports the two unrelated existing
+  unused-var warnings in `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`.
+
+## 2026-06-28 - Team Camp selected-tab data split
+
+- Split `/team-camps/[id]` detail loading into shell data plus selected-tab
+  payloads: camp/venue context, KPI summary, Sessions, Goals, and Notes now
+  have separate server loaders.
+- Added scoped `/api/team-camps/[id]/tab-data` for inactive tabs, reusing the
+  shell loader so active org/team/camp checks stay server-side.
+- Updated `CampDetailTabsClient` to keep per-tab payload state, lazy-load
+  inactive tabs, show retry/loading surfaces, and use per-tab request versions
+  so stale responses cannot overwrite newer state.
+- Updated `AUDIT_TEAM_CAMP_ID.MD` so Step 2 is marked implemented.
+- Validation: `npm run lint`, `git diff --check`, `npm run build`, and
+  `npm test` passed. Full lint still reports the two unrelated existing
+  unused-var warnings in `app/sign-in/sign-in-content.tsx` and
+  `features/onboarding/onboarding-flow.tsx`.
 
 ## 2026-06-28 - Team Camp Sessions list UI
 
@@ -69,7 +176,7 @@ Branch: `main`
 - Added `AUDIT_TEAM_CAMP_ID.MD` for `/team-camps/[id]`, using the
   Team Session ID audit structure as the reference.
 - Reviewed `MOBILE_UI_PATTERNS.md`, `MOBILE_CARD_LIST_UI.md`, and
-  `TABLE_DESKTOP_PATTERNS_UI.md` against the current Camp detail page,
+  `DESKTOP_UI_PATTERNS.md` against the current Camp detail page,
   data layer, tabs client, loading skeleton, and shared mobile header.
 - Captured the current scorecard, UI pattern gaps, remaining risks, and next
   engineering priority sequence for Goals edit, tab-data splitting,
@@ -226,7 +333,7 @@ Branch: `main`
   and show one centered table spinner.
 - Kept filter and pagination controls free of extra spinners to avoid duplicate
   loading indicators.
-- Updated `TABLE_DESKTOP_PATTERNS_UI.md` and `MOBILE_CARD_LIST_UI.md` with the
+- Updated `DESKTOP_UI_PATTERNS.md` and `MOBILE_CARD_LIST_UI.md` with the
   filter pending and clear-control standards.
 - Validation: `npx eslint 'features/sessions/sessions-table.tsx'
   'features/sessions/team-sessions-toolbar.tsx'`,
@@ -241,7 +348,7 @@ Branch: `main`
   navigation is pending.
 - Disabled and dimmed the desktop table during page navigation while preserving
   the current rows until the next page arrives.
-- Updated `TABLE_DESKTOP_PATTERNS_UI.md` so the desktop table standard now
+- Updated `DESKTOP_UI_PATTERNS.md` so the desktop table standard now
   requires one table-centered spinner and disabled pagination controls, instead
   of spinner indicators inside pagination buttons.
 - Validation: `npx eslint 'features/sessions/sessions-table.tsx'`,
@@ -259,7 +366,7 @@ Branch: `main`
   `features/sessions/sessions-table.tsx`: the target page/Previous/Next control
   shows a spinner, the pagination nav exposes `aria-busy`, and duplicate page
   navigations are blocked while pending.
-- Added `TABLE_DESKTOP_PATTERNS_UI.md` to document the Sailog desktop table
+- Added `DESKTOP_UI_PATTERNS.md` to document the Sailog desktop table
   pattern across performance, filters, title, pagination, actions, states,
   cache, and accessibility.
 - Added `MOBILE_CARD_LIST_UI.md` to document the paired mobile card-list pattern

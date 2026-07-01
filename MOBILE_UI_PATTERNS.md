@@ -259,6 +259,38 @@ Reuse steps:
 1. Ensure the route is included in `shouldUsePhaseOneMobileHeader`.
 2. Add the route condition to `showMobileSidebarTrigger` when a menu icon is required.
 3. Keep `router.back()` and fallback logic unchanged.
+4. Detail mobile headers should use the object name when available. Team Camp
+   detail resolves the camp name in the shared header.
+5. Avoid repeating the mobile header title in the page body. Team Camp detail
+   hides the desktop H1 on mobile and shows only the `[Location]` badge in the
+   content header.
+
+## 8.1 Mobile Loading Pattern
+
+Goal:
+- Loading states should feel like the final mobile screen, not like a separate
+  blank page.
+
+Rules:
+- Keep fixed labels visible and skeletonize values. Team Session ID keeps
+  `Type`, `Date`, `Dock Out`, and `Duration` visible while values load.
+- Keep mobile tabs in their final `h-11` segmented row during loading.
+- If the final tab row uses `More`, the skeleton should keep the same overflow
+  affordance.
+- Use mobile card/list skeletons for deferred lists, media, analytics, and gear
+  panels instead of a generic centered spinner.
+- Keep primary mobile actions in their final locations during loading. For Team
+  Session ID, Setup remains a mobile FAB-shaped disabled control while the
+  session metadata loads.
+- For route-level loading, use `loading.tsx` and the shared skeleton from
+  `components/shared/page-skeletons.tsx`.
+- For in-route deferred loading, keep the already rendered chrome mounted and
+  put skeletons inside the deferred section.
+
+Reference:
+- `LOADING_PATTERNS.md`
+- `app/(app)/team-sessions/[id]/page.tsx`
+- `components/shared/page-skeletons.tsx`
 
 ## 9. Mobile Toolbar Pattern
 
@@ -285,7 +317,11 @@ Goal:
 - Mobile tabs use the full available width and keep the active view easy to tap.
 
 Rules:
-- Mobile `TabsList` should be full width: `h-11 w-full max-w-full`.
+- Mobile tab rows should use the Team Session ID height pattern: an outer
+  `h-11 w-full max-w-full` wrapper with an inner `TabsList` forced to
+  `h-full`.
+- The inner mobile `TabsList` should override the shared primitive default:
+  `h-full min-w-0 flex-1 rounded-md bg-transparent p-0 group-data-horizontal/tabs:h-full`.
 - Mobile `TabsTrigger` items should share the row width: `min-w-0 basis-0`.
 - Desktop tabs can stay compact: `hidden h-10 md:inline-flex`.
 - Split mobile and desktop tab lists with `md:hidden` and `hidden md:inline-flex` when the sizing differs.
@@ -303,13 +339,15 @@ Current implementation references:
 Canonical simple mobile tabs:
 
 ```tsx
-<TabsList className="h-11 w-full max-w-full md:hidden">
-  {tabs.map((tab) => (
-    <TabsTrigger key={tab} value={tab} className="min-w-0 basis-0 px-2">
-      {label}
-    </TabsTrigger>
-  ))}
-</TabsList>
+<div className="flex h-11 w-full max-w-full items-center rounded-lg bg-muted p-[3px] text-muted-foreground md:hidden">
+  <TabsList className="h-full min-w-0 flex-1 rounded-md bg-transparent p-0 group-data-horizontal/tabs:h-full">
+    {tabs.map((tab) => (
+      <TabsTrigger key={tab} value={tab} className="min-w-0 basis-0 px-2">
+        {label}
+      </TabsTrigger>
+    ))}
+  </TabsList>
+</div>
 
 <TabsList className="hidden h-10 md:inline-flex">
   {/* compact desktop triggers */}

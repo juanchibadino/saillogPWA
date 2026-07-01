@@ -3,17 +3,31 @@ import "server-only"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import type { Database, Json } from "@/types/database"
 import type {
+  CampDetailChromeData,
   CampDetailCamp,
+  CampDetailGoalsTabData,
   CampDetailKpi,
   CampDetailNotesCard,
-  CampDetailPageData,
-  CampDetailSessionItem,
+  CampDetailNotesTabData,
+  CampDetailSessionsTabData,
+  CampDetailShellData,
   CampDetailTeamVenue,
+  CampDetailTab,
+  CampDetailTabPayload,
 } from "@/features/camps/detail-types"
+import {
+  getTeamSessionsPageData,
+  type TeamSessionHighlightFilter,
+} from "@/features/sessions/data"
+import {
+  getCampDetailTimingErrorMessage,
+  logCampDetailTiming,
+  startCampDetailTiming,
+} from "@/features/camps/detail-timing"
 
 type CampRow = Pick<
   Database["public"]["Tables"]["camps"]["Row"],
-  "id" | "team_venue_id" | "name" | "camp_type" | "start_date" | "end_date" | "notes" | "is_active"
+  "id" | "team_venue_id" | "name" | "camp_type" | "start_date" | "end_date" | "is_active"
 >
 
 type VenueRow = Pick<
@@ -52,6 +66,11 @@ type SessionWindPatternRow = Pick<
   "session_id" | "team_venue_wind_pattern_id"
 >
 
+type CampKpiSessionRow = Pick<
+  Database["public"]["Tables"]["sessions"]["Row"],
+  "net_time_minutes"
+>
+
 type TeamStandardMoveRow = Pick<
   Database["public"]["Tables"]["team_standard_moves"]["Row"],
   "id" | "name"
@@ -63,7 +82,7 @@ type TeamVenueWindPatternRow = Pick<
 >
 
 const CAMP_SELECT_COLUMNS =
-  "id,team_venue_id,name,camp_type,start_date,end_date,notes,is_active"
+  "id,team_venue_id,name,camp_type,start_date,end_date,is_active"
 const TEAM_VENUE_SELECT_COLUMNS = "id,team_id,venue_id"
 const VENUE_SELECT_COLUMNS = "id,organization_id,name,city,country"
 const SESSION_SELECT_COLUMNS =
@@ -76,12 +95,12 @@ const SESSION_WIND_PATTERN_SELECT_COLUMNS = "session_id,team_venue_wind_pattern_
 const TEAM_STANDARD_MOVE_SELECT_COLUMNS = "id,name"
 const TEAM_VENUE_WIND_PATTERN_SELECT_COLUMNS = "id,name"
 
-const EMPTY_KPIS: CampDetailKpi[] = [
-  { label: "Total Sessions", value: "0", note: "Current camp" },
-  { label: "Avg. Session", value: "—", note: "No net time recorded" },
-  { label: "Net Time Sailed", value: "00h 00m", note: "Sum of net time in camp sessions" },
-  { label: "Camp Dates", value: "—", note: "Camp schedule window" },
-]
+const CAMP_NOTES_SESSION_PAGE_SIZE = 10
+
+type CampDetailTimingMetadata = Record<
+  string,
+  string | number | boolean | null | undefined
+>
 
 function formatDateLabel(value: string): string {
   const formatter = new Intl.DateTimeFormat("en-US", {
@@ -210,33 +229,30 @@ function formatJsonNote(value: Json | null | undefined): string | null {
 
 function buildKpis(input: {
   camp: CampDetailCamp
-  sessions: SessionRow[]
+  netTimeMinutes: number[]
+  totalSessions: number
 }): CampDetailKpi[] {
-  const sessionsWithNetTimeValues = input.sessions
-    .map((session) => session.net_time_minutes)
-    .filter((minutes): minutes is number => typeof minutes === "number")
-
-  const totalNetTimeMinutes = sessionsWithNetTimeValues.reduce(
+  const totalNetTimeMinutes = input.netTimeMinutes.reduce(
     (sum, minutes) => sum + minutes,
     0,
   )
   const averageNetTimeMinutes =
-    sessionsWithNetTimeValues.length > 0
-      ? Math.round(totalNetTimeMinutes / sessionsWithNetTimeValues.length)
+    input.netTimeMinutes.length > 0
+      ? Math.round(totalNetTimeMinutes / input.netTimeMinutes.length)
       : null
 
   return [
     {
       label: "Total Sessions",
-      value: String(input.sessions.length),
+      value: String(input.totalSessions),
       note: "Current camp",
     },
     {
       label: "Avg. Session",
       value: formatHoursAndMinutes(averageNetTimeMinutes),
       note:
-        sessionsWithNetTimeValues.length > 0
-          ? `${sessionsWithNetTimeValues.length} sessions with net time`
+        input.netTimeMinutes.length > 0
+          ? `${input.netTimeMinutes.length} sessions with net time`
           : "No net time recorded",
     },
     {
@@ -296,37 +312,118 @@ function buildNotesCards(input: {
   return notesCards
 }
 
-function buildSessionItems(sessions: SessionRow[]): CampDetailSessionItem[] {
-  return sessions.map((session) => ({
-    id: session.id,
-    sessionDateLabel: formatDateLabel(session.session_date),
-    sessionTypeLabel: titleCaseSessionType(session.session_type),
-    durationLabel: formatHoursAndMinutes(session.net_time_minutes),
-    highlightedByCoach: session.highlighted_by_coach,
-  }))
-}
-
 function buildLocation(city: string, country: string): string {
   return `${city}, ${country}`
 }
 
-function buildEmptyData(): CampDetailPageData {
+function normalizeNotesSessionOffset(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return 0
+  }
+
+  return Math.floor(value)
+}
+
+function getCampDetailTabRequestTimingMetadata(input: {
+  accumulatePages?: boolean
+  notesSessionOffset?: number
+  page: number
+  selectedHighlight?: TeamSessionHighlightFilter
+  tab: CampDetailTab
+}): CampDetailTimingMetadata {
   return {
-    camp: null,
-    teamVenue: null,
-    kpis: EMPTY_KPIS,
-    sessions: [],
-    notesCards: [],
+    accumulatePages: Boolean(input.accumulatePages),
+    notesSessionOffset:
+      input.tab === "notes"
+        ? normalizeNotesSessionOffset(input.notesSessionOffset)
+        : undefined,
+    requestedPage: input.page,
+    selectedHighlight: input.selectedHighlight ?? null,
+    tab: input.tab,
   }
 }
 
-export async function getCampDetailPageData(input: {
+function getCampDetailTabResponseTimingMetadata(input: {
+  accumulatePages?: boolean
+  data: CampDetailTabPayload
+  notesSessionOffset?: number
+  page: number
+  selectedHighlight?: TeamSessionHighlightFilter
+  tab: CampDetailTab
+}): CampDetailTimingMetadata {
+  const baseMetadata = getCampDetailTabRequestTimingMetadata(input)
+
+  if (input.tab === "sessions") {
+    const data = input.data as CampDetailSessionsTabData
+
+    return {
+      ...baseMetadata,
+      currentPage: data.currentPage,
+      hasNextPage: data.hasNextPage,
+      hasPreviousPage: data.hasPreviousPage,
+      pageCount: data.pageCount,
+      sessionCount: data.sessions.length,
+    }
+  }
+
+  if (input.tab === "goals") {
+    const data = input.data as CampDetailGoalsTabData
+    const hasGoals =
+      typeof data.goals === "string" && data.goals.trim().length > 0
+
+    return {
+      ...baseMetadata,
+      hasGoals,
+    }
+  }
+
+  const data = input.data as CampDetailNotesTabData
+
+  return {
+    ...baseMetadata,
+    nextSessionOffset: data.nextSessionOffset,
+    noteCardCount: data.notesCards.length,
+    sessionLimit: data.sessionLimit,
+    sessionOffset: data.sessionOffset,
+    sessionTotalCount: data.sessionTotalCount,
+  }
+}
+
+export async function getCampDetailChromeData(input: {
   activeOrganizationId: string
   activeTeamId: string | null
   campId: string
-}): Promise<CampDetailPageData> {
+}): Promise<CampDetailChromeData | null> {
+  const startedAt = startCampDetailTiming()
+  const logChromeTiming = (
+    status: "success" | "error",
+    outcome: string,
+    error?: string,
+    metadata?: Record<string, string | number | boolean | null | undefined>,
+  ) => {
+    logCampDetailTiming({
+      route: "/team-camps/[id]",
+      phase: "load_chrome",
+      startedAt,
+      campId: input.campId,
+      activeTeamId: input.activeTeamId,
+      status,
+      error,
+      metadata: {
+        outcome,
+        activeOrganizationId: input.activeOrganizationId,
+        ...metadata,
+      },
+    })
+  }
+  const throwChromeTimingError = (outcome: string, message: string): never => {
+    logChromeTiming("error", outcome, message)
+    throw new Error(message)
+  }
+
   if (!input.activeTeamId) {
-    return buildEmptyData()
+    logChromeTiming("success", "missing_active_team")
+    return null
   }
 
   const supabase = await createServerSupabaseClient()
@@ -338,11 +435,15 @@ export async function getCampDetailPageData(input: {
     .maybeSingle()
 
   if (campError) {
-    throw new Error(`Could not load camp detail: ${campError.message}`)
+    throwChromeTimingError(
+      "camp_query_error",
+      `Could not load camp detail: ${campError.message}`,
+    )
   }
 
   if (!campRow) {
-    return buildEmptyData()
+    logChromeTiming("success", "camp_not_found")
+    return null
   }
 
   const camp: CampRow = campRow
@@ -354,11 +455,15 @@ export async function getCampDetailPageData(input: {
     .maybeSingle()
 
   if (teamVenueError) {
-    throw new Error(`Could not load camp team venue: ${teamVenueError.message}`)
+    throwChromeTimingError(
+      "team_venue_query_error",
+      `Could not load camp team venue: ${teamVenueError.message}`,
+    )
   }
 
   if (!teamVenueRow || teamVenueRow.team_id !== input.activeTeamId) {
-    return buildEmptyData()
+    logChromeTiming("success", "team_venue_not_found")
+    return null
   }
 
   const teamVenue: CampDetailTeamVenue = teamVenueRow
@@ -371,11 +476,15 @@ export async function getCampDetailPageData(input: {
     .maybeSingle()
 
   if (venueError) {
-    throw new Error(`Could not load venue for camp detail: ${venueError.message}`)
+    throwChromeTimingError(
+      "venue_query_error",
+      `Could not load venue for camp detail: ${venueError.message}`,
+    )
   }
 
   if (!venueRow) {
-    return buildEmptyData()
+    logChromeTiming("success", "venue_not_found")
+    return null
   }
 
   const venue: VenueRow = venueRow
@@ -389,19 +498,206 @@ export async function getCampDetailPageData(input: {
     campType: camp.camp_type,
     startDate: camp.start_date,
     endDate: camp.end_date,
-    goals: camp.notes,
     isActive: camp.is_active,
   }
 
-  const { data: sessionRows, error: sessionsError } = await supabase
+  logChromeTiming("success", "loaded", undefined, {
+    teamVenueId: teamVenue.id,
+    venueId: venue.id,
+  })
+
+  return {
+    camp: detailCamp,
+    teamVenue,
+  }
+}
+
+export async function getCampDetailKpisData(input: {
+  activeTeamId: string | null
+  camp: CampDetailCamp
+}): Promise<CampDetailKpi[]> {
+  const startedAt = startCampDetailTiming()
+  const logKpiTiming = (
+    status: "success" | "error",
+    outcome: string,
+    error?: string,
+    metadata?: Record<string, string | number | boolean | null | undefined>,
+  ) => {
+    logCampDetailTiming({
+      route: "/team-camps/[id]",
+      phase: "load_kpis",
+      startedAt,
+      campId: input.camp.id,
+      activeTeamId: input.activeTeamId,
+      status,
+      error,
+      metadata: {
+        outcome,
+        ...metadata,
+      },
+    })
+  }
+  const throwKpiTimingError = (outcome: string, message: string): never => {
+    logKpiTiming("error", outcome, message)
+    throw new Error(message)
+  }
+  const supabase = await createServerSupabaseClient()
+  const {
+    count: sessionCount,
+    data: kpiSessionRows,
+    error: kpiSessionsError,
+  } = await supabase
     .from("sessions")
-    .select(SESSION_SELECT_COLUMNS)
-    .eq("camp_id", detailCamp.id)
+    .select("net_time_minutes", { count: "exact" })
+    .eq("camp_id", input.camp.id)
+
+  if (kpiSessionsError) {
+    throwKpiTimingError(
+      "kpi_sessions_query_error",
+      `Could not load camp KPI session metrics: ${kpiSessionsError.message}`,
+    )
+  }
+
+  const netTimeMinutes = ((kpiSessionRows ?? []) as CampKpiSessionRow[])
+    .map((row) => row.net_time_minutes)
+    .filter((minutes): minutes is number => typeof minutes === "number")
+
+  const kpis = buildKpis({
+    camp: input.camp,
+    netTimeMinutes,
+    totalSessions: sessionCount ?? kpiSessionRows?.length ?? 0,
+  })
+
+  logKpiTiming("success", "loaded", undefined, {
+    netTimeSessionCount: netTimeMinutes.length,
+    sessionCount: sessionCount ?? kpiSessionRows?.length ?? 0,
+  })
+
+  return kpis
+}
+
+export async function getCampDetailShellData(input: {
+  activeOrganizationId: string
+  activeTeamId: string | null
+  campId: string
+}): Promise<CampDetailShellData | null> {
+  const chromeData = await getCampDetailChromeData(input)
+
+  if (!chromeData) {
+    return null
+  }
+
+  const kpis = await getCampDetailKpisData({
+    activeTeamId: input.activeTeamId,
+    camp: chromeData.camp,
+  })
+
+  return {
+    ...chromeData,
+    kpis,
+  }
+}
+
+export async function getCampDetailSessionsTabData(input: {
+  activeTeamId: string
+  accumulatePages?: boolean
+  camp: CampDetailCamp
+  page: number
+  selectedHighlight?: TeamSessionHighlightFilter
+}): Promise<CampDetailSessionsTabData> {
+  const sessionsData = await getTeamSessionsPageData({
+    activeTeamId: input.activeTeamId,
+    accumulatePages: input.accumulatePages,
+    page: input.page,
+    selectedCampId: input.camp.id,
+    selectedHighlight: input.selectedHighlight,
+    selectedVenueId: input.camp.venueId,
+  })
+
+  return {
+    campOptions: sessionsData.campOptions,
+    currentPage: sessionsData.currentPage,
+    hasNextPage: sessionsData.hasNextPage,
+    hasPreviousPage: sessionsData.hasPreviousPage,
+    pageCount: sessionsData.pageCount,
+    selectedHighlight: sessionsData.selectedHighlight,
+    sessions: sessionsData.sessions,
+  }
+}
+
+export async function getCampDetailGoalsTabData(input: {
+  campId: string
+}): Promise<CampDetailGoalsTabData> {
+  const supabase = await createServerSupabaseClient()
+
+  const { data: campRow, error: campError } = await supabase
+    .from("camps")
+    .select("notes")
+    .eq("id", input.campId)
+    .maybeSingle()
+
+  if (campError) {
+    throw new Error(`Could not load camp goals: ${campError.message}`)
+  }
+
+  return {
+    goals: campRow?.notes ?? null,
+  }
+}
+
+export async function getCampDetailNotesTabData(input: {
+  camp: CampDetailCamp
+  sessionOffset?: number
+  teamVenue: CampDetailTeamVenue
+}): Promise<CampDetailNotesTabData> {
+  const startedAt = startCampDetailTiming()
+  const supabase = await createServerSupabaseClient()
+  const sessionOffset = normalizeNotesSessionOffset(input.sessionOffset)
+  const logNotesTiming = (
+    status: "success" | "error",
+    outcome: string,
+    error?: string,
+    metadata?: Record<string, string | number | boolean | null | undefined>,
+  ) => {
+    logCampDetailTiming({
+      route: "/team-camps/[id]",
+      phase: "load_notes",
+      startedAt,
+      campId: input.camp.id,
+      activeTeamId: input.teamVenue.team_id,
+      status,
+      error,
+      metadata: {
+        outcome,
+        sessionLimit: CAMP_NOTES_SESSION_PAGE_SIZE,
+        sessionOffset,
+        teamVenueId: input.teamVenue.id,
+        ...metadata,
+      },
+    })
+  }
+  const throwNotesTimingError = (outcome: string, message: string): never => {
+    logNotesTiming("error", outcome, message)
+    throw new Error(message)
+  }
+
+  const {
+    count: sessionTotalCount,
+    data: sessionRows,
+    error: sessionsError,
+  } = await supabase
+    .from("sessions")
+    .select(SESSION_SELECT_COLUMNS, { count: "exact" })
+    .eq("camp_id", input.camp.id)
     .order("session_date", { ascending: false })
     .order("created_at", { ascending: false })
+    .range(sessionOffset, sessionOffset + CAMP_NOTES_SESSION_PAGE_SIZE - 1)
 
   if (sessionsError) {
-    throw new Error(`Could not load camp sessions: ${sessionsError.message}`)
+    throwNotesTimingError(
+      "sessions_query_error",
+      `Could not load camp sessions for notes: ${sessionsError.message}`,
+    )
   }
 
   const sessions: SessionRow[] = sessionRows ?? []
@@ -440,21 +736,29 @@ export async function getCampDetailPageData(input: {
     ])
 
     if (setupError) {
-      throw new Error(`Could not load session setups for camp detail: ${setupError.message}`)
+      throwNotesTimingError(
+        "setups_query_error",
+        `Could not load session setups for camp detail: ${setupError.message}`,
+      )
     }
 
     if (reviewError) {
-      throw new Error(`Could not load session reviews for camp detail: ${reviewError.message}`)
+      throwNotesTimingError(
+        "reviews_query_error",
+        `Could not load session reviews for camp detail: ${reviewError.message}`,
+      )
     }
 
     if (sessionStandardMoveError) {
-      throw new Error(
+      throwNotesTimingError(
+        "standard_moves_query_error",
         `Could not load session standard moves for camp detail: ${sessionStandardMoveError.message}`,
       )
     }
 
     if (sessionWindPatternError) {
-      throw new Error(
+      throwNotesTimingError(
+        "wind_patterns_query_error",
         `Could not load session wind patterns for camp detail: ${sessionWindPatternError.message}`,
       )
     }
@@ -474,10 +778,11 @@ export async function getCampDetailPageData(input: {
         .from("team_standard_moves")
         .select(TEAM_STANDARD_MOVE_SELECT_COLUMNS)
         .in("id", standardMoveIds)
-        .eq("team_id", teamVenue.team_id)
+        .eq("team_id", input.teamVenue.team_id)
 
       if (teamStandardMoveError) {
-        throw new Error(
+        throwNotesTimingError(
+          "standard_move_names_query_error",
           `Could not load team standard moves for camp detail: ${teamStandardMoveError.message}`,
         )
       }
@@ -490,10 +795,11 @@ export async function getCampDetailPageData(input: {
         .from("team_venue_wind_patterns")
         .select(TEAM_VENUE_WIND_PATTERN_SELECT_COLUMNS)
         .in("id", windPatternIds)
-        .eq("team_venue_id", teamVenue.id)
+        .eq("team_venue_id", input.teamVenue.id)
 
       if (teamVenueWindPatternError) {
-        throw new Error(
+        throwNotesTimingError(
+          "wind_pattern_names_query_error",
           `Could not load venue wind patterns for camp detail: ${teamVenueWindPatternError.message}`,
         )
       }
@@ -547,20 +853,101 @@ export async function getCampDetailPageData(input: {
     )
   }
 
+  const totalSessions = sessionTotalCount ?? 0
+  const nextSessionOffset =
+    sessionOffset + sessions.length < totalSessions
+      ? sessionOffset + sessions.length
+      : null
+
+  const notesCards = buildNotesCards({
+    sessions,
+    setupBySessionId,
+    reviewBySessionId,
+    standardMoveNamesBySessionId,
+    windPatternNamesBySessionId,
+  })
+
+  logNotesTiming("success", "loaded", undefined, {
+    nextSessionOffset,
+    noteCardCount: notesCards.length,
+    returnedSessionCount: sessions.length,
+    sessionTotalCount: totalSessions,
+  })
+
   return {
-    camp: detailCamp,
-    teamVenue,
-    kpis: buildKpis({
-      camp: detailCamp,
-      sessions,
-    }),
-    sessions: buildSessionItems(sessions),
-    notesCards: buildNotesCards({
-      sessions,
-      setupBySessionId,
-      reviewBySessionId,
-      standardMoveNamesBySessionId,
-      windPatternNamesBySessionId,
-    }),
+    nextSessionOffset,
+    notesCards,
+    sessionLimit: CAMP_NOTES_SESSION_PAGE_SIZE,
+    sessionOffset,
+    sessionTotalCount: totalSessions,
+  }
+}
+
+export async function getCampDetailTabData(input: {
+  activeTeamId: string
+  accumulatePages?: boolean
+  camp: CampDetailCamp
+  page: number
+  notesSessionOffset?: number
+  selectedHighlight?: TeamSessionHighlightFilter
+  tab: CampDetailTab
+  teamVenue: CampDetailTeamVenue
+}): Promise<CampDetailTabPayload> {
+  const startedAt = startCampDetailTiming()
+
+  try {
+    let data: CampDetailTabPayload
+
+    if (input.tab === "sessions") {
+      data = await getCampDetailSessionsTabData(input)
+    } else if (input.tab === "goals") {
+      data = await getCampDetailGoalsTabData({
+        campId: input.camp.id,
+      })
+    } else {
+      data = await getCampDetailNotesTabData({
+        camp: input.camp,
+        sessionOffset: input.notesSessionOffset,
+        teamVenue: input.teamVenue,
+      })
+    }
+
+    logCampDetailTiming({
+      route: "/team-camps/[id]",
+      phase: "load_tab",
+      startedAt,
+      campId: input.camp.id,
+      activeTeamId: input.activeTeamId,
+      status: "success",
+      metadata: getCampDetailTabResponseTimingMetadata({
+        accumulatePages: input.accumulatePages,
+        data,
+        notesSessionOffset: input.notesSessionOffset,
+        page: input.page,
+        selectedHighlight: input.selectedHighlight,
+        tab: input.tab,
+      }),
+    })
+
+    return data
+  } catch (error) {
+    logCampDetailTiming({
+      route: "/team-camps/[id]",
+      phase: "load_tab",
+      startedAt,
+      campId: input.camp.id,
+      activeTeamId: input.activeTeamId,
+      status: "error",
+      error: getCampDetailTimingErrorMessage(error),
+      metadata: getCampDetailTabRequestTimingMetadata({
+        accumulatePages: input.accumulatePages,
+        notesSessionOffset: input.notesSessionOffset,
+        page: input.page,
+        selectedHighlight: input.selectedHighlight,
+        tab: input.tab,
+      }),
+    })
+
+    throw error
   }
 }

@@ -6,10 +6,6 @@ import { redirect } from "next/navigation"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canDeleteCamps, canManageTeamStructure } from "@/lib/auth/capabilities"
 import { resolveOrganizationWriteEntitlement } from "@/lib/billing/entitlements"
-import {
-  NAVIGATION_SCOPE_ORG_QUERY_KEY,
-  NAVIGATION_SCOPE_TEAM_QUERY_KEY,
-} from "@/lib/navigation/constants"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { scopeFormInputSchema } from "@/lib/validation/navigation"
 import {
@@ -18,6 +14,15 @@ import {
   updateCampGoalsInputSchema,
   updateCampInputSchema,
 } from "@/lib/validation/camps"
+import {
+  buildTeamCampsRedirectPath,
+  resolveCampGoalsActionRedirect,
+} from "@/features/camps/detail-route-state.mjs"
+import {
+  logCampDetailTiming,
+  startCampDetailTiming,
+  type CampDetailTimingStatus,
+} from "@/features/camps/detail-timing"
 
 function getFormString(formData: FormData, key: string): string | undefined {
   const value = formData.get(key)
@@ -45,6 +50,42 @@ function parseOptionalPage(value: string | undefined): number | undefined {
   }
 
   return Math.floor(parsed)
+}
+
+type CampActionScope = {
+  scopeOrgId?: string
+  scopeTeamId?: string
+  scopeVenueId?: string
+  scopeTab?: string
+  scopePage?: number
+}
+
+function logCampActionTiming(input: {
+  campId?: string | null
+  error?: string
+  metadata?: Record<string, string | number | boolean | null | undefined>
+  outcome: string
+  phase: string
+  scope: CampActionScope
+  startedAt: number
+  status: CampDetailTimingStatus
+}): void {
+  logCampDetailTiming({
+    route: "/team-camps/[id]",
+    phase: input.phase,
+    startedAt: input.startedAt,
+    campId: input.campId,
+    activeTeamId: input.scope.scopeTeamId ?? null,
+    status: input.status,
+    error: input.error,
+    metadata: {
+      activeOrganizationId: input.scope.scopeOrgId ?? null,
+      outcome: input.outcome,
+      scopeTab: input.scope.scopeTab,
+      scopePage: input.scope.scopePage,
+      ...input.metadata,
+    },
+  })
 }
 
 function getScopeFromFormData(formData: FormData): {
@@ -77,91 +118,6 @@ function getScopeFromFormData(formData: FormData): {
     scopeTab,
     scopePage,
   }
-}
-
-function buildTeamCampsRedirectPath(input: {
-  status?: "created" | "updated" | "deleted"
-  error?:
-    | "invalid_input"
-    | "forbidden"
-    | "create_failed"
-    | "update_failed"
-    | "delete_failed"
-    | "plan_limit_reached"
-    | "payment_required"
-  scopeOrgId?: string
-  scopeTeamId?: string
-  scopeVenueId?: string
-  scopePage?: number
-}): string {
-  const params = new URLSearchParams()
-
-  if (input.status) {
-    params.set("status", input.status)
-  }
-
-  if (input.error) {
-    params.set("error", input.error)
-  }
-
-  if (input.scopeOrgId) {
-    params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.scopeOrgId)
-  }
-
-  if (input.scopeTeamId) {
-    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scopeTeamId)
-  }
-
-  if (input.scopeVenueId) {
-    params.set("venue", input.scopeVenueId)
-  }
-
-  if (input.scopePage && input.scopePage > 1) {
-    params.set("page", String(input.scopePage))
-  }
-
-  const query = params.toString()
-  return query.length > 0 ? `/team-camps?${query}` : "/team-camps"
-}
-
-function buildCampDetailRedirectPath(input: {
-  campId: string
-  status?: "goals_updated"
-  error?: "invalid_input" | "forbidden" | "update_failed"
-  scopeOrgId?: string
-  scopeTeamId?: string
-  scopeTab?: string
-  scopePage?: number
-}): string {
-  const params = new URLSearchParams()
-
-  if (input.status) {
-    params.set("status", input.status)
-  }
-
-  if (input.error) {
-    params.set("error", input.error)
-  }
-
-  if (input.scopeOrgId) {
-    params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.scopeOrgId)
-  }
-
-  if (input.scopeTeamId) {
-    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scopeTeamId)
-  }
-
-  if (input.scopeTab) {
-    params.set("tab", input.scopeTab)
-  }
-
-  if (input.scopePage && input.scopePage > 1) {
-    params.set("page", String(input.scopePage))
-  }
-
-  const query = params.toString()
-  const basePath = `/team-camps/${input.campId}`
-  return query.length > 0 ? `${basePath}?${query}` : basePath
 }
 
 async function ensureTeamVenueBelongsToScope(input: {
@@ -493,16 +449,30 @@ export async function deleteCampAction(formData: FormData): Promise<void> {
 }
 
 export async function updateCampGoalsAction(formData: FormData): Promise<void> {
+  const startedAt = startCampDetailTiming()
   const context = await requireAuthenticatedAccessContext()
   const scope = getScopeFromFormData(formData)
   const campId = getFormString(formData, "campId")
+  const logTiming = (
+    status: CampDetailTimingStatus,
+    outcome: string,
+    error?: string,
+  ) => {
+    logCampActionTiming({
+      phase: "save_camp_goals",
+      startedAt,
+      scope,
+      campId,
+      status,
+      outcome,
+      error,
+    })
+  }
 
   if (!campId || !scope.scopeOrgId || !scope.scopeTeamId) {
+    logTiming("error", "missing_required")
     redirect(
-      buildTeamCampsRedirectPath({
-        error: "invalid_input",
-        ...scope,
-      }),
+      resolveCampGoalsActionRedirect({ outcome: "missing_required", campId, ...scope }),
     )
   }
 
@@ -512,12 +482,9 @@ export async function updateCampGoalsAction(formData: FormData): Promise<void> {
   })
 
   if (!parsedInput.success) {
+    logTiming("error", "invalid_input")
     redirect(
-      buildCampDetailRedirectPath({
-        campId,
-        error: "invalid_input",
-        ...scope,
-      }),
+      resolveCampGoalsActionRedirect({ outcome: "invalid_input", campId, ...scope }),
     )
   }
 
@@ -528,10 +495,11 @@ export async function updateCampGoalsAction(formData: FormData): Promise<void> {
       teamId: scope.scopeTeamId,
     })
   ) {
+    logTiming("error", "forbidden")
     redirect(
-      buildCampDetailRedirectPath({
+      resolveCampGoalsActionRedirect({
+        outcome: "forbidden",
         campId: parsedInput.data.campId,
-        error: "forbidden",
         ...scope,
       }),
     )
@@ -543,10 +511,11 @@ export async function updateCampGoalsAction(formData: FormData): Promise<void> {
   })
 
   if (!campBelongsToScope) {
+    logTiming("error", "missing_camp")
     redirect(
-      buildCampDetailRedirectPath({
+      resolveCampGoalsActionRedirect({
+        outcome: "missing_camp",
         campId: parsedInput.data.campId,
-        error: "invalid_input",
         ...scope,
       }),
     )
@@ -562,10 +531,11 @@ export async function updateCampGoalsAction(formData: FormData): Promise<void> {
     .eq("id", parsedInput.data.campId)
 
   if (updateError) {
+    logTiming("error", "update_failed", updateError.message)
     redirect(
-      buildCampDetailRedirectPath({
+      resolveCampGoalsActionRedirect({
+        outcome: "update_failed",
         campId: parsedInput.data.campId,
-        error: "update_failed",
         ...scope,
       }),
     )
@@ -574,10 +544,22 @@ export async function updateCampGoalsAction(formData: FormData): Promise<void> {
   revalidatePath("/team-camps")
   revalidatePath(`/team-camps/${parsedInput.data.campId}`)
 
+  logCampActionTiming({
+    phase: "save_camp_goals",
+    startedAt,
+    scope,
+    campId: parsedInput.data.campId,
+    status: "success",
+    outcome: "saved",
+    metadata: {
+      hasGoals: normalizedGoals.length > 0,
+    },
+  })
+
   redirect(
-    buildCampDetailRedirectPath({
+    resolveCampGoalsActionRedirect({
+      outcome: "saved",
       campId: parsedInput.data.campId,
-      status: "goals_updated",
       ...scope,
     }),
   )

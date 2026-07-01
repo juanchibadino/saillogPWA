@@ -1,4 +1,9 @@
 import type { Database } from "@/types/database"
+import type {
+  TeamSessionCampOption,
+  TeamSessionHighlightFilter,
+  TeamSessionListItem,
+} from "@/features/sessions/data"
 
 type CampRow = Database["public"]["Tables"]["camps"]["Row"]
 type TeamVenueRow = Database["public"]["Tables"]["team_venues"]["Row"]
@@ -15,7 +20,6 @@ export type CampDetailCamp = {
   campType: CampRow["camp_type"]
   startDate: CampRow["start_date"]
   endDate: CampRow["end_date"]
-  goals: CampRow["notes"]
   isActive: CampRow["is_active"]
 }
 
@@ -25,14 +29,6 @@ export type CampDetailKpi = {
   label: string
   value: string
   note: string
-}
-
-export type CampDetailSessionItem = {
-  id: string
-  sessionDateLabel: string
-  sessionTypeLabel: string
-  durationLabel: string
-  highlightedByCoach: boolean
 }
 
 export type CampDetailNotesCard = {
@@ -46,10 +42,42 @@ export type CampDetailNotesCard = {
   windPattern: string | null
 }
 
-export type CampDetailPageData = {
-  camp: CampDetailCamp | null
-  teamVenue: CampDetailTeamVenue | null
-  kpis: CampDetailKpi[]
-  sessions: CampDetailSessionItem[]
-  notesCards: CampDetailNotesCard[]
+export type CampDetailChromeData = {
+  camp: CampDetailCamp
+  teamVenue: CampDetailTeamVenue
 }
+
+export type CampDetailShellData = CampDetailChromeData & {
+  kpis: CampDetailKpi[]
+}
+
+export type CampDetailSessionsTabData = {
+  sessions: TeamSessionListItem[]
+  campOptions: TeamSessionCampOption[]
+  currentPage: number
+  pageCount: number
+  hasPreviousPage: boolean
+  hasNextPage: boolean
+  selectedHighlight?: TeamSessionHighlightFilter
+}
+
+export type CampDetailGoalsTabData = {
+  goals: CampRow["notes"]
+}
+
+export type CampDetailNotesTabData = {
+  nextSessionOffset: number | null
+  notesCards: CampDetailNotesCard[]
+  sessionLimit: number
+  sessionOffset: number
+  sessionTotalCount: number
+}
+
+export type CampDetailTabDataByTab = {
+  sessions: CampDetailSessionsTabData
+  goals: CampDetailGoalsTabData
+  notes: CampDetailNotesTabData
+}
+
+export type CampDetailTabPayload =
+  CampDetailTabDataByTab[keyof CampDetailTabDataByTab]

@@ -1,8 +1,22 @@
+import { Suspense } from "react"
+
 import { CampDetailTabsClient } from "@/features/camps/camp-detail-tabs-client"
 import { CampsFeedback } from "@/features/camps/camps-feedback"
-import { getCampDetailPageData } from "@/features/camps/detail-data"
-import { CAMP_DETAIL_TABS } from "@/features/camps/navigation"
-import { getTeamSessionsPageData } from "@/features/sessions/data"
+import { Badge } from "@/components/ui/badge"
+import { CampDetailDeferredContentSkeleton } from "@/components/shared/page-skeletons"
+import {
+  getCampDetailChromeData,
+  getCampDetailKpisData,
+  getCampDetailTabData,
+} from "@/features/camps/detail-data"
+import type {
+  CampDetailCamp,
+  CampDetailKpi,
+  CampDetailTab,
+  CampDetailTabPayload,
+} from "@/features/camps/detail-types"
+import type { TeamSessionHighlightFilter } from "@/features/sessions/data"
+import { resolveCampDetailRouteRequest } from "@/features/camps/detail-route-state.mjs"
 import { resolveTeamSessionsListRequest } from "@/features/sessions/list-route-state.mjs"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import {
@@ -19,20 +33,9 @@ type CampDetailSearchParams = Promise<
 >
 
 type CampDetailParams = Promise<{ id: string }>
-
-type CampDetailTab = (typeof CAMP_DETAIL_TABS)[number]
-
-const DEFAULT_TAB: CampDetailTab = "sessions"
-
-function resolveTab(value: string | undefined): CampDetailTab {
-  if (!value) {
-    return DEFAULT_TAB
-  }
-
-  return CAMP_DETAIL_TABS.includes(value as CampDetailTab)
-    ? (value as CampDetailTab)
-    : DEFAULT_TAB
-}
+type ResolvedCampDetailScope = NonNullable<
+  Awaited<ReturnType<typeof resolveNavigationScope>>["scope"]
+>
 
 function getStatusMessage(status: string | undefined): string | null {
   if (status === "goals_updated") {
@@ -86,8 +89,41 @@ function getErrorMessage(error: string | undefined): string | null {
   return null
 }
 
-function formatCampTypeLabel(value: "training" | "regatta" | "mixed"): string {
-  return value.charAt(0).toUpperCase() + value.slice(1)
+async function CampDetailDeferredContent(input: {
+  canManageGoals: boolean
+  canManageSessions: boolean
+  camp: CampDetailCamp
+  initialSessionHighlight?: TeamSessionHighlightFilter
+  initialSessionLoadMore?: boolean
+  initialSessionPage: number
+  initialTabDataPromise: Promise<CampDetailTabPayload>
+  kpisPromise: Promise<CampDetailKpi[]>
+  scope: ResolvedCampDetailScope
+  selectedTab: CampDetailTab
+}) {
+  const [kpis, initialTabData] = await Promise.all([
+    input.kpisPromise,
+    input.initialTabDataPromise,
+  ])
+
+  return (
+    <CampDetailTabsClient
+      initialTab={input.selectedTab}
+      initialTabData={initialTabData}
+      initialSessionHighlight={input.initialSessionHighlight}
+      initialSessionLoadMore={input.initialSessionLoadMore}
+      initialSessionPage={input.initialSessionPage}
+      kpis={kpis}
+      campName={input.camp.name}
+      venueId={input.camp.venueId}
+      venueName={input.camp.venueName}
+      venueLocation={input.camp.venueLocation}
+      canManageSessions={input.canManageSessions}
+      canManageGoals={input.canManageGoals}
+      scope={input.scope}
+      campId={input.camp.id}
+    />
+  )
 }
 
 export default async function CampDetailPage({
@@ -103,15 +139,21 @@ export default async function CampDetailPage({
 
   const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
-  const selectedTab = resolveTab(getSingleSearchParamValue(resolvedSearchParams.tab))
+  const pageParam = getSingleSearchParamValue(resolvedSearchParams.page)
   const {
-    requestedHighlight,
-    requestedLoadMoreMode,
+    requestedNotesOffset,
     requestedPage,
-  } = resolveTeamSessionsListRequest({
+    selectedTab: resolvedSelectedTab,
+  } = resolveCampDetailRouteRequest({
+    notesOffsetParam: getSingleSearchParamValue(resolvedSearchParams.notesOffset),
+    pageParam,
+    tabParam: getSingleSearchParamValue(resolvedSearchParams.tab),
+  })
+  const selectedTab = resolvedSelectedTab as CampDetailTab
+  const { requestedHighlight, requestedLoadMoreMode } = resolveTeamSessionsListRequest({
     highlightParam: getSingleSearchParamValue(resolvedSearchParams.highlight),
     loadMoreParam: getSingleSearchParamValue(resolvedSearchParams.loadMore),
-    pageParam: getSingleSearchParamValue(resolvedSearchParams.page),
+    pageParam,
   })
 
   const statusMessage = getStatusMessage(status)
@@ -152,15 +194,13 @@ export default async function CampDetailPage({
 
   const activeTeamId = scope.activeTeamId
 
-  const detailData = await getCampDetailPageData({
+  const detailData = await getCampDetailChromeData({
     activeOrganizationId: scope.activeOrgId,
     activeTeamId,
     campId: resolvedParams.id,
   })
 
-  const camp = detailData.camp
-
-  if (!camp) {
+  if (!detailData) {
     return (
       <div className="space-y-6">
         <CampsFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
@@ -174,6 +214,7 @@ export default async function CampDetailPage({
     )
   }
 
+  const camp = detailData.camp
   const canManageGoals = canManageTeamStructure({
     context,
     organizationId: scope.activeOrgId,
@@ -184,47 +225,48 @@ export default async function CampDetailPage({
     organizationId: scope.activeOrgId,
     teamId: activeTeamId,
   })
-  const sessionListData = await getTeamSessionsPageData({
+  const kpisPromise = getCampDetailKpisData({
     activeTeamId,
-    selectedVenueId: camp.venueId,
-    selectedCampId: camp.id,
-    selectedHighlight: requestedHighlight,
-    page: requestedPage,
+    camp,
+  })
+  const initialTabDataPromise = getCampDetailTabData({
+    activeTeamId,
     accumulatePages: requestedLoadMoreMode,
+    camp,
+    notesSessionOffset: requestedNotesOffset,
+    page: requestedPage,
+    selectedHighlight: requestedHighlight,
+    tab: selectedTab,
+    teamVenue: detailData.teamVenue,
   })
 
   return (
     <div className="space-y-6">
-      <header className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">{camp.name}</h1>
-        <p className="text-sm text-muted-foreground">
-          {camp.venueName} — {camp.venueLocation} · {formatCampTypeLabel(camp.campType)} camp
-        </p>
+      <header className="flex flex-wrap items-center gap-2 md:gap-3">
+        <h1 className="hidden text-2xl font-semibold tracking-tight md:block">
+          {camp.name}
+        </h1>
+        <Badge variant="secondary" className="max-w-full truncate">
+          {camp.venueLocation}
+        </Badge>
       </header>
 
       <CampsFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
 
-      <CampDetailTabsClient
-        initialTab={selectedTab}
-        kpis={detailData.kpis}
-        sessions={sessionListData.sessions}
-        campOptions={sessionListData.campOptions}
-        sessionCurrentPage={sessionListData.currentPage}
-        sessionPageCount={sessionListData.pageCount}
-        hasPreviousSessionPage={sessionListData.hasPreviousPage}
-        hasNextSessionPage={sessionListData.hasNextPage}
-        selectedSessionHighlight={sessionListData.selectedHighlight}
-        campName={camp.name}
-        venueId={camp.venueId}
-        venueName={camp.venueName}
-        venueLocation={camp.venueLocation}
-        goals={camp.goals}
-        notesCards={detailData.notesCards}
-        canManageSessions={canManageSessions}
-        canManageGoals={canManageGoals}
-        scope={scope}
-        campId={camp.id}
-      />
+      <Suspense fallback={<CampDetailDeferredContentSkeleton selectedTab={selectedTab} />}>
+        <CampDetailDeferredContent
+          canManageGoals={canManageGoals}
+          canManageSessions={canManageSessions}
+          camp={camp}
+          initialSessionHighlight={requestedHighlight}
+          initialSessionLoadMore={requestedLoadMoreMode}
+          initialSessionPage={requestedPage}
+          initialTabDataPromise={initialTabDataPromise}
+          kpisPromise={kpisPromise}
+          scope={scope}
+          selectedTab={selectedTab}
+        />
+      </Suspense>
     </div>
   )
 }

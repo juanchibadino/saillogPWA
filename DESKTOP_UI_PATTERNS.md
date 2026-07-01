@@ -1,7 +1,10 @@
-# Desktop Table UI Patterns
+# Desktop UI Patterns
 
-Source of truth for Sailog desktop table screens. Current reference:
-`/team-sessions`, implemented by:
+Source of truth for Sailog desktop operational screens. This file replaces the
+older `TABLE_DESKTOP_PATTERNS_UI.md` name so desktop guidance can include
+headers, breadcrumbs, loading surfaces, and tables in one place.
+
+Primary table reference: `/team-sessions`, implemented by:
 
 - `app/(app)/team-sessions/page.tsx`
 - `features/sessions/data.ts`
@@ -9,6 +12,34 @@ Source of truth for Sailog desktop table screens. Current reference:
 - `features/sessions/team-sessions-toolbar.tsx`
 
 Use this with `MOBILE_CARD_LIST_UI.md`: desktop uses tables, mobile uses cards.
+
+## Header And Breadcrumbs
+
+- Desktop app chrome owns route context. Use `components/site-header.tsx` for
+  parent breadcrumbs instead of duplicating that context inside page content.
+- Detail routes must show the stable parent chain, not a generic section label.
+  Team Camp detail uses `[Team Name] > [Venue Name] > [Camp Name]`.
+- The current breadcrumb item should be the object name, not a category label.
+  Parent breadcrumbs should be links when the destination is known.
+- Do not render placeholders such as `Venue` as final breadcrumb values on
+  detail routes. Wait for the scoped breadcrumb payload or render the generic
+  section title until real parent data exists.
+- Keep page-level H1 focused on the current object. For Team Camp detail,
+  desktop content uses `[Camp Name]` and a badge with `[Location]`.
+- Supporting badges should be compact and factual. Avoid repeating the same
+  parent context already shown in the desktop breadcrumb.
+
+## Loading And Immediate Chrome
+
+- Headers and titles should appear as early as possible, before slower detail
+  payloads when the route can safely render static chrome.
+- Defer KPIs, tables/lists, and tab panels behind `Suspense` when those payloads
+  require scoped data.
+- Skeletons should keep the desktop dimensions of the final surface: table
+  headers, row grid tracks, action columns, pagination, tab rows, and summary
+  card grids should not shift after data arrives.
+- For secondary data loads inside an already mounted route, keep the existing
+  table/list visible and use one local loading state.
 
 ## Structure
 
