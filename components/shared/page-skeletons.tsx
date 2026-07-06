@@ -133,162 +133,357 @@ export function TeamHomePageSkeleton() {
   )
 }
 
-export function TeamCampsPageSkeleton() {
+const TEAM_CAMPS_TABLE_HEADERS = [
+  "Camp",
+  "Venue",
+  "Type",
+  "Date Range",
+  "# Sessions",
+  "Status",
+]
+const TEAM_CAMPS_TABLE_GRID_CLASS =
+  "grid grid-cols-[1.2fr_1fr_0.7fr_1fr_0.65fr_0.65fr_3rem] items-center gap-4"
+
+export function TeamCampsChromeSkeleton() {
   return (
-    <div className="space-y-6">
+    <section className="flex items-center justify-between gap-3">
+      <h1 className="min-w-0 text-2xl font-semibold tracking-tight md:hidden">
+        Camps
+      </h1>
+      <h2 className="hidden text-lg font-semibold md:block">Camps</h2>
+
       <div className="flex items-center justify-end gap-2">
-        <Skeleton className="h-8 w-20" />
-        <Skeleton className="h-8 w-20" />
+        <button
+          type="button"
+          disabled
+          className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-secondary text-secondary-foreground opacity-70 md:hidden"
+          aria-label="Loading filters"
+        >
+          <Skeleton className="size-4" />
+        </button>
+
+        <div className="hidden items-center justify-end gap-2 md:flex">
+          <Skeleton className="h-8 w-28" />
+          <Skeleton className="h-8 w-24" />
+          <Skeleton className="h-8 w-28" />
+          <button
+            type="button"
+            disabled
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium text-muted-foreground opacity-70"
+          >
+            <PlusIcon className="size-4" />
+            New
+          </button>
+        </div>
       </div>
 
-      <div className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <Skeleton className="h-6 w-20" />
-        </div>
+      <button
+        type="button"
+        disabled
+        className="mobile-floating-action inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground opacity-70 shadow-lg shadow-black/20 md:hidden"
+        aria-label="Loading new camp action"
+      >
+        <PlusIcon className="size-6" />
+      </button>
+    </section>
+  )
+}
 
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, index) => (
-            <div key={`team-camps-mobile-row-${index}`} className="rounded-xl border bg-card p-3">
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-40" />
-                <Skeleton className="h-3 w-28" />
-                <Skeleton className="h-3 w-52" />
-              </div>
+export function TeamCampsResultsSkeleton() {
+  return (
+    <section className="space-y-4">
+      <div className="space-y-2 md:hidden">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <GradientCard key={`team-camps-mobile-row-${index}`} className="p-3">
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-3 w-28" />
+              <Skeleton className="h-3 w-52" />
+              <Skeleton className="h-3 w-44" />
+            </div>
+          </GradientCard>
+        ))}
+        <div className="pb-4 pt-3">
+          <Skeleton className="h-11 w-full" />
+        </div>
+      </div>
+
+      <GradientCard className="hidden overflow-hidden p-0 md:block">
+        <div
+          className={`${TEAM_CAMPS_TABLE_GRID_CLASS} bg-muted/40 px-4 py-3 text-sm font-medium text-muted-foreground`}
+        >
+          {TEAM_CAMPS_TABLE_HEADERS.map((header) => (
+            <span key={`team-camps-header-${header}`} className="truncate">
+              {header}
+            </span>
+          ))}
+          <span aria-hidden="true" />
+        </div>
+        <div className="divide-y divide-border">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div
+              key={`team-camps-desktop-row-${index}`}
+              className={`${TEAM_CAMPS_TABLE_GRID_CLASS} min-h-12 px-4 py-3`}
+            >
+              <Skeleton className="h-4 w-full max-w-32" />
+              <Skeleton className="h-4 w-full max-w-28" />
+              <Skeleton className="h-4 w-full max-w-16" />
+              <Skeleton className="h-4 w-full max-w-28" />
+              <Skeleton className="h-4 w-full max-w-12" />
+              <Skeleton className="h-4 w-full max-w-16" />
+              <Skeleton className="ml-auto h-8 w-8" />
             </div>
           ))}
         </div>
+      </GradientCard>
 
-        <div className="hidden rounded-xl border bg-card p-4 md:block">
-          <div className="space-y-3">
-            <Skeleton className="h-10 w-full" />
-            {Array.from({ length: 6 }).map((_, index) => (
-              <Skeleton key={`team-camps-row-${index}`} className="h-10 w-full" />
-            ))}
-          </div>
-        </div>
+      <div className="hidden items-center gap-1 md:flex">
+        <Skeleton className="h-9 w-24" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-16" />
       </div>
+    </section>
+  )
+}
+
+export function TeamCampsPageSkeleton() {
+  return (
+    <div className="space-y-6">
+      <TeamCampsChromeSkeleton />
+      <TeamCampsResultsSkeleton />
     </div>
   )
 }
 
-export function TeamSessionsPageSkeleton() {
-  const tableHeaders = [
-    "Date",
-    "Type",
-    "Camp",
-    "Venue",
-    "Net Time",
-    "Highlight",
-  ]
-  const tableGridClass =
-    "grid grid-cols-[1.1fr_0.7fr_1fr_1fr_0.75fr_0.75fr_3rem] items-center gap-4"
+const TEAM_SESSIONS_TABLE_HEADERS = [
+  "Date",
+  "Type",
+  "Camp",
+  "Venue",
+  "Net Time",
+  "Highlight",
+]
+const TEAM_SESSIONS_TABLE_GRID_CLASS =
+  "grid grid-cols-[1.1fr_0.7fr_1fr_1fr_0.75fr_0.75fr_3rem] items-center gap-4"
 
+export function TeamSessionsChromeSkeleton() {
   return (
-    <div className="space-y-6">
-      <section className="space-y-4">
-        <div className="flex items-center justify-end gap-2 md:justify-between">
-          <div className="flex w-full items-center justify-between gap-3 md:hidden">
-            <Skeleton className="h-8 w-28" />
-            <Skeleton className="h-11 w-11" />
-          </div>
+    <section className="flex items-center justify-between gap-3">
+      <h1 className="min-w-0 text-2xl font-semibold tracking-tight md:hidden">
+        Sessions
+      </h1>
+      <h2 className="hidden text-lg font-semibold md:block">Sessions</h2>
 
-          <h2 className="hidden text-lg font-semibold md:block">Sessions</h2>
+      <div className="flex items-center justify-end gap-2">
+        <button
+          type="button"
+          disabled
+          className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-secondary text-secondary-foreground opacity-70 md:hidden"
+          aria-label="Loading filters"
+        >
+          <Skeleton className="size-4" />
+        </button>
 
-          <div className="hidden items-center justify-end gap-2 md:flex">
-            <Skeleton className="h-8 w-28" />
-            <Skeleton className="h-8 w-24" />
-            <Skeleton className="h-8 w-32" />
-            <Skeleton className="h-8 w-28" />
-          </div>
+        <div className="hidden items-center justify-end gap-2 md:flex">
+          <Skeleton className="h-8 w-28" />
+          <Skeleton className="h-8 w-24" />
+          <Skeleton className="h-8 w-32" />
+          <button
+            type="button"
+            disabled
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium text-muted-foreground opacity-70"
+          >
+            <PlusIcon className="size-4" />
+            New
+          </button>
         </div>
+      </div>
 
-        <div className="space-y-2 md:hidden">
-          {Array.from({ length: 5 }).map((_, index) => (
-            <GradientCard key={`team-sessions-mobile-row-${index}`} className="p-3">
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-36" />
-                <Skeleton className="h-3 w-44" />
-                <Skeleton className="h-3 w-52" />
-              </div>
-            </GradientCard>
+      <button
+        type="button"
+        disabled
+        className="mobile-floating-action inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground opacity-70 shadow-lg shadow-black/20 md:hidden"
+        aria-label="Loading new session action"
+      >
+        <PlusIcon className="size-6" />
+      </button>
+    </section>
+  )
+}
+
+export function TeamSessionsResultsSkeleton() {
+  return (
+    <section className="space-y-4">
+      <div className="space-y-2 md:hidden">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <GradientCard key={`team-sessions-mobile-row-${index}`} className="p-3">
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-36" />
+              <Skeleton className="h-3 w-44" />
+              <Skeleton className="h-3 w-52" />
+            </div>
+          </GradientCard>
+        ))}
+      </div>
+
+      <GradientCard className="hidden overflow-hidden p-0 md:block">
+        <div
+          className={`${TEAM_SESSIONS_TABLE_GRID_CLASS} bg-muted/40 px-4 py-3 text-sm font-medium text-muted-foreground`}
+        >
+          {TEAM_SESSIONS_TABLE_HEADERS.map((header) => (
+            <span key={`team-sessions-header-${header}`} className="truncate">
+              {header}
+            </span>
+          ))}
+          <span aria-hidden="true" />
+        </div>
+        <div className="divide-y divide-border">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div
+              key={`team-sessions-desktop-row-${index}`}
+              className={`${TEAM_SESSIONS_TABLE_GRID_CLASS} min-h-12 px-4 py-3`}
+            >
+              <Skeleton className="h-4 w-full max-w-24" />
+              <Skeleton className="h-4 w-full max-w-16" />
+              <Skeleton className="h-4 w-full max-w-32" />
+              <Skeleton className="h-4 w-full max-w-28" />
+              <Skeleton className="h-4 w-full max-w-20" />
+              <Skeleton className="h-4 w-full max-w-12" />
+              <Skeleton className="ml-auto h-8 w-8" />
+            </div>
           ))}
         </div>
+      </GradientCard>
 
-        <GradientCard className="hidden overflow-hidden p-0 md:block">
-          <div
-            className={`${tableGridClass} bg-muted/40 px-4 py-3 text-sm font-medium text-muted-foreground`}
-          >
-            {tableHeaders.map((header) => (
-              <span key={`team-sessions-header-${header}`} className="truncate">
-                {header}
-              </span>
-            ))}
-            <span aria-hidden="true" />
-          </div>
-          <div className="divide-y divide-border">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <div
-                key={`team-sessions-desktop-row-${index}`}
-                className={`${tableGridClass} min-h-12 px-4 py-3`}
-              >
-                <Skeleton className="h-4 w-full max-w-24" />
-                <Skeleton className="h-4 w-full max-w-16" />
-                <Skeleton className="h-4 w-full max-w-32" />
-                <Skeleton className="h-4 w-full max-w-28" />
-                <Skeleton className="h-4 w-full max-w-20" />
-                <Skeleton className="h-4 w-full max-w-12" />
-                <Skeleton className="ml-auto h-8 w-8" />
-              </div>
-            ))}
-          </div>
-        </GradientCard>
+      <div className="hidden items-center gap-1 md:flex">
+        <Skeleton className="h-9 w-24" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-16" />
+      </div>
+    </section>
+  )
+}
 
-        <div className="hidden items-center gap-1 md:flex">
-          <Skeleton className="h-9 w-24" />
-          <Skeleton className="h-9 w-9" />
-          <Skeleton className="h-9 w-9" />
-          <Skeleton className="h-9 w-9" />
-          <Skeleton className="h-9 w-16" />
-        </div>
-      </section>
+export function TeamSessionsPageSkeleton() {
+  return (
+    <div className="space-y-6">
+      <TeamSessionsChromeSkeleton />
+      <TeamSessionsResultsSkeleton />
     </div>
+  )
+}
+
+const TEAM_VENUES_TABLE_HEADERS = ["Venue", "Location", "# Camps"]
+const TEAM_VENUES_TABLE_GRID_CLASS =
+  "grid grid-cols-[1.2fr_1fr_0.7fr_3rem] items-center gap-4"
+
+export function TeamVenuesChromeSkeleton() {
+  return (
+    <section className="flex items-center justify-between gap-3">
+      <h1 className="min-w-0 text-2xl font-semibold tracking-tight md:hidden">
+        Venues
+      </h1>
+      <h2 className="hidden text-lg font-semibold md:block">Venues</h2>
+
+      <div className="flex shrink-0 items-center justify-end gap-2 md:w-auto">
+        <button
+          type="button"
+          disabled
+          className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-secondary text-secondary-foreground opacity-70 md:hidden"
+          aria-label="Loading status filter"
+        >
+          <Skeleton className="size-4" />
+        </button>
+
+        <div className="hidden items-center justify-end gap-2 md:flex">
+          <Skeleton className="h-8 w-28" />
+          <button
+            type="button"
+            disabled
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium text-muted-foreground opacity-70"
+          >
+            <PlusIcon className="size-4" />
+            New
+          </button>
+        </div>
+
+        <button
+          type="button"
+          disabled
+          className="mobile-floating-action inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground opacity-70 shadow-lg shadow-black/20 md:hidden"
+          aria-label="Loading new team venue action"
+        >
+          <PlusIcon className="size-6" />
+        </button>
+      </div>
+    </section>
+  )
+}
+
+export function TeamVenuesResultsSkeleton() {
+  return (
+    <section className="space-y-4">
+      <div className="space-y-2 md:hidden">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <GradientCard key={`team-venues-mobile-row-${index}`} className="p-3">
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-3 w-32" />
+              <Skeleton className="h-3 w-24" />
+            </div>
+          </GradientCard>
+        ))}
+        <div className="pb-4 pt-3">
+          <Skeleton className="h-11 w-full" />
+        </div>
+      </div>
+
+      <GradientCard className="hidden overflow-hidden p-0 md:block">
+        <div
+          className={`${TEAM_VENUES_TABLE_GRID_CLASS} bg-muted/40 px-4 py-3 text-sm font-medium text-muted-foreground`}
+        >
+          {TEAM_VENUES_TABLE_HEADERS.map((header) => (
+            <span key={`team-venues-header-${header}`} className="truncate">
+              {header}
+            </span>
+          ))}
+          <span aria-hidden="true" />
+        </div>
+        <div className="divide-y divide-border">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div
+              key={`team-venues-desktop-row-${index}`}
+              className={`${TEAM_VENUES_TABLE_GRID_CLASS} min-h-12 px-4 py-3`}
+            >
+              <Skeleton className="h-4 w-full max-w-32" />
+              <Skeleton className="h-4 w-full max-w-28" />
+              <Skeleton className="h-4 w-full max-w-12" />
+              <Skeleton className="ml-auto h-8 w-8" />
+            </div>
+          ))}
+        </div>
+      </GradientCard>
+
+      <div className="hidden items-center gap-1 md:flex">
+        <Skeleton className="h-9 w-24" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-16" />
+      </div>
+    </section>
   )
 }
 
 export function TeamVenuesPageSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-end gap-2">
-        <Skeleton className="h-8 w-20" />
-        <Skeleton className="h-8 w-20" />
-      </div>
-
-      <div className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <Skeleton className="h-6 w-20" />
-        </div>
-
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, index) => (
-            <div key={`team-venues-mobile-row-${index}`} className="rounded-xl border bg-card p-3">
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-40" />
-                <Skeleton className="h-3 w-32" />
-                <Skeleton className="h-3 w-24" />
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="hidden rounded-xl border bg-card p-4 md:block">
-          <div className="space-y-3">
-            <Skeleton className="h-10 w-full" />
-            {Array.from({ length: 6 }).map((_, index) => (
-              <Skeleton key={`team-venues-row-${index}`} className="h-10 w-full" />
-            ))}
-          </div>
-        </div>
-      </div>
+      <TeamVenuesChromeSkeleton />
+      <TeamVenuesResultsSkeleton />
     </div>
   )
 }
@@ -808,7 +1003,7 @@ export function CampDetailSummaryCardsSkeleton() {
   return (
     <>
       <GradientCard className="overflow-hidden p-0 md:hidden">
-        <div className="divide-y divide-border px-6 py-3">
+        <div className="divide-y divide-border px-6 py-8">
           {CAMP_DETAIL_SUMMARY_LABELS.map((label) => (
             <div
               key={`camp-detail-mobile-summary-${label}`}
@@ -824,7 +1019,7 @@ export function CampDetailSummaryCardsSkeleton() {
       <div className="hidden gap-4 md:grid md:grid-cols-2 lg:grid-cols-4">
         {CAMP_DETAIL_SUMMARY_LABELS.map((label) => (
           <GradientCard key={`camp-detail-desktop-summary-${label}`}>
-            <div className="space-y-3 px-6 py-6">
+            <div className="space-y-3 px-6">
               <p className="text-sm text-muted-foreground">{label}</p>
               <Skeleton className="h-7 w-28" />
             </div>
@@ -1096,48 +1291,348 @@ export function VenuesPageSkeleton() {
   )
 }
 
-export function VenueDetailPageSkeleton() {
-  return (
-    <div className="space-y-6">
-      <div className="space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-2">
-            <Skeleton className="h-8 w-44" />
-            <Skeleton className="h-4 w-64" />
-          </div>
-          <Skeleton className="h-9 w-24" />
-        </div>
+export type VenueDetailSkeletonTab =
+  | "camps"
+  | "sessions"
+  | "reports"
+  | "assessments"
+  | "wind-patterns"
 
-        <div className="flex flex-wrap gap-2">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={`venue-detail-year-${index}`} className="h-9 w-20 rounded-full" />
+const VENUE_DETAIL_SUMMARY_LABELS = [
+  "Total Camps",
+  "Total Sessions",
+  "Avg. Session",
+  "Net Time Sailed",
+]
+const VENUE_DETAIL_TABS: Array<{
+  label: string
+  value: VenueDetailSkeletonTab
+}> = [
+  { label: "Camps", value: "camps" },
+  { label: "Sessions", value: "sessions" },
+  { label: "Reports", value: "reports" },
+  { label: "Assess", value: "assessments" },
+  { label: "Wind", value: "wind-patterns" },
+]
+const VENUE_DETAIL_DEFAULT_MOBILE_TABS: VenueDetailSkeletonTab[] = [
+  "camps",
+  "sessions",
+  "reports",
+  "assessments",
+]
+const VENUE_DETAIL_TAB_LABEL_BY_VALUE = new Map(
+  VENUE_DETAIL_TABS.map((tab) => [tab.value, tab.label]),
+)
+
+function getVenueDetailMobileSkeletonTabs(
+  selectedTab: VenueDetailSkeletonTab,
+): VenueDetailSkeletonTab[] {
+  if (VENUE_DETAIL_DEFAULT_MOBILE_TABS.includes(selectedTab)) {
+    return VENUE_DETAIL_DEFAULT_MOBILE_TABS
+  }
+
+  return ["camps", "sessions", "reports", selectedTab]
+}
+
+function formatVenueDetailSkeletonPanelTitle(input: {
+  selectedTab: VenueDetailSkeletonTab
+  selectedYear?: number
+}): string {
+  if (input.selectedTab === "camps") {
+    return typeof input.selectedYear === "number"
+      ? `Camps ${input.selectedYear}`
+      : "Camps"
+  }
+
+  if (input.selectedTab === "sessions") {
+    return "Sessions"
+  }
+
+  if (input.selectedTab === "reports") {
+    return "Reports"
+  }
+
+  if (input.selectedTab === "wind-patterns") {
+    return "Wind Patterns"
+  }
+
+  return "Assessments"
+}
+
+export function VenueDetailSummaryCardsSkeleton() {
+  return (
+    <>
+      <GradientCard className="overflow-hidden p-0 md:hidden">
+        <div className="divide-y divide-border px-6 py-3">
+          {VENUE_DETAIL_SUMMARY_LABELS.map((label) => (
+            <div
+              key={`venue-detail-mobile-summary-${label}`}
+              className="flex min-h-12 items-center justify-between gap-4"
+            >
+              <p className="text-sm text-muted-foreground">{label}</p>
+              <Skeleton className="h-5 w-24" />
+            </div>
           ))}
         </div>
-      </div>
+      </GradientCard>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <SkeletonCard key={`venue-detail-kpi-${index}`} />
+      <div className="hidden gap-4 md:grid md:grid-cols-2 lg:grid-cols-4">
+        {VENUE_DETAIL_SUMMARY_LABELS.map((label) => (
+          <GradientCard key={`venue-detail-desktop-summary-${label}`}>
+            <div className="space-y-3 px-6">
+              <p className="text-sm text-muted-foreground">{label}</p>
+              <Skeleton className="h-7 w-28" />
+            </div>
+          </GradientCard>
+        ))}
+      </div>
+    </>
+  )
+}
+
+function VenueDetailListPanelSkeleton({
+  selectedTab,
+  selectedYear,
+}: {
+  selectedTab: "camps" | "sessions" | "reports"
+  selectedYear?: number
+}) {
+  const title = formatVenueDetailSkeletonPanelTitle({
+    selectedTab,
+    selectedYear,
+  })
+  const showToolbarSkeleton = selectedTab !== "camps"
+
+  return (
+    <section className="space-y-4" aria-busy="true">
+      <header className="flex items-center justify-between gap-3">
+        <h1 className="min-w-0 text-2xl font-semibold tracking-tight md:hidden">
+          {title}
+        </h1>
+        <h2 className="hidden text-lg font-semibold md:block">{title}</h2>
+
+        {showToolbarSkeleton ? (
+          <>
+            <Skeleton className="h-11 w-11 shrink-0 md:hidden" />
+            <div className="hidden items-center justify-end gap-2 md:flex">
+              <Skeleton className="h-8 w-28" />
+              <Skeleton className="h-8 w-24" />
+            </div>
+          </>
+        ) : null}
+      </header>
+
+      <div className="space-y-2 md:hidden">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <GradientCard
+            key={`venue-detail-mobile-${selectedTab}-${index}`}
+            className="px-3 py-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-4 w-36 max-w-full" />
+                <Skeleton className="h-3 w-44 max-w-full" />
+                <Skeleton className="h-3 w-32 max-w-full" />
+              </div>
+              <Skeleton className="h-11 w-11 shrink-0" />
+            </div>
+          </GradientCard>
         ))}
       </div>
 
-      <div className="rounded-xl border bg-card p-4 sm:p-6">
-        <div className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <Skeleton key={`venue-detail-tab-${index}`} className="h-9 w-24 rounded-full" />
-            ))}
-          </div>
+      <GradientCard className="hidden overflow-hidden p-0 md:block">
+        <div className="grid grid-cols-[1.1fr_0.9fr_0.7fr_3rem] gap-4 bg-muted/40 px-4 py-3">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-4 w-20" />
+          <Skeleton className="h-4 w-20" />
+          <span aria-hidden="true" />
+        </div>
+        <div className="divide-y divide-border">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div
+              key={`venue-detail-desktop-${selectedTab}-${index}`}
+              className="grid min-h-14 grid-cols-[1.1fr_0.9fr_0.7fr_3rem] items-center gap-4 px-4 py-3"
+            >
+              <Skeleton className="h-4 w-full max-w-40" />
+              <Skeleton className="h-4 w-full max-w-28" />
+              <Skeleton className="h-4 w-full max-w-20" />
+              <Skeleton className="ml-auto h-8 w-8" />
+            </div>
+          ))}
+        </div>
+      </GradientCard>
+    </section>
+  )
+}
 
-          <div className="space-y-3">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <Skeleton key={`venue-detail-row-${index}`} className="h-20 w-full" />
-            ))}
+function VenueDetailTextPanelSkeleton({
+  selectedTab,
+  selectedYear,
+}: {
+  selectedTab: "assessments" | "wind-patterns"
+  selectedYear?: number
+}) {
+  const title = formatVenueDetailSkeletonPanelTitle({
+    selectedTab,
+    selectedYear,
+  })
+
+  return (
+    <section className="rounded-xl border bg-card p-4 sm:p-6" aria-busy="true">
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-2">
+            <h3 className="text-base font-semibold">{title}</h3>
+            <Skeleton className="h-3 w-56 max-w-full" />
           </div>
+          <Skeleton className="h-11 w-20 md:h-8" />
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div
+              key={`venue-detail-text-panel-${index}`}
+              className="rounded-lg border bg-background p-4"
+            >
+              <div className="space-y-3">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-4/5" />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
+    </section>
+  )
+}
+
+export function VenueDetailPanelSkeleton({
+  selectedTab = "camps",
+  selectedYear,
+}: {
+  selectedTab?: VenueDetailSkeletonTab
+  selectedYear?: number
+}) {
+  if (selectedTab === "sessions") {
+    return (
+      <VenueDetailListPanelSkeleton
+        selectedTab="sessions"
+        selectedYear={selectedYear}
+      />
+    )
+  }
+
+  if (selectedTab === "camps") {
+    return (
+      <VenueDetailListPanelSkeleton selectedTab="camps" selectedYear={selectedYear} />
+    )
+  }
+
+  if (selectedTab === "reports") {
+    return (
+      <VenueDetailListPanelSkeleton
+        selectedTab="reports"
+        selectedYear={selectedYear}
+      />
+    )
+  }
+
+  if (selectedTab === "wind-patterns") {
+    return (
+      <VenueDetailTextPanelSkeleton
+        selectedTab="wind-patterns"
+        selectedYear={selectedYear}
+      />
+    )
+  }
+
+  return (
+    <VenueDetailTextPanelSkeleton
+      selectedTab="assessments"
+      selectedYear={selectedYear}
+    />
+  )
+}
+
+export function VenueDetailTabsSkeleton({
+  selectedTab = "camps",
+  selectedYear,
+}: {
+  selectedTab?: VenueDetailSkeletonTab
+  selectedYear?: number
+}) {
+  const mobileTabs = getVenueDetailMobileSkeletonTabs(selectedTab)
+
+  return (
+    <div className="space-y-4" aria-busy="true">
+      <div className="flex h-11 w-full max-w-full items-center overflow-hidden rounded-lg bg-muted p-[3px] text-muted-foreground md:hidden">
+        {mobileTabs.map((tab) => (
+          <button
+            key={`venue-detail-mobile-tab-${tab}`}
+            type="button"
+            disabled
+            className="inline-flex h-[calc(100%-1px)] min-w-0 flex-1 basis-0 items-center justify-center truncate rounded-md px-2 text-sm font-medium text-muted-foreground data-[active=true]:bg-background data-[active=true]:text-foreground"
+            data-active={tab === selectedTab ? "true" : undefined}
+          >
+            {VENUE_DETAIL_TAB_LABEL_BY_VALUE.get(tab)}
+          </button>
+        ))}
+        <button
+          type="button"
+          disabled
+          className="inline-flex h-[calc(100%-1px)] shrink-0 items-center justify-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-muted-foreground"
+        >
+          <span>More</span>
+          <ChevronDownIcon className="size-4" />
+        </button>
+      </div>
+
+      <div className="hidden h-10 items-center gap-1 rounded-lg bg-muted p-1 md:inline-flex">
+        {VENUE_DETAIL_TABS.map((tab) => (
+          <button
+            key={`venue-detail-desktop-tab-${tab.value}`}
+            type="button"
+            disabled
+            className="inline-flex h-8 min-w-fit items-center justify-center rounded-md px-3 text-sm font-medium text-muted-foreground data-[active=true]:bg-background data-[active=true]:text-foreground"
+            data-active={tab.value === selectedTab ? "true" : undefined}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <VenueDetailPanelSkeleton selectedTab={selectedTab} selectedYear={selectedYear} />
     </div>
   )
+}
+
+export function VenueDetailDeferredContentSkeleton({
+  selectedTab = "camps",
+  selectedYear,
+}: {
+  selectedTab?: VenueDetailSkeletonTab
+  selectedYear?: number
+}) {
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-3" aria-busy="true">
+        <div className="flex max-w-full gap-2 overflow-hidden">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Skeleton key={`venue-detail-year-chip-${index}`} className="h-10 w-20" />
+          ))}
+        </div>
+        <Skeleton className="h-9 w-24 shrink-0" />
+      </div>
+
+      <VenueDetailSummaryCardsSkeleton />
+      <VenueDetailTabsSkeleton selectedTab={selectedTab} selectedYear={selectedYear} />
+    </div>
+  )
+}
+
+export function VenueDetailPageSkeleton() {
+  return <VenueDetailDeferredContentSkeleton />
 }
 
 export function SignInPageSkeleton() {

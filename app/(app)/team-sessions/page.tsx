@@ -1,19 +1,22 @@
-import { CreateSessionDialog } from "@/features/sessions/session-form-dialogs"
+import { Suspense } from "react"
+
+import {
+  TeamSessionsPageSkeleton,
+  TeamSessionsResultsSkeleton,
+} from "@/components/shared/page-skeletons"
 import { SessionsFeedback } from "@/features/sessions/sessions-feedback"
 import { TeamSessionsTable } from "@/features/sessions/sessions-table"
-import { TeamSessionsToolbar } from "@/features/sessions/team-sessions-toolbar"
-import { buildTeamSessionsHref } from "@/features/sessions/navigation"
+import { TeamSessionsRouteShell } from "@/features/sessions/team-sessions-route-shell"
 import {
   logTeamSessionsListTiming,
   startTeamSessionsListTiming,
 } from "@/features/sessions/list-timing"
 import { resolveTeamSessionsListRequest } from "@/features/sessions/list-route-state.mjs"
 import {
-  getTeamSessionsPageData,
-  type TeamSessionCampOption,
+  getTeamSessionsChromeData,
+  getTeamSessionsResultsData,
+  type TeamSessionsChromeData,
   type TeamSessionHighlightFilter,
-  type TeamSessionListItem,
-  type TeamSessionVenueFilterOption,
 } from "@/features/sessions/data"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageTeamSessions } from "@/lib/auth/capabilities"
@@ -25,6 +28,10 @@ import {
 type TeamSessionsSearchParams = Promise<
   Record<string, string | string[] | undefined>
 >
+type ResolvedTeamSessionsScope = NonNullable<
+  Awaited<ReturnType<typeof resolveNavigationScope>>["scope"]
+>
+type TeamSessionsChromeDataPromise = Promise<TeamSessionsChromeData>
 
 function getStatusMessage(status: string | undefined): string | null {
   if (status === "created") {
@@ -72,6 +79,98 @@ function getErrorMessage(error: string | undefined): string | null {
   }
 
   return null
+}
+
+function getEmptyTeamSessionsChromeData(input: {
+  requestedCampId?: string
+  requestedHighlight?: TeamSessionHighlightFilter
+  requestedVenueId?: string
+}): TeamSessionsChromeData {
+  return {
+    venueFilterOptions: [],
+    campFilterOptions: [],
+    campOptions: [],
+    selectedVenueId: input.requestedVenueId,
+    selectedCampId: input.requestedCampId,
+    selectedHighlight: input.requestedHighlight,
+  }
+}
+
+async function TeamSessionsShellSlot(input: {
+  activeTeamId: string | null
+  canManageSessions: boolean
+  chromeDataPromise: TeamSessionsChromeDataPromise
+  noTeamSelected: boolean
+  requestedLoadMoreMode: boolean
+  requestedPage: number
+  scope: ResolvedTeamSessionsScope
+}) {
+  const chromeData = await input.chromeDataPromise
+
+  return (
+    <TeamSessionsRouteShell
+      canManageSessions={input.canManageSessions}
+      chromeData={chromeData}
+      currentPage={input.requestedPage}
+      noTeamSelected={input.noTeamSelected}
+      scope={input.scope}
+    >
+      <Suspense fallback={<TeamSessionsResultsSkeleton />}>
+        <TeamSessionsResultsContent
+          activeTeamId={input.activeTeamId}
+          canManageSessions={input.canManageSessions}
+          chromeData={chromeData}
+          requestedLoadMoreMode={input.requestedLoadMoreMode}
+          requestedPage={input.requestedPage}
+          scope={input.scope}
+        />
+      </Suspense>
+    </TeamSessionsRouteShell>
+  )
+}
+
+async function TeamSessionsResultsContent(input: {
+  activeTeamId: string | null
+  canManageSessions: boolean
+  chromeData: TeamSessionsChromeData
+  requestedLoadMoreMode: boolean
+  requestedPage: number
+  scope: ResolvedTeamSessionsScope
+}) {
+  const noTeamSelected = input.activeTeamId === null
+  const resultsData = input.activeTeamId
+    ? await getTeamSessionsResultsData({
+        activeTeamId: input.activeTeamId,
+        chromeData: input.chromeData,
+        page: input.requestedPage,
+        accumulatePages: input.requestedLoadMoreMode,
+      })
+    : {
+        sessions: [],
+        currentPage: input.requestedPage,
+        pageCount: 1,
+        hasPreviousPage: input.requestedPage > 1,
+        hasNextPage: false,
+      }
+
+  return (
+    <TeamSessionsTable
+      sessions={resultsData.sessions}
+      campOptions={input.chromeData.campOptions}
+      canManageSessions={input.canManageSessions}
+      noTeamSelected={noTeamSelected}
+      scope={input.scope}
+      selectedVenueId={input.chromeData.selectedVenueId}
+      selectedCampId={input.chromeData.selectedCampId}
+      selectedHighlight={input.chromeData.selectedHighlight}
+      currentPage={resultsData.currentPage}
+      pageCount={resultsData.pageCount}
+      hasPreviousPage={resultsData.hasPreviousPage}
+      hasNextPage={resultsData.hasNextPage}
+      hideChrome
+      hideCreateFab
+    />
+  )
 }
 
 export default async function TeamSessionsPage({
@@ -137,44 +236,22 @@ export default async function TeamSessionsPage({
       organizationId: scope.activeOrgId,
       teamId: activeTeamId,
     })
-
-  let sessions: TeamSessionListItem[] = []
-  let venueFilterOptions: TeamSessionVenueFilterOption[] = []
-  let campFilterOptions: TeamSessionCampOption[] = []
-  let campOptions: TeamSessionCampOption[] = []
-  let selectedVenueId: string | undefined = requestedVenueId
-  let selectedCampId: string | undefined = requestedCampId
-  let selectedHighlight: TeamSessionHighlightFilter | undefined = requestedHighlight
-  let currentPage = requestedPage
-  let pageCount = 1
-  let hasPreviousPage = requestedPage > 1
-  let hasNextPage = false
-
-  if (activeTeamId) {
-    const pageData = await getTeamSessionsPageData({
-      activeTeamId,
-      selectedVenueId: requestedVenueId,
-      selectedCampId: requestedCampId,
-      selectedHighlight: requestedHighlight,
-      page: requestedPage,
-      accumulatePages: requestedLoadMoreMode,
-    })
-
-    sessions = pageData.sessions
-    venueFilterOptions = pageData.venueFilterOptions
-    campFilterOptions = pageData.campFilterOptions
-    campOptions = pageData.campOptions
-    selectedVenueId = pageData.selectedVenueId
-    selectedCampId = pageData.selectedCampId
-    selectedHighlight = pageData.selectedHighlight
-    currentPage = pageData.currentPage
-    pageCount = pageData.pageCount
-    hasPreviousPage = pageData.hasPreviousPage
-    hasNextPage = pageData.hasNextPage
-  }
-
-  const createDisabled =
-    noTeamSelected || !canManageSessions || campOptions.length === 0
+  const chromeDataPromise: TeamSessionsChromeDataPromise = activeTeamId
+    ? getTeamSessionsChromeData({
+        activeTeamId,
+        selectedVenueId: requestedVenueId,
+        selectedCampId: requestedCampId,
+        selectedHighlight: requestedHighlight,
+        page: requestedPage,
+        accumulatePages: requestedLoadMoreMode,
+      })
+    : Promise.resolve(
+        getEmptyTeamSessionsChromeData({
+          requestedVenueId,
+          requestedCampId,
+          requestedHighlight,
+        }),
+      )
 
   return (
     <div className="space-y-6">
@@ -206,113 +283,17 @@ export default async function TeamSessionsPage({
         </section>
       ) : null}
 
-      <TeamSessionsTable
-        sessions={sessions}
-        campOptions={campOptions}
-        canManageSessions={canManageSessions}
-        noTeamSelected={noTeamSelected}
-        toolbar={
-          <TeamSessionsToolbar
-            scope={scope}
-            selectedVenueId={selectedVenueId ?? ""}
-            selectedCampId={selectedCampId ?? ""}
-            selectedHighlight={selectedHighlight ?? ""}
-            venueDisabled={noTeamSelected || venueFilterOptions.length === 0}
-            campDisabled={noTeamSelected || campFilterOptions.length === 0}
-            venueOptions={[
-              {
-                value: "",
-                label: "Venues",
-                href: buildTeamSessionsHref({
-                  scope,
-                  highlight: selectedHighlight,
-                }),
-              },
-              ...venueFilterOptions.map((option) => ({
-                value: option.venueId,
-                label: `${option.venueName} — ${option.venueLocation}`,
-                href: buildTeamSessionsHref({
-                  scope,
-                  venueId: option.venueId,
-                  highlight: selectedHighlight,
-                }),
-              })),
-            ]}
-            campOptions={[
-              {
-                value: "",
-                label: "Camps",
-                href: buildTeamSessionsHref({
-                  scope,
-                  venueId: selectedVenueId,
-                  highlight: selectedHighlight,
-                }),
-              },
-              ...campFilterOptions.map((option) => ({
-                value: option.campId,
-                label: option.label,
-                href: buildTeamSessionsHref({
-                  scope,
-                  venueId: selectedVenueId,
-                  campId: option.campId,
-                  highlight: selectedHighlight,
-                }),
-              })),
-            ]}
-            highlightOptions={[
-              {
-                value: "",
-                label: "All",
-                href: buildTeamSessionsHref({
-                  scope,
-                  venueId: selectedVenueId,
-                  campId: selectedCampId,
-                }),
-              },
-              {
-                value: "yes",
-                label: "Yes",
-                href: buildTeamSessionsHref({
-                  scope,
-                  venueId: selectedVenueId,
-                  campId: selectedCampId,
-                  highlight: "yes",
-                }),
-              },
-              {
-                value: "no",
-                label: "No",
-                href: buildTeamSessionsHref({
-                  scope,
-                  venueId: selectedVenueId,
-                  campId: selectedCampId,
-                  highlight: "no",
-                }),
-              },
-            ]}
-            action={
-              <CreateSessionDialog
-                campOptions={campOptions}
-                scope={scope}
-                selectedVenueId={selectedVenueId}
-                selectedCampId={selectedCampId}
-                selectedHighlight={selectedHighlight}
-                currentPage={currentPage}
-                disabled={createDisabled}
-                surface="sheet"
-              />
-            }
-          />
-        }
-        scope={scope}
-        selectedVenueId={selectedVenueId}
-        selectedCampId={selectedCampId}
-        selectedHighlight={selectedHighlight}
-        currentPage={currentPage}
-        pageCount={pageCount}
-        hasPreviousPage={hasPreviousPage}
-        hasNextPage={hasNextPage}
-      />
+      <Suspense fallback={<TeamSessionsPageSkeleton />}>
+        <TeamSessionsShellSlot
+          activeTeamId={activeTeamId}
+          canManageSessions={canManageSessions}
+          chromeDataPromise={chromeDataPromise}
+          noTeamSelected={noTeamSelected}
+          requestedLoadMoreMode={requestedLoadMoreMode}
+          requestedPage={requestedPage}
+          scope={scope}
+        />
+      </Suspense>
     </div>
   )
 }

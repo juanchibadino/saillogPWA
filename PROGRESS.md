@@ -1,8 +1,19 @@
 # PROGRESS.md
 
-Last updated: 2026-07-01
+Last updated: 2026-07-04
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
+
+## 2026-07-04 - Mobile card-list standards consolidation
+
+- Merged the mobile card-list rules into `MOBILE_UI_PATTERNS.md` so mobile
+  sizing, Drawers, tabs, card/list behavior, loading states, actions, and
+  accessibility live in one canonical mobile standard.
+- Updated `DESKTOP_UI_PATTERNS.md`, `LOADING_PATTERNS.md`, and
+  `AUDIT_TEAM_CAMP_ID.MD` to reference `MOBILE_UI_PATTERNS.md` as the mobile
+  source of truth for card lists.
+- Removed the separate mobile card-list document to avoid split mobile UI
+  guidance.
 
 ## 2026-07-01 - Team Camp ID loading patterns
 
@@ -175,8 +186,8 @@ Branch: `main`
 
 - Added `AUDIT_TEAM_CAMP_ID.MD` for `/team-camps/[id]`, using the
   Team Session ID audit structure as the reference.
-- Reviewed `MOBILE_UI_PATTERNS.md`, `MOBILE_CARD_LIST_UI.md`, and
-  `DESKTOP_UI_PATTERNS.md` against the current Camp detail page,
+- Reviewed `MOBILE_UI_PATTERNS.md` and `DESKTOP_UI_PATTERNS.md` against the
+  current Camp detail page,
   data layer, tabs client, loading skeleton, and shared mobile header.
 - Captured the current scorecard, UI pattern gaps, remaining risks, and next
   engineering priority sequence for Goals edit, tab-data splitting,
@@ -315,8 +326,9 @@ Branch: `main`
 - Kept the mobile filter controls free of extra per-control spinners; the
   visible pending state belongs to the card-list surface after the Drawer
   closes.
-- Updated `MOBILE_CARD_LIST_UI.md` with the mobile filter pending pattern and
-  its separation from `Load more` button loading.
+- Updated the mobile card-list rules now carried by `MOBILE_UI_PATTERNS.md`
+  with the mobile filter pending pattern and its separation from `Load more`
+  button loading.
 - Follow-up fixed long accumulated lists by centering the filter spinner in the
   visible mobile shell area between the fixed header and bottom navigation,
   instead of centering against the full rendered card-list height.
@@ -333,8 +345,9 @@ Branch: `main`
   and show one centered table spinner.
 - Kept filter and pagination controls free of extra spinners to avoid duplicate
   loading indicators.
-- Updated `DESKTOP_UI_PATTERNS.md` and `MOBILE_CARD_LIST_UI.md` with the
-  filter pending and clear-control standards.
+- Updated `DESKTOP_UI_PATTERNS.md` and the mobile card-list rules now carried
+  by `MOBILE_UI_PATTERNS.md` with the filter pending and clear-control
+  standards.
 - Validation: `npx eslint 'features/sessions/sessions-table.tsx'
   'features/sessions/team-sessions-toolbar.tsx'`,
   `./node_modules/.bin/tsc --noEmit`, `git diff --check`, and `npm run build`
@@ -369,9 +382,9 @@ Branch: `main`
 - Added `DESKTOP_UI_PATTERNS.md` to document the Sailog desktop table
   pattern across performance, filters, title, pagination, actions, states,
   cache, and accessibility.
-- Added `MOBILE_CARD_LIST_UI.md` to document the paired mobile card-list pattern
-  across accumulated loading, filters, cards, FABs, actions, states, cache, and
-  accessibility.
+- Added the paired mobile card-list pattern across accumulated loading,
+  filters, cards, FABs, actions, states, cache, and accessibility. This
+  guidance now lives in `MOBILE_UI_PATTERNS.md`.
 - Validation: `npx eslint 'features/sessions/sessions-table.tsx'`,
   `./node_modules/.bin/tsc --noEmit`, `git diff --check`, and `npm run build`
   passed.

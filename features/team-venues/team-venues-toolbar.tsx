@@ -42,6 +42,8 @@ export function TeamVenuesToolbar({
   selectedValue,
   filterLabel = "Status",
   disabled = false,
+  isNavigating = false,
+  onNavigate,
   action,
   clearHref,
 }: {
@@ -49,6 +51,8 @@ export function TeamVenuesToolbar({
   selectedValue: string
   filterLabel?: string
   disabled?: boolean
+  isNavigating?: boolean
+  onNavigate?: (href: string) => void
   action?: ReactNode
   clearHref?: string
 }) {
@@ -62,6 +66,20 @@ export function TeamVenuesToolbar({
   const [draftSelectedValue, setDraftSelectedValue] = useState(
     selectedValue || defaultValue,
   )
+  const isDisabled = disabled || isNavigating
+
+  function navigateToHref(href: string): void {
+    if (isNavigating) {
+      return
+    }
+
+    if (onNavigate) {
+      onNavigate(href)
+      return
+    }
+
+    router.push(href)
+  }
 
   function applyDraftFilter(): void {
     const nextOption =
@@ -72,7 +90,7 @@ export function TeamVenuesToolbar({
       return
     }
 
-    router.push(nextOption.href)
+    navigateToHref(nextOption.href)
     setIsDrawerOpen(false)
   }
 
@@ -80,7 +98,7 @@ export function TeamVenuesToolbar({
     const href = clearHref ?? options[0]?.href
 
     if (href) {
-      router.push(href)
+      navigateToHref(href)
     }
 
     setIsDrawerOpen(false)
@@ -88,7 +106,12 @@ export function TeamVenuesToolbar({
 
   if (isMobile) {
     return (
-      <section className="flex w-full items-center justify-between gap-2">
+      <section
+        className={cn(
+          "flex w-full items-center gap-2",
+          action ? "justify-between" : "justify-end",
+        )}
+      >
         <Drawer
           open={isDrawerOpen}
           onOpenChange={(open) => {
@@ -104,12 +127,13 @@ export function TeamVenuesToolbar({
               type="button"
               variant="secondary"
               size="default"
-              disabled={disabled}
+              disabled={isDisabled}
               className={cn(
-                "h-9 px-3",
+                "h-11 w-11 px-0",
                 hasActiveFilter &&
                   "border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 aria-expanded:bg-emerald-100 dark:border-emerald-600/50 dark:bg-emerald-900/20 dark:text-emerald-100 dark:hover:bg-emerald-900/30",
               )}
+              aria-label={`${filterLabel} filters`}
             >
               <FilterIcon className="size-4" />
             </Button>
@@ -131,8 +155,8 @@ export function TeamVenuesToolbar({
                 id={`mobile-${filterIdSuffix}-filter`}
                 value={draftSelectedValue}
                 onChange={(event) => setDraftSelectedValue(event.target.value)}
-                disabled={disabled || options.length === 0}
-                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none ring-ring/50 transition-colors focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={isDisabled || options.length === 0}
+                className="h-11 w-full rounded-lg border border-border bg-background px-3 text-base outline-none ring-ring/50 transition-colors focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-60 md:text-sm"
               >
                 {options.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -147,15 +171,17 @@ export function TeamVenuesToolbar({
               <Button
                 type="button"
                 variant="outline"
+                className="h-11"
                 onClick={clearFilter}
-                disabled={disabled || options.length === 0}
+                disabled={isDisabled || options.length === 0}
               >
                 Clear
               </Button>
               <Button
                 type="button"
+                className="h-11"
                 onClick={applyDraftFilter}
-                disabled={disabled || options.length === 0}
+                disabled={isDisabled || options.length === 0}
               >
                 Apply
               </Button>
@@ -176,7 +202,7 @@ export function TeamVenuesToolbar({
             <Button
               variant="outline"
               size="sm"
-              disabled={disabled}
+              disabled={isDisabled}
               className={cn(
                 hasActiveFilter &&
                   "border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 aria-expanded:bg-emerald-100 dark:border-emerald-600/50 dark:bg-emerald-900/20 dark:text-emerald-100 dark:hover:bg-emerald-900/30",
@@ -202,9 +228,10 @@ export function TeamVenuesToolbar({
                 key={option.value}
                 onClick={() => {
                   if (!isActive) {
-                    router.push(option.href)
+                    navigateToHref(option.href)
                   }
                 }}
+                disabled={isNavigating}
                 className="gap-2"
               >
                 <span className="flex size-4 items-center justify-center">

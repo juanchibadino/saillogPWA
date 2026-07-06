@@ -11,6 +11,7 @@ export const createVenueInputSchema = z.object({
 
 export const updateVenueInputSchema = createVenueInputSchema.extend({
   id: z.string().uuid(),
+  teamVenueId: z.string().uuid(),
   isActive: z.coerce.boolean(),
 });
 

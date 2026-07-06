@@ -1,5 +1,10 @@
 import type { Database } from "@/types/database";
 import type { TeamVenueWindPatternsPageData } from "@/features/wind-patterns/data";
+import type {
+  TeamSessionCampOption,
+  TeamSessionHighlightFilter,
+  TeamSessionListItem,
+} from "@/features/sessions/data";
 
 type VenueRow = Database["public"]["Tables"]["venues"]["Row"];
 type TeamVenueRow = Database["public"]["Tables"]["team_venues"]["Row"];
@@ -119,6 +124,57 @@ export type VenueDetailAssessmentsYearData = {
   templates: VenueAssessmentTemplate[];
   runs: VenueAssessmentRun[];
 };
+
+export type VenueDetailChromeData = {
+  venue: VenueDetailVenue | null;
+  teamVenue: VenueDetailTeamVenue | null;
+};
+
+export type VenueDetailKpisData = {
+  availableYears: number[];
+  selectedYear: number;
+  kpis: VenueDetailKpi[];
+};
+
+export type VenueDetailCampsTabData = {
+  camps: VenueDetailCampItem[];
+};
+
+export type VenueDetailSessionsTabData = {
+  campOptions: TeamSessionCampOption[];
+  currentPage: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+  pageCount: number;
+  selectedCampId?: string;
+  selectedHighlight?: TeamSessionHighlightFilter;
+  sessions: TeamSessionListItem[];
+};
+
+export type VenueDetailAssessmentsTabData = {
+  camps: VenueDetailCampItem[];
+  assessments: VenueDetailAssessmentsYearData;
+};
+
+export type VenueDetailWindPatternsTabData = {
+  windPatterns: TeamVenueWindPatternsPageData;
+};
+
+export type VenueDetailReportsTabData = {
+  camps: VenueDetailCampItem[];
+  reports: VenueDetailReportItem[];
+};
+
+export type VenueDetailTabDataByTab = {
+  camps: VenueDetailCampsTabData;
+  sessions: VenueDetailSessionsTabData;
+  "wind-patterns": VenueDetailWindPatternsTabData;
+  assessments: VenueDetailAssessmentsTabData;
+  reports: VenueDetailReportsTabData;
+};
+
+export type VenueDetailTabPayload =
+  VenueDetailTabDataByTab[keyof VenueDetailTabDataByTab];
 
 export type VenueDetailYearData = {
   kpis: VenueDetailKpi[];

@@ -3,6 +3,7 @@ import test from "node:test"
 
 import {
   buildCampDetailRedirectPath,
+  buildTeamCampsRedirectPath,
   resolveCampDetailRouteRequest,
   resolveCampGoalsActionRedirect,
 } from "./detail-route-state.mjs"
@@ -58,6 +59,38 @@ test("builds Camp detail redirects preserving valid tab and page state", () => {
       scopePage: 0,
     }),
     "/team-camps/camp-1?status=goals_updated&org=org-1&team=team-1",
+  )
+})
+
+test("builds Team Camps action redirects preserving list filters and page state", () => {
+  for (const status of ["created", "updated", "deleted"]) {
+    assert.equal(
+      buildTeamCampsRedirectPath({
+        status,
+        scopeOrgId: "org-1",
+        scopeTeamId: "team-1",
+        scopeVenueId: "venue-1",
+        scopeCampType: "regatta",
+        scopeCampStatus: "active",
+        scopePage: 3,
+      }),
+      `/team-camps?status=${status}&org=org-1&team=team-1&venue=venue-1&type=regatta&campStatus=active&page=3`,
+    )
+  }
+})
+
+test("builds Team Camps action redirects without invalid filters or page one", () => {
+  assert.equal(
+    buildTeamCampsRedirectPath({
+      error: "invalid_input",
+      scopeOrgId: "org-1",
+      scopeTeamId: "team-1",
+      scopeVenueId: "venue-1",
+      scopeCampType: "offshore",
+      scopeCampStatus: "archived",
+      scopePage: 1,
+    }),
+    "/team-camps?error=invalid_input&org=org-1&team=team-1&venue=venue-1",
   )
 })
 

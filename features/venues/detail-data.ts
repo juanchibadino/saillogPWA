@@ -1,8 +1,24 @@
 import "server-only";
 
+import {
+  getVenueDetailTimingErrorMessage,
+  logVenueDetailTiming,
+  startVenueDetailTiming,
+} from "@/features/venues/detail-timing";
 import { getTeamVenueWindPatternsPageData } from "@/features/wind-patterns/data";
+import {
+  TEAM_SESSIONS_PAGE_SIZE,
+  type TeamSessionCampOption,
+  type TeamSessionHighlightFilter,
+  type TeamSessionListItem,
+} from "@/features/sessions/data";
+import {
+  normalizeSelectedId,
+  resolveSessionPagination,
+} from "@/features/sessions/list-route-state.mjs";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
+import type { VenueDetailTab } from "@/features/venues/navigation";
 import type {
   VenueAssessmentCategory,
   VenueAssessmentMode,
@@ -10,10 +26,14 @@ import type {
   VenueAssessmentRunCamp,
   VenueAssessmentTemplate,
   VenueDetailCampItem,
+  VenueDetailChromeData,
+  VenueDetailKpisData,
   VenueDetailKpi,
   VenueDetailPageData,
   VenueDetailReportItem,
   VenueDetailSessionItem,
+  VenueDetailTabDataByTab,
+  VenueDetailTabPayload,
   VenueDetailTeamVenue,
   VenueDetailVenue,
   VenueDetailYearData,
@@ -21,7 +41,7 @@ import type {
 
 type CampRow = Pick<
   Database["public"]["Tables"]["camps"]["Row"],
-  "id" | "name" | "camp_type" | "start_date" | "end_date"
+  "id" | "name" | "camp_type" | "start_date" | "end_date" | "is_active"
 >;
 type SessionRow = Pick<
   Database["public"]["Tables"]["sessions"]["Row"],
@@ -32,6 +52,10 @@ type SessionRow = Pick<
   | "net_time_minutes"
   | "highlighted_by_coach"
   | "created_at"
+>;
+type SessionYearRow = Pick<
+  Database["public"]["Tables"]["sessions"]["Row"],
+  "camp_id" | "session_date"
 >;
 type TeamVenueReportRow = Pick<
   Database["public"]["Tables"]["team_venue_reports"]["Row"],
@@ -112,12 +136,22 @@ type AssessmentRunAnswerRow = Pick<
   Database["public"]["Tables"]["assessment_run_answers"]["Row"],
   "assessment_run_id" | "assessment_run_question_id" | "assessment_run_scale_option_id"
 >;
+type ServerSupabaseClient = Awaited<ReturnType<typeof createServerSupabaseClient>>;
+type TeamVenueYearContext = {
+  availableYears: number[];
+  campIds: string[];
+  camps: CampRow[];
+  selectedYear: number;
+  supabase: ServerSupabaseClient;
+};
+export type TeamVenueDetailYearContextData = TeamVenueYearContext | null;
 
 const VENUE_SELECT_COLUMNS = "id,organization_id,name,city,country,is_active";
 const TEAM_VENUE_SELECT_COLUMNS = "id,team_id,venue_id";
-const CAMP_SELECT_COLUMNS = "id,name,camp_type,start_date,end_date";
+const CAMP_SELECT_COLUMNS = "id,name,camp_type,start_date,end_date,is_active";
 const SESSION_SELECT_COLUMNS =
   "id,camp_id,session_type,session_date,net_time_minutes,highlighted_by_coach,created_at";
+const SESSION_YEAR_SELECT_COLUMNS = "camp_id,session_date";
 const ASSESSMENT_TEMPLATE_SELECT_COLUMNS =
   "id,team_id,name,description,is_active,updated_at";
 const ASSESSMENT_TEMPLATE_SCALE_OPTION_SELECT_COLUMNS =
@@ -202,7 +236,7 @@ function formatTotalNetTime(minutes: number): string {
 
 function buildAvailableYears(input: {
   camps: CampRow[];
-  sessions: SessionRow[];
+  sessions: Array<Pick<SessionRow, "session_date">>;
   fallbackYear: number;
 }): number[] {
   const years = new Set<number>();
@@ -329,6 +363,144 @@ function buildEmptyWindPatternsData() {
     activeCount: 0,
     archivedCount: 0,
   };
+}
+
+function getYearDateRange(year: number): { end: string; start: string } {
+  return {
+    start: `${year}-01-01`,
+    end: `${year + 1}-01-01`,
+  };
+}
+
+function buildEmptyKpisData(requestedYear?: number): VenueDetailKpisData {
+  const currentYear = getCurrentYear();
+  const availableYears = [currentYear];
+  const selectedYear = resolveSelectedYear({
+    availableYears,
+    requestedYear,
+  });
+
+  return {
+    availableYears,
+    selectedYear,
+    kpis: buildKpis({
+      campCount: 0,
+      sessionCount: 0,
+      sessions: [],
+    }),
+  };
+}
+
+function buildEmptyTabPayload(tab: VenueDetailTab): VenueDetailTabPayload {
+  if (tab === "camps") {
+    return {
+      camps: [],
+    };
+  }
+
+  if (tab === "sessions") {
+    return {
+      campOptions: [],
+      currentPage: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
+      pageCount: 1,
+      sessions: [],
+    };
+  }
+
+  if (tab === "wind-patterns") {
+    return {
+      windPatterns: buildEmptyWindPatternsData(),
+    };
+  }
+
+  if (tab === "assessments") {
+    return {
+      camps: [],
+      assessments: {
+        templates: [],
+        runs: [],
+      },
+    };
+  }
+
+  return {
+    camps: [],
+    reports: [],
+  };
+}
+
+async function loadTeamVenueYearContext(input: {
+  requestedYear?: number;
+  teamVenueId: string;
+}): Promise<TeamVenueYearContext> {
+  const supabase = await createServerSupabaseClient();
+
+  const { data: campRows, error: campsError } = await supabase
+    .from("camps")
+    .select(CAMP_SELECT_COLUMNS)
+    .eq("team_venue_id", input.teamVenueId)
+    .order("start_date", { ascending: false })
+    .order("name", { ascending: true });
+
+  if (campsError) {
+    throw new Error(`Could not load camps: ${campsError.message}`);
+  }
+
+  const camps: CampRow[] = campRows ?? [];
+  const campIds = camps.map((camp) => camp.id);
+  let sessionYearRows: SessionYearRow[] = [];
+
+  if (campIds.length > 0) {
+    const { data: sessionRows, error: sessionsError } = await supabase
+      .from("sessions")
+      .select(SESSION_YEAR_SELECT_COLUMNS)
+      .in("camp_id", campIds);
+
+    if (sessionsError) {
+      throw new Error(`Could not load session years: ${sessionsError.message}`);
+    }
+
+    sessionYearRows = sessionRows ?? [];
+  }
+
+  const availableYears = buildAvailableYears({
+    camps,
+    sessions: sessionYearRows,
+    fallbackYear: getCurrentYear(),
+  });
+  const selectedYear = resolveSelectedYear({
+    availableYears,
+    requestedYear: input.requestedYear,
+  });
+
+  return {
+    availableYears,
+    campIds,
+    camps,
+    selectedYear,
+    supabase,
+  };
+}
+
+export async function getTeamVenueDetailYearContextData(input: {
+  activeTeamId: string | null;
+  requestedYear?: number;
+  teamVenue: VenueDetailTeamVenue | null;
+}): Promise<TeamVenueDetailYearContextData> {
+  if (
+    !input.activeTeamId ||
+    !input.teamVenue ||
+    input.teamVenue.team_id !== input.activeTeamId
+  ) {
+    return null;
+  }
+
+  return loadTeamVenueYearContext({
+    requestedYear: input.requestedYear,
+    teamVenueId: input.teamVenue.id,
+  });
 }
 
 function buildReportsForYear(input: {
@@ -780,6 +952,1078 @@ function buildEmptyData(input: {
       [selectedYear]: buildEmptyYearData(),
     },
   };
+}
+
+function logTeamVenueTabTiming(input: {
+  activeTeamId: string | null;
+  data: VenueDetailTabPayload;
+  selectedYear: number;
+  startedAt: number;
+  status: "success";
+  tab: VenueDetailTab;
+  teamVenueId: string | null;
+}): void {
+  const baseMetadata = {
+    selectedYear: input.selectedYear,
+    tab: input.tab,
+  };
+
+  if (input.tab === "camps") {
+    const data = input.data as VenueDetailTabDataByTab["camps"];
+
+    logVenueDetailTiming({
+      route: "/venues/[id]",
+      phase: "load_tab",
+      startedAt: input.startedAt,
+      teamVenueId: input.teamVenueId,
+      activeTeamId: input.activeTeamId,
+      status: input.status,
+      metadata: {
+        ...baseMetadata,
+        campCount: data.camps.length,
+      },
+    });
+    return;
+  }
+
+  if (input.tab === "sessions") {
+    const data = input.data as VenueDetailTabDataByTab["sessions"];
+
+    logVenueDetailTiming({
+      route: "/venues/[id]",
+      phase: "load_tab",
+      startedAt: input.startedAt,
+      teamVenueId: input.teamVenueId,
+      activeTeamId: input.activeTeamId,
+      status: input.status,
+      metadata: {
+        ...baseMetadata,
+        currentPage: data.currentPage,
+        pageCount: data.pageCount,
+        selectedCamp: Boolean(data.selectedCampId),
+        selectedHighlight: data.selectedHighlight ?? null,
+        sessionCount: data.sessions.length,
+      },
+    });
+    return;
+  }
+
+  if (input.tab === "wind-patterns") {
+    const data = input.data as VenueDetailTabDataByTab["wind-patterns"];
+
+    logVenueDetailTiming({
+      route: "/venues/[id]",
+      phase: "load_tab",
+      startedAt: input.startedAt,
+      teamVenueId: input.teamVenueId,
+      activeTeamId: input.activeTeamId,
+      status: input.status,
+      metadata: {
+        ...baseMetadata,
+        activeCount: data.windPatterns.activeCount,
+        archivedCount: data.windPatterns.archivedCount,
+        patternCount: data.windPatterns.patterns.length,
+      },
+    });
+    return;
+  }
+
+  if (input.tab === "assessments") {
+    const data = input.data as VenueDetailTabDataByTab["assessments"];
+
+    logVenueDetailTiming({
+      route: "/venues/[id]",
+      phase: "load_tab",
+      startedAt: input.startedAt,
+      teamVenueId: input.teamVenueId,
+      activeTeamId: input.activeTeamId,
+      status: input.status,
+      metadata: {
+        ...baseMetadata,
+        campCount: data.camps.length,
+        runCount: data.assessments.runs.length,
+        templateCount: data.assessments.templates.length,
+      },
+    });
+    return;
+  }
+
+  const data = input.data as VenueDetailTabDataByTab["reports"];
+
+  logVenueDetailTiming({
+    route: "/venues/[id]",
+    phase: "load_tab",
+    startedAt: input.startedAt,
+    teamVenueId: input.teamVenueId,
+    activeTeamId: input.activeTeamId,
+    status: input.status,
+    metadata: {
+      ...baseMetadata,
+      campCount: data.camps.length,
+      reportCount: data.reports.length,
+    },
+  });
+}
+
+async function loadSelectedYearSessions(input: {
+  campIds: string[];
+  selectedYear: number;
+  supabase: ServerSupabaseClient;
+}): Promise<SessionRow[]> {
+  if (input.campIds.length === 0) {
+    return [];
+  }
+
+  const range = getYearDateRange(input.selectedYear);
+  const { data: sessionRows, error: sessionsError } = await input.supabase
+    .from("sessions")
+    .select(SESSION_SELECT_COLUMNS)
+    .in("camp_id", input.campIds)
+    .gte("session_date", range.start)
+    .lt("session_date", range.end)
+    .order("session_date", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (sessionsError) {
+    throw new Error(`Could not load sessions: ${sessionsError.message}`);
+  }
+
+  return sessionRows ?? [];
+}
+
+function buildTeamSessionCampOptions(input: {
+  camps: CampRow[];
+  venue: VenueDetailVenue | null;
+}): TeamSessionCampOption[] {
+  const venueId = input.venue?.id ?? "";
+  const venueName = input.venue?.name ?? "Venue";
+
+  return input.camps.map((camp) => ({
+    campId: camp.id,
+    venueId,
+    venueName,
+    campName: camp.name,
+    startDate: camp.start_date,
+    endDate: camp.end_date,
+    isActive: camp.is_active,
+    label: `${camp.name} — ${venueName}`,
+  }));
+}
+
+async function loadSelectedYearTeamSessionsData(input: {
+  accumulatePages: boolean;
+  camps: CampRow[];
+  requestedPage: number;
+  selectedCampId?: string;
+  selectedHighlight?: TeamSessionHighlightFilter;
+  selectedYear: number;
+  supabase: ServerSupabaseClient;
+  venue: VenueDetailVenue | null;
+}): Promise<VenueDetailTabDataByTab["sessions"]> {
+  const campOptions = buildTeamSessionCampOptions({
+    camps: input.camps,
+    venue: input.venue,
+  });
+  const selectedCampId = normalizeSelectedId({
+    selectedId: input.selectedCampId,
+    allowedIds: new Set(campOptions.map((camp) => camp.campId)),
+  });
+  const sessionCampIds = selectedCampId
+    ? [selectedCampId]
+    : campOptions.map((camp) => camp.campId);
+
+  if (sessionCampIds.length === 0) {
+    const pagination = resolveSessionPagination({
+      requestedPage: input.requestedPage,
+      totalItems: 0,
+      accumulatePages: input.accumulatePages,
+      pageSize: TEAM_SESSIONS_PAGE_SIZE,
+    });
+
+    return {
+      campOptions,
+      selectedCampId,
+      selectedHighlight: input.selectedHighlight,
+      sessions: [],
+      currentPage: pagination.currentPage,
+      pageCount: pagination.pageCount,
+      hasPreviousPage: pagination.hasPreviousPage,
+      hasNextPage: pagination.hasNextPage,
+    };
+  }
+
+  const range = getYearDateRange(input.selectedYear);
+  let sessionCountQuery = input.supabase
+    .from("sessions")
+    .select("id", { count: "exact", head: true })
+    .in("camp_id", sessionCampIds)
+    .gte("session_date", range.start)
+    .lt("session_date", range.end);
+
+  if (input.selectedHighlight === "yes") {
+    sessionCountQuery = sessionCountQuery.eq("highlighted_by_coach", true);
+  }
+
+  if (input.selectedHighlight === "no") {
+    sessionCountQuery = sessionCountQuery.eq("highlighted_by_coach", false);
+  }
+
+  const { count: sessionCount, error: sessionCountError } = await sessionCountQuery;
+
+  if (sessionCountError) {
+    throw new Error(`Could not count sessions: ${sessionCountError.message}`);
+  }
+
+  const pagination = resolveSessionPagination({
+    requestedPage: input.requestedPage,
+    totalItems: sessionCount ?? 0,
+    accumulatePages: input.accumulatePages,
+    pageSize: TEAM_SESSIONS_PAGE_SIZE,
+  });
+
+  if ((sessionCount ?? 0) === 0) {
+    return {
+      campOptions,
+      selectedCampId,
+      selectedHighlight: input.selectedHighlight,
+      sessions: [],
+      currentPage: pagination.currentPage,
+      pageCount: pagination.pageCount,
+      hasPreviousPage: pagination.hasPreviousPage,
+      hasNextPage: pagination.hasNextPage,
+    };
+  }
+
+  const visibleCount = input.accumulatePages
+    ? pagination.currentPage * TEAM_SESSIONS_PAGE_SIZE
+    : TEAM_SESSIONS_PAGE_SIZE;
+  const rangeStart = input.accumulatePages
+    ? 0
+    : (pagination.currentPage - 1) * TEAM_SESSIONS_PAGE_SIZE;
+  const rangeEnd = rangeStart + visibleCount - 1;
+  let sessionQuery = input.supabase
+    .from("sessions")
+    .select(SESSION_SELECT_COLUMNS)
+    .in("camp_id", sessionCampIds)
+    .gte("session_date", range.start)
+    .lt("session_date", range.end)
+    .order("session_date", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (input.selectedHighlight === "yes") {
+    sessionQuery = sessionQuery.eq("highlighted_by_coach", true);
+  }
+
+  if (input.selectedHighlight === "no") {
+    sessionQuery = sessionQuery.eq("highlighted_by_coach", false);
+  }
+
+  const { data: sessionRows, error: sessionError } = await sessionQuery.range(
+    rangeStart,
+    rangeEnd,
+  );
+
+  if (sessionError) {
+    throw new Error(`Could not load sessions: ${sessionError.message}`);
+  }
+
+  const campOptionById = new Map(campOptions.map((camp) => [camp.campId, camp]));
+  const venueId = input.venue?.id ?? "";
+  const venueName = input.venue?.name ?? "Venue";
+  const sessions: TeamSessionListItem[] = (sessionRows ?? [])
+    .map((session) => {
+      const camp = campOptionById.get(session.camp_id);
+
+      if (!camp) {
+        return null;
+      }
+
+      return {
+        id: session.id,
+        campId: camp.campId,
+        campName: camp.campName,
+        venueId,
+        venueName,
+        sessionType: session.session_type,
+        sessionDate: session.session_date,
+        netTimeMinutes: session.net_time_minutes,
+        highlightedByCoach: session.highlighted_by_coach,
+      };
+    })
+    .filter((session): session is TeamSessionListItem => session !== null);
+
+  return {
+    campOptions,
+    selectedCampId,
+    selectedHighlight: input.selectedHighlight,
+    sessions,
+    currentPage: pagination.currentPage,
+    pageCount: pagination.pageCount,
+    hasPreviousPage: pagination.hasPreviousPage,
+    hasNextPage: pagination.hasNextPage,
+  };
+}
+
+async function loadTeamVenueAssessmentYearData(input: {
+  activeTeamId: string;
+  campById: Map<string, CampRow>;
+  currentProfileId: string;
+  selectedYear: number;
+  supabase: ServerSupabaseClient;
+  teamVenueId: string;
+}): Promise<VenueDetailYearData["assessments"]> {
+  const startedAt = startVenueDetailTiming();
+  const logAssessmentTiming = (
+    status: "success" | "error",
+    outcome: string,
+    error?: string,
+    metadata?: Record<string, string | number | boolean | null | undefined>,
+  ) => {
+    logVenueDetailTiming({
+      route: "/venues/[id]",
+      phase: "load_assessments",
+      startedAt,
+      teamVenueId: input.teamVenueId,
+      activeTeamId: input.activeTeamId,
+      status,
+      error,
+      metadata: {
+        outcome,
+        selectedYear: input.selectedYear,
+        ...metadata,
+      },
+    });
+  };
+  const throwAssessmentTimingError = (outcome: string, message: string): never => {
+    logAssessmentTiming("error", outcome, message);
+    throw new Error(message);
+  };
+
+  const [
+    { data: templateRows, error: templatesError },
+    { data: runRows, error: runsError },
+  ] = await Promise.all([
+    input.supabase
+      .from("assessment_templates")
+      .select(ASSESSMENT_TEMPLATE_SELECT_COLUMNS)
+      .eq("team_id", input.activeTeamId)
+      .eq("is_active", true)
+      .order("updated_at", { ascending: false }),
+    input.supabase
+      .from("assessment_runs")
+      .select(ASSESSMENT_RUN_SELECT_COLUMNS)
+      .eq("team_id", input.activeTeamId)
+      .eq("team_venue_id", input.teamVenueId)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  if (templatesError) {
+    throwAssessmentTimingError(
+      "templates_query_error",
+      `Could not load assessment templates: ${templatesError.message}`,
+    );
+  }
+
+  if (runsError) {
+    throwAssessmentTimingError(
+      "runs_query_error",
+      `Could not load assessment runs: ${runsError.message}`,
+    );
+  }
+
+  const templates = templateRows ?? [];
+  const templateIds = templates.map((template) => template.id);
+  const runs = runRows ?? [];
+  const runIds = runs.map((run) => run.id);
+
+  let templateScaleOptionRows: AssessmentTemplateScaleOptionRow[] = [];
+  let templateCategoryRows: AssessmentTemplateCategoryRow[] = [];
+  let templateModeRows: AssessmentTemplateModeRow[] = [];
+  let templateQuestionRows: AssessmentTemplateQuestionRow[] = [];
+
+  if (templateIds.length > 0) {
+    const [
+      { data: templateScaleOptionsData, error: templateScaleOptionError },
+      { data: templateCategoriesData, error: templateCategoryError },
+    ] = await Promise.all([
+      input.supabase
+        .from("assessment_template_scale_options")
+        .select(ASSESSMENT_TEMPLATE_SCALE_OPTION_SELECT_COLUMNS)
+        .in("assessment_template_id", templateIds),
+      input.supabase
+        .from("assessment_template_categories")
+        .select(ASSESSMENT_TEMPLATE_CATEGORY_SELECT_COLUMNS)
+        .in("assessment_template_id", templateIds),
+    ]);
+
+    if (templateScaleOptionError) {
+      throwAssessmentTimingError(
+        "template_scale_options_query_error",
+        `Could not load assessment template scale options: ${templateScaleOptionError.message}`,
+      );
+    }
+
+    if (templateCategoryError) {
+      throwAssessmentTimingError(
+        "template_categories_query_error",
+        `Could not load assessment template categories: ${templateCategoryError.message}`,
+      );
+    }
+
+    templateScaleOptionRows =
+      (templateScaleOptionsData ?? []) as AssessmentTemplateScaleOptionRow[];
+    templateCategoryRows = (templateCategoriesData ?? []) as AssessmentTemplateCategoryRow[];
+
+    const templateCategoryIds = templateCategoryRows.map((row) => row.id);
+
+    if (templateCategoryIds.length > 0) {
+      const [
+        { data: templateModesData, error: templateModeError },
+        { data: templateQuestionsData, error: templateQuestionError },
+      ] = await Promise.all([
+        input.supabase
+          .from("assessment_template_modes")
+          .select(ASSESSMENT_TEMPLATE_MODE_SELECT_COLUMNS)
+          .in("assessment_template_category_id", templateCategoryIds),
+        input.supabase
+          .from("assessment_template_questions")
+          .select(ASSESSMENT_TEMPLATE_QUESTION_SELECT_COLUMNS)
+          .in("assessment_template_category_id", templateCategoryIds),
+      ]);
+
+      if (templateModeError) {
+        throwAssessmentTimingError(
+          "template_modes_query_error",
+          `Could not load assessment template modes: ${templateModeError.message}`,
+        );
+      }
+
+      if (templateQuestionError) {
+        throwAssessmentTimingError(
+          "template_questions_query_error",
+          `Could not load assessment template questions: ${templateQuestionError.message}`,
+        );
+      }
+
+      templateModeRows = (templateModesData ?? []) as AssessmentTemplateModeRow[];
+      templateQuestionRows =
+        (templateQuestionsData ?? []) as AssessmentTemplateQuestionRow[];
+    }
+  }
+
+  let runScaleOptionRows: AssessmentRunScaleOptionRow[] = [];
+  let runCategoryRows: AssessmentRunCategoryRow[] = [];
+  let runModeRows: AssessmentRunModeRow[] = [];
+  let runQuestionRows: AssessmentRunQuestionRow[] = [];
+  let runCampRows: AssessmentRunCampRow[] = [];
+  let runRespondentRows: AssessmentRunRespondentRow[] = [];
+  let myRunAnswerRows: AssessmentRunAnswerRow[] = [];
+
+  if (runIds.length > 0) {
+    const [
+      { data: runScaleOptionsData, error: runScaleOptionError },
+      { data: runCategoriesData, error: runCategoryError },
+      { data: assessmentRunCampsData, error: runCampError },
+      { data: assessmentRunRespondentsData, error: runRespondentError },
+      { data: assessmentRunAnswersData, error: myRunAnswerError },
+    ] = await Promise.all([
+      input.supabase
+        .from("assessment_run_scale_options")
+        .select(ASSESSMENT_RUN_SCALE_OPTION_SELECT_COLUMNS)
+        .in("assessment_run_id", runIds),
+      input.supabase
+        .from("assessment_run_categories")
+        .select(ASSESSMENT_RUN_CATEGORY_SELECT_COLUMNS)
+        .in("assessment_run_id", runIds),
+      input.supabase
+        .from("assessment_run_camps")
+        .select(ASSESSMENT_RUN_CAMP_SELECT_COLUMNS)
+        .in("assessment_run_id", runIds),
+      input.supabase
+        .from("assessment_run_respondents")
+        .select(ASSESSMENT_RUN_RESPONDENT_SELECT_COLUMNS)
+        .in("assessment_run_id", runIds),
+      input.supabase
+        .from("assessment_run_answers")
+        .select(ASSESSMENT_RUN_ANSWER_SELECT_COLUMNS)
+        .in("assessment_run_id", runIds)
+        .eq("respondent_profile_id", input.currentProfileId),
+    ]);
+
+    if (runScaleOptionError) {
+      throwAssessmentTimingError(
+        "run_scale_options_query_error",
+        `Could not load assessment run scale options: ${runScaleOptionError.message}`,
+      );
+    }
+
+    if (runCategoryError) {
+      throwAssessmentTimingError(
+        "run_categories_query_error",
+        `Could not load assessment run categories: ${runCategoryError.message}`,
+      );
+    }
+
+    if (runCampError) {
+      throwAssessmentTimingError(
+        "run_camps_query_error",
+        `Could not load assessment run camps: ${runCampError.message}`,
+      );
+    }
+
+    if (runRespondentError) {
+      throwAssessmentTimingError(
+        "run_respondents_query_error",
+        `Could not load assessment run respondents: ${runRespondentError.message}`,
+      );
+    }
+
+    if (myRunAnswerError) {
+      throwAssessmentTimingError(
+        "run_answers_query_error",
+        `Could not load assessment run answers: ${myRunAnswerError.message}`,
+      );
+    }
+
+    runScaleOptionRows = (runScaleOptionsData ?? []) as AssessmentRunScaleOptionRow[];
+    runCategoryRows = (runCategoriesData ?? []) as AssessmentRunCategoryRow[];
+    runCampRows = (assessmentRunCampsData ?? []) as AssessmentRunCampRow[];
+    runRespondentRows = (assessmentRunRespondentsData ?? []) as AssessmentRunRespondentRow[];
+    myRunAnswerRows = (assessmentRunAnswersData ?? []) as AssessmentRunAnswerRow[];
+
+    const runCategoryIds = runCategoryRows.map((row) => row.id);
+
+    if (runCategoryIds.length > 0) {
+      const [
+        { data: runModesData, error: runModeError },
+        { data: runQuestionsData, error: runQuestionError },
+      ] = await Promise.all([
+        input.supabase
+          .from("assessment_run_modes")
+          .select(ASSESSMENT_RUN_MODE_SELECT_COLUMNS)
+          .in("assessment_run_category_id", runCategoryIds),
+        input.supabase
+          .from("assessment_run_questions")
+          .select(ASSESSMENT_RUN_QUESTION_SELECT_COLUMNS)
+          .in("assessment_run_category_id", runCategoryIds),
+      ]);
+
+      if (runModeError) {
+        throwAssessmentTimingError(
+          "run_modes_query_error",
+          `Could not load assessment run modes: ${runModeError.message}`,
+        );
+      }
+
+      if (runQuestionError) {
+        throwAssessmentTimingError(
+          "run_questions_query_error",
+          `Could not load assessment run questions: ${runQuestionError.message}`,
+        );
+      }
+
+      runModeRows = (runModesData ?? []) as AssessmentRunModeRow[];
+      runQuestionRows = (runQuestionsData ?? []) as AssessmentRunQuestionRow[];
+    }
+  }
+
+  const venueTemplates = buildTemplates({
+    templates,
+    templateScaleOptions: templateScaleOptionRows,
+    templateCategories: templateCategoryRows,
+    templateModes: templateModeRows,
+    templateQuestions: templateQuestionRows,
+  });
+
+  const templateNameById = new Map(venueTemplates.map((template) => [template.id, template.name]));
+  const venueRuns = buildRuns({
+    runs: runs as AssessmentRunRow[],
+    runScaleOptions: runScaleOptionRows,
+    runCategories: runCategoryRows,
+    runModes: runModeRows,
+    runQuestions: runQuestionRows,
+    runCamps: runCampRows,
+    runRespondents: runRespondentRows,
+    myRunAnswers: myRunAnswerRows,
+    campById: input.campById,
+    templateNameById,
+    currentProfileId: input.currentProfileId,
+  });
+  const visibleRuns = venueRuns.filter((run) => runVisibleForYear(run, input.selectedYear));
+
+  logAssessmentTiming("success", "loaded", undefined, {
+    runCount: visibleRuns.length,
+    templateCount: venueTemplates.length,
+    totalRunCount: venueRuns.length,
+  });
+
+  return {
+    templates: venueTemplates,
+    runs: visibleRuns,
+  };
+}
+
+export async function getTeamVenueDetailChromeData(input: {
+  activeOrganizationId: string;
+  activeTeamId: string | null;
+  teamVenueId: string;
+}): Promise<VenueDetailChromeData> {
+  const startedAt = startVenueDetailTiming();
+  const logChromeTiming = (
+    status: "success" | "error",
+    outcome: string,
+    error?: string,
+    metadata?: Record<string, string | number | boolean | null | undefined>,
+  ) => {
+    logVenueDetailTiming({
+      route: "/venues/[id]",
+      phase: "load_chrome",
+      startedAt,
+      teamVenueId: input.teamVenueId,
+      activeTeamId: input.activeTeamId,
+      status,
+      error,
+      metadata: {
+        outcome,
+        activeOrganizationId: input.activeOrganizationId,
+        ...metadata,
+      },
+    });
+  };
+  const throwChromeTimingError = (outcome: string, message: string): never => {
+    logChromeTiming("error", outcome, message);
+    throw new Error(message);
+  };
+
+  const supabase = await createServerSupabaseClient();
+
+  const { data: teamVenue, error: teamVenueError } = await supabase
+    .from("team_venues")
+    .select(TEAM_VENUE_SELECT_COLUMNS)
+    .eq("id", input.teamVenueId)
+    .maybeSingle();
+
+  if (teamVenueError) {
+    throwChromeTimingError(
+      "team_venue_query_error",
+      `Could not load team venue: ${teamVenueError.message}`,
+    );
+  }
+
+  if (!teamVenue) {
+    logChromeTiming("success", "team_venue_not_found");
+    return {
+      venue: null,
+      teamVenue: null,
+    };
+  }
+
+  if (!input.activeTeamId) {
+    const { data: venue, error: venueError } = await supabase
+      .from("venues")
+      .select(VENUE_SELECT_COLUMNS)
+      .eq("id", teamVenue.venue_id)
+      .eq("organization_id", input.activeOrganizationId)
+      .maybeSingle();
+
+    if (venueError) {
+      throwChromeTimingError(
+        "venue_query_error",
+        `Could not load venue: ${venueError.message}`,
+      );
+    }
+
+    logChromeTiming("success", "missing_active_team", undefined, {
+      venueId: venue?.id ?? null,
+    });
+
+    return {
+      venue,
+      teamVenue: null,
+    };
+  }
+
+  if (teamVenue.team_id !== input.activeTeamId) {
+    logChromeTiming("success", "team_venue_scope_mismatch", undefined, {
+      teamId: teamVenue.team_id,
+    });
+    return {
+      venue: null,
+      teamVenue: null,
+    };
+  }
+
+  const { data: venue, error: venueError } = await supabase
+    .from("venues")
+    .select(VENUE_SELECT_COLUMNS)
+    .eq("id", teamVenue.venue_id)
+    .eq("organization_id", input.activeOrganizationId)
+    .maybeSingle();
+
+  if (venueError) {
+    throwChromeTimingError(
+      "venue_query_error",
+      `Could not load venue: ${venueError.message}`,
+    );
+  }
+
+  if (!venue) {
+    logChromeTiming("success", "venue_not_found", undefined, {
+      venueId: teamVenue.venue_id,
+    });
+    return {
+      venue: null,
+      teamVenue: null,
+    };
+  }
+
+  logChromeTiming("success", "loaded", undefined, {
+    venueId: venue.id,
+  });
+
+  return {
+    venue,
+    teamVenue,
+  };
+}
+
+export async function getTeamVenueDetailKpisData(input: {
+  activeTeamId: string | null;
+  requestedYear?: number;
+  teamVenue: VenueDetailTeamVenue | null;
+  yearContextPromise?: Promise<TeamVenueDetailYearContextData>;
+}): Promise<VenueDetailKpisData> {
+  const startedAt = startVenueDetailTiming();
+  const teamVenueId = input.teamVenue?.id ?? null;
+
+  try {
+    const yearContext =
+      input.yearContextPromise !== undefined
+        ? await input.yearContextPromise
+        : await getTeamVenueDetailYearContextData({
+            activeTeamId: input.activeTeamId,
+            requestedYear: input.requestedYear,
+            teamVenue: input.teamVenue,
+          });
+    const activeTeamId = input.activeTeamId;
+    const teamVenue = input.teamVenue;
+
+    if (!yearContext || !activeTeamId || !teamVenue) {
+      const emptyData = buildEmptyKpisData(input.requestedYear);
+
+      logVenueDetailTiming({
+        route: "/venues/[id]",
+        phase: "load_kpis",
+        startedAt,
+        teamVenueId,
+        activeTeamId: input.activeTeamId,
+        status: "success",
+        metadata: {
+          outcome: "empty_scope",
+          selectedYear: emptyData.selectedYear,
+        },
+      });
+
+      return emptyData;
+    }
+
+    const sessions = await loadSelectedYearSessions({
+      campIds: yearContext.campIds,
+      selectedYear: yearContext.selectedYear,
+      supabase: yearContext.supabase,
+    });
+    const selectedYearCamps = filterCampsByYear(yearContext.camps, yearContext.selectedYear);
+    const kpis = buildKpis({
+      campCount: selectedYearCamps.length,
+      sessionCount: sessions.length,
+      sessions,
+    });
+
+    logVenueDetailTiming({
+      route: "/venues/[id]",
+      phase: "load_kpis",
+      startedAt,
+      teamVenueId: teamVenue.id,
+      activeTeamId,
+      status: "success",
+      metadata: {
+        availableYearCount: yearContext.availableYears.length,
+        campCount: selectedYearCamps.length,
+        selectedYear: yearContext.selectedYear,
+        sessionCount: sessions.length,
+      },
+    });
+
+    return {
+      availableYears: yearContext.availableYears,
+      selectedYear: yearContext.selectedYear,
+      kpis,
+    };
+  } catch (error) {
+    logVenueDetailTiming({
+      route: "/venues/[id]",
+      phase: "load_kpis",
+      startedAt,
+      teamVenueId,
+      activeTeamId: input.activeTeamId,
+      status: "error",
+      error: getVenueDetailTimingErrorMessage(error),
+    });
+
+    throw error;
+  }
+}
+
+export async function getTeamVenueDetailTabData(input: {
+  activeTeamId: string | null;
+  accumulatePages?: boolean;
+  currentProfileId: string;
+  requestedPage?: number;
+  requestedYear?: number;
+  selectedCampId?: string;
+  selectedHighlight?: TeamSessionHighlightFilter;
+  tab: VenueDetailTab;
+  teamVenue: VenueDetailTeamVenue | null;
+  venue?: VenueDetailVenue | null;
+  yearContextPromise?: Promise<TeamVenueDetailYearContextData>;
+}): Promise<VenueDetailTabPayload> {
+  const startedAt = startVenueDetailTiming();
+  const teamVenueId = input.teamVenue?.id ?? null;
+
+  try {
+    const yearContext =
+      input.yearContextPromise !== undefined
+        ? await input.yearContextPromise
+        : await getTeamVenueDetailYearContextData({
+            activeTeamId: input.activeTeamId,
+            requestedYear: input.requestedYear,
+            teamVenue: input.teamVenue,
+          });
+    const activeTeamId = input.activeTeamId;
+    const teamVenue = input.teamVenue;
+
+    if (!yearContext || !activeTeamId || !teamVenue) {
+      const emptyData = buildEmptyTabPayload(input.tab);
+
+      logTeamVenueTabTiming({
+        activeTeamId: input.activeTeamId,
+        data: emptyData,
+        selectedYear: input.requestedYear ?? getCurrentYear(),
+        startedAt,
+        status: "success",
+        tab: input.tab,
+        teamVenueId,
+      });
+
+      return emptyData;
+    }
+
+    const campById = new Map(yearContext.camps.map((camp) => [camp.id, camp]));
+    let data: VenueDetailTabPayload;
+
+    if (input.tab === "camps") {
+      const sessions = await loadSelectedYearSessions({
+        campIds: yearContext.campIds,
+        selectedYear: yearContext.selectedYear,
+        supabase: yearContext.supabase,
+      });
+
+      data = {
+        camps: buildYearData({
+          year: yearContext.selectedYear,
+          camps: yearContext.camps,
+          sessions,
+          reports: [],
+          reportCampLinks: [],
+          campById,
+          templates: [],
+          runs: [],
+        }).camps,
+      };
+    } else if (input.tab === "sessions") {
+      data = await loadSelectedYearTeamSessionsData({
+        accumulatePages: input.accumulatePages === true,
+        camps: yearContext.camps,
+        requestedPage: input.requestedPage ?? 1,
+        selectedCampId: input.selectedCampId,
+        selectedHighlight: input.selectedHighlight,
+        selectedYear: yearContext.selectedYear,
+        supabase: yearContext.supabase,
+        venue: input.venue ?? null,
+      });
+    } else if (input.tab === "wind-patterns") {
+      const windStartedAt = startVenueDetailTiming();
+      const windPatterns = await getTeamVenueWindPatternsPageData({
+        teamVenueId: teamVenue.id,
+      });
+
+      logVenueDetailTiming({
+        route: "/venues/[id]",
+        phase: "load_wind_patterns",
+        startedAt: windStartedAt,
+        teamVenueId: teamVenue.id,
+        activeTeamId,
+        status: "success",
+        metadata: {
+          activeCount: windPatterns.activeCount,
+          archivedCount: windPatterns.archivedCount,
+          patternCount: windPatterns.patterns.length,
+          selectedYear: yearContext.selectedYear,
+        },
+      });
+
+      data = {
+        windPatterns,
+      };
+    } else if (input.tab === "assessments") {
+      const sessions = await loadSelectedYearSessions({
+        campIds: yearContext.campIds,
+        selectedYear: yearContext.selectedYear,
+        supabase: yearContext.supabase,
+      });
+      const assessments = await loadTeamVenueAssessmentYearData({
+        activeTeamId,
+        campById,
+        currentProfileId: input.currentProfileId,
+        selectedYear: yearContext.selectedYear,
+        supabase: yearContext.supabase,
+        teamVenueId: teamVenue.id,
+      });
+
+      data = {
+        camps: buildYearData({
+          year: yearContext.selectedYear,
+          camps: yearContext.camps,
+          sessions,
+          reports: [],
+          reportCampLinks: [],
+          campById,
+          templates: [],
+          runs: [],
+        }).camps,
+        assessments,
+      };
+    } else {
+      const sessions = await loadSelectedYearSessions({
+        campIds: yearContext.campIds,
+        selectedYear: yearContext.selectedYear,
+        supabase: yearContext.supabase,
+      });
+      const reportsStartedAt = startVenueDetailTiming();
+      const { data: reportRows, error: reportsError } = await yearContext.supabase
+        .from("team_venue_reports")
+        .select(TEAM_VENUE_REPORT_SELECT_COLUMNS)
+        .eq("team_venue_id", teamVenue.id)
+        .eq("year", yearContext.selectedYear)
+        .order("created_at", { ascending: false });
+
+      if (reportsError) {
+        logVenueDetailTiming({
+          route: "/venues/[id]",
+          phase: "load_reports",
+          startedAt: reportsStartedAt,
+          teamVenueId: teamVenue.id,
+          activeTeamId,
+          status: "error",
+          error: `Could not load team venue reports: ${reportsError.message}`,
+          metadata: {
+            selectedYear: yearContext.selectedYear,
+          },
+        });
+        throw new Error(`Could not load team venue reports: ${reportsError.message}`);
+      }
+
+      const reports = (reportRows ?? []) as TeamVenueReportRow[];
+      const reportIds = reports.map((report) => report.id);
+      let reportCampLinks: TeamVenueReportCampRow[] = [];
+
+      if (reportIds.length > 0) {
+        const { data: reportCampRows, error: reportCampsError } = await yearContext.supabase
+          .from("team_venue_report_camps")
+          .select(TEAM_VENUE_REPORT_CAMP_SELECT_COLUMNS)
+          .in("report_id", reportIds);
+
+        if (reportCampsError) {
+          logVenueDetailTiming({
+            route: "/venues/[id]",
+            phase: "load_reports",
+            startedAt: reportsStartedAt,
+            teamVenueId: teamVenue.id,
+            activeTeamId,
+            status: "error",
+            error: `Could not load team venue report camps: ${reportCampsError.message}`,
+            metadata: {
+              reportCount: reports.length,
+              selectedYear: yearContext.selectedYear,
+            },
+          });
+          throw new Error(
+            `Could not load team venue report camps: ${reportCampsError.message}`,
+          );
+        }
+
+        reportCampLinks = (reportCampRows ?? []) as TeamVenueReportCampRow[];
+      }
+
+      const yearData = buildYearData({
+        year: yearContext.selectedYear,
+        camps: yearContext.camps,
+        sessions,
+        reports,
+        reportCampLinks,
+        campById,
+        templates: [],
+        runs: [],
+      });
+
+      data = {
+        camps: yearData.camps,
+        reports: yearData.reports,
+      };
+
+      logVenueDetailTiming({
+        route: "/venues/[id]",
+        phase: "load_reports",
+        startedAt: reportsStartedAt,
+        teamVenueId: teamVenue.id,
+        activeTeamId,
+        status: "success",
+        metadata: {
+          reportCampLinkCount: reportCampLinks.length,
+          reportCount: reports.length,
+          selectedYear: yearContext.selectedYear,
+        },
+      });
+    }
+
+    logTeamVenueTabTiming({
+      activeTeamId,
+      data,
+      selectedYear: yearContext.selectedYear,
+      startedAt,
+      status: "success",
+      tab: input.tab,
+      teamVenueId: teamVenue.id,
+    });
+
+    return data;
+  } catch (error) {
+    logVenueDetailTiming({
+      route: "/venues/[id]",
+      phase: "load_tab",
+      startedAt,
+      teamVenueId,
+      activeTeamId: input.activeTeamId,
+      status: "error",
+      error: getVenueDetailTimingErrorMessage(error),
+      metadata: {
+        requestedYear: input.requestedYear ?? null,
+        tab: input.tab,
+      },
+    });
+
+    throw error;
+  }
 }
 
 export async function getVenueDetailPageData(input: {

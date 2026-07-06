@@ -1,11 +1,11 @@
 # Team Sessions List Audit
 
-Date: 2026-06-26
+Date: 2026-07-04
 
 Scope: current `/team-sessions` list implementation. This audit is the new
 post-implementation snapshot after the mobile UI, pending states, list timing,
-update-scope hardening, narrow tests work, action-module split, and row/card
-actions menu.
+update-scope hardening, narrow tests work, action-module split, row/card
+actions menu, and list loading shell split.
 
 The Team Session detail audit for `/team-sessions/[id]` remains separate in
 `AUDIT_TEAM_SESSION_ID.MD`.
@@ -42,6 +42,14 @@ Current state after the implementation sequence:
   toast feedback through `SessionsFeedback`.
 - The list now emits `team_sessions_list_timing` logs for `scope`, `filters`,
   and `sessions`, including counts/page metadata.
+- Initial route loading now uses a stable list chrome/results split:
+  `TeamSessionsRouteShell` keeps title, filters, desktop `New`, mobile FAB,
+  and filter-pending overlays mounted while the results table/cards load behind
+  a nested `Suspense` boundary.
+- The data path is split into `getTeamSessionsChromeData()` for filter/create
+  chrome and `getTeamSessionsResultsData()` for sessions, page count, and
+  pagination state. `getTeamSessionsPageData()` remains as compatibility
+  composition for shared callers.
 - `updateSessionAction()` resolves session -> camp -> team venue -> venue
   against the active org/team before writing.
 - Target camp validation now checks both active team and active organization.
@@ -52,7 +60,7 @@ Current state after the implementation sequence:
   `features/sessions/actions.ts` file is only a compatibility barrel.
 - Table rows and mobile cards now use a horizontal-more actions menu with
   `Edit` and `Delete`; delete confirms use a blurred modal overlay.
-- `npm test` now runs 10 focused Node tests for route helpers and permission
+- `npm test` now runs focused Node tests for route helpers and permission
   rules without adding a new dependency.
 - The list route remains server-first with desktop table, mobile cards, route
   skeleton, desktop pagination, and mobile accumulation.
@@ -61,9 +69,9 @@ Current state after the implementation sequence:
 
 | Category | Score | Current result |
 | --- | ---: | --- |
-| Performance, RES-style proxy | 4.3/5 | The route fetches a small visible session page, supports desktop pagination and mobile accumulation, prefetches detail routes on row/card intent, and now logs `scope`, `filters`, and `sessions` server phases. The remaining gap is that the loader still builds the full filtered camp catalog before reading paged sessions. |
-| UI consistency | 4.8/5 | Desktop stays table-first. Mobile uses cards, an explicit FAB, full-width load more, horizontal-more row/card actions, fixed footer drawers, touch-safe controls, blurred delete confirms, and bottom toast feedback. This now matches the accepted Sailog mobile list pattern. |
-| Code tidiness | 4.2/5 | Route state helpers, timing helpers, permission rules, list mutations, and detail mutations are separated from the page and client table. The old `features/sessions/actions.ts` remains only as a compatibility barrel. |
+| Performance, RES-style proxy | 4.5/5 | The route fetches a small visible session page, supports desktop pagination and mobile accumulation, prefetches detail routes on row/card intent, logs `scope`, `filters`, and `sessions` server phases, and now streams stable list chrome separately from results. The remaining gap is that chrome still builds the filtered camp catalog before results can render. |
+| UI consistency | 4.9/5 | Desktop stays table-first. Mobile uses cards, an explicit FAB, full-width load more, horizontal-more row/card actions, fixed footer drawers, touch-safe controls, blurred delete confirms, bottom toast feedback, and a loading shell that keeps title/actions visible. This now matches the accepted Sailog mobile list pattern. |
+| Code tidiness | 4.4/5 | Route state helpers, timing helpers, permission rules, list mutations, detail mutations, chrome data, results data, and the client shell are separated from the page and table. The old `features/sessions/actions.ts` remains only as a compatibility barrel. |
 | Scalability | 4.0/5 | Session rows are paged and mobile accumulation avoids replacing prior cards. Timing logs make pressure visible. The main scalability risk is still the sequential team venue -> venue -> camp -> session path and potentially large `camp_id IN (...)` filters. |
 | Best practices | 4.6/5 | Auth and writes are server-first, inputs are validated, RLS remains the database backstop, pending states are visible, redirects preserve active filters, and focused regression tests now cover the pure route/permission rules. Missing coverage is browser/database integration for the actual forms. |
 | Modularity | 4.3/5 | The list page delegates table UI, toolbar UI, forms, route state, timing, data loading, permission rules, and list mutations to separate files. Create/edit surface wiring still has some Drawer/Sheet/Dialog duplication. |
@@ -81,6 +89,7 @@ Entry points:
 - `app/(app)/team-sessions/loading.tsx`
 - `features/sessions/data.ts`
 - `features/sessions/sessions-table.tsx`
+- `features/sessions/team-sessions-route-shell.tsx`
 - `features/sessions/team-sessions-toolbar.tsx`
 - `features/sessions/session-form-dialogs.tsx`
 - `features/sessions/list-actions.ts`
@@ -102,7 +111,12 @@ Data behavior:
 - The page requires authenticated access and an active navigation scope.
 - `resolveTeamSessionsListRequest()` normalizes page, `loadMore`, and highlight
   params.
-- `getTeamSessionsPageData()` loads team venues, venues, camps, then sessions.
+- `getTeamSessionsChromeData()` loads team venues, venues, camps, and normalized
+  filter/create options.
+- `getTeamSessionsResultsData()` loads the count-backed visible sessions page
+  from the already resolved chrome/filter data.
+- `getTeamSessionsPageData()` composes chrome plus results for shared callers
+  that still need the full payload.
 - Venue and camp filters are normalized against allowed IDs.
 - Highlight accepts only `yes` or `no`.
 - `TEAM_SESSIONS_PAGE_SIZE` remains `10`.
@@ -124,6 +138,12 @@ UI behavior:
   table overlay spinner while navigating.
 - Mobile filters live in a Drawer and use one centered card-list spinner while
   navigating.
+- Initial loading keeps the list chrome visible through `TeamSessionsRouteShell`;
+  only the table/cards/pagination results area uses `TeamSessionsResultsSkeleton`
+  once chrome data has resolved.
+- `TeamSessionsPageSkeleton` is still the route-level fallback, but it is now
+  composed from `TeamSessionsChromeSkeleton` and `TeamSessionsResultsSkeleton`
+  so direct route loads and deferred list loads share the same pieces.
 - Create/edit surfaces keep mobile Drawer and desktop Sheet/Dialog patterns.
 - Delete confirm modals use a blurred overlay and destructive submit state.
 - Submit buttons show `Creating...` / `Saving...` / `Deleting...` while pending.
@@ -154,25 +174,23 @@ Mutation behavior:
 
 ## Validation Snapshot
 
-Latest validation after the actions-menu/delete change:
+Latest validation after the list shell/results loading split:
 
-- `npm test` passed with 10 tests.
-- Scoped `eslint` for changed Team Sessions/auth files passed with no output.
-- `./node_modules/.bin/tsc --noEmit` passed.
 - `git diff --check` passed.
-- `npm run build` passed.
-- Local dev server verification: existing `localhost:3000` returned `200 OK`
-  for `/team-sessions`; `agent-browser` CLI was not installed in this
-  environment, so visual interaction automation was not available.
-- Full `npm run lint` exited 0 with two unrelated existing warnings:
+- `./node_modules/.bin/tsc --noEmit` passed.
+- `npm run lint` exited 0 with two unrelated existing warnings:
   `app/sign-in/sign-in-content.tsx` unused `isRegisterMode`, and
   `features/onboarding/onboarding-flow.tsx` unused `Label`.
+- `npm test` passed with 18 tests.
+- `npm run build` passed.
 
 ## New Engineering Priority
 
 1. Capture live timing samples for `/team-sessions` using the new
    `team_sessions_list_timing` logs.
-2. If `filters` is the slow phase, split or cache the camp/filter catalog.
+2. If `filters` is the slow phase, cache or further split the
+   `getTeamSessionsChromeData()` camp/filter catalog so the list chrome appears
+   even sooner.
 3. If `sessions` is the slow phase, revisit the `camp_id IN (...)` query shape
    and consider a scoped read model.
 4. Add browser/database integration coverage for create/update/delete form

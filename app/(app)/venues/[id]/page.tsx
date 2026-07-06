@@ -1,13 +1,26 @@
 import Link from "next/link"
+import { Suspense } from "react"
 
-import { getVenueDetailPageData } from "@/features/venues/detail-data"
+import { VenueDetailDeferredContentSkeleton } from "@/components/shared/page-skeletons"
+import {
+  getTeamVenueDetailChromeData,
+  getTeamVenueDetailKpisData,
+  getTeamVenueDetailTabData,
+  getTeamVenueDetailYearContextData,
+} from "@/features/venues/detail-data"
+import type {
+  VenueDetailKpisData,
+  VenueDetailTabPayload,
+  VenueDetailVenue,
+} from "@/features/venues/detail-types"
+import type { VenueOrganizationOption } from "@/features/venues/data"
 import { VenueDetailTabsClient } from "@/features/venues/venue-detail-tabs-client"
 import {
   buildTeamVenuesHref,
   buildVenueDetailHref,
-  VENUE_DETAIL_TABS,
   type VenueDetailTab,
 } from "@/features/venues/navigation"
+import { resolveVenueDetailRouteRequest } from "@/features/venues/detail-route-state.mjs"
 import { VenuesFeedback } from "@/features/venues/venues-feedback"
 import { EditVenueDialog } from "@/features/venues/venue-form-dialogs"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
@@ -27,36 +40,9 @@ type VenueDetailSearchParams = Promise<
 
 type VenueDetailParams = Promise<{ id: string }>
 type WindPatternStatusFilter = "active" | "archived" | "all"
-
-const DEFAULT_TAB: VenueDetailTab = "camps"
-
-function resolveTab(value: string | undefined): VenueDetailTab {
-  if (!value) {
-    return DEFAULT_TAB
-  }
-
-  if (value === "metrics") {
-    return "assessments"
-  }
-
-  return VENUE_DETAIL_TABS.includes(value as VenueDetailTab)
-    ? (value as VenueDetailTab)
-    : DEFAULT_TAB
-}
-
-function parseRequestedYear(value: string | undefined): number | undefined {
-  if (!value) {
-    return undefined
-  }
-
-  const parsed = Number.parseInt(value, 10)
-
-  if (!Number.isFinite(parsed)) {
-    return undefined
-  }
-
-  return parsed
-}
+type ResolvedVenueDetailScope = NonNullable<
+  Awaited<ReturnType<typeof resolveNavigationScope>>["scope"]
+>
 
 function getStatusMessage(status: string | undefined): string | null {
   if (status === "updated") {
@@ -162,6 +148,66 @@ function resolveWindPatternStatusFilter(value: string | undefined): WindPatternS
   return "active"
 }
 
+async function VenueDetailDeferredContent(input: {
+  activeOrganization: VenueOrganizationOption
+  canManageAssessments: boolean
+  canManageReports: boolean
+  canManageSessions: boolean
+  canManageVenues: boolean
+  canManageWindPatterns: boolean
+  initialTab: VenueDetailTab
+  initialTabDataPromise: Promise<VenueDetailTabPayload>
+  initialWindPatternStatusFilter: WindPatternStatusFilter
+  kpisPromise: Promise<VenueDetailKpisData>
+  scope: ResolvedVenueDetailScope
+  teamVenueId: string
+  venue: VenueDetailVenue
+}) {
+  const [kpisData, initialTabData] = await Promise.all([
+    input.kpisPromise,
+    input.initialTabDataPromise,
+  ])
+  const venueForEdit = {
+    ...input.venue,
+    organizationName: input.activeOrganization.name,
+  }
+  const editRedirectTo = buildVenueDetailHref({
+    scope: input.scope,
+    teamVenueId: input.teamVenueId,
+    tab: input.initialTab,
+    year: kpisData.selectedYear,
+  })
+  const detailHeaderAction = input.canManageVenues ? (
+    <EditVenueDialog
+      venue={venueForEdit}
+      organizations={[input.activeOrganization]}
+      scope={input.scope}
+      teamVenueId={input.teamVenueId}
+      redirectTo={editRedirectTo}
+    />
+  ) : null
+
+  return (
+    <VenueDetailTabsClient
+      scope={input.scope}
+      teamVenueId={input.teamVenueId}
+      venueLocation={`${input.venue.city}, ${input.venue.country}`}
+      venueName={input.venue.name}
+      availableYears={kpisData.availableYears}
+      kpis={kpisData.kpis}
+      initialYear={kpisData.selectedYear}
+      initialTab={input.initialTab}
+      initialTabData={initialTabData}
+      canManageAssessments={input.canManageAssessments}
+      canManageReports={input.canManageReports}
+      canManageSessions={input.canManageSessions}
+      canManageWindPatterns={input.canManageWindPatterns}
+      initialWindPatternStatusFilter={input.initialWindPatternStatusFilter}
+      action={detailHeaderAction}
+    />
+  )
+}
+
 export default async function VenueDetailPage({
   params,
   searchParams,
@@ -175,10 +221,26 @@ export default async function VenueDetailPage({
 
   const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
-  const selectedTab = resolveTab(getSingleSearchParamValue(resolvedSearchParams.tab))
-  const requestedYear = parseRequestedYear(
-    getSingleSearchParamValue(resolvedSearchParams.year),
-  )
+  const requestedCampId = getSingleSearchParamValue(resolvedSearchParams.camp)
+  const {
+    requestedHighlight,
+    requestedLoadMoreMode,
+    requestedPage,
+    requestedYear,
+    selectedTab,
+  } = resolveVenueDetailRouteRequest({
+    highlightParam: getSingleSearchParamValue(resolvedSearchParams.highlight),
+    loadMoreParam: getSingleSearchParamValue(resolvedSearchParams.loadMore),
+    pageParam: getSingleSearchParamValue(resolvedSearchParams.page),
+    tabParam: getSingleSearchParamValue(resolvedSearchParams.tab),
+    yearParam: getSingleSearchParamValue(resolvedSearchParams.year),
+  }) as {
+    requestedHighlight?: "yes" | "no"
+    requestedLoadMoreMode: boolean
+    requestedPage: number
+    requestedYear?: number
+    selectedTab: VenueDetailTab
+  }
   const requestedWindPatternStatusFilter = resolveWindPatternStatusFilter(
     getSingleSearchParamValue(resolvedSearchParams.statusFilter),
   )
@@ -221,15 +283,13 @@ export default async function VenueDetailPage({
     )
   }
 
-  const detailData = await getVenueDetailPageData({
+  const chromeData = await getTeamVenueDetailChromeData({
     activeOrganizationId: scope.activeOrgId,
     activeTeamId: scope.activeTeamId,
-    currentProfileId: context.user.id,
     teamVenueId: resolvedParams.id,
-    requestedYear,
   })
 
-  const venue = detailData.venue
+  const venue = chromeData.venue
 
   if (!venue) {
     return (
@@ -242,55 +302,60 @@ export default async function VenueDetailPage({
     )
   }
 
-  const canManageVenues = canManageOrganizationOperations(
-    context,
-    scope.activeOrgId,
-  )
   const teamsForOrganization =
     navigation.catalog.teamsByOrganizationId[scope.activeOrgId] ?? []
   const activeTeamLabel =
     teamsForOrganization.find((team) => team.id === scope.activeTeamId)?.name ??
     "No team selected"
 
-  const venueForEdit = {
-    ...venue,
-    organizationName: activeOrganization.name,
-  }
-
-  const editRedirectTo = buildVenueDetailHref({
-    scope,
-    teamVenueId: resolvedParams.id,
-    tab: selectedTab,
-    year: detailData.selectedYear,
-  })
-  const detailHeaderAction = canManageVenues ? (
-    <EditVenueDialog
-      venue={venueForEdit}
-      organizations={[activeOrganization]}
-      scope={scope}
-      redirectTo={editRedirectTo}
-    />
-  ) : null
-
   const noTeamSelected = scope.activeTeamId === null
-  const missingTeamVenueLink = !noTeamSelected && detailData.teamVenue === null
+  const missingTeamVenueLink = !noTeamSelected && chromeData.teamVenue === null
+  const canManageVenues =
+    !noTeamSelected &&
+    chromeData.teamVenue !== null &&
+    canManageOrganizationOperations(context, scope.activeOrgId)
   const canManageAssessments =
-    !noTeamSelected && detailData.teamVenue
+    !noTeamSelected && chromeData.teamVenue
       ? canManageTeamStructure({
           context,
           organizationId: scope.activeOrgId,
-          teamId: detailData.teamVenue.team_id,
+          teamId: chromeData.teamVenue.team_id,
         })
       : false
   const canManageReports = canManageAssessments
-  const canManageWindPatterns =
-    !noTeamSelected && detailData.teamVenue
+  const canManageSessions =
+    !noTeamSelected && chromeData.teamVenue
       ? canManageTeamSessions({
           context,
           organizationId: scope.activeOrgId,
-          teamId: detailData.teamVenue.team_id,
+          teamId: chromeData.teamVenue.team_id,
         })
       : false
+  const canManageWindPatterns = canManageSessions
+  const yearContextPromise = getTeamVenueDetailYearContextData({
+    activeTeamId: scope.activeTeamId,
+    requestedYear,
+    teamVenue: chromeData.teamVenue,
+  })
+  const kpisPromise = getTeamVenueDetailKpisData({
+    activeTeamId: scope.activeTeamId,
+    requestedYear,
+    teamVenue: chromeData.teamVenue,
+    yearContextPromise,
+  })
+  const initialTabDataPromise = getTeamVenueDetailTabData({
+    activeTeamId: scope.activeTeamId,
+    accumulatePages: requestedLoadMoreMode,
+    currentProfileId: context.user.id,
+    requestedPage,
+    requestedYear,
+    selectedCampId: requestedCampId,
+    selectedHighlight: requestedHighlight,
+    tab: selectedTab,
+    teamVenue: chromeData.teamVenue,
+    venue,
+    yearContextPromise,
+  })
 
   return (
     <div>
@@ -322,20 +387,30 @@ export default async function VenueDetailPage({
         </section>
       ) : null}
 
-      <VenueDetailTabsClient
-        scope={scope}
-        teamVenueId={resolvedParams.id}
-        availableYears={detailData.availableYears}
-        byYear={detailData.byYear}
-        initialYear={detailData.selectedYear}
-        initialTab={selectedTab}
-        canManageAssessments={canManageAssessments}
-        canManageReports={canManageReports}
-        canManageWindPatterns={canManageWindPatterns}
-        windPatterns={detailData.windPatterns}
-        initialWindPatternStatusFilter={requestedWindPatternStatusFilter}
-        action={detailHeaderAction}
-      />
+      <Suspense
+        fallback={
+          <VenueDetailDeferredContentSkeleton
+            selectedTab={selectedTab}
+            selectedYear={requestedYear}
+          />
+        }
+      >
+        <VenueDetailDeferredContent
+          activeOrganization={activeOrganization}
+          canManageAssessments={canManageAssessments}
+          canManageReports={canManageReports}
+          canManageSessions={canManageSessions}
+          canManageVenues={canManageVenues}
+          canManageWindPatterns={canManageWindPatterns}
+          initialTab={selectedTab}
+          initialTabDataPromise={initialTabDataPromise}
+          initialWindPatternStatusFilter={requestedWindPatternStatusFilter}
+          kpisPromise={kpisPromise}
+          scope={scope}
+          teamVenueId={resolvedParams.id}
+          venue={venue}
+        />
+      </Suspense>
     </div>
   )
 }

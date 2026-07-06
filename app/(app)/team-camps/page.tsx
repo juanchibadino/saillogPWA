@@ -1,19 +1,26 @@
-import { CampsFeedback } from "@/features/camps/camps-feedback"
-import { CreateCampDialog } from "@/features/camps/camp-form-dialogs"
-import { TeamCampsTable } from "@/features/camps/camps-table"
-import { TeamVenuesToolbar } from "@/features/team-venues/team-venues-toolbar"
+import { Suspense } from "react"
+
 import {
-  getTeamCampsPageData,
-  type TeamCampListItem,
-  type TeamCampVenueFilterOption,
-  type TeamCampVenueOption,
+  TeamCampsPageSkeleton,
+  TeamCampsResultsSkeleton,
+} from "@/components/shared/page-skeletons"
+import { CampsFeedback } from "@/features/camps/camps-feedback"
+import { TeamCampsTable } from "@/features/camps/camps-table"
+import {
+  logTeamCampsListTiming,
+  startTeamCampsListTiming,
+} from "@/features/camps/list-timing"
+import { resolveTeamCampsListRequest } from "@/features/camps/list-route-state.mjs"
+import { TeamCampsRouteShell } from "@/features/camps/team-camps-route-shell"
+import {
+  getTeamCampsChromeData,
+  getTeamCampsResultsData,
+  type TeamCampStatusFilter,
+  type TeamCampTypeFilter,
+  type TeamCampsChromeData,
 } from "@/features/camps/data"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canDeleteCamps, canManageTeamStructure } from "@/lib/auth/capabilities"
-import {
-  NAVIGATION_SCOPE_ORG_QUERY_KEY,
-  NAVIGATION_SCOPE_TEAM_QUERY_KEY,
-} from "@/lib/navigation/constants"
 import {
   getSingleSearchParamValue,
   resolveNavigationScope,
@@ -22,6 +29,10 @@ import {
 type TeamCampsSearchParams = Promise<
   Record<string, string | string[] | undefined>
 >
+type ResolvedTeamCampsScope = NonNullable<
+  Awaited<ReturnType<typeof resolveNavigationScope>>["scope"]
+>
+type TeamCampsChromeDataPromise = Promise<TeamCampsChromeData>
 
 function getStatusMessage(status: string | undefined): string | null {
   if (status === "created") {
@@ -71,39 +82,98 @@ function getErrorMessage(error: string | undefined): string | null {
   return null
 }
 
-function parseRequestedPage(value: string | undefined): number {
-  if (!value) {
-    return 1
+function getEmptyTeamCampsChromeData(input: {
+  requestedCampStatus?: TeamCampStatusFilter
+  requestedCampType?: TeamCampTypeFilter
+  requestedVenueId?: string
+}): TeamCampsChromeData {
+  return {
+    teamVenueOptions: [],
+    venueFilterOptions: [],
+    selectedVenueId: input.requestedVenueId,
+    selectedCampType: input.requestedCampType,
+    selectedCampStatus: input.requestedCampStatus,
   }
-
-  const parsed = Number.parseInt(value, 10)
-
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    return 1
-  }
-
-  return Math.floor(parsed)
 }
 
-function buildTeamCampVenueFilterHref(input: {
-  venueId?: string
-  scope: {
-    activeOrgId: string
-    activeTeamId: string | null
-  }
-}): string {
-  const params = new URLSearchParams()
-  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.scope.activeOrgId)
+async function TeamCampsShellSlot(input: {
+  activeTeamId: string | null
+  canDeleteCampRows: boolean
+  canManageCamps: boolean
+  chromeDataPromise: TeamCampsChromeDataPromise
+  noTeamSelected: boolean
+  requestedLoadMoreMode: boolean
+  requestedPage: number
+  scope: ResolvedTeamCampsScope
+}) {
+  const chromeData = await input.chromeDataPromise
 
-  if (input.scope.activeTeamId) {
-    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scope.activeTeamId)
-  }
+  return (
+    <TeamCampsRouteShell
+      canManageCamps={input.canManageCamps}
+      chromeData={chromeData}
+      currentPage={input.requestedPage}
+      noTeamSelected={input.noTeamSelected}
+      scope={input.scope}
+    >
+      <Suspense fallback={<TeamCampsResultsSkeleton />}>
+        <TeamCampsResultsContent
+          activeTeamId={input.activeTeamId}
+          canDeleteCampRows={input.canDeleteCampRows}
+          canManageCamps={input.canManageCamps}
+          chromeData={chromeData}
+          requestedLoadMoreMode={input.requestedLoadMoreMode}
+          requestedPage={input.requestedPage}
+          scope={input.scope}
+        />
+      </Suspense>
+    </TeamCampsRouteShell>
+  )
+}
 
-  if (input.venueId) {
-    params.set("venue", input.venueId)
-  }
+async function TeamCampsResultsContent(input: {
+  activeTeamId: string | null
+  canDeleteCampRows: boolean
+  canManageCamps: boolean
+  chromeData: TeamCampsChromeData
+  requestedLoadMoreMode: boolean
+  requestedPage: number
+  scope: ResolvedTeamCampsScope
+}) {
+  const noTeamSelected = input.activeTeamId === null
+  const resultsData = input.activeTeamId
+    ? await getTeamCampsResultsData({
+        activeTeamId: input.activeTeamId,
+        chromeData: input.chromeData,
+        page: input.requestedPage,
+        accumulatePages: input.requestedLoadMoreMode,
+      })
+    : {
+        camps: [],
+        currentPage: input.requestedPage,
+        pageCount: 1,
+        hasPreviousPage: input.requestedPage > 1,
+        hasNextPage: false,
+      }
 
-  return `/team-camps?${params.toString()}`
+  return (
+    <TeamCampsTable
+      camps={resultsData.camps}
+      teamVenueOptions={input.chromeData.teamVenueOptions}
+      canManageCamps={input.canManageCamps}
+      canDeleteCamps={input.canDeleteCampRows}
+      noTeamSelected={noTeamSelected}
+      scope={input.scope}
+      selectedVenueId={input.chromeData.selectedVenueId}
+      selectedCampType={input.chromeData.selectedCampType}
+      selectedCampStatus={input.chromeData.selectedCampStatus}
+      currentPage={resultsData.currentPage}
+      pageCount={resultsData.pageCount}
+      hasPreviousPage={resultsData.hasPreviousPage}
+      hasNextPage={resultsData.hasNextPage}
+      hideChrome
+    />
+  )
 }
 
 export default async function TeamCampsPage({
@@ -111,15 +181,24 @@ export default async function TeamCampsPage({
 }: {
   searchParams: TeamCampsSearchParams
 }) {
+  const scopeStartedAt = startTeamCampsListTiming()
   const context = await requireAuthenticatedAccessContext()
   const resolvedSearchParams = await searchParams
 
   const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
   const requestedVenueId = getSingleSearchParamValue(resolvedSearchParams.venue)
-  const requestedPage = parseRequestedPage(
-    getSingleSearchParamValue(resolvedSearchParams.page),
-  )
+  const {
+    requestedCampStatus,
+    requestedCampType,
+    requestedLoadMoreMode,
+    requestedPage,
+  } = resolveTeamCampsListRequest({
+    pageParam: getSingleSearchParamValue(resolvedSearchParams.page),
+    loadMoreParam: getSingleSearchParamValue(resolvedSearchParams.loadMore),
+    typeParam: getSingleSearchParamValue(resolvedSearchParams.type),
+    campStatusParam: getSingleSearchParamValue(resolvedSearchParams.campStatus),
+  })
 
   const statusMessage = getStatusMessage(status)
   const errorMessage = getErrorMessage(error)
@@ -127,6 +206,16 @@ export default async function TeamCampsPage({
   const navigation = await resolveNavigationScope({
     context,
     searchParams: resolvedSearchParams,
+  })
+  logTeamCampsListTiming({
+    phase: "scope",
+    startedAt: scopeStartedAt,
+    activeTeamId: navigation.scope?.activeTeamId ?? null,
+    status: "success",
+    metadata: {
+      hasScope: Boolean(navigation.scope),
+      hasTeamScope: Boolean(navigation.scope?.activeTeamId),
+    },
   })
 
   if (!navigation.scope) {
@@ -158,33 +247,22 @@ export default async function TeamCampsPage({
       organizationId: scope.activeOrgId,
       teamId: activeTeamId,
     })
-
-  let camps: TeamCampListItem[] = []
-  let teamVenueOptions: TeamCampVenueOption[] = []
-  let venueFilterOptions: TeamCampVenueFilterOption[] = []
-  let selectedVenueId: string | undefined = requestedVenueId
-  let currentPage = requestedPage
-  let hasPreviousPage = requestedPage > 1
-  let hasNextPage = false
-
-  if (activeTeamId) {
-    const pageData = await getTeamCampsPageData({
-      activeTeamId,
-      selectedVenueId: requestedVenueId,
-      page: requestedPage,
-    })
-
-    camps = pageData.camps
-    teamVenueOptions = pageData.teamVenueOptions
-    venueFilterOptions = pageData.venueFilterOptions
-    selectedVenueId = pageData.selectedVenueId
-    currentPage = pageData.currentPage
-    hasPreviousPage = pageData.hasPreviousPage
-    hasNextPage = pageData.hasNextPage
-  }
-
-  const createDisabled =
-    noTeamSelected || !canManageCamps || teamVenueOptions.length === 0
+  const chromeDataPromise: TeamCampsChromeDataPromise = activeTeamId
+    ? getTeamCampsChromeData({
+        activeTeamId,
+        selectedVenueId: requestedVenueId,
+        selectedCampType: requestedCampType,
+        selectedCampStatus: requestedCampStatus,
+        page: requestedPage,
+        accumulatePages: requestedLoadMoreMode,
+      })
+    : Promise.resolve(
+        getEmptyTeamCampsChromeData({
+          requestedVenueId,
+          requestedCampType,
+          requestedCampStatus,
+        }),
+      )
 
   return (
     <div className="space-y-6">
@@ -211,50 +289,18 @@ export default async function TeamCampsPage({
         </section>
       ) : null}
 
-      <TeamCampsTable
-        camps={camps}
-        teamVenueOptions={teamVenueOptions}
-        canManageCamps={canManageCamps}
-        canDeleteCamps={canDeleteCampRows}
-        noTeamSelected={noTeamSelected}
-        toolbar={
-          <TeamVenuesToolbar
-            filterLabel="Venue"
-            selectedValue={selectedVenueId ?? ""}
-            disabled={noTeamSelected || venueFilterOptions.length === 0}
-            clearHref={buildTeamCampVenueFilterHref({ scope })}
-            options={[
-              {
-                value: "",
-                label: "Venues",
-                href: buildTeamCampVenueFilterHref({ scope }),
-              },
-              ...venueFilterOptions.map((option) => ({
-                value: option.venueId,
-                label: `${option.venueName} — ${option.venueLocation}`,
-                href: buildTeamCampVenueFilterHref({
-                  scope,
-                  venueId: option.venueId,
-                }),
-              })),
-            ]}
-            action={
-              <CreateCampDialog
-                teamVenueOptions={teamVenueOptions}
-                scope={scope}
-                selectedVenueId={selectedVenueId}
-                currentPage={currentPage}
-                disabled={createDisabled}
-              />
-            }
-          />
-        }
-        scope={scope}
-        selectedVenueId={selectedVenueId}
-        currentPage={currentPage}
-        hasPreviousPage={hasPreviousPage}
-        hasNextPage={hasNextPage}
-      />
+      <Suspense fallback={<TeamCampsPageSkeleton />}>
+        <TeamCampsShellSlot
+          activeTeamId={activeTeamId}
+          canDeleteCampRows={canDeleteCampRows}
+          canManageCamps={canManageCamps}
+          chromeDataPromise={chromeDataPromise}
+          noTeamSelected={noTeamSelected}
+          requestedLoadMoreMode={requestedLoadMoreMode}
+          requestedPage={requestedPage}
+          scope={scope}
+        />
+      </Suspense>
     </div>
   )
 }

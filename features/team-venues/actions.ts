@@ -4,11 +4,6 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access";
-import { isOrganizationAdmin, isSuperAdmin } from "@/lib/auth/capabilities";
-import {
-  NAVIGATION_SCOPE_ORG_QUERY_KEY,
-  NAVIGATION_SCOPE_TEAM_QUERY_KEY,
-} from "@/lib/navigation/constants";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { scopeFormInputSchema } from "@/lib/validation/navigation";
 import {
@@ -17,6 +12,11 @@ import {
   deleteTeamVenueInputSchema,
   updateTeamVenueInputSchema,
 } from "@/lib/validation/team-venues";
+import { buildTeamVenuesRedirectPath } from "@/features/team-venues/list-route-state.mjs";
+import {
+  canDeleteTeamVenueLink,
+  canRunTeamVenueWriteAction,
+} from "@/features/team-venues/action-rules.mjs";
 import type { TeamVenueStatusFilter } from "@/features/team-venues/data";
 
 function parseStatusFilter(value: string | undefined): TeamVenueStatusFilter | undefined {
@@ -38,7 +38,9 @@ function getFormString(formData: FormData, key: string): string | undefined {
 }
 
 function getScopeFromFormData(formData: FormData): {
+  scopeLoadMore?: boolean;
   scopeOrgId?: string;
+  scopePage?: number;
   scopeTeamId?: string;
   scopeStatus?: TeamVenueStatusFilter;
 } {
@@ -47,79 +49,33 @@ function getScopeFromFormData(formData: FormData): {
     scopeTeamId: getFormString(formData, "scopeTeamId"),
   });
   const scopeStatus = parseStatusFilter(getFormString(formData, "scopeStatus"));
+  const scopePage = parseOptionalPage(getFormString(formData, "scopePage"));
+  const scopeLoadMore = getFormString(formData, "scopeLoadMore") === "1";
 
   if (!parsedScope.success) {
-    return { scopeStatus };
+    return { scopeLoadMore, scopePage, scopeStatus };
   }
 
   return {
     ...parsedScope.data,
+    scopeLoadMore,
+    scopePage,
     scopeStatus,
   };
 }
 
-function hasTeamVenueScopeAccess(input: {
-  context: Awaited<ReturnType<typeof requireAuthenticatedAccessContext>>;
-  scopeOrgId: string;
-  scopeTeamId: string;
-}): boolean {
-  if (isSuperAdmin(input.context)) {
-    return true;
+function parseOptionalPage(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined;
   }
 
-  const hasOrganizationMembership = input.context.organizationMemberships.some(
-    (membership) => membership.organization_id === input.scopeOrgId,
-  );
+  const parsed = Number.parseInt(value, 10);
 
-  if (hasOrganizationMembership) {
-    return true;
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return undefined;
   }
 
-  return input.context.teamMemberships.some(
-    (membership) =>
-      membership.team_id === input.scopeTeamId && membership.is_active,
-  );
-}
-
-function buildTeamVenuesRedirectPath(input: {
-  result?: "linked_existing" | "created_and_linked" | "updated" | "deleted";
-  error?:
-    | "invalid_input"
-    | "create_failed"
-    | "update_failed"
-    | "delete_failed"
-    | "has_linked_operations"
-    | "forbidden"
-    | "already_linked"
-    | "link_failed_after_create";
-  scopeOrgId?: string;
-  scopeTeamId?: string;
-  scopeStatus?: TeamVenueStatusFilter;
-}): string {
-  const params = new URLSearchParams();
-
-  if (input.result) {
-    params.set("result", input.result);
-  }
-
-  if (input.error) {
-    params.set("error", input.error);
-  }
-
-  if (input.scopeOrgId) {
-    params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.scopeOrgId);
-  }
-
-  if (input.scopeTeamId) {
-    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scopeTeamId);
-  }
-
-  if (input.scopeStatus) {
-    params.set("status", input.scopeStatus);
-  }
-
-  const query = params.toString();
-  return query.length > 0 ? `/team-venues?${query}` : "/team-venues";
+  return Math.floor(parsed);
 }
 
 async function ensureActiveTeamInScope(input: {
@@ -188,13 +144,14 @@ export async function createTeamVenueLinkAction(formData: FormData): Promise<voi
     );
   }
 
-  const hasScopeAccess = hasTeamVenueScopeAccess({
+  const canWriteTeamVenues = canRunTeamVenueWriteAction({
+    action: "create_link",
     context,
-    scopeOrgId: scope.scopeOrgId,
-    scopeTeamId: scope.scopeTeamId,
+    organizationId: scope.scopeOrgId,
+    teamId: scope.scopeTeamId,
   });
 
-  if (!hasScopeAccess) {
+  if (!canWriteTeamVenues) {
     redirect(
       buildTeamVenuesRedirectPath({
         error: "forbidden",
@@ -288,13 +245,14 @@ export async function createAndLinkTeamVenueAction(
     );
   }
 
-  const hasScopeAccess = hasTeamVenueScopeAccess({
+  const canWriteTeamVenues = canRunTeamVenueWriteAction({
+    action: "create_and_link",
     context,
-    scopeOrgId: scope.scopeOrgId,
-    scopeTeamId: scope.scopeTeamId,
+    organizationId: scope.scopeOrgId,
+    teamId: scope.scopeTeamId,
   });
 
-  if (!hasScopeAccess) {
+  if (!canWriteTeamVenues) {
     redirect(
       buildTeamVenuesRedirectPath({
         error: "forbidden",
@@ -383,7 +341,14 @@ export async function updateTeamVenueAction(formData: FormData): Promise<void> {
     );
   }
 
-  if (!isOrganizationAdmin(context, scope.scopeOrgId)) {
+  if (
+    !canRunTeamVenueWriteAction({
+      action: "update",
+      context,
+      organizationId: scope.scopeOrgId,
+      teamId: scope.scopeTeamId,
+    })
+  ) {
     redirect(
       buildTeamVenuesRedirectPath({
         error: "forbidden",
@@ -469,7 +434,14 @@ export async function deleteTeamVenueAction(formData: FormData): Promise<void> {
     );
   }
 
-  if (!isOrganizationAdmin(context, scope.scopeOrgId)) {
+  if (
+    !canRunTeamVenueWriteAction({
+      action: "delete",
+      context,
+      organizationId: scope.scopeOrgId,
+      teamId: scope.scopeTeamId,
+    })
+  ) {
     redirect(
       buildTeamVenuesRedirectPath({
         error: "forbidden",
@@ -508,7 +480,11 @@ export async function deleteTeamVenueAction(formData: FormData): Promise<void> {
     );
   }
 
-  if ((linkedCampRows ?? []).length > 0) {
+  if (
+    !canDeleteTeamVenueLink({
+      totalCampCount: (linkedCampRows ?? []).length,
+    })
+  ) {
     redirect(
       buildTeamVenuesRedirectPath({
         error: "has_linked_operations",

@@ -63,6 +63,18 @@ export function buildTeamCampsRedirectPath(input) {
     params.set("venue", input.scopeVenueId)
   }
 
+  if (
+    input.scopeCampType === "training" ||
+    input.scopeCampType === "regatta" ||
+    input.scopeCampType === "mixed"
+  ) {
+    params.set("type", input.scopeCampType)
+  }
+
+  if (input.scopeCampStatus === "active" || input.scopeCampStatus === "inactive") {
+    params.set("campStatus", input.scopeCampStatus)
+  }
+
   if (input.scopePage && input.scopePage > 1) {
     params.set("page", String(Math.floor(input.scopePage)))
   }

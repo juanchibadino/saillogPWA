@@ -85,7 +85,11 @@ function normalizeActionReturnPath(value) {
 
   const url = new URL(value, "http://sailog.local")
 
-  if (url.pathname !== "/team-sessions" && !url.pathname.startsWith("/team-camps/")) {
+  if (
+    url.pathname !== "/team-sessions" &&
+    !url.pathname.startsWith("/team-camps/") &&
+    !url.pathname.startsWith("/venues/")
+  ) {
     return "/team-sessions"
   }
 

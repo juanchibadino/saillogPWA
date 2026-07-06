@@ -61,6 +61,8 @@ type TeamSessionsTableProps = {
   hasPreviousPage: boolean
   hasNextPage: boolean
   returnPath?: string
+  hideChrome?: boolean
+  hideCreateFab?: boolean
 }
 
 type TeamSessionsPaginationItem = number | "ellipsis-start" | "ellipsis-end"
@@ -170,6 +172,8 @@ export function TeamSessionsTable({
   hasPreviousPage,
   hasNextPage,
   returnPath,
+  hideChrome = false,
+  hideCreateFab = false,
 }: TeamSessionsTableProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -273,10 +277,12 @@ export function TeamSessionsTable({
 
   return (
     <section className="space-y-4">
-      <div className="flex items-center justify-end gap-2 md:justify-between">
-        <h2 className="hidden text-lg font-semibold md:block">Sessions</h2>
-        {renderedToolbar ? <div className="w-full md:w-auto">{renderedToolbar}</div> : null}
-      </div>
+      {!hideChrome ? (
+        <div className="flex items-center justify-end gap-2 md:justify-between">
+          <h2 className="hidden text-lg font-semibold md:block">Sessions</h2>
+          {renderedToolbar ? <div className="w-full md:w-auto">{renderedToolbar}</div> : null}
+        </div>
+      ) : null}
 
       <div
         aria-busy={isFilterNavigationBusy}
@@ -590,18 +596,20 @@ export function TeamSessionsTable({
         </Pagination>
       ) : null}
 
-      <CreateSessionDialog
-        campOptions={campOptions}
-        scope={scope}
-        selectedVenueId={selectedVenueId}
-        selectedCampId={selectedCampId}
-        selectedHighlight={selectedHighlight}
-        currentPage={currentPage}
-        returnPath={returnPath}
-        disabled={createDisabled || isTableNavigationBusy}
-        surface="drawer"
-        triggerVariant="fab"
-      />
+      {!hideCreateFab ? (
+        <CreateSessionDialog
+          campOptions={campOptions}
+          scope={scope}
+          selectedVenueId={selectedVenueId}
+          selectedCampId={selectedCampId}
+          selectedHighlight={selectedHighlight}
+          currentPage={currentPage}
+          returnPath={returnPath}
+          disabled={createDisabled || isTableNavigationBusy}
+          surface="drawer"
+          triggerVariant="fab"
+        />
+      ) : null}
     </section>
   )
 }

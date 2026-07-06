@@ -1,14 +1,17 @@
 "use client"
 
 import * as React from "react"
-import { PencilIcon, PlusIcon } from "lucide-react"
+import { Loader2Icon, PencilIcon, PlusIcon } from "lucide-react"
+import { useFormStatus } from "react-dom"
 
 import { createVenueAction, updateVenueAction } from "@/features/venues/actions"
 import type {
   VenueOrganizationOption,
 } from "@/features/venues/data"
 import { formatVenueLocation } from "@/features/venues/location"
+import { useIsMobile } from "@/hooks/use-mobile"
 import type { NavigationScope } from "@/lib/navigation/types"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -19,8 +22,24 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 
 type NominatimLocation = {
   placeId: string
@@ -48,6 +67,9 @@ type EditableVenue = {
   country: string
   is_active: boolean
 }
+
+type VenueFormFooter = "dialog" | "drawer" | "sheet"
+type VenueFormSurface = "dialog" | "drawer" | "sheet"
 
 function normalizeText(value: string): string {
   return value.trim().toLocaleLowerCase()
@@ -77,18 +99,28 @@ function VenueDialogForm({
   includeIsActive,
   idPrefix,
   submitLabel,
+  pendingLabel,
   scope,
   redirectTo,
   action,
+  footer = "dialog",
+  fieldsClassName,
+  surface = "dialog",
+  teamVenueId,
 }: {
   organizations: VenueOrganizationOption[]
   initialValues: VenueFormInitialValues
   includeIsActive: boolean
   idPrefix: string
   submitLabel: string
+  pendingLabel?: string
   scope: NavigationScope
   redirectTo?: string
   action: (formData: FormData) => void | Promise<void>
+  footer?: VenueFormFooter
+  fieldsClassName?: string
+  surface?: VenueFormSurface
+  teamVenueId?: string
 }) {
   const singleOrganizationId =
     organizations.length === 1 ? organizations[0]?.id ?? "" : ""
@@ -178,6 +210,14 @@ function VenueDialogForm({
   const hasValidLocation = Boolean(selectedLocation)
   const canSubmit =
     resolvedOrganizationId.length > 0 && nameValue.trim().length > 0 && hasValidLocation
+  const hasFixedFooter = footer === "drawer" || footer === "sheet"
+  const isDrawerSurface = surface === "drawer"
+  const controlClassName =
+    isDrawerSurface ? "h-11 px-3 text-base md:text-sm" : undefined
+  const selectClassName = cn(
+    "w-full rounded-lg border border-input bg-background text-sm outline-none ring-ring/50 focus-visible:ring-[3px]",
+    isDrawerSurface ? "h-11 px-3 text-base md:text-sm" : "h-9 px-3",
+  )
 
   function handleLocationInputChange(event: React.ChangeEvent<HTMLInputElement>) {
     const value = event.target.value
@@ -215,41 +255,50 @@ function VenueDialogForm({
   }
 
   return (
-    <form action={action} className="space-y-4" onSubmit={handleSubmit}>
+    <form
+      action={action}
+      className={cn(
+        hasFixedFooter ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "space-y-4",
+      )}
+      onSubmit={handleSubmit}
+    >
       {initialValues.id ? <input type="hidden" name="id" value={initialValues.id} /> : null}
+      {teamVenueId ? (
+        <input type="hidden" name="teamVenueId" value={teamVenueId} />
+      ) : null}
       <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
       {scope.activeTeamId ? (
         <input type="hidden" name="scopeTeamId" value={scope.activeTeamId} />
       ) : null}
       {redirectTo ? <input type="hidden" name="redirectTo" value={redirectTo} /> : null}
 
-      {singleOrganizationId ? (
-        <input type="hidden" name="organizationId" value={singleOrganizationId} />
-      ) : (
-        <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}-organizationId`}>Organization</Label>
-          <select
-            id={`${idPrefix}-organizationId`}
-            name="organizationId"
-            required
-            value={organizationId}
-            onChange={(event) => setOrganizationId(event.target.value)}
-            className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none ring-ring/50 focus-visible:ring-[3px]"
-          >
-            <option value="">Select organization</option>
-            {organizations.map((organization) => (
-              <option key={organization.id} value={organization.id}>
-                {organization.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
+      <VenueFormFieldset fixedFooter={hasFixedFooter} className={fieldsClassName}>
+        {singleOrganizationId ? (
+          <input type="hidden" name="organizationId" value={singleOrganizationId} />
+        ) : (
+          <div className="space-y-2">
+            <Label htmlFor={`${idPrefix}-organizationId`}>Organization</Label>
+            <select
+              id={`${idPrefix}-organizationId`}
+              name="organizationId"
+              required
+              value={organizationId}
+              onChange={(event) => setOrganizationId(event.target.value)}
+              className={selectClassName}
+            >
+              <option value="">Select organization</option>
+              {organizations.map((organization) => (
+                <option key={organization.id} value={organization.id}>
+                  {organization.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-        <div className="space-y-2 sm:flex-[1.6]">
+        <div className="space-y-2">
           <Label htmlFor={`${idPrefix}-location`}>Location</Label>
-          <div className="relative">
+          <div className="relative z-10">
             <Input
               id={`${idPrefix}-location`}
               type="text"
@@ -257,6 +306,7 @@ function VenueDialogForm({
               placeholder="Search city and country"
               value={locationQuery}
               onChange={handleLocationInputChange}
+              className={controlClassName}
             />
 
             {suggestions.length > 0 ? (
@@ -300,7 +350,7 @@ function VenueDialogForm({
           />
         </div>
 
-        <div className="space-y-2 sm:flex-1">
+        <div className="space-y-2">
           <Label htmlFor={`${idPrefix}-name`}>Name</Label>
           <Input
             id={`${idPrefix}-name`}
@@ -310,29 +360,126 @@ function VenueDialogForm({
             maxLength={120}
             value={nameValue}
             onChange={handleNameChange}
+            className={controlClassName}
           />
         </div>
-      </div>
 
-      {includeIsActive ? (
-        <label className="inline-flex items-center gap-2 text-sm font-medium">
-          <input
-            type="checkbox"
-            name="isActive"
-            defaultChecked={initialValues.isActive}
-            className="size-4 rounded border-input"
-          />
-          Active venue
-        </label>
-      ) : null}
+        {includeIsActive ? (
+          <label className="inline-flex items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              name="isActive"
+              defaultChecked={initialValues.isActive}
+              className={cn(
+                "rounded border-input",
+                isDrawerSurface ? "size-5" : "size-4",
+              )}
+            />
+            Active venue
+          </label>
+        ) : null}
+      </VenueFormFieldset>
 
-      <DialogFooter>
-        <Button type="submit" disabled={!canSubmit}>
-          {submitLabel}
-        </Button>
-      </DialogFooter>
+      <VenueFormSubmitFooter
+        canSubmit={canSubmit}
+        footer={footer}
+        submitLabel={submitLabel}
+        pendingLabel={pendingLabel ?? submitLabel}
+      />
     </form>
   )
+}
+
+function VenueFormFieldset({
+  children,
+  className,
+  fixedFooter,
+}: {
+  children: React.ReactNode
+  className?: string
+  fixedFooter: boolean
+}) {
+  const { pending } = useFormStatus()
+
+  return (
+    <fieldset
+      disabled={pending}
+      className={cn(
+        fixedFooter
+          ? "m-0 min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto border-0 px-4 pb-4 pt-0"
+          : "space-y-4",
+        className,
+      )}
+    >
+      {children}
+    </fieldset>
+  )
+}
+
+function VenueSubmitButton({
+  canSubmit,
+  pendingLabel,
+  submitLabel,
+  surface,
+}: {
+  canSubmit: boolean
+  pendingLabel: string
+  submitLabel: string
+  surface: VenueFormFooter
+}) {
+  const { pending } = useFormStatus()
+
+  return (
+    <Button
+      type="submit"
+      disabled={pending || !canSubmit}
+      className={surface === "drawer" ? "h-11 w-full" : undefined}
+    >
+      {pending ? (
+        <>
+          <Loader2Icon className="size-4 animate-spin" />
+          {pendingLabel}
+        </>
+      ) : (
+        submitLabel
+      )}
+    </Button>
+  )
+}
+
+function VenueFormSubmitFooter({
+  canSubmit,
+  footer,
+  pendingLabel,
+  submitLabel,
+}: {
+  canSubmit: boolean
+  footer: VenueFormFooter
+  pendingLabel: string
+  submitLabel: string
+}) {
+  const button = (
+    <VenueSubmitButton
+      canSubmit={canSubmit}
+      pendingLabel={pendingLabel}
+      submitLabel={submitLabel}
+      surface={footer}
+    />
+  )
+
+  if (footer === "drawer") {
+    return <DrawerFooter className="shrink-0 border-t">{button}</DrawerFooter>
+  }
+
+  if (footer === "sheet") {
+    return (
+      <SheetFooter className="shrink-0 border-t sm:justify-end">
+        {button}
+      </SheetFooter>
+    )
+  }
+
+  return <DialogFooter>{button}</DialogFooter>
 }
 
 export function CreateVenueDialog({
@@ -371,6 +518,7 @@ export function CreateVenueDialog({
           includeIsActive={false}
           idPrefix="create-venue"
           submitLabel="Create venue"
+          pendingLabel="Creating..."
           scope={scope}
           redirectTo={redirectTo}
           action={createVenueAction}
@@ -385,42 +533,92 @@ export function EditVenueDialog({
   organizations,
   scope,
   redirectTo,
+  teamVenueId,
 }: {
   venue: EditableVenue
   organizations: VenueOrganizationOption[]
   scope: NavigationScope
   redirectTo?: string
+  teamVenueId: string
 }) {
+  const isMobile = useIsMobile()
+  const [isOpen, setIsOpen] = React.useState(false)
+
+  function renderForm(surface: Extract<VenueFormSurface, "drawer" | "sheet">) {
+    const isDrawer = surface === "drawer"
+
+    return (
+      <VenueDialogForm
+        organizations={organizations}
+        initialValues={{
+          id: venue.id,
+          organizationId: venue.organization_id,
+          name: venue.name,
+          city: venue.city,
+          country: venue.country,
+          isActive: venue.is_active,
+        }}
+        includeIsActive
+        idPrefix={`edit-venue-${venue.id}-${surface}`}
+        submitLabel="Save"
+        pendingLabel="Saving..."
+        scope={scope}
+        redirectTo={redirectTo}
+        action={updateVenueAction}
+        footer={surface}
+        fieldsClassName={isDrawer ? "px-4 pb-6" : "px-4 pb-4"}
+        surface={surface}
+        teamVenueId={teamVenueId}
+      />
+    )
+  }
+
+  if (isMobile) {
+    return (
+      <Drawer open={isOpen} onOpenChange={setIsOpen}>
+        <Button
+          type="button"
+          variant="outline"
+          size="default"
+          className="h-11 px-4"
+          aria-haspopup="dialog"
+          aria-expanded={isOpen}
+          onClick={() => setIsOpen(true)}
+        >
+          <PencilIcon className="size-4" />
+          Edit
+        </Button>
+        <DrawerContent className="flex h-[85dvh] min-h-0 flex-col overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+          <DrawerHeader className="shrink-0 border-b px-4 py-3">
+            <DrawerTitle>Edit venue</DrawerTitle>
+            <DrawerDescription>{venue.name}</DrawerDescription>
+          </DrawerHeader>
+          {renderForm("drawer")}
+        </DrawerContent>
+      </Drawer>
+    )
+  }
+
   return (
-    <Dialog>
-      <DialogTrigger render={<Button variant="outline" size="sm" />}>
+    <Sheet open={isOpen} onOpenChange={setIsOpen}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen(true)}
+      >
         <PencilIcon className="size-4" />
         Edit
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Edit venue</DialogTitle>
-          <DialogDescription>{venue.name}</DialogDescription>
-        </DialogHeader>
-
-        <VenueDialogForm
-          organizations={organizations}
-          initialValues={{
-            id: venue.id,
-            organizationId: venue.organization_id,
-            name: venue.name,
-            city: venue.city,
-            country: venue.country,
-            isActive: venue.is_active,
-          }}
-          includeIsActive
-          idPrefix={`edit-venue-${venue.id}`}
-          submitLabel="Save changes"
-          scope={scope}
-          redirectTo={redirectTo}
-          action={updateVenueAction}
-        />
-      </DialogContent>
-    </Dialog>
+      </Button>
+      <SheetContent side="right" className="h-full overflow-hidden sm:max-w-xl">
+        <SheetHeader className="shrink-0 border-b pr-14">
+          <SheetTitle>Edit venue</SheetTitle>
+          <SheetDescription>{venue.name}</SheetDescription>
+        </SheetHeader>
+        {renderForm("sheet")}
+      </SheetContent>
+    </Sheet>
   )
 }

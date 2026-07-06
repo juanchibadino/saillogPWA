@@ -8,7 +8,6 @@ Scope: current `/team-camps/[id]` implementation, centered on
 Pattern documents reviewed:
 
 - `MOBILE_UI_PATTERNS.md`
-- `MOBILE_CARD_LIST_UI.md`
 - `DESKTOP_UI_PATTERNS.md`
 - Reference audit shape: `AUDIT_TEAM_SESSION_ID.MD`
 
@@ -289,8 +288,7 @@ Step 5: Add route-level resilience and focused tests.
   - `components/shared/page-skeletons.tsx`
   - `components/site-header.tsx`
   - `MOBILE_UI_PATTERNS.md`
-  - `MOBILE_CARD_LIST_UI.md`
-  - `TABLE_DESKTOP_PATTERNS_UI.md`
+  - `DESKTOP_UI_PATTERNS.md`
 - Initial audit runtime validation was not run because that pass was
   documentation-only.
 - Step 1 implementation validation:

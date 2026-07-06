@@ -1,24 +1,14 @@
 import type { AccessContext } from "@/lib/auth/access";
-import { canManageTeamSessionsFromAccess } from "@/lib/auth/capability-rules.mjs";
+import {
+  canManageOrganizationOperationsFromAccess,
+  canManageTeamSessionsFromAccess,
+  canManageTeamVenuesFromAccess,
+} from "@/lib/auth/capability-rules.mjs";
 import type { Database } from "@/types/database";
 
 type TeamRole = Database["public"]["Enums"]["team_role_type"];
-type OrganizationRole = Database["public"]["Enums"]["organization_role_type"];
-
-const ORGANIZATION_ADMIN_ROLE: OrganizationRole = "organization_admin";
 const TEAM_STRUCTURE_MANAGER_ROLES: TeamRole[] = ["team_admin", "coach"];
 const TEAM_CAMP_DELETE_ROLES: TeamRole[] = ["coach"];
-
-function hasOrganizationRole(
-  context: AccessContext,
-  organizationId: string,
-  role: OrganizationRole,
-): boolean {
-  return context.organizationMemberships.some(
-    (membership) =>
-      membership.organization_id === organizationId && membership.role === role,
-  );
-}
 
 function hasTeamRole(
   context: AccessContext,
@@ -41,17 +31,18 @@ export function canManageOrganizationOperations(
   context: AccessContext,
   organizationId: string,
 ): boolean {
-  return (
-    isSuperAdmin(context) ||
-    hasOrganizationRole(context, organizationId, ORGANIZATION_ADMIN_ROLE)
-  );
+  return canManageOrganizationOperationsFromAccess({ context, organizationId });
 }
 
 export function isOrganizationAdmin(
   context: AccessContext,
   organizationId: string,
 ): boolean {
-  return hasOrganizationRole(context, organizationId, ORGANIZATION_ADMIN_ROLE);
+  return context.organizationMemberships.some(
+    (membership) =>
+      membership.organization_id === organizationId &&
+      membership.role === "organization_admin",
+  );
 }
 
 export function canManageTeamStructure(input: {
@@ -71,6 +62,14 @@ export function canManageTeamSessions(input: {
   teamId: string;
 }): boolean {
   return canManageTeamSessionsFromAccess(input);
+}
+
+export function canManageTeamVenues(input: {
+  context: AccessContext;
+  organizationId: string;
+  teamId: string;
+}): boolean {
+  return canManageTeamVenuesFromAccess(input);
 }
 
 export function canDeleteCamps(input: {

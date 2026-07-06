@@ -3,13 +3,19 @@
 Source of truth for Sailog route loading, deferred content, skeletons, and
 secondary pending states.
 
-Current references: `/team-sessions/[id]` and `/team-camps/[id]`, implemented by:
+Current references: `/team-sessions`, `/team-sessions/[id]`, and
+`/team-camps/[id]`, implemented by:
 
+- `app/(app)/team-sessions/page.tsx`
+- `app/(app)/team-sessions/loading.tsx`
 - `app/(app)/team-sessions/[id]/page.tsx`
 - `app/(app)/team-sessions/[id]/loading.tsx`
 - `app/(app)/team-camps/[id]/page.tsx`
 - `app/(app)/team-camps/[id]/loading.tsx`
 - `components/shared/page-skeletons.tsx`
+- `features/sessions/team-sessions-route-shell.tsx`
+- `features/sessions/data.ts`
+- `features/sessions/sessions-table.tsx`
 - `features/sessions/session-detail-tabs-client.tsx`
 - `features/camps/camp-detail-tabs-client.tsx`
 
@@ -19,6 +25,9 @@ Current references: `/team-sessions/[id]` and `/team-camps/[id]`, implemented by
   appear before slower scoped data when the route can safely do so.
 - Use App Router `loading.tsx` for route entry and `Suspense` for slower route
   sections.
+- For list routes, do not put the entire toolbar/FAB/table inside one data
+  boundary. Split stable list chrome from result rows/cards whenever the chrome
+  can render from a smaller data shape.
 - Defer data-heavy content such as KPIs, tabs, tables, cards, media lists, and
   catalogs.
 - Skeletons should mirror the final surface, not invent a separate loading UI.
@@ -27,6 +36,29 @@ Current references: `/team-sessions/[id]` and `/team-camps/[id]`, implemented by
 - Use compact spinners only for micro-loading inside already mounted controls
   or buttons. Avoid replacing a whole panel with a generic spinner when the
   final layout is known.
+
+## List Route Shell + Results Pattern
+
+Use this for operational list routes where filters/actions should stay visible
+while rows/cards load.
+
+- Resolve auth and navigation scope in `page.tsx` before rendering the list
+  surface.
+- Split data into a chrome payload and a results payload. In Team Sessions this
+  is `getTeamSessionsChromeData()` for filters/create options and
+  `getTeamSessionsResultsData()` for rows, `pageCount`, and pagination flags.
+- Render a client route shell for stable controls. In Team Sessions this is
+  `TeamSessionsRouteShell`, which owns title, filters, desktop `New`, mobile
+  FAB, and filter-pending overlays.
+- Put only the result area behind the nested results `Suspense` once chrome has
+  resolved. In Team Sessions the boundary fallback is
+  `TeamSessionsResultsSkeleton`.
+- Keep the segment `loading.tsx` fallback as a full mirrored page skeleton for
+  direct route entry. Compose it from the same chrome/results skeleton pieces
+  used by the internal boundaries.
+- During filter/page transitions, keep current rows/cards visible, disabled,
+  and dimmed with one centered spinner. Keep load-more spinners inside the
+  button and keep previous mobile cards mounted.
 
 ## Team Session Detail Pattern
 
@@ -82,7 +114,7 @@ Current references: `/team-sessions/[id]` and `/team-camps/[id]`, implemented by
 
 ## Documentation Links
 
-- Mobile sizing, drawers, tabs, and card behavior live in
-  `MOBILE_UI_PATTERNS.md` and `MOBILE_CARD_LIST_UI.md`.
+- Mobile sizing, drawers, tabs, loading, and card behavior live in
+  `MOBILE_UI_PATTERNS.md`.
 - Desktop headers, breadcrumbs, tables, and desktop loading fidelity live in
   `DESKTOP_UI_PATTERNS.md`.

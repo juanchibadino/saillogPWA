@@ -71,19 +71,24 @@ export type TeamSessionCampOption = {
 
 export type TeamSessionHighlightFilter = "yes" | "no"
 
-export type TeamSessionsPageData = {
-  sessions: TeamSessionListItem[]
+export type TeamSessionsChromeData = {
   venueFilterOptions: TeamSessionVenueFilterOption[]
   campFilterOptions: TeamSessionCampOption[]
   campOptions: TeamSessionCampOption[]
   selectedVenueId?: string
   selectedCampId?: string
   selectedHighlight?: TeamSessionHighlightFilter
+}
+
+export type TeamSessionsResultsData = {
+  sessions: TeamSessionListItem[]
   currentPage: number
   pageCount: number
   hasPreviousPage: boolean
   hasNextPage: boolean
 }
+
+export type TeamSessionsPageData = TeamSessionsChromeData & TeamSessionsResultsData
 
 function buildCampOptionsForMutations(input: {
   selectedCampId?: string
@@ -121,18 +126,25 @@ function buildCampOptionLabel(input: {
   return `${input.campName} — ${input.venueName}`
 }
 
-export async function getTeamSessionsPageData(input: {
+function normalizeHighlightFilter(
+  value: TeamSessionHighlightFilter | undefined,
+): TeamSessionHighlightFilter | undefined {
+  return value === "yes" || value === "no" ? value : undefined
+}
+
+export async function getTeamSessionsChromeData(input: {
   activeTeamId: string
   selectedVenueId?: string
   selectedCampId?: string
   selectedHighlight?: TeamSessionHighlightFilter
-  page: number
+  page?: number
   accumulatePages?: boolean
-}): Promise<TeamSessionsPageData> {
+}): Promise<TeamSessionsChromeData> {
   const filtersStartedAt = startTeamSessionsListTiming()
   const supabase = await createServerSupabaseClient()
-  const requestedPage = normalizePage(input.page)
+  const requestedPage = normalizePage(input.page ?? 1)
   const accumulatePages = input.accumulatePages === true
+  const selectedHighlight = normalizeHighlightFilter(input.selectedHighlight)
 
   const { data: teamVenueData, error: teamVenueError } = await supabase
     .from("team_venues")
@@ -218,12 +230,6 @@ export async function getTeamSessionsPageData(input: {
   const filteredTeamVenueIds = filteredTeamVenueRows.map((row) => row.id)
 
   if (filteredTeamVenueIds.length === 0) {
-    const pagination = resolveSessionPagination({
-      requestedPage,
-      totalItems: 0,
-      accumulatePages,
-      pageSize: TEAM_SESSIONS_PAGE_SIZE,
-    })
     logTeamSessionsListTiming({
       phase: "filters",
       startedAt: filtersStartedAt,
@@ -238,36 +244,16 @@ export async function getTeamSessionsPageData(input: {
         campCount: 0,
         selectedVenue: Boolean(selectedVenueId),
         selectedCamp: false,
-        selectedHighlight: input.selectedHighlight ?? null,
-      },
-    })
-    const sessionsStartedAt = startTeamSessionsListTiming()
-    logTeamSessionsListTiming({
-      phase: "sessions",
-      startedAt: sessionsStartedAt,
-      activeTeamId: input.activeTeamId,
-      status: "success",
-      metadata: {
-        reason: "no_team_venues",
-        sessionCampCount: 0,
-        totalItems: 0,
-        returnedItems: 0,
-        currentPage: pagination.currentPage,
-        pageCount: pagination.pageCount,
+        selectedHighlight: selectedHighlight ?? null,
       },
     })
 
     return {
-      sessions: [],
       venueFilterOptions,
       campFilterOptions: [],
       campOptions: [],
       selectedVenueId,
-      selectedHighlight: input.selectedHighlight,
-      currentPage: pagination.currentPage,
-      pageCount: pagination.pageCount,
-      hasPreviousPage: pagination.hasPreviousPage,
-      hasNextPage: pagination.hasNextPage,
+      selectedHighlight,
     }
   }
 
@@ -297,7 +283,6 @@ export async function getTeamSessionsPageData(input: {
   }
 
   const campRows: CampRow[] = campData ?? []
-  const campById = new Map(campRows.map((row) => [row.id, row]))
 
   const campFilterOptions: TeamSessionCampOption[] = campRows
     .map((camp) => {
@@ -333,10 +318,6 @@ export async function getTeamSessionsPageData(input: {
     selectedId: input.selectedCampId,
     allowedIds: new Set(campFilterOptions.map((row) => row.campId)),
   })
-  const selectedHighlight =
-    input.selectedHighlight === "yes" || input.selectedHighlight === "no"
-      ? input.selectedHighlight
-      : undefined
 
   const sessionCampIds = selectedCampId
     ? [selectedCampId]
@@ -360,7 +341,33 @@ export async function getTeamSessionsPageData(input: {
       selectedHighlight: selectedHighlight ?? null,
     },
   })
+
+  return {
+    venueFilterOptions,
+    campFilterOptions,
+    campOptions: buildCampOptionsForMutations({
+      selectedCampId,
+      campFilterOptions,
+    }),
+    selectedVenueId,
+    selectedCampId,
+    selectedHighlight,
+  }
+}
+
+export async function getTeamSessionsResultsData(input: {
+  activeTeamId: string
+  chromeData: TeamSessionsChromeData
+  page: number
+  accumulatePages?: boolean
+}): Promise<TeamSessionsResultsData> {
+  const requestedPage = normalizePage(input.page)
+  const accumulatePages = input.accumulatePages === true
   const sessionsStartedAt = startTeamSessionsListTiming()
+  const sessionCampIds = input.chromeData.selectedCampId
+    ? [input.chromeData.selectedCampId]
+    : input.chromeData.campFilterOptions.map((row) => row.campId)
+  const selectedHighlight = input.chromeData.selectedHighlight
 
   if (sessionCampIds.length === 0) {
     const pagination = resolveSessionPagination({
@@ -375,7 +382,10 @@ export async function getTeamSessionsPageData(input: {
       activeTeamId: input.activeTeamId,
       status: "success",
       metadata: {
-        reason: "no_camps",
+        reason:
+          input.chromeData.venueFilterOptions.length === 0
+            ? "no_team_venues"
+            : "no_camps",
         sessionCampCount: 0,
         totalItems: 0,
         returnedItems: 0,
@@ -386,15 +396,6 @@ export async function getTeamSessionsPageData(input: {
 
     return {
       sessions: [],
-      venueFilterOptions,
-      campFilterOptions,
-      campOptions: buildCampOptionsForMutations({
-        selectedCampId,
-        campFilterOptions,
-      }),
-      selectedVenueId,
-      selectedCampId,
-      selectedHighlight,
       currentPage: pagination.currentPage,
       pageCount: pagination.pageCount,
       hasPreviousPage: pagination.hasPreviousPage,
@@ -402,6 +403,7 @@ export async function getTeamSessionsPageData(input: {
     }
   }
 
+  const supabase = await createServerSupabaseClient()
   let sessionCountQuery = supabase
     .from("sessions")
     .select("id", { count: "exact", head: true })
@@ -461,15 +463,6 @@ export async function getTeamSessionsPageData(input: {
 
     return {
       sessions: [],
-      venueFilterOptions,
-      campFilterOptions,
-      campOptions: buildCampOptionsForMutations({
-        selectedCampId,
-        campFilterOptions,
-      }),
-      selectedVenueId,
-      selectedCampId,
-      selectedHighlight,
       currentPage,
       pageCount,
       hasPreviousPage,
@@ -523,33 +516,24 @@ export async function getTeamSessionsPageData(input: {
   }
 
   const visibleSessionRows: SessionRow[] = sessionData ?? []
+  const campOptionById = new Map(
+    input.chromeData.campFilterOptions.map((option) => [option.campId, option]),
+  )
 
   const sessions: TeamSessionListItem[] = visibleSessionRows
     .map((session) => {
-      const camp = campById.get(session.camp_id)
+      const camp = campOptionById.get(session.camp_id)
 
       if (!camp) {
         return null
       }
 
-      const teamVenue = teamVenueById.get(camp.team_venue_id)
-
-      if (!teamVenue) {
-        return null
-      }
-
-      const venue = venueById.get(teamVenue.venue_id)
-
-      if (!venue) {
-        return null
-      }
-
       return {
         id: session.id,
-        campId: camp.id,
-        campName: camp.name,
-        venueId: venue.id,
-        venueName: venue.name,
+        campId: camp.campId,
+        campName: camp.campName,
+        venueId: camp.venueId,
+        venueName: camp.venueName,
         sessionType: session.session_type,
         sessionDate: session.session_date,
         netTimeMinutes: session.net_time_minutes,
@@ -578,18 +562,31 @@ export async function getTeamSessionsPageData(input: {
 
   return {
     sessions,
-    venueFilterOptions,
-    campFilterOptions,
-    campOptions: buildCampOptionsForMutations({
-      selectedCampId,
-      campFilterOptions,
-    }),
-    selectedVenueId,
-    selectedCampId,
-    selectedHighlight,
     currentPage,
     pageCount,
     hasPreviousPage,
     hasNextPage,
+  }
+}
+
+export async function getTeamSessionsPageData(input: {
+  activeTeamId: string
+  selectedVenueId?: string
+  selectedCampId?: string
+  selectedHighlight?: TeamSessionHighlightFilter
+  page: number
+  accumulatePages?: boolean
+}): Promise<TeamSessionsPageData> {
+  const chromeData = await getTeamSessionsChromeData(input)
+  const resultsData = await getTeamSessionsResultsData({
+    activeTeamId: input.activeTeamId,
+    chromeData,
+    page: input.page,
+    accumulatePages: input.accumulatePages,
+  })
+
+  return {
+    ...chromeData,
+    ...resultsData,
   }
 }

@@ -11,7 +11,7 @@ Primary table reference: `/team-sessions`, implemented by:
 - `features/sessions/sessions-table.tsx`
 - `features/sessions/team-sessions-toolbar.tsx`
 
-Use this with `MOBILE_CARD_LIST_UI.md`: desktop uses tables, mobile uses cards.
+Use this with `MOBILE_UI_PATTERNS.md`: desktop uses tables, mobile uses cards.
 
 ## Header And Breadcrumbs
 

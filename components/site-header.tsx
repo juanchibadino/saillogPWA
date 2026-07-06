@@ -338,7 +338,7 @@ function getTeamGearTitle(
   return `${activeTeamLabel} > Gear`
 }
 
-function getVenueDetailId(pathname: string): string | null {
+function getTeamVenueDetailId(pathname: string): string | null {
   const match = pathname.match(/^\/venues\/([^/]+)$/)
   return match?.[1] ?? null
 }
@@ -412,6 +412,10 @@ function buildScopedHrefWithTab(
 }
 
 function shouldUsePhaseOneMobileHeader(pathname: string): boolean {
+  if (/^\/venues\/[^/]+$/.test(pathname)) {
+    return true
+  }
+
   if (pathname.startsWith("/team-venues")) {
     return true
   }
@@ -428,8 +432,12 @@ function shouldUsePhaseOneMobileHeader(pathname: string): boolean {
 }
 
 function resolveMobileBackFallbackPath(pathname: string): string {
+  if (/^\/venues\/[^/]+$/.test(pathname)) {
+    return "/team-venues"
+  }
+
   if (/^\/team-camps\/[^/]+$/.test(pathname)) {
-    return "/team-camps"
+    return "/team-venues"
   }
 
   if (/^\/team-sessions\/[^/]+$/.test(pathname)) {
@@ -487,6 +495,7 @@ export function SiteHeader({
           ? "Team Reports"
         : getSectionTitle(pathname)
   const isTeamHomeHeader = pathname.startsWith("/team-home")
+  const isTeamCampsListHeader = pathname === "/team-camps"
   const isTeamSessionsHeader = pathname.startsWith("/team-sessions")
   const teamScopeSectionLabel = pathname.startsWith("/team-venues")
     ? "Venues"
@@ -503,9 +512,10 @@ export function SiteHeader({
         : pathname.startsWith("/team-reports")
           ? "Reports"
         : null
-  const venueDetailId = getVenueDetailId(pathname)
+  const teamVenueDetailId = getTeamVenueDetailId(pathname)
   const sessionDetailId = getSessionDetailId(pathname)
   const campDetailId = getCampDetailId(pathname)
+  const isTeamVenueDetailHeader = Boolean(teamVenueDetailId)
   const isTeamSessionDetailHeader = Boolean(sessionDetailId)
   const isTeamCampDetailHeader = Boolean(campDetailId)
   const activeScope = resolveActiveScope(navigation, searchParams)
@@ -518,6 +528,7 @@ export function SiteHeader({
       ?.name ?? "No team selected"
   const teamHomeHref = buildScopedHref("/team-home", activeScope)
   const venuesHref = buildScopedHref("/venues", activeScope)
+  const teamVenuesHref = buildScopedHref("/team-venues", activeScope)
   const phaseOneMobileHeaderEligible = shouldUsePhaseOneMobileHeader(pathname)
   const mobileBackFallbackHref = buildScopedHref(
     resolveMobileBackFallbackPath(pathname),
@@ -525,7 +536,7 @@ export function SiteHeader({
   )
 
   useEffect(() => {
-    if (!venueDetailId) {
+    if (!teamVenueDetailId) {
       return
     }
 
@@ -542,8 +553,8 @@ export function SiteHeader({
     const query = params.toString()
     const requestPath =
       query.length > 0
-        ? `/api/venues/${venueDetailId}/breadcrumb?${query}`
-        : `/api/venues/${venueDetailId}/breadcrumb`
+        ? `/api/venues/${teamVenueDetailId}/breadcrumb?${query}`
+        : `/api/venues/${teamVenueDetailId}/breadcrumb`
 
     const controller = new AbortController()
 
@@ -557,7 +568,7 @@ export function SiteHeader({
         if (!response.ok) {
           setVenueNameById((currentValue) => ({
             ...currentValue,
-            [venueDetailId]: null,
+            [teamVenueDetailId]: null,
           }))
           return
         }
@@ -570,7 +581,7 @@ export function SiteHeader({
 
         setVenueNameById((currentValue) => ({
           ...currentValue,
-          [venueDetailId]: normalizedName,
+          [teamVenueDetailId]: normalizedName,
         }))
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
@@ -579,7 +590,7 @@ export function SiteHeader({
 
         setVenueNameById((currentValue) => ({
           ...currentValue,
-          [venueDetailId]: null,
+          [teamVenueDetailId]: null,
         }))
       }
     }
@@ -589,7 +600,7 @@ export function SiteHeader({
     return () => {
       controller.abort()
     }
-  }, [activeScope.activeOrgId, activeScope.activeTeamId, venueDetailId])
+  }, [activeScope.activeOrgId, activeScope.activeTeamId, teamVenueDetailId])
 
   useEffect(() => {
     if (!campDetailId) {
@@ -715,11 +726,16 @@ export function SiteHeader({
     }
   }, [activeScope.activeOrgId, activeScope.activeTeamId, sessionDetailId])
 
-  const venueName = venueDetailId ? venueNameById[venueDetailId] ?? null : null
+  const venueName = teamVenueDetailId
+    ? venueNameById[teamVenueDetailId] ?? null
+    : null
   const sessionBreadcrumb = sessionDetailId
     ? sessionBreadcrumbById[sessionDetailId] ?? null
     : null
   const campBreadcrumb = campDetailId ? campBreadcrumbById[campDetailId] ?? null : null
+  const hasCampBreadcrumbResult =
+    campDetailId !== null &&
+    Object.prototype.hasOwnProperty.call(campBreadcrumbById, campDetailId)
   const sessionTeamLabel = sessionBreadcrumb?.team_name ?? activeTeamLabel
   const sessionVenueLabel = sessionBreadcrumb?.venue_name ?? "Venue"
   const sessionCampLabel = sessionBreadcrumb?.camp_name ?? "Camp"
@@ -728,11 +744,14 @@ export function SiteHeader({
   const campVenueLabel = normalizeBreadcrumbLabel(campBreadcrumb?.venue_name)
   const campNameLabel = normalizeBreadcrumbLabel(campBreadcrumb?.camp_name)
   const campDetailTitle = campNameLabel ?? "Camp"
-  const mobileHeaderTitle = sessionDetailId
-    ? sessionDetailTitle
-    : campDetailId
-      ? campDetailTitle
-      : getSectionTitle(pathname)
+  const teamVenueDetailTitle = venueName ?? "Venue"
+  const mobileHeaderTitle = teamVenueDetailId
+    ? teamVenueDetailTitle
+    : sessionDetailId
+      ? sessionDetailTitle
+      : campDetailId
+        ? campDetailTitle
+        : getSectionTitle(pathname)
   const sessionVenueHref =
     sessionBreadcrumb?.venue_id !== null && sessionBreadcrumb?.venue_id !== undefined
       ? buildScopedHrefWithTab(`/venues/${sessionBreadcrumb.venue_id}`, activeScope, "sessions")
@@ -749,20 +768,39 @@ export function SiteHeader({
     campBreadcrumb?.team_venue_id !== null &&
     campBreadcrumb?.team_venue_id !== undefined
       ? buildScopedHrefWithTab(`/venues/${campBreadcrumb.team_venue_id}`, activeScope, "camps")
-      : buildScopedHref("/team-camps", activeScope)
+      : teamVenuesHref
 
   function handleMobileHeaderNavigation(): void {
+    if (isTeamVenueDetailHeader) {
+      router.push(teamVenuesHref)
+      return
+    }
+
     if (isTeamSessionDetailHeader) {
       router.push(sessionCampHref)
       return
     }
 
     if (isTeamCampDetailHeader) {
+      if (campBreadcrumb?.team_venue_id) {
+        router.push(campVenueHref)
+        return
+      }
+
+      if (
+        !hasCampBreadcrumbResult &&
+        typeof window !== "undefined" &&
+        window.history.length > 1
+      ) {
+        router.back()
+        return
+      }
+
       router.push(campVenueHref)
       return
     }
 
-    if (isTeamSessionsHeader) {
+    if (isTeamCampsListHeader || isTeamSessionsHeader) {
       router.push(teamHomeHref)
       return
     }
@@ -833,7 +871,7 @@ export function SiteHeader({
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
-        ) : venueDetailId ? (
+        ) : teamVenueDetailId ? (
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem>
@@ -843,11 +881,13 @@ export function SiteHeader({
               </BreadcrumbItem>
               <BreadcrumbSeparator />
               <BreadcrumbItem>
-                <BreadcrumbLink render={<Link href={venuesHref} />}>Venue</BreadcrumbLink>
+                <BreadcrumbLink render={<Link href={teamVenuesHref} />}>
+                  Team Venues
+                </BreadcrumbLink>
               </BreadcrumbItem>
               <BreadcrumbSeparator />
               <BreadcrumbItem>
-                <BreadcrumbPage>{venueName ?? "Venue"}</BreadcrumbPage>
+                <BreadcrumbPage>{teamVenueDetailTitle}</BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
@@ -880,15 +920,15 @@ export function SiteHeader({
   )
 
   if (phaseOneMobileHeaderEligible) {
-    const showMobileSidebarTrigger =
-      pathname.startsWith("/team-sessions") || pathname === "/team-venues"
-    const mobileHeaderNavigationLabel = isTeamSessionDetailHeader
-      ? "Go to Team Camps"
-      : isTeamCampDetailHeader
-        ? "Go to Venue"
-      : isTeamSessionsHeader
-        ? "Go to Team Home"
-        : "Go back"
+    const mobileHeaderNavigationLabel = isTeamVenueDetailHeader
+      ? "Go to Team Venues"
+      : isTeamSessionDetailHeader
+        ? "Go to Team Camps"
+        : isTeamCampDetailHeader
+          ? "Go to Venue"
+          : isTeamCampsListHeader || isTeamSessionsHeader
+            ? "Go to Team Home"
+            : "Go back"
 
     return (
       <>
@@ -904,7 +944,7 @@ export function SiteHeader({
             <ArrowLeftIcon className="size-4" />
           </Button>
           <h1 className="ml-2 flex-1 truncate text-base font-medium">{mobileHeaderTitle}</h1>
-          {showMobileSidebarTrigger ? <SidebarTrigger className="ml-1" /> : null}
+          <SidebarTrigger className="ml-1" />
         </header>
         {desktopHeader}
       </>

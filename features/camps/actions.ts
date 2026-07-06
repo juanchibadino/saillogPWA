@@ -52,7 +52,29 @@ function parseOptionalPage(value: string | undefined): number | undefined {
   return Math.floor(parsed)
 }
 
+function parseOptionalCampType(
+  value: string | undefined,
+): "training" | "regatta" | "mixed" | undefined {
+  if (value === "training" || value === "regatta" || value === "mixed") {
+    return value
+  }
+
+  return undefined
+}
+
+function parseOptionalCampStatus(
+  value: string | undefined,
+): "active" | "inactive" | undefined {
+  if (value === "active" || value === "inactive") {
+    return value
+  }
+
+  return undefined
+}
+
 type CampActionScope = {
+  scopeCampStatus?: "active" | "inactive"
+  scopeCampType?: "training" | "regatta" | "mixed"
   scopeOrgId?: string
   scopeTeamId?: string
   scopeVenueId?: string
@@ -89,6 +111,8 @@ function logCampActionTiming(input: {
 }
 
 function getScopeFromFormData(formData: FormData): {
+  scopeCampStatus?: "active" | "inactive"
+  scopeCampType?: "training" | "regatta" | "mixed"
   scopeOrgId?: string
   scopeTeamId?: string
   scopeVenueId?: string
@@ -101,12 +125,16 @@ function getScopeFromFormData(formData: FormData): {
   })
 
   const scopeVenueId = getFormString(formData, "scopeVenueId")
+  const scopeCampType = parseOptionalCampType(getFormString(formData, "scopeCampType"))
+  const scopeCampStatus = parseOptionalCampStatus(getFormString(formData, "scopeCampStatus"))
   const scopeTab = getFormString(formData, "scopeTab")
   const scopePage = parseOptionalPage(getFormString(formData, "scopePage"))
 
   if (!parsedScope.success) {
     return {
       scopeVenueId,
+      scopeCampType,
+      scopeCampStatus,
       scopeTab,
       scopePage,
     }
@@ -115,6 +143,8 @@ function getScopeFromFormData(formData: FormData): {
   return {
     ...parsedScope.data,
     scopeVenueId,
+    scopeCampType,
+    scopeCampStatus,
     scopeTab,
     scopePage,
   }

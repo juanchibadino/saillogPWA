@@ -1,22 +1,26 @@
+import { Suspense } from "react"
+
 import {
-  type TeamVenueCreateOption,
-  type TeamVenueListItem,
-  type TeamVenueStatusCounts,
+  TeamVenuesPageSkeleton,
+  TeamVenuesResultsSkeleton,
+} from "@/components/shared/page-skeletons"
+import {
+  getTeamVenuesChromeData,
+  getTeamVenuesResultsData,
   type TeamVenueStatusFilter,
-  getTeamVenuesPageData,
+  type TeamVenuesChromeData,
 } from "@/features/team-venues/data"
+import {
+  logTeamVenuesListTiming,
+  startTeamVenuesListTiming,
+} from "@/features/team-venues/list-timing"
+import { resolveTeamVenuesListRequest } from "@/features/team-venues/list-route-state.mjs"
 import { TeamVenuesFeedback } from "@/features/team-venues/team-venues-feedback"
-import {
-  CreateTeamVenueDialog,
-  TeamVenuesTable,
-} from "@/features/team-venues/team-venues-table"
-import { TeamVenuesToolbar } from "@/features/team-venues/team-venues-toolbar"
+import { TeamVenuesResultsRetry } from "@/features/team-venues/team-venues-results-retry"
+import { TeamVenuesRouteShell } from "@/features/team-venues/team-venues-route-shell"
+import { TeamVenuesTable } from "@/features/team-venues/team-venues-table"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
-import { isOrganizationAdmin } from "@/lib/auth/capabilities"
-import {
-  NAVIGATION_SCOPE_ORG_QUERY_KEY,
-  NAVIGATION_SCOPE_TEAM_QUERY_KEY,
-} from "@/lib/navigation/constants"
+import { canManageTeamVenues } from "@/lib/auth/capabilities"
 import {
   getSingleSearchParamValue,
   resolveNavigationScope,
@@ -25,6 +29,15 @@ import {
 type TeamVenuesSearchParams = Promise<
   Record<string, string | string[] | undefined>
 >
+type ResolvedTeamVenuesScope = NonNullable<
+  Awaited<ReturnType<typeof resolveNavigationScope>>["scope"]
+>
+type TeamVenuesChromeDataPromise = Promise<TeamVenuesChromeData>
+type TeamVenuesListRequest = {
+  requestedLoadMoreMode: boolean
+  requestedPage: number
+  requestedStatusFilter: TeamVenueStatusFilter
+}
 
 function getStatusMessage(status: string | undefined): string | null {
   if (status === "linked_existing") {
@@ -44,34 +57,6 @@ function getStatusMessage(status: string | undefined): string | null {
   }
 
   return null
-}
-
-function resolveTeamVenueStatusFilter(
-  value: string | undefined,
-): TeamVenueStatusFilter {
-  if (value === "deprecated") {
-    return "deprecated"
-  }
-
-  return "active"
-}
-
-function buildTeamVenueStatusHref(input: {
-  statusFilter: TeamVenueStatusFilter
-  scope: {
-    activeOrgId: string
-    activeTeamId: string | null
-  }
-}): string {
-  const params = new URLSearchParams()
-  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.scope.activeOrgId)
-  params.set("status", input.statusFilter)
-
-  if (input.scope.activeTeamId) {
-    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scope.activeTeamId)
-  }
-
-  return `/team-venues?${params.toString()}`
 }
 
 function getErrorMessage(error: string | undefined): string | null {
@@ -110,24 +95,144 @@ function getErrorMessage(error: string | undefined): string | null {
   return null
 }
 
+function getEmptyTeamVenuesChromeData(input: {
+  requestedStatusFilter: TeamVenueStatusFilter
+}): TeamVenuesChromeData {
+  return {
+    linkedVenueOptions: [],
+    availableVenueOptions: [],
+    statusCounts: {
+      active: 0,
+      deprecated: 0,
+    },
+    selectedStatusFilter: input.requestedStatusFilter,
+  }
+}
+
+async function TeamVenuesShellSlot(input: {
+  activeTeamId: string | null
+  canManageVenueRows: boolean
+  chromeDataPromise: TeamVenuesChromeDataPromise
+  currentYear: number
+  noTeamSelected: boolean
+  requestedLoadMoreMode: boolean
+  requestedPage: number
+  scope: ResolvedTeamVenuesScope
+}) {
+  const chromeData = await input.chromeDataPromise
+
+  return (
+    <TeamVenuesRouteShell
+      chromeData={chromeData}
+      canManageVenueRows={input.canManageVenueRows}
+      currentPage={input.requestedPage}
+      loadMoreMode={input.requestedLoadMoreMode}
+      noTeamSelected={input.noTeamSelected}
+      scope={input.scope}
+    >
+      <Suspense fallback={<TeamVenuesResultsSkeleton />}>
+        <TeamVenuesResultsContent
+          activeTeamId={input.activeTeamId}
+          canManageVenueRows={input.canManageVenueRows}
+          chromeData={chromeData}
+          currentYear={input.currentYear}
+          requestedLoadMoreMode={input.requestedLoadMoreMode}
+          requestedPage={input.requestedPage}
+          scope={input.scope}
+        />
+      </Suspense>
+    </TeamVenuesRouteShell>
+  )
+}
+
+async function TeamVenuesResultsContent(input: {
+  activeTeamId: string | null
+  canManageVenueRows: boolean
+  chromeData: TeamVenuesChromeData
+  currentYear: number
+  requestedLoadMoreMode: boolean
+  requestedPage: number
+  scope: ResolvedTeamVenuesScope
+}) {
+  const noTeamSelected = input.activeTeamId === null
+  let resultsData: Awaited<ReturnType<typeof getTeamVenuesResultsData>>
+
+  try {
+    resultsData = input.activeTeamId
+      ? await getTeamVenuesResultsData({
+          activeTeamId: input.activeTeamId,
+          chromeData: input.chromeData,
+          currentYear: input.currentYear,
+          page: input.requestedPage,
+          accumulatePages: input.requestedLoadMoreMode,
+        })
+      : {
+          linkedVenues: [],
+          totalCount: 0,
+          currentPage: input.requestedPage,
+          pageCount: 1,
+          hasPreviousPage: input.requestedPage > 1,
+          hasNextPage: false,
+        }
+  } catch {
+    return <TeamVenuesResultsRetry />
+  }
+
+  return (
+    <TeamVenuesTable
+      linkedVenues={resultsData.linkedVenues}
+      noTeamSelected={noTeamSelected}
+      canManageVenueRows={input.canManageVenueRows}
+      selectedStatusFilter={input.chromeData.selectedStatusFilter}
+      scope={input.scope}
+      currentYear={input.currentYear}
+      currentPage={resultsData.currentPage}
+      pageCount={resultsData.pageCount}
+      hasPreviousPage={resultsData.hasPreviousPage}
+      hasNextPage={resultsData.hasNextPage}
+      loadMoreMode={input.requestedLoadMoreMode}
+      hideChrome
+    />
+  )
+}
+
 export default async function TeamVenuesPage({
   searchParams,
 }: {
   searchParams: TeamVenuesSearchParams
 }) {
+  const scopeStartedAt = startTeamVenuesListTiming()
   const context = await requireAuthenticatedAccessContext()
   const resolvedSearchParams = await searchParams
 
   const result = getSingleSearchParamValue(resolvedSearchParams.result)
-  const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
-  const selectedStatusFilter = resolveTeamVenueStatusFilter(status)
+  const {
+    requestedLoadMoreMode,
+    requestedPage,
+    requestedStatusFilter,
+  } = resolveTeamVenuesListRequest({
+    statusParam: getSingleSearchParamValue(resolvedSearchParams.status),
+    pageParam: getSingleSearchParamValue(resolvedSearchParams.page),
+    loadMoreParam: getSingleSearchParamValue(resolvedSearchParams.loadMore),
+  }) as TeamVenuesListRequest
   const statusMessage = getStatusMessage(result)
   const errorMessage = getErrorMessage(error)
 
   const navigation = await resolveNavigationScope({
     context,
     searchParams: resolvedSearchParams,
+  })
+
+  logTeamVenuesListTiming({
+    activeTeamId: navigation.scope?.activeTeamId ?? null,
+    phase: "scope",
+    startedAt: scopeStartedAt,
+    status: "success",
+    metadata: {
+      hasScope: Boolean(navigation.scope),
+      hasTeamScope: Boolean(navigation.scope?.activeTeamId),
+    },
   })
 
   if (!navigation.scope) {
@@ -144,31 +249,27 @@ export default async function TeamVenuesPage({
   const scope = navigation.scope
   const noTeamSelected = scope.activeTeamId === null
   const activeTeamId = scope.activeTeamId
-  const canManageVenueRows = isOrganizationAdmin(context, scope.activeOrgId)
-
+  const canManageVenueRows = activeTeamId
+    ? canManageTeamVenues({
+        context,
+        organizationId: scope.activeOrgId,
+        teamId: activeTeamId,
+      })
+    : false
   const currentYear = new Date().getUTCFullYear()
-
-  let linkedVenues: TeamVenueListItem[] = []
-  let availableVenueOptions: TeamVenueCreateOption[] = []
-  let statusCounts: TeamVenueStatusCounts = {
-    active: 0,
-    deprecated: 0,
-  }
-
-  if (activeTeamId) {
-    const pageData = await getTeamVenuesPageData({
-      activeOrganizationId: scope.activeOrgId,
-      activeTeamId,
-      statusFilter: selectedStatusFilter,
-      currentYear,
-    })
-
-    linkedVenues = pageData.linkedVenues
-    availableVenueOptions = pageData.availableVenueOptions
-    statusCounts = pageData.statusCounts
-  }
-
-  const createDisabled = noTeamSelected
+  const chromeDataPromise: TeamVenuesChromeDataPromise = activeTeamId
+    ? getTeamVenuesChromeData({
+        activeOrganizationId: scope.activeOrgId,
+        activeTeamId,
+        statusFilter: requestedStatusFilter,
+        page: requestedPage,
+        accumulatePages: requestedLoadMoreMode,
+      })
+    : Promise.resolve(
+        getEmptyTeamVenuesChromeData({
+          requestedStatusFilter,
+        }),
+      )
 
   return (
     <div className="space-y-6">
@@ -185,51 +286,29 @@ export default async function TeamVenuesPage({
         </section>
       ) : null}
 
-      <TeamVenuesTable
-        linkedVenues={linkedVenues}
-        noTeamSelected={noTeamSelected}
-        canManageVenueRows={canManageVenueRows}
-        toolbar={
-          <TeamVenuesToolbar
-            selectedValue={selectedStatusFilter}
-            clearHref={buildTeamVenueStatusHref({
-              statusFilter: "active",
-              scope,
-            })}
-            options={[
-              {
-                label: "Active",
-                value: "active",
-                count: statusCounts.active,
-                href: buildTeamVenueStatusHref({
-                  statusFilter: "active",
-                  scope,
-                }),
-              },
-              {
-                label: "Deprecated",
-                value: "deprecated",
-                count: statusCounts.deprecated,
-                href: buildTeamVenueStatusHref({
-                  statusFilter: "deprecated",
-                  scope,
-                }),
-              },
-            ]}
-            action={
-              <CreateTeamVenueDialog
-                availableVenueOptions={availableVenueOptions}
-                scope={scope}
-                selectedStatusFilter={selectedStatusFilter}
-                disabled={createDisabled}
-              />
-            }
-          />
-        }
-        selectedStatusFilter={selectedStatusFilter}
-        scope={scope}
-        currentYear={currentYear}
-      />
+      {!noTeamSelected && !canManageVenueRows ? (
+        <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
+          <h2 className="text-lg font-semibold text-amber-900">
+            Team venue management unavailable
+          </h2>
+          <p className="mt-2 text-sm text-amber-800">
+            Team venue changes require active membership in the selected team.
+          </p>
+        </section>
+      ) : null}
+
+      <Suspense fallback={<TeamVenuesPageSkeleton />}>
+        <TeamVenuesShellSlot
+          activeTeamId={activeTeamId}
+          canManageVenueRows={canManageVenueRows}
+          chromeDataPromise={chromeDataPromise}
+          currentYear={currentYear}
+          noTeamSelected={noTeamSelected}
+          requestedLoadMoreMode={requestedLoadMoreMode}
+          requestedPage={requestedPage}
+          scope={scope}
+        />
+      </Suspense>
     </div>
   )
 }

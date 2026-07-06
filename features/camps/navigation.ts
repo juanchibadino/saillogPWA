@@ -55,3 +55,50 @@ export function buildCampDetailHref(input: {
   const basePath = `/team-camps/${input.campId}`
   return query.length > 0 ? `${basePath}?${query}` : basePath
 }
+
+export type TeamCampsHrefInput = {
+  scope: NavigationScope
+  venueId?: string
+  campType?: "training" | "regatta" | "mixed"
+  campStatus?: "active" | "inactive"
+  page?: number
+  loadMore?: boolean
+  status?: string
+  error?: string
+}
+
+export function buildTeamCampsHref(input: TeamCampsHrefInput): string {
+  const params = new URLSearchParams()
+  appendScopeParams(params, input.scope)
+
+  if (input.venueId) {
+    params.set("venue", input.venueId)
+  }
+
+  if (input.campType) {
+    params.set("type", input.campType)
+  }
+
+  if (input.campStatus) {
+    params.set("campStatus", input.campStatus)
+  }
+
+  if (typeof input.page === "number" && Number.isFinite(input.page) && input.page > 1) {
+    params.set("page", String(Math.floor(input.page)))
+  }
+
+  if (input.loadMore) {
+    params.set("loadMore", "1")
+  }
+
+  if (input.status) {
+    params.set("status", input.status)
+  }
+
+  if (input.error) {
+    params.set("error", input.error)
+  }
+
+  const query = params.toString()
+  return query.length > 0 ? `/team-camps?${query}` : "/team-camps"
+}
