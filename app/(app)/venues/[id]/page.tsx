@@ -25,6 +25,7 @@ import { VenuesFeedback } from "@/features/venues/venues-feedback"
 import { EditVenueDialog } from "@/features/venues/venue-form-dialogs"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import {
+  canDeleteCamps,
   canManageOrganizationOperations,
   canManageTeamSessions,
   canManageTeamStructure,
@@ -44,7 +45,24 @@ type ResolvedVenueDetailScope = NonNullable<
   Awaited<ReturnType<typeof resolveNavigationScope>>["scope"]
 >
 
-function getStatusMessage(status: string | undefined): string | null {
+function getStatusMessage(
+  status: string | undefined,
+  selectedTab: VenueDetailTab,
+): string | null {
+  if (selectedTab === "camps") {
+    if (status === "created") {
+      return "Camp created successfully."
+    }
+
+    if (status === "updated") {
+      return "Camp updated successfully."
+    }
+
+    if (status === "deleted") {
+      return "Camp deleted successfully."
+    }
+  }
+
   if (status === "updated") {
     return "Venue updated successfully."
   }
@@ -92,9 +110,30 @@ function getStatusMessage(status: string | undefined): string | null {
   return null
 }
 
-function getErrorMessage(error: string | undefined): string | null {
+function getErrorMessage(
+  error: string | undefined,
+  selectedTab: VenueDetailTab,
+): string | null {
   if (error === "invalid_input") {
     return "Some fields are invalid. Review the form and try again."
+  }
+
+  if (selectedTab === "camps") {
+    if (error === "create_failed") {
+      return "Could not create camp. Confirm the selected venue and try again."
+    }
+
+    if (error === "update_failed") {
+      return "Could not update camp. Confirm your permissions and try again."
+    }
+
+    if (error === "delete_failed") {
+      return "Could not delete camp. Confirm your permissions and try again."
+    }
+
+    if (error === "forbidden") {
+      return "You do not have permission to manage camps in the active team."
+    }
   }
 
   if (error === "forbidden") {
@@ -150,6 +189,8 @@ function resolveWindPatternStatusFilter(value: string | undefined): WindPatternS
 
 async function VenueDetailDeferredContent(input: {
   activeOrganization: VenueOrganizationOption
+  canDeleteCamps: boolean
+  canManageCamps: boolean
   canManageAssessments: boolean
   canManageReports: boolean
   canManageSessions: boolean
@@ -191,6 +232,7 @@ async function VenueDetailDeferredContent(input: {
     <VenueDetailTabsClient
       scope={input.scope}
       teamVenueId={input.teamVenueId}
+      venueId={input.venue.id}
       venueLocation={`${input.venue.city}, ${input.venue.country}`}
       venueName={input.venue.name}
       availableYears={kpisData.availableYears}
@@ -198,6 +240,8 @@ async function VenueDetailDeferredContent(input: {
       initialYear={kpisData.selectedYear}
       initialTab={input.initialTab}
       initialTabData={initialTabData}
+      canDeleteCamps={input.canDeleteCamps}
+      canManageCamps={input.canManageCamps}
       canManageAssessments={input.canManageAssessments}
       canManageReports={input.canManageReports}
       canManageSessions={input.canManageSessions}
@@ -245,8 +289,8 @@ export default async function VenueDetailPage({
     getSingleSearchParamValue(resolvedSearchParams.statusFilter),
   )
 
-  const statusMessage = getStatusMessage(status)
-  const errorMessage = getErrorMessage(error)
+  const statusMessage = getStatusMessage(status, selectedTab)
+  const errorMessage = getErrorMessage(error, selectedTab)
 
   const navigation = await resolveNavigationScope({
     context,
@@ -317,6 +361,15 @@ export default async function VenueDetailPage({
   const canManageAssessments =
     !noTeamSelected && chromeData.teamVenue
       ? canManageTeamStructure({
+          context,
+          organizationId: scope.activeOrgId,
+          teamId: chromeData.teamVenue.team_id,
+        })
+      : false
+  const canManageCamps = canManageAssessments
+  const canDeleteCampRows =
+    !noTeamSelected && chromeData.teamVenue
+      ? canDeleteCamps({
           context,
           organizationId: scope.activeOrgId,
           teamId: chromeData.teamVenue.team_id,
@@ -397,6 +450,8 @@ export default async function VenueDetailPage({
       >
         <VenueDetailDeferredContent
           activeOrganization={activeOrganization}
+          canDeleteCamps={canDeleteCampRows}
+          canManageCamps={canManageCamps}
           canManageAssessments={canManageAssessments}
           canManageReports={canManageReports}
           canManageSessions={canManageSessions}

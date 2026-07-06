@@ -146,6 +146,7 @@ function normalizeHighlightValue(value: string): "yes" | "no" | undefined {
 
 export function TeamSessionsToolbar({
   scope,
+  title = "Sessions",
   venueOptions,
   campOptions,
   highlightOptions,
@@ -163,6 +164,7 @@ export function TeamSessionsToolbar({
   action,
 }: {
   scope: NavigationScope
+  title?: string
   venueOptions: TeamSessionsToolbarOption[]
   campOptions: TeamSessionsToolbarOption[]
   highlightOptions: TeamSessionsToolbarOption[]
@@ -232,7 +234,7 @@ export function TeamSessionsToolbar({
   if (isMobile) {
     return (
       <section className="flex w-full items-center justify-between gap-3 md:hidden">
-        <h1 className="min-w-0 text-2xl font-semibold tracking-tight">Sessions</h1>
+        <h1 className="min-w-0 text-2xl font-semibold tracking-tight">{title}</h1>
         <Drawer
           open={isDrawerOpen}
           onOpenChange={(open) => {

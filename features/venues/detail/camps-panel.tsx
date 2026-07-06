@@ -1,27 +1,75 @@
 "use client";
 
-import { ChevronRightIcon, Loader2Icon } from "lucide-react";
+import { Loader2Icon, MoreHorizontalIcon } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { GradientCard } from "@/components/shared/gradient-card";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  CampActionsMenu,
+  CreateCampDialog,
+} from "@/features/camps/camp-form-dialogs";
+import type { TeamCampVenueOption } from "@/features/camps/data";
 import { buildCampDetailHref } from "@/features/camps/navigation";
 import type { VenueDetailTabDataByTab } from "@/features/venues/detail-types";
+import { buildVenueDetailHref } from "@/features/venues/navigation";
 import type { NavigationScope } from "@/lib/navigation/types";
 import { cn } from "@/lib/utils";
 
+type VenueCampItem = VenueDetailTabDataByTab["camps"]["camps"][number];
+
+function formatCampTypeLabel(value: VenueCampItem["campType"]): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 export function VenueCampsPanel({
+  canDeleteCamps,
+  canManageCamps,
   data,
   scope,
   selectedYear,
+  teamVenueId,
+  venueId,
+  venueLocation,
+  venueName,
 }: {
+  canDeleteCamps: boolean;
+  canManageCamps: boolean;
   data: VenueDetailTabDataByTab["camps"];
   scope: NavigationScope;
   selectedYear: number;
+  teamVenueId: string;
+  venueId: string;
+  venueLocation: string;
+  venueName: string;
 }) {
   const router = useRouter();
   const [navigatingCampId, setNavigatingCampId] = useState<string | null>(null);
   const [, startCampNavigationTransition] = useTransition();
+  const teamVenueOptions: TeamCampVenueOption[] = [
+    {
+      teamVenueId,
+      venueId,
+      venueName,
+      venueLocation,
+    },
+  ];
+  const campReturnPath = buildVenueDetailHref({
+    scope,
+    teamVenueId,
+    tab: "camps",
+    year: selectedYear,
+  });
 
   function buildCampHref(campId: string): string {
     return buildCampDetailHref({
@@ -51,6 +99,31 @@ export function VenueCampsPanel({
         <h2 className="hidden text-lg font-semibold md:block">
           Camps {selectedYear}
         </h2>
+        <div className="shrink-0">
+          <div className="md:hidden">
+            <CreateCampDialog
+              teamVenueOptions={teamVenueOptions}
+              scope={scope}
+              selectedVenueId={venueId}
+              currentPage={1}
+              returnPath={campReturnPath}
+              disabled={!canManageCamps}
+              surface="drawer"
+              triggerVariant="fab"
+            />
+          </div>
+          <div className="hidden md:block">
+            <CreateCampDialog
+              teamVenueOptions={teamVenueOptions}
+              scope={scope}
+              selectedVenueId={venueId}
+              currentPage={1}
+              returnPath={campReturnPath}
+              disabled={!canManageCamps}
+              surface="sheet"
+            />
+          </div>
+        </div>
       </header>
 
       {data.camps.length === 0 ? (
@@ -102,11 +175,40 @@ export function VenueCampsPanel({
                       </p>
                     </div>
 
-                    <div className="flex h-11 w-11 shrink-0 self-center items-center justify-center text-muted-foreground">
+                    <div
+                      className="shrink-0 self-center"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                      }}
+                      onKeyDown={(event) => {
+                        event.stopPropagation();
+                      }}
+                    >
                       {isNavigatingToCamp ? (
-                        <Loader2Icon className="size-4 animate-spin" />
+                        <div className="flex h-11 w-11 items-center justify-center text-muted-foreground">
+                          <Loader2Icon className="size-4 animate-spin" />
+                        </div>
+                      ) : canManageCamps || canDeleteCamps ? (
+                        <CampActionsMenu
+                          camp={camp}
+                          teamVenueOptions={teamVenueOptions}
+                          scope={scope}
+                          selectedVenueId={venueId}
+                          currentPage={1}
+                          returnPath={campReturnPath}
+                          canEditCamp={canManageCamps}
+                          canDeleteCamp={canDeleteCamps}
+                          editSurface="drawer"
+                        />
                       ) : (
-                        <ChevronRightIcon className="size-4" />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled
+                          aria-label="More actions unavailable"
+                        >
+                          <MoreHorizontalIcon className="size-4" />
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -116,51 +218,99 @@ export function VenueCampsPanel({
           </div>
 
           <GradientCard className="hidden overflow-hidden p-0 md:block">
-            <div className="divide-y divide-border">
-              {data.camps.map((camp) => {
-                const detailHref = buildCampHref(camp.id);
-                const isNavigatingToCamp = navigatingCampId === camp.id;
+            <Table>
+              <TableHeader className="bg-muted/40">
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Camp</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Date Range</TableHead>
+                  <TableHead>Sessions</TableHead>
+                  <TableHead className="w-12 text-right" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.camps.map((camp) => {
+                  const detailHref = buildCampHref(camp.id);
+                  const isNavigatingToCamp = navigatingCampId === camp.id;
 
-                return (
-                  <div
-                    key={camp.id}
-                    role="link"
-                    tabIndex={0}
-                    aria-busy={isNavigatingToCamp}
-                    className={cn(
-                      "grid min-h-14 cursor-pointer grid-cols-[1.2fr_1fr_0.5fr_3rem] items-center gap-4 px-4 py-3 transition-colors hover:bg-muted/30",
-                      isNavigatingToCamp && "opacity-80",
-                    )}
-                    onMouseEnter={() => prefetchCamp(detailHref)}
-                    onFocus={() => prefetchCamp(detailHref)}
-                    onClick={() => {
-                      navigateToCamp(camp.id, detailHref);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
+                  return (
+                    <TableRow
+                      key={camp.id}
+                      role="link"
+                      tabIndex={0}
+                      aria-busy={isNavigatingToCamp}
+                      className={cn("cursor-pointer", isNavigatingToCamp && "opacity-80")}
+                      onMouseEnter={() => prefetchCamp(detailHref)}
+                      onFocus={() => prefetchCamp(detailHref)}
+                      onClick={() => {
                         navigateToCamp(camp.id, detailHref);
-                      }
-                    }}
-                  >
-                    <p className="truncate text-sm font-medium">{camp.name}</p>
-                    <p className="truncate text-sm text-muted-foreground">
-                      {camp.dateRangeLabel}
-                    </p>
-                    <p className="text-sm text-muted-foreground tabular-nums">
-                      {camp.sessionCount}
-                    </p>
-                    <div className="flex justify-end text-muted-foreground">
-                      {isNavigatingToCamp ? (
-                        <Loader2Icon className="size-4 animate-spin" />
-                      ) : (
-                        <ChevronRightIcon className="size-4" />
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          navigateToCamp(camp.id, detailHref);
+                        }
+                      }}
+                    >
+                      <TableCell className="font-medium">
+                        <Link
+                          href={detailHref}
+                          className="underline-offset-4 hover:underline"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            navigateToCamp(camp.id, detailHref);
+                          }}
+                          onMouseEnter={() => prefetchCamp(detailHref)}
+                          onFocus={() => prefetchCamp(detailHref)}
+                        >
+                          {camp.name}
+                        </Link>
+                      </TableCell>
+                      <TableCell>{formatCampTypeLabel(camp.campType)}</TableCell>
+                      <TableCell>{camp.dateRangeLabel}</TableCell>
+                      <TableCell className="tabular-nums">{camp.sessionCount}</TableCell>
+                      <TableCell
+                        className="text-right"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                        }}
+                        onKeyDown={(event) => {
+                          event.stopPropagation();
+                        }}
+                      >
+                        {isNavigatingToCamp ? (
+                          <div className="flex justify-end text-muted-foreground">
+                            <Loader2Icon className="size-4 animate-spin" />
+                          </div>
+                        ) : canManageCamps || canDeleteCamps ? (
+                          <CampActionsMenu
+                            camp={camp}
+                            teamVenueOptions={teamVenueOptions}
+                            scope={scope}
+                            selectedVenueId={venueId}
+                            currentPage={1}
+                            returnPath={campReturnPath}
+                            canEditCamp={canManageCamps}
+                            canDeleteCamp={canDeleteCamps}
+                            editSurface="sheet"
+                          />
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled
+                            aria-label="More actions unavailable"
+                          >
+                            <MoreHorizontalIcon className="size-4" />
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </GradientCard>
         </>
       )}

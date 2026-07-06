@@ -41,7 +41,13 @@ import type {
 
 type CampRow = Pick<
   Database["public"]["Tables"]["camps"]["Row"],
-  "id" | "name" | "camp_type" | "start_date" | "end_date" | "is_active"
+  | "id"
+  | "team_venue_id"
+  | "name"
+  | "camp_type"
+  | "start_date"
+  | "end_date"
+  | "is_active"
 >;
 type SessionRow = Pick<
   Database["public"]["Tables"]["sessions"]["Row"],
@@ -148,7 +154,8 @@ export type TeamVenueDetailYearContextData = TeamVenueYearContext | null;
 
 const VENUE_SELECT_COLUMNS = "id,organization_id,name,city,country,is_active";
 const TEAM_VENUE_SELECT_COLUMNS = "id,team_id,venue_id";
-const CAMP_SELECT_COLUMNS = "id,name,camp_type,start_date,end_date,is_active";
+const CAMP_SELECT_COLUMNS =
+  "id,team_venue_id,name,camp_type,start_date,end_date,is_active";
 const SESSION_SELECT_COLUMNS =
   "id,camp_id,session_type,session_date,net_time_minutes,highlighted_by_coach,created_at";
 const SESSION_YEAR_SELECT_COLUMNS = "camp_id,session_date";
@@ -313,25 +320,18 @@ function buildKpis(input: {
     {
       label: "Total Camps",
       value: String(input.campCount),
-      note: "Selected year",
     },
     {
       label: "Total Sessions",
       value: String(input.sessionCount),
-      note: "Selected year",
     },
     {
       label: "Avg. Session",
       value: formatHoursAndMinutes(averageNetTimeMinutes),
-      note:
-        sessionsWithNetTimeValues.length > 0
-          ? `${sessionsWithNetTimeValues.length} sessions with net time`
-          : "No net time recorded",
     },
     {
       label: "Net Time Sailed",
       value: formatTotalNetTime(totalNetTimeMinutes),
-      note: "Sum of net time for selected year",
     },
   ];
 }
@@ -882,8 +882,12 @@ function buildYearData(input: {
 
   const campItems: VenueDetailCampItem[] = camps.map((camp) => ({
     id: camp.id,
+    teamVenueId: camp.team_venue_id,
     name: camp.name,
     campType: camp.camp_type,
+    startDate: camp.start_date,
+    endDate: camp.end_date,
+    isActive: camp.is_active,
     dateRangeLabel: formatDateRange(camp.start_date, camp.end_date),
     sessionCount: sessionCountByCampId.get(camp.id) ?? 0,
   }));

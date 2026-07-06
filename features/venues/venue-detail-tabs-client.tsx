@@ -47,7 +47,6 @@ import type { NavigationScope } from "@/lib/navigation/types";
 import { GradientCard } from "@/components/shared/gradient-card";
 import { cn } from "@/lib/utils";
 import {
-  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -62,10 +61,10 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const EMPTY_KPIS: VenueDetailKpi[] = [
-  { label: "Total Camps", value: "0", note: "Selected year" },
-  { label: "Total Sessions", value: "0", note: "Selected year" },
-  { label: "Avg. Session", value: "—", note: "No net time recorded" },
-  { label: "Net Time Sailed", value: "00h 00m", note: "Sum of net time for selected year" },
+  { label: "Total Camps", value: "0" },
+  { label: "Total Sessions", value: "0" },
+  { label: "Avg. Session", value: "—" },
+  { label: "Net Time Sailed", value: "00h 00m" },
 ];
 
 type WindPatternStatusFilter = VenueWindPatternStatusFilter;
@@ -602,47 +601,64 @@ function isVenueKpiTabular(label: string): boolean {
   return label !== "Total Camps";
 }
 
-function VenueDetailSummaryCards({ kpis }: { kpis: VenueDetailKpi[] }) {
+function formatVenueKpiLabel(label: string, selectedYear: number): string {
+  return `${label} ${selectedYear}`;
+}
+
+function VenueDetailSummaryCards({
+  kpis,
+  selectedYear,
+}: {
+  kpis: VenueDetailKpi[];
+  selectedYear: number;
+}) {
   return (
     <>
       <GradientCard className="overflow-hidden p-0 md:hidden">
         <div className="divide-y divide-border px-6 py-3">
-          {kpis.map((kpi) => (
-            <div
-              key={`mobile-venue-summary-${kpi.label}`}
-              className="flex min-h-12 items-center justify-between gap-4"
-            >
-              <p className="text-sm text-muted-foreground">{kpi.label}</p>
-              <p
-                className={cn(
-                  "text-right text-sm font-semibold",
-                  isVenueKpiTabular(kpi.label) ? "tabular-nums" : null,
-                )}
+          {kpis.map((kpi) => {
+            const label = formatVenueKpiLabel(kpi.label, selectedYear);
+
+            return (
+              <div
+                key={`mobile-venue-summary-${kpi.label}`}
+                className="flex min-h-12 items-center justify-between gap-4"
               >
-                {kpi.value}
-              </p>
-            </div>
-          ))}
+                <p className="text-sm text-muted-foreground">{label}</p>
+                <p
+                  className={cn(
+                    "text-right text-sm font-semibold",
+                    isVenueKpiTabular(kpi.label) ? "tabular-nums" : null,
+                  )}
+                >
+                  {kpi.value}
+                </p>
+              </div>
+            );
+          })}
         </div>
       </GradientCard>
 
       <div className="hidden gap-4 md:grid md:grid-cols-2 lg:grid-cols-4">
-        {kpis.map((kpi) => (
-          <GradientCard key={`desktop-venue-summary-${kpi.label}`}>
-            <CardHeader className="pb-2">
-              <CardDescription>{kpi.label}</CardDescription>
-              <CardTitle
-                className={cn(
-                  "text-2xl font-semibold",
-                  isVenueKpiTabular(kpi.label) ? "tabular-nums" : null,
-                )}
-              >
-                {kpi.value}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-xs text-muted-foreground">{kpi.note}</CardContent>
-          </GradientCard>
-        ))}
+        {kpis.map((kpi) => {
+          const label = formatVenueKpiLabel(kpi.label, selectedYear);
+
+          return (
+            <GradientCard key={`desktop-venue-summary-${kpi.label}`}>
+              <CardHeader>
+                <CardDescription>{label}</CardDescription>
+                <CardTitle
+                  className={cn(
+                    "text-2xl font-semibold",
+                    isVenueKpiTabular(kpi.label) ? "tabular-nums" : null,
+                  )}
+                >
+                  {kpi.value}
+                </CardTitle>
+              </CardHeader>
+            </GradientCard>
+          );
+        })}
       </div>
     </>
   );
@@ -683,10 +699,13 @@ function renderTabPanel(input: {
   tab: VenueDetailTab;
   scope: NavigationScope;
   teamVenueId: string;
+  venueId: string;
   venueLocation: string;
   venueName: string;
   data: VenueDetailTabPayload;
   selectedYear: number;
+  canDeleteCamps: boolean;
+  canManageCamps: boolean;
   canManageAssessments: boolean;
   canManageReports: boolean;
   canManageSessions: boolean;
@@ -698,15 +717,22 @@ function renderTabPanel(input: {
 
     return (
       <VenueCampsPanel
+        canDeleteCamps={input.canDeleteCamps}
+        canManageCamps={input.canManageCamps}
         data={data}
         scope={input.scope}
         selectedYear={input.selectedYear}
+        teamVenueId={input.teamVenueId}
+        venueId={input.venueId}
+        venueLocation={input.venueLocation}
+        venueName={input.venueName}
       />
     );
   }
 
   if (input.tab === "sessions") {
     const data = input.data as VenueDetailTabDataByTab["sessions"];
+    const sessionsTitle = `Sessions ${input.selectedYear}`;
     const sessionReturnPath = buildVenueSessionsHref({
       scope: input.scope,
       teamVenueId: input.teamVenueId,
@@ -722,9 +748,11 @@ function renderTabPanel(input: {
         campOptions={data.campOptions}
         canManageSessions={input.canManageSessions}
         noTeamSelected={input.scope.activeTeamId === null}
+        title={sessionsTitle}
         toolbar={
           <TeamSessionsToolbar
             scope={input.scope}
+            title={sessionsTitle}
             selectedVenueId=""
             selectedCampId={data.selectedCampId ?? ""}
             selectedHighlight={data.selectedHighlight ?? ""}
@@ -883,6 +911,7 @@ function renderTabPanel(input: {
 export function VenueDetailTabsClient(input: {
   scope: NavigationScope;
   teamVenueId: string;
+  venueId: string;
   venueLocation: string;
   venueName: string;
   availableYears: number[];
@@ -890,6 +919,8 @@ export function VenueDetailTabsClient(input: {
   initialYear: number;
   initialTab: VenueDetailTab;
   initialTabData: VenueDetailTabPayload;
+  canDeleteCamps: boolean;
+  canManageCamps: boolean;
   canManageAssessments: boolean;
   canManageReports: boolean;
   canManageSessions: boolean;
@@ -1117,10 +1148,13 @@ export function VenueDetailTabsClient(input: {
       tab,
       scope: input.scope,
       teamVenueId: input.teamVenueId,
+      venueId: input.venueId,
       venueLocation: input.venueLocation,
       venueName: input.venueName,
       data,
       selectedYear,
+      canDeleteCamps: input.canDeleteCamps,
+      canManageCamps: input.canManageCamps,
       canManageAssessments: input.canManageAssessments,
       canManageReports: input.canManageReports,
       canManageSessions: input.canManageSessions,
@@ -1128,7 +1162,12 @@ export function VenueDetailTabsClient(input: {
       windPatternStatusFilter: input.initialWindPatternStatusFilter,
     });
 
-    if (tab === "sessions" || tab === "camps") {
+    if (
+      tab === "sessions" ||
+      tab === "camps" ||
+      tab === "wind-patterns" ||
+      tab === "reports"
+    ) {
       return panel;
     }
 
@@ -1166,7 +1205,7 @@ export function VenueDetailTabsClient(input: {
         {input.action ? <div className="shrink-0">{input.action}</div> : null}
       </div>
 
-      <VenueDetailSummaryCards kpis={currentKpis} />
+      <VenueDetailSummaryCards kpis={currentKpis} selectedYear={selectedYear} />
 
       <Tabs
         value={selectedTab}

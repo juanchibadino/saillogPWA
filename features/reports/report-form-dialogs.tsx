@@ -15,6 +15,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer"
 import { Label } from "@/components/ui/label"
 
 export type ReportCampDialogOption = {
@@ -33,6 +41,134 @@ export type TeamReportCreateCampOption = ReportCampDialogOption & {
   year: number
 }
 
+type ReportFormSurface = "dialog" | "drawer"
+
+function ReportDialogForm({
+  campOptions,
+  canChooseCamps,
+  canSubmit,
+  idPrefix,
+  onToggleCampSelection,
+  redirectTo,
+  reportName,
+  scope,
+  selectedCampIds,
+  setReportName,
+  surface,
+  teamVenueId,
+  year,
+}: {
+  campOptions: ReportCampDialogOption[]
+  canChooseCamps: boolean
+  canSubmit: boolean
+  idPrefix: string
+  onToggleCampSelection: (campId: string) => void
+  redirectTo: string
+  reportName: string
+  scope: NavigationScope
+  selectedCampIds: string[]
+  setReportName: (value: string) => void
+  surface: ReportFormSurface
+  teamVenueId: string | null
+  year: number
+}) {
+  const isDrawerSurface = surface === "drawer"
+
+  return (
+    <form
+      action={createTeamVenueReportAction}
+      className={isDrawerSurface ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "space-y-4"}
+    >
+      <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
+      {scope.activeTeamId ? (
+        <input type="hidden" name="scopeTeamId" value={scope.activeTeamId} />
+      ) : null}
+      <input type="hidden" name="redirectTo" value={redirectTo} />
+      <input type="hidden" name="year" value={String(year)} />
+      <input type="hidden" name="teamVenueId" value={teamVenueId ?? ""} />
+
+      <div
+        className={
+          isDrawerSurface
+            ? "min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4"
+            : "space-y-4"
+        }
+      >
+        <div className="space-y-2">
+          <Label htmlFor={`${idPrefix}-name`}>Report name (optional)</Label>
+          <input
+            id={`${idPrefix}-name`}
+            name="reportName"
+            maxLength={200}
+            value={reportName}
+            onChange={(event) => setReportName(event.target.value)}
+            placeholder="Auto: Venue + year + camps"
+            className={
+              isDrawerSurface
+                ? "flex h-11 w-full rounded-md border border-input bg-background px-3 py-1 text-base md:text-sm"
+                : "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+            }
+          />
+        </div>
+
+        <fieldset className="space-y-3">
+          <legend className="text-sm font-medium">Camps</legend>
+
+          {!canChooseCamps ? (
+            <p className="text-sm text-muted-foreground">
+              {teamVenueId === null
+                ? "Select a venue first to load camps."
+                : "No camps available for the selected year and venue."}
+            </p>
+          ) : (
+            <div className="grid gap-2">
+              {campOptions.map((camp) => {
+                const isSelected = selectedCampIds.includes(camp.campId)
+
+                return (
+                  <label
+                    key={camp.campId}
+                    className="flex items-start gap-3 rounded-md border px-3 py-2 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      name="campIds"
+                      value={camp.campId}
+                      checked={isSelected}
+                      onChange={() => onToggleCampSelection(camp.campId)}
+                      className="mt-1 size-4 rounded border-input"
+                    />
+                    <span className="min-w-0">
+                      <span className="block font-medium">{camp.name}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {camp.dateRangeLabel}
+                      </span>
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+          )}
+        </fieldset>
+      </div>
+
+      {isDrawerSurface ? (
+        <DrawerFooter className="shrink-0 border-t">
+          <Button type="submit" disabled={!canSubmit} className="h-11 w-full">
+            Create report
+          </Button>
+        </DrawerFooter>
+      ) : (
+        <DialogFooter>
+          <Button type="submit" disabled={!canSubmit}>
+            Create report
+          </Button>
+        </DialogFooter>
+      )}
+    </form>
+  )
+}
+
 export function CreateReportDialog({
   scope,
   teamVenueId,
@@ -40,6 +176,8 @@ export function CreateReportDialog({
   redirectTo,
   campOptions,
   disabled,
+  surface = "dialog",
+  triggerVariant = "default",
 }: {
   scope: NavigationScope
   teamVenueId: string | null
@@ -47,6 +185,8 @@ export function CreateReportDialog({
   redirectTo: string
   campOptions: ReportCampDialogOption[]
   disabled: boolean
+  surface?: ReportFormSurface
+  triggerVariant?: "default" | "fab"
 }) {
   const [open, setOpen] = React.useState(false)
   const [reportName, setReportName] = React.useState("")
@@ -54,12 +194,68 @@ export function CreateReportDialog({
 
   const canChooseCamps = teamVenueId !== null && campOptions.length > 0
   const canSubmit = !disabled && canChooseCamps && selectedCampIds.length > 0
+  const isFabTrigger = triggerVariant === "fab"
+  const idPrefix = `report-${surface}`
 
   function toggleCampSelection(campId: string): void {
     setSelectedCampIds((currentValue) =>
       currentValue.includes(campId)
         ? currentValue.filter((selectedId) => selectedId !== campId)
         : [...currentValue, campId],
+    )
+  }
+
+  if (surface === "drawer") {
+    return (
+      <Drawer open={open} onOpenChange={setOpen}>
+        <Button
+          type="button"
+          variant={isFabTrigger ? "default" : "outline"}
+          size={isFabTrigger ? "icon" : "default"}
+          disabled={disabled}
+          aria-label={isFabTrigger ? "New report" : undefined}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          className={
+            isFabTrigger
+              ? "mobile-floating-action size-14 rounded-full shadow-lg shadow-black/20 md:hidden"
+              : "h-11 px-3"
+          }
+          onClick={() => {
+            setReportName("")
+            setSelectedCampIds([])
+            setOpen(true)
+          }}
+        >
+          <PlusIcon className={isFabTrigger ? "size-6" : "size-4"} />
+          {isFabTrigger ? <span className="sr-only">New report</span> : "New"}
+        </Button>
+
+        <DrawerContent className="flex h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+          <DrawerHeader className="shrink-0 border-b text-left">
+            <DrawerTitle>Create report</DrawerTitle>
+            <DrawerDescription>
+              Select one or more camps for {year}. New reports are immutable records.
+            </DrawerDescription>
+          </DrawerHeader>
+
+          <ReportDialogForm
+            campOptions={campOptions}
+            canChooseCamps={canChooseCamps}
+            canSubmit={canSubmit}
+            idPrefix={idPrefix}
+            onToggleCampSelection={toggleCampSelection}
+            redirectTo={redirectTo}
+            reportName={reportName}
+            scope={scope}
+            selectedCampIds={selectedCampIds}
+            setReportName={setReportName}
+            surface="drawer"
+            teamVenueId={teamVenueId}
+            year={year}
+          />
+        </DrawerContent>
+      </Drawer>
     )
   }
 
@@ -90,74 +286,21 @@ export function CreateReportDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form action={createTeamVenueReportAction} className="space-y-4">
-          <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
-          {scope.activeTeamId ? (
-            <input type="hidden" name="scopeTeamId" value={scope.activeTeamId} />
-          ) : null}
-          <input type="hidden" name="redirectTo" value={redirectTo} />
-          <input type="hidden" name="year" value={String(year)} />
-          <input type="hidden" name="teamVenueId" value={teamVenueId ?? ""} />
-
-          <div className="space-y-2">
-            <Label htmlFor="report-name">Report name (optional)</Label>
-            <input
-              id="report-name"
-              name="reportName"
-              maxLength={200}
-              value={reportName}
-              onChange={(event) => setReportName(event.target.value)}
-              placeholder="Auto: Venue + year + camps"
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
-            />
-          </div>
-
-          <fieldset className="space-y-3">
-            <legend className="text-sm font-medium">Camps</legend>
-
-            {!canChooseCamps ? (
-              <p className="text-sm text-muted-foreground">
-                {teamVenueId === null
-                  ? "Select a venue first to load camps."
-                  : "No camps available for the selected year and venue."}
-              </p>
-            ) : (
-              <div className="grid gap-2">
-                {campOptions.map((camp) => {
-                  const isSelected = selectedCampIds.includes(camp.campId)
-
-                  return (
-                    <label
-                      key={camp.campId}
-                      className="flex items-start gap-3 rounded-md border px-3 py-2 text-sm"
-                    >
-                      <input
-                        type="checkbox"
-                        name="campIds"
-                        value={camp.campId}
-                        checked={isSelected}
-                        onChange={() => toggleCampSelection(camp.campId)}
-                        className="mt-1 size-4 rounded border-input"
-                      />
-                      <span className="min-w-0">
-                        <span className="block font-medium">{camp.name}</span>
-                        <span className="block text-xs text-muted-foreground">
-                          {camp.dateRangeLabel}
-                        </span>
-                      </span>
-                    </label>
-                  )
-                })}
-              </div>
-            )}
-          </fieldset>
-
-          <DialogFooter>
-            <Button type="submit" disabled={!canSubmit}>
-              Create report
-            </Button>
-          </DialogFooter>
-        </form>
+        <ReportDialogForm
+          campOptions={campOptions}
+          canChooseCamps={canChooseCamps}
+          canSubmit={canSubmit}
+          idPrefix={idPrefix}
+          onToggleCampSelection={toggleCampSelection}
+          redirectTo={redirectTo}
+          reportName={reportName}
+          scope={scope}
+          selectedCampIds={selectedCampIds}
+          setReportName={setReportName}
+          surface="dialog"
+          teamVenueId={teamVenueId}
+          year={year}
+        />
       </DialogContent>
     </Dialog>
   )

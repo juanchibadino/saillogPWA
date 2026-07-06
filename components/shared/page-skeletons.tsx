@@ -1304,6 +1304,13 @@ const VENUE_DETAIL_SUMMARY_LABELS = [
   "Avg. Session",
   "Net Time Sailed",
 ]
+
+function formatVenueDetailSummarySkeletonLabel(
+  label: string,
+  selectedYear?: number,
+): string {
+  return typeof selectedYear === "number" ? `${label} ${selectedYear}` : label
+}
 const VENUE_DETAIL_TABS: Array<{
   label: string
   value: VenueDetailSkeletonTab
@@ -1345,11 +1352,15 @@ function formatVenueDetailSkeletonPanelTitle(input: {
   }
 
   if (input.selectedTab === "sessions") {
-    return "Sessions"
+    return typeof input.selectedYear === "number"
+      ? `Sessions ${input.selectedYear}`
+      : "Sessions"
   }
 
   if (input.selectedTab === "reports") {
-    return "Reports"
+    return typeof input.selectedYear === "number"
+      ? `Reports ${input.selectedYear}`
+      : "Reports"
   }
 
   if (input.selectedTab === "wind-patterns") {
@@ -1359,7 +1370,11 @@ function formatVenueDetailSkeletonPanelTitle(input: {
   return "Assessments"
 }
 
-export function VenueDetailSummaryCardsSkeleton() {
+export function VenueDetailSummaryCardsSkeleton({
+  selectedYear,
+}: {
+  selectedYear?: number
+} = {}) {
   return (
     <>
       <GradientCard className="overflow-hidden p-0 md:hidden">
@@ -1369,7 +1384,9 @@ export function VenueDetailSummaryCardsSkeleton() {
               key={`venue-detail-mobile-summary-${label}`}
               className="flex min-h-12 items-center justify-between gap-4"
             >
-              <p className="text-sm text-muted-foreground">{label}</p>
+              <p className="text-sm text-muted-foreground">
+                {formatVenueDetailSummarySkeletonLabel(label, selectedYear)}
+              </p>
               <Skeleton className="h-5 w-24" />
             </div>
           ))}
@@ -1380,7 +1397,9 @@ export function VenueDetailSummaryCardsSkeleton() {
         {VENUE_DETAIL_SUMMARY_LABELS.map((label) => (
           <GradientCard key={`venue-detail-desktop-summary-${label}`}>
             <div className="space-y-3 px-6">
-              <p className="text-sm text-muted-foreground">{label}</p>
+              <p className="text-sm text-muted-foreground">
+                {formatVenueDetailSummarySkeletonLabel(label, selectedYear)}
+              </p>
               <Skeleton className="h-7 w-28" />
             </div>
           </GradientCard>
@@ -1401,7 +1420,9 @@ function VenueDetailListPanelSkeleton({
     selectedTab,
     selectedYear,
   })
-  const showToolbarSkeleton = selectedTab !== "camps"
+  const showToolbarSkeleton = selectedTab === "sessions"
+  const showCreateSkeleton = selectedTab === "camps" || selectedTab === "reports"
+  const createActionLabel = selectedTab === "reports" ? "report" : "camp"
 
   return (
     <section className="space-y-4" aria-busy="true">
@@ -1419,6 +1440,27 @@ function VenueDetailListPanelSkeleton({
               <Skeleton className="h-8 w-24" />
             </div>
           </>
+        ) : showCreateSkeleton ? (
+          <>
+            <button
+              type="button"
+              disabled
+              className="mobile-floating-action inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground opacity-70 shadow-lg shadow-black/20 md:hidden"
+              aria-label={`Loading new ${createActionLabel} action`}
+            >
+              <PlusIcon className="size-6" />
+            </button>
+            <div className="hidden items-center justify-end md:flex">
+              <button
+                type="button"
+                disabled
+                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium text-muted-foreground opacity-70"
+              >
+                <PlusIcon className="size-4" />
+                New
+              </button>
+            </div>
+          </>
         ) : null}
       </header>
 
@@ -1434,6 +1476,114 @@ function VenueDetailListPanelSkeleton({
                 <Skeleton className="h-3 w-44 max-w-full" />
                 <Skeleton className="h-3 w-32 max-w-full" />
               </div>
+              <Skeleton
+                className={
+                  selectedTab === "reports"
+                    ? "h-11 w-20 shrink-0"
+                    : "h-11 w-11 shrink-0"
+                }
+              />
+            </div>
+          </GradientCard>
+        ))}
+      </div>
+
+      <GradientCard className="hidden overflow-hidden p-0 md:block">
+        {selectedTab === "reports" ? (
+          <>
+            <div className="grid h-10 grid-cols-[1.2fr_1.4fr_0.9fr_7rem] items-center gap-4 border-b bg-muted/40 px-2">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-4 w-24" />
+              <span aria-hidden="true" />
+            </div>
+            <div className="divide-y divide-border">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <div
+                  key={`venue-detail-desktop-${selectedTab}-${index}`}
+                  className="grid min-h-14 grid-cols-[1.2fr_1.4fr_0.9fr_7rem] items-center gap-4 px-2 py-2"
+                >
+                  <Skeleton className="h-4 w-full max-w-40" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-full max-w-20" />
+                    <Skeleton className="h-3 w-full max-w-48" />
+                  </div>
+                  <Skeleton className="h-4 w-full max-w-28" />
+                  <Skeleton className="ml-auto h-7 w-16" />
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="grid h-10 grid-cols-[1.2fr_0.7fr_1fr_0.6fr_3rem] items-center gap-4 border-b bg-muted/40 px-2">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-4 w-20" />
+              <span aria-hidden="true" />
+            </div>
+            <div className="divide-y divide-border">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <div
+                  key={`venue-detail-desktop-${selectedTab}-${index}`}
+                  className="grid min-h-12 grid-cols-[1.2fr_0.7fr_1fr_0.6fr_3rem] items-center gap-4 px-2 py-2"
+                >
+                  <Skeleton className="h-4 w-full max-w-40" />
+                  <Skeleton className="h-4 w-full max-w-20" />
+                  <Skeleton className="h-4 w-full max-w-28" />
+                  <Skeleton className="h-4 w-full max-w-20" />
+                  <Skeleton className="ml-auto h-8 w-8" />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </GradientCard>
+    </section>
+  )
+}
+
+function VenueDetailWindPatternsPanelSkeleton() {
+  return (
+    <section className="space-y-4" aria-busy="true">
+      <header className="flex items-center justify-between gap-3">
+        <div className="min-w-0 space-y-2">
+          <h1 className="min-w-0 text-2xl font-semibold tracking-tight md:hidden">
+            Wind Patterns
+          </h1>
+          <h2 className="hidden text-lg font-semibold md:block">Wind Patterns</h2>
+          <Skeleton className="hidden h-3 w-56 max-w-full md:block" />
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Skeleton className="h-11 w-11 md:h-8 md:w-24" />
+          <Skeleton className="hidden h-8 w-16 md:block" />
+        </div>
+        <button
+          type="button"
+          disabled
+          className="mobile-floating-action inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground opacity-70 shadow-lg shadow-black/20 md:hidden"
+          aria-label="Loading new wind pattern action"
+        >
+          <PlusIcon className="size-6" />
+        </button>
+      </header>
+
+      <div className="space-y-2 md:hidden">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <GradientCard
+            key={`venue-detail-mobile-wind-pattern-${index}`}
+            className="px-3 py-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Skeleton className="h-4 w-36 max-w-full" />
+                  <Skeleton className="h-5 w-16" />
+                </div>
+                <Skeleton className="h-3 w-full max-w-52" />
+                <Skeleton className="h-3 w-44 max-w-full" />
+              </div>
               <Skeleton className="h-11 w-11 shrink-0" />
             </div>
           </GradientCard>
@@ -1441,21 +1591,25 @@ function VenueDetailListPanelSkeleton({
       </div>
 
       <GradientCard className="hidden overflow-hidden p-0 md:block">
-        <div className="grid grid-cols-[1.1fr_0.9fr_0.7fr_3rem] gap-4 bg-muted/40 px-4 py-3">
+        <div className="grid h-10 grid-cols-[1fr_1.4fr_0.5fr_1fr_0.7fr_3rem] items-center gap-4 border-b bg-muted/40 px-2">
           <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="h-4 w-12" />
           <Skeleton className="h-4 w-20" />
-          <Skeleton className="h-4 w-20" />
+          <Skeleton className="h-4 w-16" />
           <span aria-hidden="true" />
         </div>
         <div className="divide-y divide-border">
-          {Array.from({ length: 5 }).map((_, index) => (
+          {Array.from({ length: 4 }).map((_, index) => (
             <div
-              key={`venue-detail-desktop-${selectedTab}-${index}`}
-              className="grid min-h-14 grid-cols-[1.1fr_0.9fr_0.7fr_3rem] items-center gap-4 px-4 py-3"
+              key={`venue-detail-desktop-wind-pattern-${index}`}
+              className="grid min-h-12 grid-cols-[1fr_1.4fr_0.5fr_1fr_0.7fr_3rem] items-center gap-4 px-2 py-2"
             >
-              <Skeleton className="h-4 w-full max-w-40" />
+              <Skeleton className="h-4 w-full max-w-36" />
+              <Skeleton className="h-4 w-full max-w-52" />
+              <Skeleton className="h-4 w-full max-w-10" />
               <Skeleton className="h-4 w-full max-w-28" />
-              <Skeleton className="h-4 w-full max-w-20" />
+              <Skeleton className="h-5 w-full max-w-16" />
               <Skeleton className="ml-auto h-8 w-8" />
             </div>
           ))}
@@ -1539,12 +1693,7 @@ export function VenueDetailPanelSkeleton({
   }
 
   if (selectedTab === "wind-patterns") {
-    return (
-      <VenueDetailTextPanelSkeleton
-        selectedTab="wind-patterns"
-        selectedYear={selectedYear}
-      />
-    )
+    return <VenueDetailWindPatternsPanelSkeleton />
   }
 
   return (
@@ -1625,7 +1774,7 @@ export function VenueDetailDeferredContentSkeleton({
         <Skeleton className="h-9 w-24 shrink-0" />
       </div>
 
-      <VenueDetailSummaryCardsSkeleton />
+      <VenueDetailSummaryCardsSkeleton selectedYear={selectedYear} />
       <VenueDetailTabsSkeleton selectedTab={selectedTab} selectedYear={selectedYear} />
     </div>
   )

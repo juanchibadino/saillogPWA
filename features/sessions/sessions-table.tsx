@@ -51,6 +51,7 @@ type TeamSessionsTableProps = {
   campOptions: TeamSessionCampOption[]
   canManageSessions: boolean
   noTeamSelected: boolean
+  title?: string
   toolbar?: ReactNode
   scope: NavigationScope
   selectedVenueId?: string
@@ -162,6 +163,7 @@ export function TeamSessionsTable({
   campOptions,
   canManageSessions,
   noTeamSelected,
+  title = "Sessions",
   toolbar,
   scope,
   selectedVenueId,
@@ -279,7 +281,7 @@ export function TeamSessionsTable({
     <section className="space-y-4">
       {!hideChrome ? (
         <div className="flex items-center justify-end gap-2 md:justify-between">
-          <h2 className="hidden text-lg font-semibold md:block">Sessions</h2>
+          <h2 className="hidden text-lg font-semibold md:block">{title}</h2>
           {renderedToolbar ? <div className="w-full md:w-auto">{renderedToolbar}</div> : null}
         </div>
       ) : null}

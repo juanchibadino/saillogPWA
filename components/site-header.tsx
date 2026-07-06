@@ -881,12 +881,6 @@ export function SiteHeader({
               </BreadcrumbItem>
               <BreadcrumbSeparator />
               <BreadcrumbItem>
-                <BreadcrumbLink render={<Link href={teamVenuesHref} />}>
-                  Team Venues
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
                 <BreadcrumbPage>{teamVenueDetailTitle}</BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>

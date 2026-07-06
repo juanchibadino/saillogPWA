@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react"
 
+import { GradientCard } from "@/components/shared/gradient-card"
 import { WindPatternActionsMenu } from "@/features/wind-patterns/wind-patterns-form-dialogs"
 import type { TeamVenueWindPatternListItem } from "@/features/wind-patterns/data"
 import type { NavigationScope } from "@/lib/navigation/types"
@@ -74,19 +75,78 @@ export function WindPatternsTable({
   teamVenueId: string
   year?: number
 }) {
+  const emptyMessage = resolveEmptyMessage(selectedStatusFilter)
+
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="space-y-1">
-          <h3 className="text-base font-semibold">Wind Patterns</h3>
-          <p className="text-sm text-muted-foreground">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <h1 className="min-w-0 text-2xl font-semibold tracking-tight md:hidden">
+            Wind Patterns
+          </h1>
+          <h2 className="hidden text-lg font-semibold md:block">Wind Patterns</h2>
+          <p className="hidden text-sm text-muted-foreground md:block">
             Reusable venue patterns for this team.
           </p>
         </div>
-        {toolbar ? <div className="w-full sm:w-auto">{toolbar}</div> : null}
+        {toolbar ? <div className="shrink-0">{toolbar}</div> : null}
       </div>
 
-      <div className="overflow-hidden rounded-xl border bg-card">
+      <div className="space-y-2 md:hidden">
+        {patterns.length === 0 ? (
+          <GradientCard className="px-4 py-6 text-sm text-muted-foreground">
+            {emptyMessage}
+          </GradientCard>
+        ) : (
+          patterns.map((windPattern) => (
+            <GradientCard key={windPattern.id} className="px-3 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <p className="min-w-0 truncate text-sm font-medium">
+                      {windPattern.name}
+                    </p>
+                    {renderStatusBadge(windPattern.isActive)}
+                  </div>
+                  <p className="line-clamp-2 text-xs text-muted-foreground">
+                    {windPattern.description && windPattern.description.trim().length > 0
+                      ? windPattern.description
+                      : "No description"}
+                  </p>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    <span>
+                      Used ·{" "}
+                      <span className="tabular-nums">{windPattern.usageCount}</span>
+                    </span>
+                    <span>Updated · {formatDateTimeLabel(windPattern.updatedAt)}</span>
+                  </div>
+                </div>
+
+                <div
+                  className="shrink-0 self-center"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                  }}
+                  onKeyDown={(event) => {
+                    event.stopPropagation()
+                  }}
+                >
+                  <WindPatternActionsMenu
+                    windPattern={windPattern}
+                    scope={scope}
+                    teamVenueId={teamVenueId}
+                    statusFilter={selectedStatusFilter}
+                    year={year}
+                    canManageWindPatterns={canManageWindPatterns}
+                  />
+                </div>
+              </div>
+            </GradientCard>
+          ))
+        )}
+      </div>
+
+      <div className="hidden overflow-hidden rounded-xl border bg-card md:block">
         <Table>
           <TableHeader className="bg-muted/40">
             <TableRow className="hover:bg-transparent">
@@ -102,7 +162,7 @@ export function WindPatternsTable({
             {patterns.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="py-6 text-sm text-muted-foreground">
-                  {resolveEmptyMessage(selectedStatusFilter)}
+                  {emptyMessage}
                 </TableCell>
               </TableRow>
             ) : (

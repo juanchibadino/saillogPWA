@@ -206,6 +206,7 @@ function CampDialogForm({
   selectedCampType,
   selectedCampStatus,
   currentPage,
+  returnPath,
   action,
   formId,
   footer = "sheet",
@@ -223,6 +224,7 @@ function CampDialogForm({
   selectedCampType?: TeamCampTypeFilter
   selectedCampStatus?: TeamCampStatusFilter
   currentPage: number
+  returnPath?: string
   action: (formData: FormData) => Promise<void>
   formId?: string
   footer?: CampFormFooter
@@ -273,6 +275,9 @@ function CampDialogForm({
       ) : null}
       {currentPage > 1 ? (
         <input type="hidden" name="scopePage" value={String(currentPage)} />
+      ) : null}
+      {returnPath ? (
+        <input type="hidden" name="scopeReturnPath" value={returnPath} />
       ) : null}
 
       <CampDialogFields
@@ -395,6 +400,7 @@ export function CreateCampDialog({
   selectedCampType,
   selectedCampStatus,
   currentPage,
+  returnPath,
   disabled,
   surface = "sheet",
   triggerVariant = "default",
@@ -405,6 +411,7 @@ export function CreateCampDialog({
   selectedCampType?: TeamCampTypeFilter
   selectedCampStatus?: TeamCampStatusFilter
   currentPage: number
+  returnPath?: string
   disabled: boolean
   surface?: CampFormSurface
   triggerVariant?: "default" | "fab"
@@ -464,6 +471,7 @@ export function CreateCampDialog({
             selectedCampType={selectedCampType}
             selectedCampStatus={selectedCampStatus}
             currentPage={currentPage}
+            returnPath={returnPath}
             action={createCampAction}
             formId={createFormId}
             footer="drawer"
@@ -516,6 +524,7 @@ export function CreateCampDialog({
           selectedCampType={selectedCampType}
           selectedCampStatus={selectedCampStatus}
           currentPage={currentPage}
+          returnPath={returnPath}
           action={createCampAction}
           formId={createFormId}
           footer="sheet"
@@ -535,6 +544,7 @@ export function EditCampDialog({
   selectedCampType,
   selectedCampStatus,
   currentPage,
+  returnPath,
   surface = "sheet",
   open,
   onOpenChange,
@@ -547,6 +557,7 @@ export function EditCampDialog({
   selectedCampType?: TeamCampTypeFilter
   selectedCampStatus?: TeamCampStatusFilter
   currentPage: number
+  returnPath?: string
   surface?: CampFormSurface
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -601,6 +612,7 @@ export function EditCampDialog({
             selectedCampType={selectedCampType}
             selectedCampStatus={selectedCampStatus}
             currentPage={currentPage}
+            returnPath={returnPath}
             action={updateCampAction}
             formId={editFormId}
             footer="drawer"
@@ -646,6 +658,7 @@ export function EditCampDialog({
           selectedCampType={selectedCampType}
           selectedCampStatus={selectedCampStatus}
           currentPage={currentPage}
+          returnPath={returnPath}
           action={updateCampAction}
           formId={editFormId}
           footer="sheet"
@@ -664,6 +677,7 @@ function DeleteCampDialog({
   selectedCampType,
   selectedCampStatus,
   currentPage,
+  returnPath,
   open,
   onOpenChange,
 }: {
@@ -673,6 +687,7 @@ function DeleteCampDialog({
   selectedCampType?: TeamCampTypeFilter
   selectedCampStatus?: TeamCampStatusFilter
   currentPage: number
+  returnPath?: string
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
@@ -709,6 +724,9 @@ function DeleteCampDialog({
           {currentPage > 1 ? (
             <input type="hidden" name="scopePage" value={String(currentPage)} />
           ) : null}
+          {returnPath ? (
+            <input type="hidden" name="scopeReturnPath" value={returnPath} />
+          ) : null}
 
           <CampDeleteDialogFooter onCancel={() => onOpenChange(false)} />
         </form>
@@ -725,6 +743,7 @@ export function CampActionsMenu({
   selectedCampType,
   selectedCampStatus,
   currentPage,
+  returnPath,
   canEditCamp,
   canDeleteCamp,
   editSurface = "sheet",
@@ -736,6 +755,7 @@ export function CampActionsMenu({
   selectedCampType?: TeamCampTypeFilter
   selectedCampStatus?: TeamCampStatusFilter
   currentPage: number
+  returnPath?: string
   canEditCamp: boolean
   canDeleteCamp: boolean
   editSurface?: CampFormSurface
@@ -792,6 +812,7 @@ export function CampActionsMenu({
           selectedCampType={selectedCampType}
           selectedCampStatus={selectedCampStatus}
           currentPage={currentPage}
+          returnPath={returnPath}
           surface={editSurface}
           open={isEditOpen}
           onOpenChange={setIsEditOpen}
@@ -807,6 +828,7 @@ export function CampActionsMenu({
           selectedCampType={selectedCampType}
           selectedCampStatus={selectedCampStatus}
           currentPage={currentPage}
+          returnPath={returnPath}
           open={isDeleteOpen}
           onOpenChange={setIsDeleteOpen}
         />

@@ -73,6 +73,7 @@ function parseOptionalCampStatus(
 }
 
 type CampActionScope = {
+  returnPath?: string
   scopeCampStatus?: "active" | "inactive"
   scopeCampType?: "training" | "regatta" | "mixed"
   scopeOrgId?: string
@@ -111,6 +112,7 @@ function logCampActionTiming(input: {
 }
 
 function getScopeFromFormData(formData: FormData): {
+  returnPath?: string
   scopeCampStatus?: "active" | "inactive"
   scopeCampType?: "training" | "regatta" | "mixed"
   scopeOrgId?: string
@@ -129,9 +131,11 @@ function getScopeFromFormData(formData: FormData): {
   const scopeCampStatus = parseOptionalCampStatus(getFormString(formData, "scopeCampStatus"))
   const scopeTab = getFormString(formData, "scopeTab")
   const scopePage = parseOptionalPage(getFormString(formData, "scopePage"))
+  const returnPath = getFormString(formData, "scopeReturnPath")
 
   if (!parsedScope.success) {
     return {
+      returnPath,
       scopeVenueId,
       scopeCampType,
       scopeCampStatus,
@@ -142,12 +146,77 @@ function getScopeFromFormData(formData: FormData): {
 
   return {
     ...parsedScope.data,
+    returnPath,
     scopeVenueId,
     scopeCampType,
     scopeCampStatus,
     scopeTab,
     scopePage,
   }
+}
+
+function normalizeCampActionReturnPath(value: string | undefined): string | null {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+    return null
+  }
+
+  const url = new URL(value, "http://sailog.local")
+
+  if (
+    url.pathname !== "/team-camps" &&
+    !url.pathname.startsWith("/team-camps/") &&
+    !url.pathname.startsWith("/venues/")
+  ) {
+    return null
+  }
+
+  return `${url.pathname}${url.search}`
+}
+
+function buildCampActionRedirectPath(
+  input: CampActionScope & { error?: string; status?: string },
+): string {
+  const returnPath = normalizeCampActionReturnPath(input.returnPath)
+
+  if (!returnPath) {
+    return buildTeamCampsRedirectPath(input)
+  }
+
+  const url = new URL(returnPath, "http://sailog.local")
+  const params = url.searchParams
+
+  params.delete("status")
+  params.delete("error")
+
+  if (input.status) {
+    params.set("status", input.status)
+  }
+
+  if (input.error) {
+    params.set("error", input.error)
+  }
+
+  if (input.scopeOrgId) {
+    params.set("org", input.scopeOrgId)
+  }
+
+  if (input.scopeTeamId) {
+    params.set("team", input.scopeTeamId)
+  }
+
+  const query = params.toString()
+  return query.length > 0 ? `${url.pathname}?${query}` : url.pathname
+}
+
+function revalidateCampActionReturnPath(returnPath: string | undefined): void {
+  const normalizedReturnPath = normalizeCampActionReturnPath(returnPath)
+
+  if (!normalizedReturnPath) {
+    return
+  }
+
+  const url = new URL(normalizedReturnPath, "http://sailog.local")
+  revalidatePath(url.pathname)
 }
 
 async function ensureTeamVenueBelongsToScope(input: {
@@ -228,7 +297,7 @@ export async function createCampAction(formData: FormData): Promise<void> {
 
   if (!parsedInput.success || !scope.scopeOrgId || !scope.scopeTeamId) {
     redirect(
-      buildTeamCampsRedirectPath({
+      buildCampActionRedirectPath({
         error: "invalid_input",
         ...scope,
       }),
@@ -243,7 +312,7 @@ export async function createCampAction(formData: FormData): Promise<void> {
     })
   ) {
     redirect(
-      buildTeamCampsRedirectPath({
+      buildCampActionRedirectPath({
         error: "forbidden",
         ...scope,
       }),
@@ -257,7 +326,7 @@ export async function createCampAction(formData: FormData): Promise<void> {
 
   if (!teamVenueBelongsToScope) {
     redirect(
-      buildTeamCampsRedirectPath({
+      buildCampActionRedirectPath({
         error: "invalid_input",
         ...scope,
       }),
@@ -268,7 +337,7 @@ export async function createCampAction(formData: FormData): Promise<void> {
 
   if (!resolvedOrganizationId || resolvedOrganizationId !== scope.scopeOrgId) {
     redirect(
-      buildTeamCampsRedirectPath({
+      buildCampActionRedirectPath({
         error: "invalid_input",
         ...scope,
       }),
@@ -282,7 +351,7 @@ export async function createCampAction(formData: FormData): Promise<void> {
 
   if (!entitlementDecision.allowed && entitlementDecision.reason) {
     redirect(
-      buildTeamCampsRedirectPath({
+      buildCampActionRedirectPath({
         error: entitlementDecision.reason,
         ...scope,
       }),
@@ -301,7 +370,7 @@ export async function createCampAction(formData: FormData): Promise<void> {
 
   if (insertError) {
     redirect(
-      buildTeamCampsRedirectPath({
+      buildCampActionRedirectPath({
         error: "create_failed",
         ...scope,
       }),
@@ -310,9 +379,10 @@ export async function createCampAction(formData: FormData): Promise<void> {
 
   revalidatePath("/team-camps")
   revalidatePath("/team-sessions")
+  revalidateCampActionReturnPath(scope.returnPath)
 
   redirect(
-    buildTeamCampsRedirectPath({
+    buildCampActionRedirectPath({
       status: "created",
       ...scope,
     }),
@@ -335,7 +405,7 @@ export async function updateCampAction(formData: FormData): Promise<void> {
 
   if (!parsedInput.success || !scope.scopeOrgId || !scope.scopeTeamId) {
     redirect(
-      buildTeamCampsRedirectPath({
+      buildCampActionRedirectPath({
         error: "invalid_input",
         ...scope,
       }),
@@ -350,7 +420,7 @@ export async function updateCampAction(formData: FormData): Promise<void> {
     })
   ) {
     redirect(
-      buildTeamCampsRedirectPath({
+      buildCampActionRedirectPath({
         error: "forbidden",
         ...scope,
       }),
@@ -364,7 +434,7 @@ export async function updateCampAction(formData: FormData): Promise<void> {
 
   if (!teamVenueBelongsToScope) {
     redirect(
-      buildTeamCampsRedirectPath({
+      buildCampActionRedirectPath({
         error: "invalid_input",
         ...scope,
       }),
@@ -386,7 +456,7 @@ export async function updateCampAction(formData: FormData): Promise<void> {
 
   if (updateError) {
     redirect(
-      buildTeamCampsRedirectPath({
+      buildCampActionRedirectPath({
         error: "update_failed",
         ...scope,
       }),
@@ -396,9 +466,10 @@ export async function updateCampAction(formData: FormData): Promise<void> {
   revalidatePath("/team-camps")
   revalidatePath(`/team-camps/${parsedInput.data.id}`)
   revalidatePath("/team-sessions")
+  revalidateCampActionReturnPath(scope.returnPath)
 
   redirect(
-    buildTeamCampsRedirectPath({
+    buildCampActionRedirectPath({
       status: "updated",
       ...scope,
     }),
@@ -415,7 +486,7 @@ export async function deleteCampAction(formData: FormData): Promise<void> {
 
   if (!parsedInput.success || !scope.scopeOrgId || !scope.scopeTeamId) {
     redirect(
-      buildTeamCampsRedirectPath({
+      buildCampActionRedirectPath({
         error: "invalid_input",
         ...scope,
       }),
@@ -430,7 +501,7 @@ export async function deleteCampAction(formData: FormData): Promise<void> {
     })
   ) {
     redirect(
-      buildTeamCampsRedirectPath({
+      buildCampActionRedirectPath({
         error: "forbidden",
         ...scope,
       }),
@@ -444,7 +515,7 @@ export async function deleteCampAction(formData: FormData): Promise<void> {
 
   if (!campBelongsToScope) {
     redirect(
-      buildTeamCampsRedirectPath({
+      buildCampActionRedirectPath({
         error: "invalid_input",
         ...scope,
       }),
@@ -459,7 +530,7 @@ export async function deleteCampAction(formData: FormData): Promise<void> {
 
   if (deleteError) {
     redirect(
-      buildTeamCampsRedirectPath({
+      buildCampActionRedirectPath({
         error: "delete_failed",
         ...scope,
       }),
@@ -469,9 +540,10 @@ export async function deleteCampAction(formData: FormData): Promise<void> {
   revalidatePath("/team-camps")
   revalidatePath(`/team-camps/${parsedInput.data.id}`)
   revalidatePath("/team-sessions")
+  revalidateCampActionReturnPath(scope.returnPath)
 
   redirect(
-    buildTeamCampsRedirectPath({
+    buildCampActionRedirectPath({
       status: "deleted",
       ...scope,
     }),

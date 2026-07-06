@@ -21,13 +21,16 @@ export type VenueDetailTeamVenue = Pick<TeamVenueRow, "id" | "team_id" | "venue_
 export type VenueDetailKpi = {
   label: string;
   value: string;
-  note: string;
 };
 
 export type VenueDetailCampItem = {
   id: string;
+  teamVenueId: string;
   name: string;
   campType: CampRow["camp_type"];
+  startDate: string;
+  endDate: string;
+  isActive: boolean;
   dateRangeLabel: string;
   sessionCount: number;
 };
