@@ -89,6 +89,26 @@ while rows/cards load.
   of using a generic dashed loading block.
 - Inactive Camp tabs keep using the scoped tab-data API when selected.
 
+## Immediate Tab Switch Pattern
+
+Use this for route-backed or API-backed tabs where selecting a tab requires
+loading a new payload.
+
+- Do not bind the tab value only to the server/search-param value if that makes
+  the trigger wait for navigation to finish. Keep a local `selectedTab` state
+  in the client tab shell.
+- On tab click, update local `selectedTab` immediately, then start the URL/API
+  transition with `router.push`, `window.history.replaceState`, or the scoped
+  tab-data request used by that route.
+- Render the newly selected tab right away. If its payload is not available yet,
+  show the tab's mirrored panel skeleton inside the content area instead of
+  leaving the previous tab selected.
+- Keep the URL/search param as the reload/share source of truth. Sync local
+  tab state back from the server-provided `initialTab`/`selectedTab` when the
+  route entity changes or the navigation payload completes.
+- Keep current loaded data cached per tab when the route already supports it,
+  and show an in-panel retry state for deferred tab failures.
+
 ## Skeleton Fidelity
 
 - Desktop summary cards: keep the four-card grid and fixed labels.

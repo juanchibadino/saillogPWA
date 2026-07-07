@@ -1,5 +1,10 @@
 import "server-only"
 
+import {
+  formatTeamAssessmentsListTimingError,
+  logTeamAssessmentsListTiming,
+  startTeamAssessmentsListTiming,
+} from "@/features/assessments/list-timing"
 import { resolveAssessmentPagination } from "@/features/assessments/list-route-state.mjs"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import type { Database } from "@/types/database"
@@ -178,6 +183,11 @@ export type TeamAssessmentTemplate = {
   categories: TeamAssessmentCategory[]
 }
 
+export type TeamAssessmentTemplateOption = {
+  id: string
+  name: string
+}
+
 export type TeamAssessmentVenueOption = {
   teamVenueId: string
   venueId: string
@@ -247,9 +257,22 @@ export type TeamAssessmentPagination = {
 export type TeamAssessmentsPageData = {
   venueOptions: TeamAssessmentVenueOption[]
   campOptions: TeamAssessmentCampOption[]
+  templateOptions: TeamAssessmentTemplateOption[]
   templates: TeamAssessmentTemplate[]
   runs: TeamAssessmentRun[]
   pagination: TeamAssessmentPagination
+}
+
+export type TeamAssessmentsCreatedTabData = {
+  venueOptions: TeamAssessmentVenueOption[]
+  campOptions: TeamAssessmentCampOption[]
+  templateOptions: TeamAssessmentTemplateOption[]
+  runs: TeamAssessmentRun[]
+  pagination: TeamAssessmentPagination
+}
+
+export type TeamAssessmentsTemplatesTabData = {
+  templates: TeamAssessmentTemplate[]
 }
 
 export type TeamAssessmentProgressPoint = {
@@ -822,6 +845,27 @@ async function loadTeamAssessmentTemplates(input: {
   })
 }
 
+async function loadTeamAssessmentTemplateOptions(input: {
+  activeTeamId: string
+  supabase: ServerSupabaseClient
+}): Promise<TeamAssessmentTemplateOption[]> {
+  const { data, error } = await input.supabase
+    .from("assessment_templates")
+    .select("id,name")
+    .eq("team_id", input.activeTeamId)
+    .eq("is_active", true)
+    .order("updated_at", { ascending: false })
+
+  if (error) {
+    throw new Error(`Could not load assessment template options: ${error.message}`)
+  }
+
+  return (data ?? []).map((template) => ({
+    id: template.id,
+    name: template.name,
+  }))
+}
+
 async function loadRunsByIds(input: {
   runIds: string[]
   runs: AssessmentRunRow[]
@@ -1109,44 +1153,145 @@ function buildDetailSummaries(input: {
   }
 }
 
-export async function getTeamAssessmentsPageData(input: {
+export async function getTeamAssessmentsCreatedTabData(input: {
   activeTeamId: string
   currentProfileId: string
   page: number
   accumulatePages: boolean
-}): Promise<TeamAssessmentsPageData> {
+}): Promise<TeamAssessmentsCreatedTabData> {
   const supabase = await createServerSupabaseClient()
-  const [context, templates, { count, error: countError }] = await Promise.all([
-    loadTeamVenueContext({
-      activeTeamId: input.activeTeamId,
-      supabase,
-    }),
-    loadTeamAssessmentTemplates({
-      activeTeamId: input.activeTeamId,
-      supabase,
-    }),
-    supabase
+  const requestedPage = input.page
+  const accumulatePages = input.accumulatePages
+  const contextPromise = (async (): Promise<TeamVenueContext> => {
+    const contextStartedAt = startTeamAssessmentsListTiming()
+
+    try {
+      const context = await loadTeamVenueContext({
+        activeTeamId: input.activeTeamId,
+        supabase,
+      })
+      logTeamAssessmentsListTiming({
+        phase: "context",
+        startedAt: contextStartedAt,
+        activeTeamId: input.activeTeamId,
+        status: "success",
+        metadata: {
+          requestedPage,
+          accumulatePages,
+          teamVenueCount: context.teamVenueRows.length,
+          venueOptionCount: context.venueOptions.length,
+          campOptionCount: context.campOptions.length,
+        },
+      })
+
+      return context
+    } catch (error) {
+      logTeamAssessmentsListTiming({
+        phase: "context",
+        startedAt: contextStartedAt,
+        activeTeamId: input.activeTeamId,
+        status: "error",
+        error: formatTeamAssessmentsListTimingError(error),
+        metadata: {
+          requestedPage,
+          accumulatePages,
+        },
+      })
+      throw error
+    }
+  })()
+  const templateOptionsPromise = (async (): Promise<TeamAssessmentTemplateOption[]> => {
+    const templatesStartedAt = startTeamAssessmentsListTiming()
+
+    try {
+      const templateOptions = await loadTeamAssessmentTemplateOptions({
+        activeTeamId: input.activeTeamId,
+        supabase,
+      })
+      logTeamAssessmentsListTiming({
+        phase: "templates",
+        startedAt: templatesStartedAt,
+        activeTeamId: input.activeTeamId,
+        status: "success",
+        metadata: {
+          requestedPage,
+          accumulatePages,
+          templateOptionCount: templateOptions.length,
+          definitionLoaded: false,
+        },
+      })
+
+      return templateOptions
+    } catch (error) {
+      logTeamAssessmentsListTiming({
+        phase: "templates",
+        startedAt: templatesStartedAt,
+        activeTeamId: input.activeTeamId,
+        status: "error",
+        error: formatTeamAssessmentsListTimingError(error),
+        metadata: {
+          requestedPage,
+          accumulatePages,
+        },
+      })
+      throw error
+    }
+  })()
+  const countPromise = (async (): Promise<number> => {
+    const countStartedAt = startTeamAssessmentsListTiming()
+    const { count, error: countError } = await supabase
       .from("assessment_runs")
       .select("id", { count: "exact", head: true })
-      .eq("team_id", input.activeTeamId),
+      .eq("team_id", input.activeTeamId)
+
+    if (countError) {
+      logTeamAssessmentsListTiming({
+        phase: "count",
+        startedAt: countStartedAt,
+        activeTeamId: input.activeTeamId,
+        status: "error",
+        error: countError.message,
+        metadata: {
+          requestedPage,
+          accumulatePages,
+        },
+      })
+      throw new Error(`Could not count assessment runs: ${countError.message}`)
+    }
+
+    logTeamAssessmentsListTiming({
+      phase: "count",
+      startedAt: countStartedAt,
+      activeTeamId: input.activeTeamId,
+      status: "success",
+      metadata: {
+        requestedPage,
+        accumulatePages,
+        totalItems: count ?? 0,
+      },
+    })
+
+    return count ?? 0
+  })()
+  const [context, templateOptions, totalRunCount] = await Promise.all([
+    contextPromise,
+    templateOptionsPromise,
+    countPromise,
   ])
 
-  if (countError) {
-    throw new Error(`Could not count assessment runs: ${countError.message}`)
-  }
-
   const pagination = resolveAssessmentPagination({
-    requestedPage: input.page,
-    totalItems: count ?? 0,
-    accumulatePages: input.accumulatePages,
+    requestedPage,
+    totalItems: totalRunCount,
+    accumulatePages,
     pageSize: TEAM_ASSESSMENTS_PAGE_SIZE,
   })
-  const from = input.accumulatePages
+  const from = accumulatePages
     ? 0
     : (pagination.currentPage - 1) * TEAM_ASSESSMENTS_PAGE_SIZE
-  const to = input.accumulatePages
+  const to = accumulatePages
     ? pagination.currentPage * TEAM_ASSESSMENTS_PAGE_SIZE - 1
     : from + TEAM_ASSESSMENTS_PAGE_SIZE - 1
+  const runsStartedAt = startTeamAssessmentsListTiming()
   const { data: runData, error: runError } = await supabase
     .from("assessment_runs")
     .select(ASSESSMENT_RUN_SELECT_COLUMNS)
@@ -1155,25 +1300,186 @@ export async function getTeamAssessmentsPageData(input: {
     .range(from, to)
 
   if (runError) {
+    logTeamAssessmentsListTiming({
+      phase: "runs",
+      startedAt: runsStartedAt,
+      activeTeamId: input.activeTeamId,
+      status: "error",
+      error: runError.message,
+      metadata: {
+        requestedPage,
+        accumulatePages,
+        totalItems: totalRunCount,
+        currentPage: pagination.currentPage,
+        pageCount: pagination.pageCount,
+        rangeStart: from,
+        rangeEnd: to,
+      },
+    })
     throw new Error(`Could not load assessment runs: ${runError.message}`)
   }
 
   const runs = (runData ?? []) as AssessmentRunRow[]
-  const templateNameById = new Map(templates.map((template) => [template.id, template.name]))
+  logTeamAssessmentsListTiming({
+    phase: "runs",
+    startedAt: runsStartedAt,
+    activeTeamId: input.activeTeamId,
+    status: "success",
+    metadata: {
+      requestedPage,
+      accumulatePages,
+      totalItems: totalRunCount,
+      returnedItems: runs.length,
+      currentPage: pagination.currentPage,
+      pageCount: pagination.pageCount,
+      rangeStart: from,
+      rangeEnd: to,
+    },
+  })
+  const templateNameById = new Map(
+    templateOptions.map((template) => [template.id, template.name]),
+  )
+  const hydrationStartedAt = startTeamAssessmentsListTiming()
+  let hydratedRuns: TeamAssessmentRun[]
 
-  return {
-    venueOptions: context.venueOptions,
-    campOptions: context.campOptions,
-    templates,
-    runs: await loadRunsByIds({
+  try {
+    hydratedRuns = await loadRunsByIds({
       runIds: runs.map((run) => run.id),
       runs,
       context,
       currentProfileId: input.currentProfileId,
       templateNameById,
       supabase,
-    }),
+    })
+    logTeamAssessmentsListTiming({
+      phase: "hydration",
+      startedAt: hydrationStartedAt,
+      activeTeamId: input.activeTeamId,
+      status: "success",
+      metadata: {
+        requestedPage,
+        accumulatePages,
+        runCount: runs.length,
+        hydratedRunCount: hydratedRuns.length,
+        categoryCount: hydratedRuns.reduce(
+          (sum, run) => sum + run.categories.length,
+          0,
+        ),
+        expectedRespondentsCount: hydratedRuns.reduce(
+          (sum, run) => sum + run.expectedRespondentsCount,
+          0,
+        ),
+        completedRespondentsCount: hydratedRuns.reduce(
+          (sum, run) => sum + run.completedRespondentsCount,
+          0,
+        ),
+        answerCount: hydratedRuns.reduce(
+          (sum, run) => sum + run.allAnswers.length,
+          0,
+        ),
+      },
+    })
+  } catch (error) {
+    logTeamAssessmentsListTiming({
+      phase: "hydration",
+      startedAt: hydrationStartedAt,
+      activeTeamId: input.activeTeamId,
+      status: "error",
+      error: formatTeamAssessmentsListTimingError(error),
+      metadata: {
+        requestedPage,
+        accumulatePages,
+        runCount: runs.length,
+      },
+    })
+    throw error
+  }
+
+  return {
+    venueOptions: context.venueOptions,
+    campOptions: context.campOptions,
+    templateOptions,
+    runs: hydratedRuns,
     pagination,
+  }
+}
+
+export async function getTeamAssessmentsTemplatesTabData(input: {
+  activeTeamId: string
+}): Promise<TeamAssessmentsTemplatesTabData> {
+  const supabase = await createServerSupabaseClient()
+  const templatesStartedAt = startTeamAssessmentsListTiming()
+
+  try {
+    const templates = await loadTeamAssessmentTemplates({
+      activeTeamId: input.activeTeamId,
+      supabase,
+    })
+    logTeamAssessmentsListTiming({
+      phase: "templates",
+      startedAt: templatesStartedAt,
+      activeTeamId: input.activeTeamId,
+      status: "success",
+      metadata: {
+        templateCount: templates.length,
+        definitionLoaded: true,
+        scaleOptionCount: templates.reduce(
+          (sum, template) => sum + template.scaleOptions.length,
+          0,
+        ),
+        categoryCount: templates.reduce(
+          (sum, template) => sum + template.categories.length,
+          0,
+        ),
+        questionCount: templates.reduce(
+          (templateSum, template) =>
+            templateSum +
+            template.categories.reduce(
+              (categorySum, category) =>
+                categorySum +
+                category.questions.length +
+                (category.modes ?? []).reduce(
+                  (modeSum, mode) => modeSum + mode.questions.length,
+                  0,
+                ),
+              0,
+            ),
+          0,
+        ),
+      },
+    })
+
+    return {
+      templates,
+    }
+  } catch (error) {
+    logTeamAssessmentsListTiming({
+      phase: "templates",
+      startedAt: templatesStartedAt,
+      activeTeamId: input.activeTeamId,
+      status: "error",
+      error: formatTeamAssessmentsListTimingError(error),
+    })
+    throw error
+  }
+}
+
+export async function getTeamAssessmentsPageData(input: {
+  activeTeamId: string
+  currentProfileId: string
+  page: number
+  accumulatePages: boolean
+}): Promise<TeamAssessmentsPageData> {
+  const [createdData, templatesData] = await Promise.all([
+    getTeamAssessmentsCreatedTabData(input),
+    getTeamAssessmentsTemplatesTabData({
+      activeTeamId: input.activeTeamId,
+    }),
+  ])
+
+  return {
+    ...createdData,
+    templates: templatesData.templates,
   }
 }
 

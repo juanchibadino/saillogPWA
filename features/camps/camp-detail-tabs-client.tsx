@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useSearchParams } from "next/navigation"
 import { Loader2Icon } from "lucide-react"
 
 import { CampDetailPanelSkeleton } from "@/components/shared/page-skeletons"
@@ -161,6 +162,33 @@ function hasCampDetailTabData(
   }
 
   return typeof state.notes !== "undefined"
+}
+
+function getAffectedCampTabsForStatus(status: string | null): Set<CampDetailTab> {
+  if (status === "goals_updated") {
+    return new Set(["goals"])
+  }
+
+  if (status === "created" || status === "updated" || status === "deleted") {
+    return new Set(["sessions", "notes"])
+  }
+
+  return new Set()
+}
+
+function invalidateCampDetailTabDataState(input: {
+  affectedTabs: Set<CampDetailTab>
+  state: CampDetailTabDataState
+}): CampDetailTabDataState {
+  if (input.affectedTabs.size === 0) {
+    return input.state
+  }
+
+  return {
+    goals: input.affectedTabs.has("goals") ? undefined : input.state.goals,
+    notes: input.affectedTabs.has("notes") ? undefined : input.state.notes,
+    sessions: input.affectedTabs.has("sessions") ? undefined : input.state.sessions,
+  }
 }
 
 function buildCampDetailTabDataUrl(input: {
@@ -367,6 +395,9 @@ export function CampDetailTabsClient({
   scope: NavigationScope
   campId: string
 }) {
+  const searchParams = useSearchParams()
+  const status = searchParams.get("status")
+  const scopeKey = `${scope.activeOrgId}:${scope.activeTeamId ?? ""}`
   const [selectedTab, setSelectedTab] = React.useState<CampDetailTab>(initialTab)
   const [tabData, setTabData] = React.useState<CampDetailTabDataState>(() =>
     buildCampDetailTabDataState({
@@ -377,6 +408,7 @@ export function CampDetailTabsClient({
   const [loadError, setLoadError] = React.useState<CampDetailTabLoadError | null>(null)
   const [loadingMoreNotes, setLoadingMoreNotes] = React.useState(false)
   const campIdRef = React.useRef(campId)
+  const scopeKeyRef = React.useRef(scopeKey)
   const inFlightTabsRef = React.useRef<Set<CampDetailTab>>(new Set())
   const requestVersionRef = React.useRef(0)
   const latestTabRequestVersionRef = React.useRef<Record<CampDetailTab, number>>({
@@ -399,6 +431,21 @@ export function CampDetailTabsClient({
       loadMore: input.loadMore,
     })
   }
+
+  const updateSelectedTab = React.useCallback(
+    (tab: CampDetailTab) => {
+      setSelectedTab(tab)
+
+      const nextUrl = buildCampDetailHref({
+        scope,
+        campId,
+        tab,
+      })
+
+      window.history.replaceState(null, "", `${nextUrl}${window.location.hash}`)
+    },
+    [campId, scope],
+  )
 
   const loadTabData = React.useCallback(
     async (tab: CampDetailTab, options?: { force?: boolean }) => {
@@ -460,7 +507,9 @@ export function CampDetailTabsClient({
 
   React.useEffect(() => {
     const didCampChange = campIdRef.current !== campId
+    const didScopeChange = scopeKeyRef.current !== scopeKey
     campIdRef.current = campId
+    scopeKeyRef.current = scopeKey
 
     requestVersionRef.current += 1
     latestTabRequestVersionRef.current = {
@@ -470,19 +519,26 @@ export function CampDetailTabsClient({
     }
     inFlightTabsRef.current.clear()
 
-    if (didCampChange) {
+    if (didCampChange || didScopeChange) {
       setSelectedTab(initialTab)
     }
 
-    setTabData(
-      buildCampDetailTabDataState({
-        initialTab,
-        initialTabData,
+    setTabData((currentState) =>
+      applyCampDetailTabData({
+        data: initialTabData,
+        state:
+          didCampChange || didScopeChange
+            ? {}
+            : invalidateCampDetailTabDataState({
+                affectedTabs: getAffectedCampTabsForStatus(status),
+                state: currentState,
+              }),
+        tab: initialTab,
       }),
     )
     setLoadError((currentError) => (currentError?.tab === initialTab ? null : currentError))
     setLoadingMoreNotes(false)
-  }, [campId, initialTab, initialTabData, scope.activeOrgId, scope.activeTeamId])
+  }, [campId, initialTab, initialTabData, scopeKey, status])
 
   React.useEffect(() => {
     void loadTabData(selectedTab)
@@ -803,7 +859,7 @@ export function CampDetailTabsClient({
 
       <Tabs
         value={selectedTab}
-        onValueChange={(value) => setSelectedTab(resolveTab(value))}
+        onValueChange={(value) => updateSelectedTab(resolveTab(value))}
         className="space-y-4"
       >
         <div className="flex h-11 w-full max-w-full items-center rounded-lg bg-muted p-[3px] text-muted-foreground md:hidden">

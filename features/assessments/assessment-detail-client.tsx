@@ -35,6 +35,12 @@ import type {
 } from "@/features/assessments/data"
 import type { NavigationScope } from "@/lib/navigation/types"
 import { GradientCard } from "@/components/shared/gradient-card"
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -304,6 +310,17 @@ function buildRunAnswerPayloadRows(input: {
   return rows
 }
 
+function countRunCategoryItems(category: TeamAssessmentRun["categories"][number]): number {
+  return (
+    category.questions.length +
+    (category.modes ?? []).reduce((count, mode) => count + mode.questions.length, 0)
+  )
+}
+
+function countRunCategoryModes(category: TeamAssessmentRun["categories"][number]): number {
+  return category.modes?.length ?? 0
+}
+
 function QuestionScoreRow({
   question,
   run,
@@ -394,25 +411,26 @@ function AssessmentAnswerForm({
         <input type="hidden" name="teamVenueId" value={run.teamVenueId} />
         <input type="hidden" name="answersJson" value={payload} />
 
-        <div className="space-y-4">
-          {run.categories.map((category) => (
-            <section key={category.id} className="space-y-3">
-              <h3 className="text-sm font-semibold">{category.name}</h3>
-              {category.questions.map((question) => (
-                <QuestionScoreRow
-                  key={question.id}
-                  question={question}
-                  run={run}
-                  selectedValue={selectionByQuestionId[question.id] ?? ""}
-                  setValue={setValue}
-                />
-              ))}
-              {(category.modes ?? []).map((mode) => (
-                <div key={mode.id} className="space-y-3 rounded-lg border p-3">
-                  <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    {mode.name}
-                  </h4>
-                  {mode.questions.map((question) => (
+        <Accordion className="gap-3">
+          {run.categories.map((category) => {
+            const modeCount = countRunCategoryModes(category)
+            const itemCount = countRunCategoryItems(category)
+
+            return (
+              <AccordionItem key={category.id} value={category.id} className="rounded-lg border">
+                <AccordionTrigger className="px-3 py-3 hover:no-underline">
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold">
+                      {category.name}
+                    </span>
+                    <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                      {modeCount > 0 ? `${modeCount} modes - ` : ""}
+                      {itemCount} items
+                    </span>
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="space-y-3 px-3 pb-3">
+                  {category.questions.map((question) => (
                     <QuestionScoreRow
                       key={question.id}
                       question={question}
@@ -421,11 +439,45 @@ function AssessmentAnswerForm({
                       setValue={setValue}
                     />
                   ))}
-                </div>
-              ))}
-            </section>
-          ))}
-        </div>
+
+                  {(category.modes ?? []).length > 0 ? (
+                    <Accordion className="gap-2">
+                      {(category.modes ?? []).map((mode) => (
+                        <AccordionItem
+                          key={mode.id}
+                          value={mode.id}
+                          className="rounded-lg border"
+                        >
+                          <AccordionTrigger className="px-3 py-3 hover:no-underline">
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-semibold">
+                                {mode.name}
+                              </span>
+                              <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                                {mode.questions.length} items
+                              </span>
+                            </span>
+                          </AccordionTrigger>
+                          <AccordionContent className="space-y-3 px-3 pb-3">
+                            {mode.questions.map((question) => (
+                              <QuestionScoreRow
+                                key={question.id}
+                                question={question}
+                                run={run}
+                                selectedValue={selectionByQuestionId[question.id] ?? ""}
+                                setValue={setValue}
+                              />
+                            ))}
+                          </AccordionContent>
+                        </AccordionItem>
+                      ))}
+                    </Accordion>
+                  ) : null}
+                </AccordionContent>
+              </AccordionItem>
+            )
+          })}
+        </Accordion>
 
         <div className="flex justify-end border-t pt-4">
           <AnswerSubmitButton />

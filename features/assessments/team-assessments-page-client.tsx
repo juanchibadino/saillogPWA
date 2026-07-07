@@ -3,160 +3,240 @@
 import * as React from "react"
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import {
-  Loader2Icon,
-  MoreHorizontalIcon,
-  PlusIcon,
-  Trash2Icon,
-} from "lucide-react"
-import { useFormStatus } from "react-dom"
+import { PlusIcon } from "lucide-react"
 
+import { TeamAssessmentRunCreateDialog } from "@/features/assessments/team-assessment-run-create-dialog"
+import { TeamAssessmentRunsList } from "@/features/assessments/team-assessment-runs-list"
+import { TeamAssessmentTemplateEditorShell } from "@/features/assessments/team-assessment-template-editor-shell"
 import {
-  closeAssessmentRunAction,
-  createAssessmentRunAction,
-  deleteAssessmentRunAction,
-} from "@/features/assessments/actions"
+  TeamAssessmentTemplateEditorSkeleton,
+  TeamAssessmentsCreatedTabSkeleton,
+  TeamAssessmentsTemplatesTabSkeleton,
+} from "@/features/assessments/team-assessments-tab-skeletons"
+import type {
+  TeamAssessmentsCreatedTabData,
+  TeamAssessmentsTemplatesTabData,
+} from "@/features/assessments/data"
 import {
-  getTemplateDefinition,
-  serializeDefinition,
-} from "@/features/assessments/definition"
-import { buildTeamAssessmentsPageHref } from "@/features/assessments/list-route-state.mjs"
-import {
-  buildAssessmentDetailHref,
   buildTeamAssessmentsHref,
   type TeamAssessmentTab,
 } from "@/features/assessments/navigation"
-import { AssessmentTemplateEditor } from "@/features/assessments/template-editor"
-import type {
-  TeamAssessmentCampOption,
-  TeamAssessmentsPageData,
-  TeamAssessmentRun,
-  TeamAssessmentTemplate,
-  TeamAssessmentVenueOption,
-} from "@/features/assessments/data"
-import { useIsMobile } from "@/hooks/use-mobile"
+import { buildTeamAssessmentsTabDataUrl } from "@/features/assessments/tab-data-route-state.mjs"
 import type { NavigationScope } from "@/lib/navigation/types"
-import { cn } from "@/lib/utils"
-import { GradientCard } from "@/components/shared/gradient-card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Label } from "@/components/ui/label"
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
-type AssessmentPaginationItem = number | "ellipsis-start" | "ellipsis-end"
-
-type PendingPageNavigation = {
-  fromPage: number
-  toPage: number
+type TeamAssessmentsCreatedTabCache = {
+  data: TeamAssessmentsCreatedTabData
+  loadMore: boolean
+  page: number
 }
 
-function getStatusBadgeVariant(
-  status: TeamAssessmentRun["status"],
-): "secondary" | "default" | "outline" {
-  if (status === "published") {
-    return "default"
-  }
-
-  if (status === "closed") {
-    return "secondary"
-  }
-
-  return "outline"
+type TeamAssessmentsTabDataState = {
+  created?: TeamAssessmentsCreatedTabCache
+  templates?: TeamAssessmentsTemplatesTabData
 }
 
-function formatAssessmentRunStatusLabel(status: TeamAssessmentRun["status"]): string {
-  if (status === "published") {
-    return "Published"
-  }
+type TeamAssessmentsTabDataResponse =
+  | {
+      data: TeamAssessmentsCreatedTabData
+      tab: "created"
+    }
+  | {
+      data: TeamAssessmentsTemplatesTabData
+      tab: "templates"
+    }
 
-  if (status === "closed") {
-    return "Completed"
-  }
-
-  return "Draft"
+type TeamAssessmentsTabErrorPayload = {
+  detail?: unknown
+  error?: unknown
 }
 
-function formatDateTimeLabel(value: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value))
+type TeamAssessmentsTabLoadError = {
+  message: string
+  tab: TeamAssessmentTab
 }
 
-function buildPaginationItems(currentPage: number, pageCount: number): AssessmentPaginationItem[] {
-  if (pageCount <= 7) {
-    return Array.from({ length: pageCount }, (_, index) => index + 1)
+type TeamAssessmentsCreatedTabRequest = {
+  loadMore: boolean
+  page: number
+}
+
+type PendingTemplateEditorNavigation =
+  | {
+      type: "new"
+    }
+  | {
+      templateId: string
+      type: "template"
+    }
+
+function normalizeRequestedPage(value: string | null): number {
+  if (!value) {
+    return 1
   }
 
-  const items: AssessmentPaginationItem[] = [1]
-  const middleStart = Math.max(2, currentPage - 1)
-  const middleEnd = Math.min(pageCount - 1, currentPage + 1)
+  const parsed = Number.parseInt(value, 10)
 
-  if (middleStart > 2) {
-    items.push("ellipsis-start")
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return 1
   }
 
-  for (let page = middleStart; page <= middleEnd; page += 1) {
-    items.push(page)
+  return Math.floor(parsed)
+}
+
+function getCreatedTabRequest(search: string): TeamAssessmentsCreatedTabRequest {
+  const params = new URLSearchParams(search)
+
+  return {
+    loadMore: params.get("loadMore") === "1",
+    page: normalizeRequestedPage(params.get("page")),
+  }
+}
+
+function getEmptyCreatedTabData(
+  request: TeamAssessmentsCreatedTabRequest,
+): TeamAssessmentsCreatedTabData {
+  return {
+    venueOptions: [],
+    campOptions: [],
+    templateOptions: [],
+    runs: [],
+    pagination: {
+      currentPage: request.page,
+      pageCount: 1,
+      hasPreviousPage: request.page > 1 && !request.loadMore,
+      hasNextPage: false,
+    },
+  }
+}
+
+function buildInitialTabDataState(input: {
+  createdData?: TeamAssessmentsCreatedTabData
+  createdRequest: TeamAssessmentsCreatedTabRequest
+  templatesData?: TeamAssessmentsTemplatesTabData
+}): TeamAssessmentsTabDataState {
+  const state: TeamAssessmentsTabDataState = {}
+
+  if (input.createdData) {
+    state.created = {
+      data: input.createdData,
+      loadMore: input.createdRequest.loadMore,
+      page: input.createdRequest.page,
+    }
   }
 
-  if (middleEnd < pageCount - 1) {
-    items.push("ellipsis-end")
+  if (input.templatesData) {
+    state.templates = input.templatesData
   }
 
-  items.push(pageCount)
-  return items
+  return state
+}
+
+function isCreatedCacheForRequest(input: {
+  cache?: TeamAssessmentsCreatedTabCache
+  request: TeamAssessmentsCreatedTabRequest
+}): boolean {
+  return (
+    typeof input.cache !== "undefined" &&
+    input.cache.page === input.request.page &&
+    input.cache.loadMore === input.request.loadMore
+  )
+}
+
+function getAffectedAssessmentTabsForStatus(
+  status: string | null,
+): Set<TeamAssessmentTab> {
+  if (status === "template_saved") {
+    return new Set(["created", "templates"])
+  }
+
+  if (
+    status === "run_published" ||
+    status === "run_closed" ||
+    status === "run_deleted" ||
+    status === "answers_saved" ||
+    status === "created" ||
+    status === "closed" ||
+    status === "deleted"
+  ) {
+    return new Set(["created"])
+  }
+
+  return new Set()
+}
+
+function invalidateAssessmentTabDataState(input: {
+  affectedTabs: Set<TeamAssessmentTab>
+  state: TeamAssessmentsTabDataState
+}): TeamAssessmentsTabDataState {
+  if (input.affectedTabs.size === 0) {
+    return input.state
+  }
+
+  return {
+    created: input.affectedTabs.has("created") ? undefined : input.state.created,
+    templates: input.affectedTabs.has("templates") ? undefined : input.state.templates,
+  }
+}
+
+async function resolveTeamAssessmentsTabErrorMessage(
+  response: Response,
+): Promise<string> {
+  let payload: TeamAssessmentsTabErrorPayload | null = null
+
+  try {
+    payload = (await response.json()) as TeamAssessmentsTabErrorPayload
+  } catch {
+    payload = null
+  }
+
+  const errorCode = typeof payload?.error === "string" ? payload.error : null
+
+  if (response.status === 401 || errorCode === "unauthorized") {
+    return "Your session expired. Sign in again, then retry this tab."
+  }
+
+  if (response.status === 403 || errorCode === "scope_required") {
+    return "This tab needs an active team scope. Select the correct team and retry."
+  }
+
+  if (response.status === 403 || errorCode === "profile_required") {
+    return "Your account profile is still being prepared. Try again shortly."
+  }
+
+  if (response.status === 400) {
+    return "This tab request is invalid. Refresh the page and try again."
+  }
+
+  return "This tab hit a runtime error while loading. Retry just this tab."
+}
+
+async function fetchTeamAssessmentsTabData(input: {
+  activeOrgId: string
+  activeTeamId?: string | null
+  loadMore?: boolean
+  page?: number
+  tab: TeamAssessmentTab
+}): Promise<TeamAssessmentsTabDataResponse> {
+  const response = await fetch(buildTeamAssessmentsTabDataUrl(input), {
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(await resolveTeamAssessmentsTabErrorMessage(response))
+  }
+
+  const payload = (await response.json()) as TeamAssessmentsTabDataResponse
+
+  if (payload.tab !== input.tab) {
+    throw new Error("The loaded tab data did not match the selected tab.")
+  }
+
+  return payload
 }
 
 function normalizeInternalHref(href: string): string {
@@ -164,891 +244,61 @@ function normalizeInternalHref(href: string): string {
   return `${url.pathname}${url.search}`
 }
 
-function AssessmentScopeFields({ scope }: { scope: NavigationScope }) {
+function getPendingTemplateEditorNavigation(
+  href: string,
+): PendingTemplateEditorNavigation | null {
+  const url = new URL(href, "http://sailog.local")
+
+  if (url.searchParams.get("new") === "template") {
+    return {
+      type: "new",
+    }
+  }
+
+  const templateId = url.searchParams.get("template")
+
+  if (templateId) {
+    return {
+      templateId,
+      type: "template",
+    }
+  }
+
+  return null
+}
+
+function shouldHandleTemplateNavigation(
+  event: React.MouseEvent<HTMLAnchorElement>,
+): boolean {
   return (
-    <>
-      <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
-      {scope.activeTeamId ? (
-        <input type="hidden" name="scopeTeamId" value={scope.activeTeamId} />
-      ) : null}
-    </>
+    !event.defaultPrevented &&
+    event.button === 0 &&
+    !event.metaKey &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.shiftKey
   )
 }
 
-function RunCreateSubmitButton({
-  className,
-  disabledByValidation,
+function TeamAssessmentsTabDataError({
+  error,
+  onRetry,
 }: {
-  className?: string
-  disabledByValidation: boolean
+  error: TeamAssessmentsTabLoadError
+  onRetry: () => void
 }) {
-  const { pending } = useFormStatus()
-
   return (
-    <Button type="submit" disabled={pending || disabledByValidation} className={className}>
-      {pending ? <Loader2Icon className="size-4 animate-spin" /> : null}
-      {pending ? "Creating assessment..." : "Create assessment"}
-    </Button>
-  )
-}
-
-function DeleteRunSubmitButton() {
-  const { pending } = useFormStatus()
-
-  return (
-    <Button type="submit" size="sm" variant="destructive" disabled={pending}>
-      {pending ? <Loader2Icon className="size-4 animate-spin" /> : null}
-      {pending ? "Deleting..." : "Delete"}
-    </Button>
-  )
-}
-
-function CloseRunMenuItem() {
-  const { pending } = useFormStatus()
-
-  return (
-    <DropdownMenuItem
-      nativeButton
-      render={<button type="submit" disabled={pending} />}
-      disabled={pending}
+    <div
+      role="alert"
+      className="flex min-h-32 flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-4 text-center"
     >
-      {pending ? <Loader2Icon className="size-4 animate-spin" /> : null}
-      {pending ? "Closing..." : "Close"}
-    </DropdownMenuItem>
-  )
-}
-
-function AssessmentRunCampsBadges({ camps }: { camps: TeamAssessmentRun["camps"] }) {
-  if (camps.length === 0) {
-    return <Badge variant="outline">No camp linked</Badge>
-  }
-
-  return (
-    <span className="flex flex-wrap items-center gap-1.5">
-      {camps.map((camp) => (
-        <Badge key={camp.id} variant="secondary">
-          {camp.name}
-        </Badge>
-      ))}
-    </span>
-  )
-}
-
-function RunDeleteDialog({
-  onOpenChange,
-  open,
-  returnPath,
-  run,
-  scope,
-}: {
-  onOpenChange: (open: boolean) => void
-  open: boolean
-  returnPath: string
-  run: TeamAssessmentRun
-  scope: NavigationScope
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Delete assessment?</DialogTitle>
-          <DialogDescription>
-            This will permanently delete <span className="font-medium">{run.name}</span>{" "}
-            and all submitted answers linked to it.
-          </DialogDescription>
-        </DialogHeader>
-
-        <DialogFooter showCloseButton>
-          <form action={deleteAssessmentRunAction}>
-            <AssessmentScopeFields scope={scope} />
-            <input type="hidden" name="returnPath" value={returnPath} />
-            <input type="hidden" name="runId" value={run.id} />
-            <input type="hidden" name="teamVenueId" value={run.teamVenueId} />
-            <DeleteRunSubmitButton />
-          </form>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function AssessmentRunActionsMenu({
-  canManageAssessments,
-  returnPath,
-  run,
-  scope,
-  triggerClassName,
-}: {
-  canManageAssessments: boolean
-  returnPath: string
-  run: TeamAssessmentRun
-  scope: NavigationScope
-  triggerClassName?: string
-}) {
-  const [isDeleteOpen, setIsDeleteOpen] = React.useState(false)
-
-  if (!canManageAssessments) {
-    return null
-  }
-
-  return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className={triggerClassName}
-            />
-          }
-          aria-label={`Open actions for ${run.templateName ?? run.name}`}
-        >
-          <MoreHorizontalIcon className="size-4" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {run.status !== "closed" ? (
-            <form action={closeAssessmentRunAction}>
-              <AssessmentScopeFields scope={scope} />
-              <input type="hidden" name="returnPath" value={returnPath} />
-              <input type="hidden" name="runId" value={run.id} />
-              <input type="hidden" name="teamVenueId" value={run.teamVenueId} />
-              <CloseRunMenuItem />
-            </form>
-          ) : null}
-          <DropdownMenuItem
-            variant="destructive"
-            onClick={() => {
-              setIsDeleteOpen(true)
-            }}
-          >
-            <Trash2Icon className="size-4" />
-            Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <RunDeleteDialog
-        open={isDeleteOpen}
-        onOpenChange={setIsDeleteOpen}
-        returnPath={returnPath}
-        run={run}
-        scope={scope}
-      />
-    </>
-  )
-}
-
-function AssessmentRunCreateDialog({
-  campOptions,
-  disabled,
-  returnPath,
-  scope,
-  templates,
-  venueOptions,
-}: {
-  campOptions: TeamAssessmentCampOption[]
-  disabled: boolean
-  returnPath: string
-  scope: NavigationScope
-  templates: TeamAssessmentTemplate[]
-  venueOptions: TeamAssessmentVenueOption[]
-}) {
-  const isMobile = useIsMobile()
-  const [isOpen, setIsOpen] = React.useState(false)
-  const [selectedTeamVenueId, setSelectedTeamVenueId] = React.useState("")
-  const [selectedTemplateId, setSelectedTemplateId] = React.useState("")
-  const [selectedCampIds, setSelectedCampIds] = React.useState<string[]>([])
-  const templatesById = React.useMemo(
-    () => new Map(templates.map((template) => [template.id, template])),
-    [templates],
-  )
-  const availableCampOptions = React.useMemo(
-    () => campOptions.filter((camp) => camp.teamVenueId === selectedTeamVenueId),
-    [campOptions, selectedTeamVenueId],
-  )
-  const definitionJson = React.useMemo(() => {
-    const template = templatesById.get(selectedTemplateId)
-
-    if (!template) {
-      return ""
-    }
-
-    return serializeDefinition(getTemplateDefinition(template))
-  }, [selectedTemplateId, templatesById])
-  const canSubmit =
-    selectedTeamVenueId.length > 0 &&
-    selectedTemplateId.length > 0 &&
-    selectedCampIds.length > 0
-
-  function toggleCamp(campId: string): void {
-    setSelectedCampIds((currentValue) => {
-      if (currentValue.includes(campId)) {
-        return currentValue.filter((value) => value !== campId)
-      }
-
-      return [...currentValue, campId]
-    })
-  }
-
-  function renderForm(surface: "drawer" | "sheet") {
-    const isDrawerSurface = surface === "drawer"
-    const selectClassName = isDrawerSurface
-      ? "h-11 w-full rounded-md border border-input bg-background px-3 text-base md:text-sm"
-      : "h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-    const footer = isDrawerSurface ? (
-      <DrawerFooter className="shrink-0 border-t">
-        <RunCreateSubmitButton disabledByValidation={!canSubmit} className="h-11 w-full" />
-      </DrawerFooter>
-    ) : (
-      <SheetFooter className="shrink-0 border-t sm:justify-end">
-        <RunCreateSubmitButton disabledByValidation={!canSubmit} />
-      </SheetFooter>
-    )
-
-    return (
-      <form action={createAssessmentRunAction} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <AssessmentScopeFields scope={scope} />
-        <input type="hidden" name="returnPath" value={returnPath} />
-        <input type="hidden" name="teamVenueId" value={selectedTeamVenueId} />
-        <input type="hidden" name="templateId" value={selectedTemplateId} />
-        <input type="hidden" name="campIdsJson" value={JSON.stringify(selectedCampIds)} />
-        <input type="hidden" name="definitionJson" value={definitionJson} />
-
-        <fieldset
-          className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4"
-        >
-          <div className="space-y-2">
-            <Label htmlFor={`assessment-run-venue-${surface}`}>Venue</Label>
-            <select
-              id={`assessment-run-venue-${surface}`}
-              value={selectedTeamVenueId}
-              className={selectClassName}
-              onChange={(event) => {
-                setSelectedTeamVenueId(event.target.value)
-                setSelectedCampIds([])
-              }}
-            >
-              <option value="">Select venue</option>
-              {venueOptions.map((venue) => (
-                <option key={venue.teamVenueId} value={venue.teamVenueId}>
-                  {venue.venueName} - {venue.venueLocation}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor={`assessment-run-template-${surface}`}>Template</Label>
-            <select
-              id={`assessment-run-template-${surface}`}
-              value={selectedTemplateId}
-              className={selectClassName}
-              onChange={(event) => setSelectedTemplateId(event.target.value)}
-            >
-              <option value="">Select template</option>
-              {templates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Camps</Label>
-            {!selectedTeamVenueId ? (
-              <p className="text-sm text-muted-foreground">Select a venue first.</p>
-            ) : availableCampOptions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No camps are available for this venue.
-              </p>
-            ) : (
-              <div className="grid gap-2 rounded-lg border p-3">
-                {availableCampOptions.map((camp) => (
-                  <label
-                    key={camp.campId}
-                    className="flex min-h-11 items-start gap-2 py-1 text-sm md:min-h-0"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedCampIds.includes(camp.campId)}
-                      onChange={() => toggleCamp(camp.campId)}
-                    />
-                    <span>
-                      <span className="font-medium">{camp.campName}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {camp.dateRangeLabel}
-                      </span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-        </fieldset>
-
-        {footer}
-      </form>
-    )
-  }
-
-  if (isMobile) {
-    return (
-      <Drawer open={isOpen} onOpenChange={setIsOpen}>
-        <Button
-          type="button"
-          variant="default"
-          size="icon"
-          disabled={disabled}
-          aria-label="New assessment"
-          aria-haspopup="dialog"
-          aria-expanded={isOpen}
-          className="mobile-floating-action size-14 rounded-full shadow-lg shadow-black/20 md:hidden"
-          onClick={() => setIsOpen(true)}
-        >
-          <PlusIcon className="size-6" />
-        </Button>
-        <DrawerContent className="flex h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
-          <DrawerHeader className="shrink-0 border-b text-left">
-            <DrawerTitle>Create assessment</DrawerTitle>
-            <DrawerDescription>
-              Select a venue, template, and camps for this assessment.
-            </DrawerDescription>
-          </DrawerHeader>
-          {renderForm("drawer")}
-        </DrawerContent>
-      </Drawer>
-    )
-  }
-
-  return (
-    <Sheet>
-      <SheetTrigger render={<Button type="button" variant="outline" size="sm" disabled={disabled} />}>
-        <PlusIcon className="size-4" />
-        New
-      </SheetTrigger>
-      <SheetContent side="right" className="flex h-full flex-col gap-0 overflow-hidden sm:max-w-3xl">
-        <SheetHeader className="shrink-0 border-b">
-          <SheetTitle>Create assessment</SheetTitle>
-          <SheetDescription>
-            Select a venue, template, and camps for this assessment.
-          </SheetDescription>
-        </SheetHeader>
-        {renderForm("sheet")}
-      </SheetContent>
-    </Sheet>
-  )
-}
-
-function TeamAssessmentRunsTable({
-  canManageAssessments,
-  data,
-  returnPath,
-  scope,
-}: {
-  canManageAssessments: boolean
-  data: TeamAssessmentsPageData
-  returnPath: string
-  scope: NavigationScope
-}) {
-  const router = useRouter()
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
-  const [isLoadingMore, startLoadMoreTransition] = React.useTransition()
-  const [navigatingRunId, setNavigatingRunId] = React.useState<string | null>(null)
-  const [, startRunNavigationTransition] = React.useTransition()
-  const [isPageNavigationPending, startPageNavigationTransition] = React.useTransition()
-  const [pendingPageNavigation, setPendingPageNavigation] =
-    React.useState<PendingPageNavigation | null>(null)
-  const paginationItems = buildPaginationItems(
-    data.pagination.currentPage,
-    data.pagination.pageCount,
-  )
-  const isPaginationBusy =
-    isPageNavigationPending ||
-    pendingPageNavigation?.fromPage === data.pagination.currentPage
-  const previousPage = Math.max(1, data.pagination.currentPage - 1)
-  const nextPage = Math.min(data.pagination.pageCount, data.pagination.currentPage + 1)
-
-  function buildPageHref(nextPageNumber: number, includeLoadMore = false): string {
-    return buildTeamAssessmentsPageHref({
-      pathname,
-      search: searchParams.toString(),
-      nextPage: nextPageNumber,
-      includeLoadMore,
-    })
-  }
-
-  function navigateToRun(runId: string, detailHref: string): void {
-    setNavigatingRunId(runId)
-    startRunNavigationTransition(() => {
-      router.push(detailHref)
-    })
-  }
-
-  function prefetchRun(detailHref: string): void {
-    router.prefetch(detailHref)
-  }
-
-  function navigateToPage(nextPageNumber: number): void {
-    if (
-      isPaginationBusy ||
-      nextPageNumber === data.pagination.currentPage ||
-      nextPageNumber < 1 ||
-      nextPageNumber > data.pagination.pageCount
-    ) {
-      return
-    }
-
-    setPendingPageNavigation({
-      fromPage: data.pagination.currentPage,
-      toPage: nextPageNumber,
-    })
-    startPageNavigationTransition(() => {
-      router.push(buildPageHref(nextPageNumber))
-    })
-  }
-
-  return (
-    <section className="space-y-4">
-      <div aria-busy={isPaginationBusy} className="relative md:hidden">
-        <div
-          aria-disabled={isPaginationBusy}
-          className={cn(
-            "space-y-2 transition-opacity",
-            isPaginationBusy && "pointer-events-none select-none opacity-40",
-          )}
-        >
-          {data.runs.length === 0 ? (
-            <GradientCard className="px-4 py-6 text-sm text-muted-foreground">
-              No assessments created for this team yet.
-            </GradientCard>
-          ) : (
-            data.runs.map((run) => {
-              const detailHref = buildAssessmentDetailHref({
-                scope,
-                assessmentId: run.id,
-              })
-              const isNavigatingToRun = navigatingRunId === run.id
-
-              return (
-                <GradientCard
-                  key={run.id}
-                  role="link"
-                  tabIndex={0}
-                  aria-busy={isNavigatingToRun}
-                  className={cn(
-                    "cursor-pointer px-3 py-3 transition-colors hover:bg-muted/30",
-                    isNavigatingToRun && "opacity-80",
-                  )}
-                  onMouseEnter={() => prefetchRun(detailHref)}
-                  onFocus={() => prefetchRun(detailHref)}
-                  onClick={() => navigateToRun(run.id, detailHref)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault()
-                      navigateToRun(run.id, detailHref)
-                    }
-                  }}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate text-sm font-semibold">
-                          {run.templateName ?? run.name}
-                        </p>
-                        <Badge variant={getStatusBadgeVariant(run.status)}>
-                          {formatAssessmentRunStatusLabel(run.status)}
-                        </Badge>
-                      </div>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {run.venueName} - {run.venueLocation}
-                      </p>
-                      <AssessmentRunCampsBadges camps={run.camps} />
-                      <p className="text-sm font-medium tabular-nums">
-                        {run.completedRespondentsCount}/{run.expectedRespondentsCount}
-                      </p>
-                    </div>
-                    <div
-                      className="shrink-0 self-center"
-                      onClick={(event) => event.stopPropagation()}
-                      onKeyDown={(event) => event.stopPropagation()}
-                    >
-                      {isNavigatingToRun ? (
-                        <div className="flex h-11 w-11 items-center justify-center text-muted-foreground">
-                          <Loader2Icon className="size-4 animate-spin" />
-                        </div>
-                      ) : (
-                        <AssessmentRunActionsMenu
-                          canManageAssessments={canManageAssessments}
-                          returnPath={returnPath}
-                          run={run}
-                          scope={scope}
-                          triggerClassName="h-11 w-11"
-                        />
-                      )}
-                    </div>
-                  </div>
-                </GradientCard>
-              )
-            })
-          )}
-
-          {data.pagination.hasNextPage ? (
-            <div className="pb-4 pt-3">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isLoadingMore || isPaginationBusy}
-                aria-label="Load more assessments"
-                className="h-11 w-full"
-                onClick={() => {
-                  startLoadMoreTransition(() => {
-                    router.push(buildPageHref(data.pagination.currentPage + 1, true))
-                  })
-                }}
-              >
-                {isLoadingMore ? <Loader2Icon className="size-4 animate-spin" /> : null}
-                {isLoadingMore ? "Loading more..." : "Load more assessments"}
-              </Button>
-            </div>
-          ) : null}
-        </div>
-
-        {isPaginationBusy ? (
-          <div className="fixed inset-x-0 bottom-[var(--mobile-bottom-nav-total-height)] top-[var(--mobile-header-total-height)] z-30 flex items-center justify-center bg-background/20 md:hidden">
-            <div
-              role="status"
-              aria-label="Loading assessments page"
-              className="flex size-11 items-center justify-center rounded-full border bg-background/90 text-muted-foreground shadow-sm"
-            >
-              <Loader2Icon className="size-5 animate-spin" />
-            </div>
-          </div>
-        ) : null}
+      <div className="space-y-1">
+        <p className="text-sm font-medium">Could not load {error.tab}.</p>
+        <p className="text-sm text-muted-foreground">{error.message}</p>
       </div>
-
-      <GradientCard
-        aria-busy={isPaginationBusy}
-        className="relative hidden overflow-hidden p-0 md:block"
-      >
-        <div
-          aria-disabled={isPaginationBusy}
-          className={cn(
-            "transition-opacity",
-            isPaginationBusy && "pointer-events-none select-none opacity-40",
-          )}
-        >
-          <Table>
-            <TableHeader className="bg-muted/40">
-              <TableRow className="hover:bg-transparent">
-                <TableHead>Assessment</TableHead>
-                <TableHead>Venue</TableHead>
-                <TableHead>Camps</TableHead>
-                <TableHead>Progress</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="w-12 text-right" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.runs.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="py-6 text-sm text-muted-foreground">
-                    No assessments created for this team yet.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                data.runs.map((run) => {
-                  const detailHref = buildAssessmentDetailHref({
-                    scope,
-                    assessmentId: run.id,
-                  })
-                  const isNavigatingToRun = navigatingRunId === run.id
-
-                  return (
-                    <TableRow
-                      key={run.id}
-                      role="link"
-                      tabIndex={0}
-                      aria-busy={isNavigatingToRun}
-                      className={cn("cursor-pointer", isNavigatingToRun && "opacity-80")}
-                      onMouseEnter={() => prefetchRun(detailHref)}
-                      onFocus={() => prefetchRun(detailHref)}
-                      onClick={() => navigateToRun(run.id, detailHref)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault()
-                          navigateToRun(run.id, detailHref)
-                        }
-                      }}
-                    >
-                      <TableCell className="font-medium">
-                        <Link
-                          href={detailHref}
-                          className="underline-offset-4 hover:underline"
-                          onClick={(event) => {
-                            event.preventDefault()
-                            event.stopPropagation()
-                            navigateToRun(run.id, detailHref)
-                          }}
-                          onMouseEnter={() => prefetchRun(detailHref)}
-                          onFocus={() => prefetchRun(detailHref)}
-                        >
-                          {run.templateName ?? run.name}
-                        </Link>
-                      </TableCell>
-                      <TableCell>
-                        <span className="block">{run.venueName}</span>
-                        <span className="block text-xs text-muted-foreground">
-                          {run.venueLocation}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <AssessmentRunCampsBadges camps={run.camps} />
-                      </TableCell>
-                      <TableCell className="tabular-nums">
-                        {run.completedRespondentsCount}/{run.expectedRespondentsCount}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={getStatusBadgeVariant(run.status)}>
-                          {formatAssessmentRunStatusLabel(run.status)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{formatDateTimeLabel(run.createdAt)}</TableCell>
-                      <TableCell
-                        className="text-right"
-                        onClick={(event) => event.stopPropagation()}
-                        onKeyDown={(event) => event.stopPropagation()}
-                      >
-                        {isNavigatingToRun ? (
-                          <div className="flex justify-end text-muted-foreground">
-                            <Loader2Icon className="size-4 animate-spin" />
-                          </div>
-                        ) : (
-                          <AssessmentRunActionsMenu
-                            canManageAssessments={canManageAssessments}
-                            returnPath={returnPath}
-                            run={run}
-                            scope={scope}
-                          />
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  )
-                })
-              )}
-            </TableBody>
-          </Table>
-        </div>
-
-        {isPaginationBusy ? (
-          <div className="absolute inset-0 z-10 hidden items-center justify-center bg-background/20 md:flex">
-            <div
-              role="status"
-              aria-label="Loading assessments page"
-              className="flex size-11 items-center justify-center rounded-full border bg-background/90 text-muted-foreground shadow-sm"
-            >
-              <Loader2Icon className="size-5 animate-spin" />
-            </div>
-          </div>
-        ) : null}
-      </GradientCard>
-
-      {data.pagination.pageCount > 1 ? (
-        <Pagination aria-busy={isPaginationBusy} className="hidden justify-start md:flex">
-          <PaginationContent>
-            <PaginationItem>
-              <PaginationPrevious
-                disabled={!data.pagination.hasPreviousPage || isPaginationBusy}
-                onClick={() => navigateToPage(previousPage)}
-              />
-            </PaginationItem>
-
-            {paginationItems.map((pageItem) => (
-              <PaginationItem key={`${pageItem}`}>
-                {typeof pageItem === "number" ? (
-                  <PaginationLink
-                    aria-label={`Go to page ${pageItem}`}
-                    disabled={isPaginationBusy}
-                    isActive={pageItem === data.pagination.currentPage}
-                    onClick={() => navigateToPage(pageItem)}
-                  >
-                    {pageItem}
-                  </PaginationLink>
-                ) : (
-                  <PaginationEllipsis />
-                )}
-              </PaginationItem>
-            ))}
-
-            <PaginationItem>
-              <PaginationNext
-                disabled={!data.pagination.hasNextPage || isPaginationBusy}
-                onClick={() => navigateToPage(nextPage)}
-              />
-            </PaginationItem>
-          </PaginationContent>
-        </Pagination>
-      ) : null}
-    </section>
-  )
-}
-
-function countTemplateItems(template: TeamAssessmentTemplate): {
-  categoryCount: number
-  modeCount: number
-  questionCount: number
-} {
-  return template.categories.reduce(
-    (summary, category) => {
-      const modeCount = category.modes?.length ?? 0
-      const modeQuestionCount = (category.modes ?? []).reduce(
-        (count, mode) => count + mode.questions.length,
-        0,
-      )
-
-      return {
-        categoryCount: summary.categoryCount + 1,
-        modeCount: summary.modeCount + modeCount,
-        questionCount:
-          summary.questionCount + category.questions.length + modeQuestionCount,
-      }
-    },
-    {
-      categoryCount: 0,
-      modeCount: 0,
-      questionCount: 0,
-    },
-  )
-}
-
-function TeamAssessmentTemplatesPanel({
-  cancelHref,
-  canManageAssessments,
-  creatingTemplate,
-  scope,
-  selectedTemplateId,
-  templates,
-}: {
-  cancelHref: string
-  canManageAssessments: boolean
-  creatingTemplate: boolean
-  scope: NavigationScope
-  selectedTemplateId?: string
-  templates: TeamAssessmentTemplate[]
-}) {
-  const selectedTemplate = selectedTemplateId
-    ? templates.find((template) => template.id === selectedTemplateId)
-    : undefined
-
-  return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)]">
-      <section className="space-y-3">
-        <div className="md:hidden">
-          {templates.length === 0 ? (
-            <GradientCard className="px-4 py-6 text-sm text-muted-foreground">
-              No templates for this team yet.
-            </GradientCard>
-          ) : (
-            <div className="space-y-2">
-              {templates.map((template) => {
-                const counts = countTemplateItems(template)
-                const href = buildTeamAssessmentsHref({
-                  scope,
-                  tab: "templates",
-                  templateId: template.id,
-                })
-
-                return (
-                  <Link key={template.id} href={href}>
-                    <GradientCard
-                      className={cn(
-                        "px-3 py-3 transition-colors hover:bg-muted/30",
-                        selectedTemplateId === template.id && "border-primary/60",
-                      )}
-                    >
-                      <p className="truncate text-sm font-semibold">{template.name}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {counts.categoryCount} categories
-                        {counts.modeCount > 0 ? ` - ${counts.modeCount} modes` : ""} -{" "}
-                        {counts.questionCount} items
-                      </p>
-                    </GradientCard>
-                  </Link>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-        <GradientCard className="hidden overflow-hidden p-0 md:block">
-          <Table>
-            <TableHeader className="bg-muted/40">
-              <TableRow className="hover:bg-transparent">
-                <TableHead>Template</TableHead>
-                <TableHead>Structure</TableHead>
-                <TableHead>Updated</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {templates.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={3} className="py-6 text-sm text-muted-foreground">
-                    No templates for this team yet.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                templates.map((template) => {
-                  const counts = countTemplateItems(template)
-                  const href = buildTeamAssessmentsHref({
-                    scope,
-                    tab: "templates",
-                    templateId: template.id,
-                  })
-
-                  return (
-                    <TableRow
-                      key={template.id}
-                      className={cn(
-                        "cursor-pointer",
-                        selectedTemplateId === template.id && "bg-muted/50",
-                      )}
-                    >
-                      <TableCell className="font-medium">
-                        <Link href={href} className="underline-offset-4 hover:underline">
-                          {template.name}
-                        </Link>
-                      </TableCell>
-                      <TableCell>
-                        {counts.categoryCount} categories
-                        {counts.modeCount > 0 ? ` - ${counts.modeCount} modes` : ""} -{" "}
-                        {counts.questionCount} items
-                      </TableCell>
-                      <TableCell>{formatDateTimeLabel(template.updatedAt)}</TableCell>
-                    </TableRow>
-                  )
-                })
-              )}
-            </TableBody>
-          </Table>
-        </GradientCard>
-      </section>
-
-      {canManageAssessments && (creatingTemplate || selectedTemplate) ? (
-        <AssessmentTemplateEditor
-          key={selectedTemplate?.id ?? "new-template"}
-          cancelHref={cancelHref}
-          scope={scope}
-          template={selectedTemplate}
-        />
-      ) : (
-        <GradientCard className="hidden min-h-56 items-center justify-center border-dashed p-6 text-center text-sm text-muted-foreground lg:flex">
-          Select a template to edit it, or create a new one.
-        </GradientCard>
-      )}
+      <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+        Retry
+      </Button>
     </div>
   )
 }
@@ -1056,26 +306,61 @@ function TeamAssessmentTemplatesPanel({
 export function TeamAssessmentsPageClient({
   canManageAssessments,
   creatingTemplate,
-  data,
+  createdData,
   noTeamSelected,
   scope,
   selectedTab,
   selectedTemplateId,
+  templatesData,
 }: {
   canManageAssessments: boolean
   creatingTemplate: boolean
-  data: TeamAssessmentsPageData
+  createdData?: TeamAssessmentsCreatedTabData
   noTeamSelected: boolean
   scope: NavigationScope
   selectedTab: TeamAssessmentTab
   selectedTemplateId?: string
+  templatesData?: TeamAssessmentsTemplatesTabData
 }) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const currentSearch = searchParams.toString()
+  const status = searchParams.get("status")
+  const createdRequest = React.useMemo(
+    () => getCreatedTabRequest(currentSearch),
+    [currentSearch],
+  )
+  const [activeTab, setActiveTab] = React.useState<TeamAssessmentTab>(selectedTab)
+  const [tabData, setTabData] = React.useState<TeamAssessmentsTabDataState>(() =>
+    buildInitialTabDataState({
+      createdData,
+      createdRequest,
+      templatesData,
+    }),
+  )
+  const [loadError, setLoadError] =
+    React.useState<TeamAssessmentsTabLoadError | null>(null)
+  const [pendingTemplateNavigation, setPendingTemplateNavigation] =
+    React.useState<PendingTemplateEditorNavigation | null>(null)
+  const [isTemplateListNavigationPending, setIsTemplateListNavigationPending] =
+    React.useState(false)
+  const [isTemplateNavigationPending, startTemplateNavigationTransition] =
+    React.useTransition()
+  const [isTemplateListTransitionPending, startTemplateListTransition] =
+    React.useTransition()
+  const scopeKey = `${scope.activeOrgId}:${scope.activeTeamId ?? ""}`
+  const scopeKeyRef = React.useRef(scopeKey)
+  const selectedTabRef = React.useRef(selectedTab)
+  const inFlightTabsRef = React.useRef<Set<string>>(new Set())
+  const requestVersionRef = React.useRef(0)
+  const latestTabRequestVersionRef = React.useRef<Record<TeamAssessmentTab, number>>({
+    created: 0,
+    templates: 0,
+  })
   const currentHref = normalizeInternalHref(
-    searchParams.toString().length > 0
-      ? `${pathname}?${searchParams.toString()}`
+    currentSearch.length > 0
+      ? `${pathname}?${currentSearch}`
       : pathname,
   )
   const templatesHref = buildTeamAssessmentsHref({
@@ -1091,27 +376,293 @@ export function TeamAssessmentsPageClient({
     tab: "templates",
     newTemplate: true,
   })
+  const activeCreatedCache = tabData.created
+  const activeCreatedData =
+    activeTab === "created" &&
+    isCreatedCacheForRequest({
+      cache: activeCreatedCache,
+      request: createdRequest,
+    })
+      ? activeCreatedCache?.data
+      : undefined
+  const activeTemplatesData =
+    activeTab === "templates" ? tabData.templates : undefined
+  const isActiveTabLoaded =
+    activeTab === "created" ? Boolean(activeCreatedData) : Boolean(activeTemplatesData)
+  const isTemplateEditorNavigationPending =
+    activeTab === "templates" &&
+    (isTemplateNavigationPending || pendingTemplateNavigation !== null)
+  const shouldShowTemplateListSkeleton =
+    activeTab === "templates" &&
+    (isTemplateListTransitionPending || isTemplateListNavigationPending)
   const createRunDisabled =
+    activeTab !== "created" ||
+    !activeCreatedData ||
     noTeamSelected ||
     !canManageAssessments ||
-    data.templates.length === 0 ||
-    data.venueOptions.length === 0 ||
-    data.campOptions.length === 0
+    activeCreatedData.templateOptions.length === 0 ||
+    activeCreatedData.venueOptions.length === 0 ||
+    activeCreatedData.campOptions.length === 0
 
-  function switchTab(nextTab: string): void {
-    if (nextTab === selectedTab) {
+  const loadTabData = React.useCallback(
+    async (tab: TeamAssessmentTab, options?: { force?: boolean }) => {
+      const request = getCreatedTabRequest(window.location.search)
+      const requestKey =
+        tab === "created"
+          ? `${tab}:${request.page}:${request.loadMore ? "load-more" : "page"}`
+          : tab
+
+      if (!options?.force) {
+        if (
+          tab === "created" &&
+          isCreatedCacheForRequest({
+            cache: tabData.created,
+            request,
+          })
+        ) {
+          return
+        }
+
+        if (tab === "templates" && tabData.templates) {
+          return
+        }
+      }
+
+      if (noTeamSelected || !scope.activeTeamId) {
+        setTabData((currentState) => {
+          if (tab === "created") {
+            return {
+              ...currentState,
+              created: {
+                data: getEmptyCreatedTabData(request),
+                loadMore: request.loadMore,
+                page: request.page,
+              },
+            }
+          }
+
+          return {
+            ...currentState,
+            templates: {
+              templates: [],
+            },
+          }
+        })
+        return
+      }
+
+      if (inFlightTabsRef.current.has(requestKey)) {
+        return
+      }
+
+      const requestVersion = requestVersionRef.current + 1
+      requestVersionRef.current = requestVersion
+      latestTabRequestVersionRef.current[tab] = requestVersion
+      inFlightTabsRef.current.add(requestKey)
+      setLoadError((currentError) => (currentError?.tab === tab ? null : currentError))
+
+      try {
+        const payload = await fetchTeamAssessmentsTabData({
+          activeOrgId: scope.activeOrgId,
+          activeTeamId: scope.activeTeamId,
+          loadMore: request.loadMore,
+          page: request.page,
+          tab,
+        })
+
+        if (latestTabRequestVersionRef.current[tab] !== requestVersion) {
+          return
+        }
+
+        setTabData((currentState) => {
+          if (payload.tab === "created") {
+            return {
+              ...currentState,
+              created: {
+                data: payload.data,
+                loadMore: request.loadMore,
+                page: request.page,
+              },
+            }
+          }
+
+          return {
+            ...currentState,
+            templates: payload.data,
+          }
+        })
+      } catch (error) {
+        if (latestTabRequestVersionRef.current[tab] !== requestVersion) {
+          return
+        }
+
+        const message = error instanceof Error ? error.message : "Could not load this tab."
+        setLoadError({ message, tab })
+      } finally {
+        inFlightTabsRef.current.delete(requestKey)
+      }
+    },
+    [
+      noTeamSelected,
+      scope.activeOrgId,
+      scope.activeTeamId,
+      tabData.created,
+      tabData.templates,
+    ],
+  )
+
+  React.useEffect(() => {
+    const didScopeChange = scopeKeyRef.current !== scopeKey
+    const didSelectedTabChange = selectedTabRef.current !== selectedTab
+    scopeKeyRef.current = scopeKey
+    selectedTabRef.current = selectedTab
+
+    requestVersionRef.current += 1
+    latestTabRequestVersionRef.current = {
+      created: 0,
+      templates: 0,
+    }
+    inFlightTabsRef.current.clear()
+
+    if (didScopeChange || didSelectedTabChange) {
+      setActiveTab(selectedTab)
+    }
+
+    setTabData((currentState) => {
+      const affectedTabs = didScopeChange
+        ? new Set<TeamAssessmentTab>()
+        : getAffectedAssessmentTabsForStatus(status)
+      const baseState = didScopeChange
+        ? {}
+        : invalidateAssessmentTabDataState({
+            affectedTabs,
+            state: currentState,
+          })
+
+      return {
+        ...baseState,
+        ...(createdData
+          ? {
+              created: {
+                data: createdData,
+                loadMore: createdRequest.loadMore,
+                page: createdRequest.page,
+              },
+            }
+          : null),
+        ...(templatesData ? { templates: templatesData } : null),
+      }
+    })
+    setLoadError((currentError) =>
+      currentError?.tab === selectedTab ? null : currentError,
+    )
+  }, [
+    createdData,
+    createdRequest.loadMore,
+    createdRequest.page,
+    scopeKey,
+    selectedTab,
+    status,
+    templatesData,
+  ])
+
+  React.useEffect(() => {
+    void loadTabData(activeTab)
+  }, [activeTab, loadTabData])
+
+  const retryActiveTab = React.useCallback(() => {
+    void loadTabData(activeTab, { force: true })
+  }, [activeTab, loadTabData])
+
+  React.useEffect(() => {
+    if (selectedTab === "templates" && !creatingTemplate && !selectedTemplateId) {
+      setIsTemplateListNavigationPending(false)
+    }
+  }, [creatingTemplate, selectedTab, selectedTemplateId])
+
+  React.useEffect(() => {
+    setPendingTemplateNavigation((currentValue) => {
+      if (!currentValue) {
+        return currentValue
+      }
+
+      if (selectedTab !== "templates") {
+        return null
+      }
+
+      if (currentValue.type === "new" && creatingTemplate) {
+        return null
+      }
+
+      if (
+        currentValue.type === "template" &&
+        selectedTemplateId === currentValue.templateId
+      ) {
+        return null
+      }
+
+      return currentValue
+    })
+  }, [creatingTemplate, selectedTab, selectedTemplateId])
+
+  function switchTab(nextTabValue: string): void {
+    const nextTab: TeamAssessmentTab =
+      nextTabValue === "templates" ? "templates" : "created"
+
+    if (nextTab === activeTab) {
       return
     }
 
-    router.push(nextTab === "templates" ? templatesHref : createdHref)
+    setActiveTab(nextTab)
+    window.history.replaceState(
+      null,
+      "",
+      `${nextTab === "templates" ? templatesHref : createdHref}${window.location.hash}`,
+    )
+    void loadTabData(nextTab)
+  }
+
+  function openTemplateEditor(href: string): void {
+    setIsTemplateListNavigationPending(false)
+    setPendingTemplateNavigation(getPendingTemplateEditorNavigation(href))
+    startTemplateNavigationTransition(() => {
+      router.push(href)
+    })
+  }
+
+  function closeTemplateEditor(href: string): void {
+    setPendingTemplateNavigation(null)
+    setIsTemplateListNavigationPending(true)
+    startTemplateListTransition(() => {
+      router.push(href)
+    })
+  }
+
+  function handleTemplateEditorLinkClick(
+    event: React.MouseEvent<HTMLAnchorElement>,
+    href: string,
+  ): void {
+    if (!shouldHandleTemplateNavigation(event)) {
+      return
+    }
+
+    event.preventDefault()
+    openTemplateEditor(href)
   }
 
   return (
-    <section className="space-y-4">
+    <section
+      aria-busy={
+        isTemplateEditorNavigationPending ||
+        shouldShowTemplateListSkeleton ||
+        !isActiveTabLoaded
+      }
+      className="space-y-4"
+    >
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="w-full md:w-auto">
           <Tabs
-            value={selectedTab}
+            value={activeTab}
             onValueChange={switchTab}
             className="w-full gap-0 md:w-auto"
           >
@@ -1127,14 +678,14 @@ export function TeamAssessmentsPageClient({
         </div>
 
         <div className="flex justify-end">
-          {selectedTab === "created" ? (
-            <AssessmentRunCreateDialog
-              campOptions={data.campOptions}
+          {activeTab === "created" ? (
+            <TeamAssessmentRunCreateDialog
+              campOptions={activeCreatedData?.campOptions ?? []}
               disabled={createRunDisabled}
               returnPath={currentHref}
               scope={scope}
-              templates={data.templates}
-              venueOptions={data.venueOptions}
+              templateOptions={activeCreatedData?.templateOptions ?? []}
+              venueOptions={activeCreatedData?.venueOptions ?? []}
             />
           ) : canManageAssessments ? (
             <>
@@ -1143,7 +694,14 @@ export function TeamAssessmentsPageClient({
                 size="sm"
                 className="hidden md:inline-flex"
                 nativeButton={false}
-                render={<Link href={newTemplateHref} />}
+                render={
+                  <Link
+                    href={newTemplateHref}
+                    onClick={(event) =>
+                      handleTemplateEditorLinkClick(event, newTemplateHref)
+                    }
+                  />
+                }
               >
                 <PlusIcon className="size-4" />
                 New
@@ -1154,7 +712,14 @@ export function TeamAssessmentsPageClient({
                 aria-label="New assessment template"
                 className="mobile-floating-action size-14 rounded-full shadow-lg shadow-black/20 md:hidden"
                 nativeButton={false}
-                render={<Link href={newTemplateHref} />}
+                render={
+                  <Link
+                    href={newTemplateHref}
+                    onClick={(event) =>
+                      handleTemplateEditorLinkClick(event, newTemplateHref)
+                    }
+                  />
+                }
               >
                 <PlusIcon className="size-6" />
               </Button>
@@ -1163,28 +728,46 @@ export function TeamAssessmentsPageClient({
         </div>
       </div>
 
-      {selectedTab === "created" && data.templates.length === 0 ? (
+      {activeTab === "created" && activeCreatedData?.templateOptions.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           Create a template first to add an assessment.
         </p>
       ) : null}
 
-      {selectedTab === "created" ? (
-        <TeamAssessmentRunsTable
-          canManageAssessments={canManageAssessments}
-          data={data}
-          returnPath={currentHref}
-          scope={scope}
-        />
+      {activeTab === "created" ? (
+        activeCreatedData ? (
+          <TeamAssessmentRunsList
+            canManageAssessments={canManageAssessments}
+            data={activeCreatedData}
+            returnPath={currentHref}
+            scope={scope}
+          />
+        ) : loadError?.tab === "created" ? (
+          <TeamAssessmentsTabDataError error={loadError} onRetry={retryActiveTab} />
+        ) : (
+          <TeamAssessmentsCreatedTabSkeleton />
+        )
+      ) : activeTemplatesData ? (
+        shouldShowTemplateListSkeleton ? (
+          <TeamAssessmentsTemplatesTabSkeleton canManageAssessments={canManageAssessments} />
+        ) : isTemplateEditorNavigationPending ? (
+          <TeamAssessmentTemplateEditorSkeleton />
+        ) : (
+          <TeamAssessmentTemplateEditorShell
+            cancelHref={templatesHref}
+            canManageAssessments={canManageAssessments}
+            creatingTemplate={creatingTemplate}
+            onCancel={closeTemplateEditor}
+            onTemplateOpen={openTemplateEditor}
+            scope={scope}
+            selectedTemplateId={selectedTemplateId}
+            templates={activeTemplatesData.templates}
+          />
+        )
+      ) : loadError?.tab === "templates" ? (
+        <TeamAssessmentsTabDataError error={loadError} onRetry={retryActiveTab} />
       ) : (
-        <TeamAssessmentTemplatesPanel
-          cancelHref={templatesHref}
-          canManageAssessments={canManageAssessments}
-          creatingTemplate={creatingTemplate}
-          scope={scope}
-          selectedTemplateId={selectedTemplateId}
-          templates={data.templates}
-        />
+        <TeamAssessmentsTemplatesTabSkeleton canManageAssessments={canManageAssessments} />
       )}
     </section>
   )

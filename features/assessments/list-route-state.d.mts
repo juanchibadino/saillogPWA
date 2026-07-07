@@ -30,6 +30,10 @@ export function resolveAssessmentPagination(input: {
   hasNextPage: boolean
 }
 
+export function getTeamAssessmentStatusMessage(
+  status: string | undefined,
+): string | null
+
 export function buildTeamAssessmentsPageHref(input: {
   pathname: string
   search?: string

@@ -667,6 +667,65 @@ function hasSessionDetailTabData(
   return typeof state.gear !== "undefined"
 }
 
+function getAffectedSessionTabsForStatus(
+  status: string | null,
+  selectedTab: SessionDetailTab,
+): Set<SessionDetailTab> {
+  if (status === "updated" || status === "info_updated") {
+    return new Set(["info"])
+  }
+
+  if (status === "goals_updated") {
+    return new Set(["goals"])
+  }
+
+  if (status === "results_updated") {
+    return new Set(["results"])
+  }
+
+  if (
+    status === "setup_updated" ||
+    status === "setup_metric_created" ||
+    status === "setup_metric_updated" ||
+    status === "setup_metric_deleted" ||
+    status === "setup_metrics_reordered"
+  ) {
+    return new Set(["info"])
+  }
+
+  if (status === "gear_updated") {
+    return new Set(["gear"])
+  }
+
+  if (status === "asset_uploaded" || status === "asset_deleted") {
+    if (selectedTab === "images" || selectedTab === "analytics") {
+      return new Set([selectedTab])
+    }
+
+    return new Set(["images", "analytics"])
+  }
+
+  return new Set()
+}
+
+function invalidateSessionDetailTabDataState(input: {
+  affectedTabs: Set<SessionDetailTab>
+  state: SessionDetailTabDataState
+}): SessionDetailTabDataState {
+  if (input.affectedTabs.size === 0) {
+    return input.state
+  }
+
+  return {
+    ...input.state,
+    info: input.affectedTabs.has("info") ? undefined : input.state.info,
+    results: input.affectedTabs.has("results") ? undefined : input.state.results,
+    images: input.affectedTabs.has("images") ? undefined : input.state.images,
+    analytics: input.affectedTabs.has("analytics") ? undefined : input.state.analytics,
+    gear: input.affectedTabs.has("gear") ? undefined : input.state.gear,
+  }
+}
+
 function buildSessionDetailTabDataUrl(input: {
   assetOffset?: number
   scope: NavigationScope
@@ -840,6 +899,8 @@ export function SessionDetailTabsClient(input: {
 }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const status = searchParams.get("status")
+  const scopeKey = `${input.scope.activeOrgId}:${input.scope.activeTeamId ?? ""}`
   const [selectedTab, setSelectedTab] = React.useState<SessionDetailTab>(input.initialTab)
   const [tabData, setTabData] = React.useState<SessionDetailTabDataState>(() =>
     buildSessionDetailTabDataState({
@@ -855,6 +916,7 @@ export function SessionDetailTabsClient(input: {
   const inFlightTabsRef = React.useRef<Set<SessionDetailTab>>(new Set())
   const requestVersionRef = React.useRef(0)
   const sessionIdRef = React.useRef(input.sessionId)
+  const scopeKeyRef = React.useRef(scopeKey)
 
   const updateSelectedTab = React.useCallback(
     (tab: SessionDetailTab) => {
@@ -875,29 +937,35 @@ export function SessionDetailTabsClient(input: {
 
   React.useEffect(() => {
     const didSessionChange = sessionIdRef.current !== input.sessionId
+    const didScopeChange = scopeKeyRef.current !== scopeKey
     sessionIdRef.current = input.sessionId
+    scopeKeyRef.current = scopeKey
 
     requestVersionRef.current += 1
     inFlightTabsRef.current.clear()
-    if (didSessionChange) {
+    if (didSessionChange || didScopeChange) {
       setSelectedTab(input.initialTab)
     }
 
     setTabData((currentState) =>
       applySessionDetailTabData({
         data: input.initialTabData,
-        state: didSessionChange
-          ? {
-              goals: {
-                goals: input.goals,
-              },
-            }
-          : {
-              ...currentState,
-              goals: {
-                goals: input.goals,
-              },
-            },
+        state:
+          didSessionChange || didScopeChange
+            ? {
+                goals: {
+                  goals: input.goals,
+                },
+              }
+            : invalidateSessionDetailTabDataState({
+                affectedTabs: getAffectedSessionTabsForStatus(status, input.initialTab),
+                state: {
+                  ...currentState,
+                  goals: {
+                    goals: input.goals,
+                  },
+                },
+              }),
         tab: input.initialTab,
       }),
     )
@@ -905,7 +973,14 @@ export function SessionDetailTabsClient(input: {
       currentError?.tab === input.initialTab ? null : currentError,
     )
     setLoadingMoreAssetTab(null)
-  }, [input.goals, input.initialTab, input.initialTabData, input.sessionId])
+  }, [
+    input.goals,
+    input.initialTab,
+    input.initialTabData,
+    input.sessionId,
+    scopeKey,
+    status,
+  ])
 
   const loadTabData = React.useCallback(
     async (tab: SessionDetailTab, options?: { force?: boolean }) => {

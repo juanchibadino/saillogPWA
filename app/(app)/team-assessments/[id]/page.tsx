@@ -1,6 +1,7 @@
 import { AssessmentDetailClient } from "@/features/assessments/assessment-detail-client"
 import { AssessmentsFeedback } from "@/features/assessments/assessments-feedback"
 import { getTeamAssessmentDetailData } from "@/features/assessments/data"
+import { getTeamAssessmentStatusMessage } from "@/features/assessments/list-route-state.mjs"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageTeamStructure } from "@/lib/auth/capabilities"
 import {
@@ -12,18 +13,6 @@ type TeamAssessmentDetailParams = Promise<{ id: string }>
 type TeamAssessmentDetailSearchParams = Promise<
   Record<string, string | string[] | undefined>
 >
-
-function getStatusMessage(status: string | undefined): string | null {
-  if (status === "closed") {
-    return "Assessment closed successfully."
-  }
-
-  if (status === "answers_saved") {
-    return "Assessment answers saved successfully."
-  }
-
-  return null
-}
 
 function getErrorMessage(error: string | undefined): string | null {
   if (error === "invalid_input") {
@@ -62,7 +51,7 @@ export default async function TeamAssessmentDetailPage({
 
   const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
-  const statusMessage = getStatusMessage(status)
+  const statusMessage = getTeamAssessmentStatusMessage(status)
   const errorMessage = getErrorMessage(error)
   const navigation = await resolveNavigationScope({
     context,

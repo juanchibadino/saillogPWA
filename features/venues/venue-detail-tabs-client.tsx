@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   type ReactNode,
   useCallback,
@@ -9,7 +9,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useTransition,
 } from "react";
 
 import type {
@@ -474,6 +473,129 @@ function applyVenueDetailTabData(input: {
   };
 }
 
+type VenueDetailStatusInvalidation = {
+  invalidateKpis: boolean;
+  invalidateYear: boolean;
+  tabs: Set<VenueDetailTab>;
+};
+
+function getVenueDetailStatusInvalidation(
+  status: string | null,
+  selectedTab: VenueDetailTab,
+): VenueDetailStatusInvalidation {
+  const emptyInvalidation = {
+    invalidateKpis: false,
+    invalidateYear: false,
+    tabs: new Set<VenueDetailTab>(),
+  };
+
+  if (!status) {
+    return emptyInvalidation;
+  }
+
+  if (status === "report_created") {
+    return {
+      ...emptyInvalidation,
+      tabs: new Set(["reports"]),
+    };
+  }
+
+  if (
+    status === "wind_pattern_created" ||
+    status === "wind_pattern_updated" ||
+    status === "wind_pattern_archived" ||
+    status === "wind_pattern_restored"
+  ) {
+    return {
+      ...emptyInvalidation,
+      tabs: new Set(["wind-patterns"]),
+    };
+  }
+
+  if (
+    status === "template_saved" ||
+    status === "run_saved" ||
+    status === "run_published" ||
+    status === "run_closed" ||
+    status === "run_deleted" ||
+    status === "answers_saved"
+  ) {
+    return {
+      ...emptyInvalidation,
+      tabs: new Set(["assessments"]),
+    };
+  }
+
+  if (status === "created" || status === "updated" || status === "deleted") {
+    if (selectedTab === "camps" || selectedTab === "sessions") {
+      return {
+        invalidateKpis: true,
+        invalidateYear: false,
+        tabs: new Set([selectedTab]),
+      };
+    }
+
+    return {
+      invalidateKpis: true,
+      invalidateYear: true,
+      tabs: new Set(),
+    };
+  }
+
+  return {
+    invalidateKpis: true,
+    invalidateYear: true,
+    tabs: new Set(),
+  };
+}
+
+function invalidateVenueDetailTabDataState(input: {
+  invalidation: VenueDetailStatusInvalidation;
+  state: VenueDetailTabDataState;
+  year: number;
+}): VenueDetailTabDataState {
+  if (input.invalidation.invalidateYear) {
+    const nextState = { ...input.state };
+    delete nextState[input.year];
+    return nextState;
+  }
+
+  if (input.invalidation.tabs.size === 0) {
+    return input.state;
+  }
+
+  const currentYearState = input.state[input.year];
+
+  if (!currentYearState) {
+    return input.state;
+  }
+
+  const nextYearState = { ...currentYearState };
+
+  for (const tab of input.invalidation.tabs) {
+    delete nextYearState[tab];
+  }
+
+  return {
+    ...input.state,
+    [input.year]: nextYearState,
+  };
+}
+
+function invalidateVenueDetailKpisByYear(input: {
+  invalidation: VenueDetailStatusInvalidation;
+  kpisByYear: Record<number, VenueDetailKpi[]>;
+  year: number;
+}): Record<number, VenueDetailKpi[]> {
+  if (!input.invalidation.invalidateKpis && !input.invalidation.invalidateYear) {
+    return input.kpisByYear;
+  }
+
+  const nextKpisByYear = { ...input.kpisByYear };
+  delete nextKpisByYear[input.year];
+  return nextKpisByYear;
+}
+
 function buildVenueDetailTabDataUrl(input: {
   campId?: string;
   highlight?: TeamSessionHighlightFilter;
@@ -928,12 +1050,12 @@ export function VenueDetailTabsClient(input: {
   initialWindPatternStatusFilter: WindPatternStatusFilter;
   action?: ReactNode;
 }) {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentSearch = searchParams.toString();
   const requestedCampId = searchParams.get("camp") ?? undefined;
-  const [isRouteNavigationPending, startRouteNavigationTransition] = useTransition();
+  const status = searchParams.get("status");
+  const scopeKey = `${input.scope.activeOrgId}:${input.scope.activeTeamId ?? ""}`;
   const [selectedYear, setSelectedYear] = useState(input.initialYear);
   const [selectedTab, setSelectedTab] = useState<VenueDetailTab>(input.initialTab);
   const [kpisByYear, setKpisByYear] = useState<Record<number, VenueDetailKpi[]>>(
@@ -951,6 +1073,8 @@ export function VenueDetailTabsClient(input: {
   const [loadError, setLoadError] = useState<VenueDetailTabLoadError | null>(null);
   const inFlightTabsRef = useRef<Set<string>>(new Set());
   const requestVersionRef = useRef(0);
+  const teamVenueIdRef = useRef(input.teamVenueId);
+  const scopeKeyRef = useRef(scopeKey);
   const routeRequest = useMemo(
     () =>
       resolveVenueDetailRouteRequest({
@@ -963,19 +1087,17 @@ export function VenueDetailTabsClient(input: {
     [searchParams],
   );
 
-  const navigateToVenueDetailHref = useCallback(
+  const replaceVenueDetailHref = useCallback(
     (href: string) => {
-      startRouteNavigationTransition(() => {
-        router.push(href);
-      });
+      window.history.replaceState(null, "", `${href}${window.location.hash}`);
     },
-    [router],
+    [],
   );
 
   const navigateToTab = useCallback(
     (tab: VenueDetailTab) => {
       setSelectedTab(tab);
-      navigateToVenueDetailHref(
+      replaceVenueDetailHref(
         buildVenueDetailPageHref({
           pathname,
           search: currentSearch,
@@ -984,13 +1106,13 @@ export function VenueDetailTabsClient(input: {
         }),
       );
     },
-    [currentSearch, navigateToVenueDetailHref, pathname, selectedYear],
+    [currentSearch, pathname, replaceVenueDetailHref, selectedYear],
   );
 
   const navigateToYear = useCallback(
     (year: number) => {
       setSelectedYear(year);
-      navigateToVenueDetailHref(
+      replaceVenueDetailHref(
         buildVenueDetailPageHref({
           pathname,
           search: currentSearch,
@@ -999,7 +1121,7 @@ export function VenueDetailTabsClient(input: {
         }),
       );
     },
-    [currentSearch, navigateToVenueDetailHref, pathname, selectedTab],
+    [currentSearch, pathname, replaceVenueDetailHref, selectedTab],
   );
 
   const loadTabData = useCallback(
@@ -1091,20 +1213,47 @@ export function VenueDetailTabsClient(input: {
   );
 
   useEffect(() => {
+    const didTeamVenueChange = teamVenueIdRef.current !== input.teamVenueId;
+    const didScopeChange = scopeKeyRef.current !== scopeKey;
+    teamVenueIdRef.current = input.teamVenueId;
+    scopeKeyRef.current = scopeKey;
+
     requestVersionRef.current += 1;
     inFlightTabsRef.current.clear();
 
-    setSelectedYear(input.initialYear);
-    setSelectedTab(input.initialTab);
+    if (didTeamVenueChange || didScopeChange) {
+      setSelectedYear(input.initialYear);
+      setSelectedTab(input.initialTab);
+    }
 
-    setKpisByYear({
+    const invalidation =
+      didTeamVenueChange || didScopeChange
+        ? getVenueDetailStatusInvalidation(null, input.initialTab)
+        : getVenueDetailStatusInvalidation(status, input.initialTab);
+
+    setKpisByYear((currentValue) => ({
+      ...(didTeamVenueChange || didScopeChange
+        ? {}
+        : invalidateVenueDetailKpisByYear({
+            invalidation,
+            kpisByYear: currentValue,
+            year: input.initialYear,
+          })),
       [input.initialYear]: input.kpis,
-    });
-    setTabDataByYear(
-      buildVenueDetailTabDataState({
-        initialTab: input.initialTab,
-        initialTabData: input.initialTabData,
-        initialYear: input.initialYear,
+    }));
+    setTabDataByYear((currentValue) =>
+      applyVenueDetailTabData({
+        data: input.initialTabData,
+        state:
+          didTeamVenueChange || didScopeChange
+            ? {}
+            : invalidateVenueDetailTabDataState({
+                invalidation,
+                state: currentValue,
+                year: input.initialYear,
+              }),
+        tab: input.initialTab,
+        year: input.initialYear,
       }),
     );
     setLoadError((currentError) =>
@@ -1115,9 +1264,9 @@ export function VenueDetailTabsClient(input: {
     input.initialTabData,
     input.initialYear,
     input.kpis,
-    input.scope.activeOrgId,
-    input.scope.activeTeamId,
     input.teamVenueId,
+    scopeKey,
+    status,
   ]);
 
   useEffect(() => {
@@ -1176,10 +1325,7 @@ export function VenueDetailTabsClient(input: {
   }
 
   return (
-    <div
-      aria-busy={isRouteNavigationPending}
-      className="space-y-6"
-    >
+    <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <Tabs
           value={String(selectedYear)}

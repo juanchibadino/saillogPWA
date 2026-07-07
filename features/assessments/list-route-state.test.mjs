@@ -4,6 +4,7 @@ import test from "node:test"
 import {
   buildTeamAssessmentsPageHref,
   buildTeamAssessmentsRedirectPath,
+  getTeamAssessmentStatusMessage,
   resolveAssessmentPagination,
   resolveTeamAssessmentsListRequest,
 } from "./list-route-state.mjs"
@@ -40,6 +41,42 @@ test("resolves Team Assessments list request params defensively", () => {
       requestedLoadMoreMode: false,
       requestedTemplateId: "template-1",
       requestedNewTemplate: false,
+    },
+  )
+})
+
+test("keeps template editor state out of created route-state requests", () => {
+  assert.deepEqual(
+    resolveTeamAssessmentsListRequest({
+      tabParam: "created",
+      pageParam: "2",
+      loadMoreParam: "1",
+      templateParam: "template-1",
+      newParam: "template",
+    }),
+    {
+      requestedTab: "created",
+      requestedPage: 2,
+      requestedLoadMoreMode: true,
+      requestedTemplateId: undefined,
+      requestedNewTemplate: false,
+    },
+  )
+
+  assert.deepEqual(
+    resolveTeamAssessmentsListRequest({
+      tabParam: "templates",
+      pageParam: "2",
+      loadMoreParam: "1",
+      templateParam: "template-1",
+      newParam: "template",
+    }),
+    {
+      requestedTab: "templates",
+      requestedPage: 2,
+      requestedLoadMoreMode: false,
+      requestedTemplateId: "template-1",
+      requestedNewTemplate: true,
     },
   )
 })
@@ -106,6 +143,87 @@ test("builds mobile load more hrefs for created assessments", () => {
     }),
     "/team-assessments?org=org-1&team=team-1&page=2&loadMore=1",
   )
+
+  assert.equal(
+    buildTeamAssessmentsPageHref({
+      pathname: "/team-assessments",
+      search: "org=org-1&team=team-1&tab=templates&template=template-1&loadMore=1",
+      nextPage: 2,
+      includeLoadMore: true,
+    }),
+    "/team-assessments?org=org-1&team=team-1&tab=templates&page=2",
+  )
+
+  assert.equal(
+    buildTeamAssessmentsPageHref({
+      pathname: "/team-assessments",
+      search: "org=org-1&team=team-1&page=2&loadMore=1",
+      nextPage: 1,
+      includeLoadMore: true,
+    }),
+    "/team-assessments?org=org-1&team=team-1",
+  )
+})
+
+test("maps assessment action status codes to visible feedback messages", () => {
+  assert.equal(
+    getTeamAssessmentStatusMessage("template_saved"),
+    "Assessment template saved successfully.",
+  )
+  assert.equal(
+    getTeamAssessmentStatusMessage("run_published"),
+    "Assessment created successfully.",
+  )
+  assert.equal(
+    getTeamAssessmentStatusMessage("run_closed"),
+    "Assessment closed successfully.",
+  )
+  assert.equal(
+    getTeamAssessmentStatusMessage("run_deleted"),
+    "Assessment deleted successfully.",
+  )
+  assert.equal(
+    getTeamAssessmentStatusMessage("answers_saved"),
+    "Assessment answers saved successfully.",
+  )
+})
+
+test("builds status redirects that match list feedback readers", () => {
+  for (const [status, message] of [
+    ["template_saved", "Assessment template saved successfully."],
+    ["run_published", "Assessment created successfully."],
+    ["run_closed", "Assessment closed successfully."],
+    ["run_deleted", "Assessment deleted successfully."],
+    ["answers_saved", "Assessment answers saved successfully."],
+  ]) {
+    assert.equal(getTeamAssessmentStatusMessage(status), message)
+    assert.equal(
+      buildTeamAssessmentsRedirectPath({
+        returnPath: "/team-assessments?error=save_failed&loadMore=1",
+        scopeOrgId: "org-1",
+        scopeTeamId: "team-1",
+        status,
+      }),
+      `/team-assessments?status=${status}&org=org-1&team=team-1`,
+    )
+  }
+})
+
+test("keeps legacy assessment status aliases readable", () => {
+  assert.equal(
+    getTeamAssessmentStatusMessage("created"),
+    "Assessment created successfully.",
+  )
+  assert.equal(
+    getTeamAssessmentStatusMessage("closed"),
+    "Assessment closed successfully.",
+  )
+  assert.equal(
+    getTeamAssessmentStatusMessage("deleted"),
+    "Assessment deleted successfully.",
+  )
+  assert.equal(getTeamAssessmentStatusMessage("unknown"), null)
+  assert.equal(getTeamAssessmentStatusMessage(undefined), null)
 })
 
 test("builds redirects preserving scope and template editor state", () => {

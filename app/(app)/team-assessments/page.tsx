@@ -1,7 +1,19 @@
 import { AssessmentsFeedback } from "@/features/assessments/assessments-feedback"
 import { TeamAssessmentsPageClient } from "@/features/assessments/team-assessments-page-client"
-import { getTeamAssessmentsPageData } from "@/features/assessments/data"
-import { resolveTeamAssessmentsListRequest } from "@/features/assessments/list-route-state.mjs"
+import {
+  getTeamAssessmentsCreatedTabData,
+  getTeamAssessmentsTemplatesTabData,
+  type TeamAssessmentsCreatedTabData,
+  type TeamAssessmentsTemplatesTabData,
+} from "@/features/assessments/data"
+import {
+  logTeamAssessmentsListTiming,
+  startTeamAssessmentsListTiming,
+} from "@/features/assessments/list-timing"
+import {
+  getTeamAssessmentStatusMessage,
+  resolveTeamAssessmentsListRequest,
+} from "@/features/assessments/list-route-state.mjs"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageTeamStructure } from "@/lib/auth/capabilities"
 import {
@@ -13,32 +25,27 @@ type TeamAssessmentsSearchParams = Promise<
   Record<string, string | string[] | undefined>
 >
 
-function getStatusMessage(status: string | undefined): string | null {
-  if (status === "created") {
-    return "Assessment created successfully."
+function getEmptyCreatedTabData(
+  requestedPage: number,
+): TeamAssessmentsCreatedTabData {
+  return {
+    venueOptions: [],
+    campOptions: [],
+    templateOptions: [],
+    runs: [],
+    pagination: {
+      currentPage: requestedPage,
+      pageCount: 1,
+      hasPreviousPage: requestedPage > 1,
+      hasNextPage: false,
+    },
   }
+}
 
-  if (status === "template_created") {
-    return "Assessment template created successfully."
+function getEmptyTemplatesTabData(): TeamAssessmentsTemplatesTabData {
+  return {
+    templates: [],
   }
-
-  if (status === "template_updated") {
-    return "Assessment template updated successfully."
-  }
-
-  if (status === "closed") {
-    return "Assessment closed successfully."
-  }
-
-  if (status === "deleted") {
-    return "Assessment deleted successfully."
-  }
-
-  if (status === "answers_saved") {
-    return "Assessment answers saved successfully."
-  }
-
-  return null
 }
 
 function getErrorMessage(error: string | undefined): string | null {
@@ -78,6 +85,7 @@ export default async function TeamAssessmentsPage({
 }: {
   searchParams: TeamAssessmentsSearchParams
 }) {
+  const scopeStartedAt = startTeamAssessmentsListTiming()
   const context = await requireAuthenticatedAccessContext()
   const resolvedSearchParams = await searchParams
 
@@ -97,11 +105,25 @@ export default async function TeamAssessmentsPage({
     newParam: getSingleSearchParamValue(resolvedSearchParams.new),
   })
 
-  const statusMessage = getStatusMessage(status)
+  const statusMessage = getTeamAssessmentStatusMessage(status)
   const errorMessage = getErrorMessage(error)
   const navigation = await resolveNavigationScope({
     context,
     searchParams: resolvedSearchParams,
+  })
+  logTeamAssessmentsListTiming({
+    phase: "scope/context",
+    startedAt: scopeStartedAt,
+    activeTeamId: navigation.scope?.activeTeamId ?? null,
+    status: "success",
+    metadata: {
+      hasProfile: Boolean(context.profile),
+      hasScope: Boolean(navigation.scope),
+      hasTeamScope: Boolean(navigation.scope?.activeTeamId),
+      requestedPage,
+      requestedTab,
+      accumulatePages: requestedLoadMoreMode,
+    },
   })
 
   if (!navigation.scope) {
@@ -139,25 +161,25 @@ export default async function TeamAssessmentsPage({
       organizationId: scope.activeOrgId,
       teamId: scope.activeTeamId,
     })
-  const data = scope.activeTeamId
-    ? await getTeamAssessmentsPageData({
-        activeTeamId: scope.activeTeamId,
-        currentProfileId: context.profile.id,
-        page: requestedPage,
-        accumulatePages: requestedLoadMoreMode,
-      })
-    : {
-        venueOptions: [],
-        campOptions: [],
-        templates: [],
-        runs: [],
-        pagination: {
-          currentPage: requestedPage,
-          pageCount: 1,
-          hasPreviousPage: requestedPage > 1,
-          hasNextPage: false,
-        },
-      }
+  const createdData =
+    requestedTab === "created"
+      ? scope.activeTeamId
+        ? await getTeamAssessmentsCreatedTabData({
+            activeTeamId: scope.activeTeamId,
+            currentProfileId: context.profile.id,
+            page: requestedPage,
+            accumulatePages: requestedLoadMoreMode,
+          })
+        : getEmptyCreatedTabData(requestedPage)
+      : undefined
+  const templatesData =
+    requestedTab === "templates"
+      ? scope.activeTeamId
+        ? await getTeamAssessmentsTemplatesTabData({
+            activeTeamId: scope.activeTeamId,
+          })
+        : getEmptyTemplatesTabData()
+      : undefined
 
   return (
     <div className="space-y-6">
@@ -186,12 +208,13 @@ export default async function TeamAssessmentsPage({
 
       <TeamAssessmentsPageClient
         canManageAssessments={canManageAssessments}
-        data={data}
+        createdData={createdData}
         creatingTemplate={requestedNewTemplate}
         noTeamSelected={noTeamSelected}
         scope={scope}
         selectedTab={requestedTab}
         selectedTemplateId={requestedTemplateId}
+        templatesData={templatesData}
       />
     </div>
   )

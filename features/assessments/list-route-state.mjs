@@ -47,11 +47,33 @@ export function resolveAssessmentPagination(input) {
   }
 }
 
+const TEAM_ASSESSMENT_STATUS_MESSAGES = new Map([
+  ["created", "Assessment created successfully."],
+  ["template_created", "Assessment template created successfully."],
+  ["template_updated", "Assessment template updated successfully."],
+  ["closed", "Assessment closed successfully."],
+  ["deleted", "Assessment deleted successfully."],
+  ["template_saved", "Assessment template saved successfully."],
+  ["run_published", "Assessment created successfully."],
+  ["run_closed", "Assessment closed successfully."],
+  ["run_deleted", "Assessment deleted successfully."],
+  ["answers_saved", "Assessment answers saved successfully."],
+])
+
+export function getTeamAssessmentStatusMessage(status) {
+  if (!status) {
+    return null
+  }
+
+  return TEAM_ASSESSMENT_STATUS_MESSAGES.get(status) ?? null
+}
+
 export function buildTeamAssessmentsPageHref(input) {
   const search = input.search?.startsWith("?")
     ? input.search.slice(1)
     : input.search
   const params = new URLSearchParams(search)
+  const isCreatedTab = params.get("tab") !== "templates"
 
   params.delete("template")
   params.delete("new")
@@ -62,7 +84,7 @@ export function buildTeamAssessmentsPageHref(input) {
   } else {
     params.set("page", String(Math.floor(input.nextPage)))
 
-    if (input.includeLoadMore) {
+    if (input.includeLoadMore && isCreatedTab) {
       params.set("loadMore", "1")
     } else {
       params.delete("loadMore")

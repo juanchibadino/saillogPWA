@@ -3,9 +3,9 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
+import { canManageAssessmentsFromAccess } from "@/features/assessments/action-rules.mjs"
 import { buildTeamAssessmentsRedirectPath } from "@/features/assessments/list-route-state.mjs"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
-import { canManageTeamStructure } from "@/lib/auth/capabilities"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import {
   assessmentDefinitionInputSchema,
@@ -16,6 +16,10 @@ import {
   type AssessmentDefinitionInput,
 } from "@/lib/validation/assessments"
 import { scopeFormInputSchema } from "@/lib/validation/navigation"
+
+const createAssessmentRunFormInputSchema = upsertAssessmentRunInputSchema.omit({
+  definition: true,
+})
 
 type AssessmentErrorCode =
   | "invalid_input"
@@ -509,6 +513,156 @@ async function buildRunName(input: {
   return `${prefix} for ${suffix}`.slice(0, 120)
 }
 
+async function loadTemplateDefinitionForRun(input: {
+  templateId: string
+  teamId: string
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>
+}): Promise<{ definition: AssessmentDefinitionInput; name: string } | null> {
+  const { data: templateRow, error: templateError } = await input.supabase
+    .from("assessment_templates")
+    .select("id,name")
+    .eq("id", input.templateId)
+    .eq("team_id", input.teamId)
+    .eq("is_active", true)
+    .maybeSingle()
+
+  if (templateError || !templateRow) {
+    return null
+  }
+
+  const [
+    { data: scaleOptionData, error: scaleOptionError },
+    { data: categoryData, error: categoryError },
+  ] = await Promise.all([
+    input.supabase
+      .from("assessment_template_scale_options")
+      .select("label,position")
+      .eq("assessment_template_id", input.templateId),
+    input.supabase
+      .from("assessment_template_categories")
+      .select("id,name,position")
+      .eq("assessment_template_id", input.templateId),
+  ])
+
+  if (scaleOptionError || categoryError) {
+    return null
+  }
+
+  const categories = [...(categoryData ?? [])].sort(
+    (left, right) => left.position - right.position,
+  )
+  const categoryIds = categories.map((category) => category.id)
+  let modeData: Array<{
+    id: string
+    assessment_template_category_id: string
+    name: string
+    position: number
+  }> = []
+  let questionData: Array<{
+    assessment_template_category_id: string
+    assessment_template_mode_id: string | null
+    prompt: string
+    position: number
+    is_required: boolean
+  }> = []
+
+  if (categoryIds.length > 0) {
+    const [
+      { data: loadedModes, error: modeError },
+      { data: loadedQuestions, error: questionError },
+    ] = await Promise.all([
+      input.supabase
+        .from("assessment_template_modes")
+        .select("id,assessment_template_category_id,name,position")
+        .in("assessment_template_category_id", categoryIds),
+      input.supabase
+        .from("assessment_template_questions")
+        .select(
+          "assessment_template_category_id,assessment_template_mode_id,prompt,position,is_required",
+        )
+        .in("assessment_template_category_id", categoryIds),
+    ])
+
+    if (modeError || questionError) {
+      return null
+    }
+
+    modeData = loadedModes ?? []
+    questionData = loadedQuestions ?? []
+  }
+
+  const modesByCategoryId = new Map<string, typeof modeData>()
+  const questionsByCategoryId = new Map<string, typeof questionData>()
+  const questionsByModeId = new Map<string, typeof questionData>()
+
+  for (const mode of modeData) {
+    const existingModes = modesByCategoryId.get(mode.assessment_template_category_id) ?? []
+    existingModes.push(mode)
+    modesByCategoryId.set(mode.assessment_template_category_id, existingModes)
+  }
+
+  for (const question of questionData) {
+    if (question.assessment_template_mode_id) {
+      const existingQuestions =
+        questionsByModeId.get(question.assessment_template_mode_id) ?? []
+      existingQuestions.push(question)
+      questionsByModeId.set(question.assessment_template_mode_id, existingQuestions)
+      continue
+    }
+
+    const existingQuestions =
+      questionsByCategoryId.get(question.assessment_template_category_id) ?? []
+    existingQuestions.push(question)
+    questionsByCategoryId.set(question.assessment_template_category_id, existingQuestions)
+  }
+
+  const definition = {
+    scaleOptions: [...(scaleOptionData ?? [])]
+      .sort((left, right) => left.position - right.position)
+      .map((option) => ({ label: option.label })),
+    categories: categories.map((category) => {
+      const modes = [...(modesByCategoryId.get(category.id) ?? [])].sort(
+        (left, right) => left.position - right.position,
+      )
+
+      if (modes.length > 0) {
+        return {
+          name: category.name,
+          modes: modes.map((mode) => ({
+            name: mode.name,
+            questions: [...(questionsByModeId.get(mode.id) ?? [])]
+              .sort((left, right) => left.position - right.position)
+              .map((question) => ({
+                prompt: question.prompt,
+                isRequired: question.is_required,
+              })),
+          })),
+        }
+      }
+
+      return {
+        name: category.name,
+        questions: [...(questionsByCategoryId.get(category.id) ?? [])]
+          .sort((left, right) => left.position - right.position)
+          .map((question) => ({
+            prompt: question.prompt,
+            isRequired: question.is_required,
+          })),
+      }
+    }),
+  }
+  const parsedDefinition = assessmentDefinitionInputSchema.safeParse(definition)
+
+  if (!parsedDefinition.success) {
+    return null
+  }
+
+  return {
+    definition: parsedDefinition.data,
+    name: templateRow.name,
+  }
+}
+
 export async function saveAssessmentTemplateAction(formData: FormData): Promise<void> {
   const context = await requireAuthenticatedAccessContext()
   const scope = getScopeFromFormData(formData)
@@ -536,7 +690,7 @@ export async function saveAssessmentTemplateAction(formData: FormData): Promise<
   }
 
   if (
-    !canManageTeamStructure({
+    !canManageAssessmentsFromAccess({
       context,
       organizationId: scope.scopeOrgId,
       teamId: parsedInput.data.teamId,
@@ -643,7 +797,6 @@ export async function saveAssessmentTemplateAction(formData: FormData): Promise<
       returnPath,
       scope,
       tab: "templates",
-      templateId: resolvedTemplateId,
       status: "template_saved",
     }),
   )
@@ -655,20 +808,18 @@ export async function createAssessmentRunAction(formData: FormData): Promise<voi
   const returnPath = getFormString(formData, "returnPath")
   const teamVenueId = parseOptionalUuid(getFormString(formData, "teamVenueId"))
   const templateId = parseOptionalUuid(getFormString(formData, "templateId"))
-  const definition = parseDefinitionJson(getFormString(formData, "definitionJson"))
   const campIds = parseCampIds(getFormString(formData, "campIdsJson"))
 
-  const parsedInput = upsertAssessmentRunInputSchema.safeParse({
+  const parsedFormInput = createAssessmentRunFormInputSchema.safeParse({
     teamId: scope.scopeTeamId,
     teamVenueId,
     templateId,
     name: "Assessment for selected camps",
     description: "",
     campIds,
-    definition,
   })
 
-  if (!parsedInput.success || !scope.scopeOrgId || !scope.scopeTeamId) {
+  if (!parsedFormInput.success || !scope.scopeOrgId || !scope.scopeTeamId) {
     redirect(
       buildRedirect({
         returnPath,
@@ -680,10 +831,10 @@ export async function createAssessmentRunAction(formData: FormData): Promise<voi
   }
 
   if (
-    !canManageTeamStructure({
+    !canManageAssessmentsFromAccess({
       context,
       organizationId: scope.scopeOrgId,
-      teamId: parsedInput.data.teamId,
+      teamId: parsedFormInput.data.teamId,
     })
   ) {
     redirect(
@@ -698,12 +849,12 @@ export async function createAssessmentRunAction(formData: FormData): Promise<voi
 
   const [teamVenueInScope, templateInScope] = await Promise.all([
     ensureTeamVenueBelongsToScope({
-      teamVenueId: parsedInput.data.teamVenueId,
-      teamId: parsedInput.data.teamId,
+      teamVenueId: parsedFormInput.data.teamVenueId,
+      teamId: parsedFormInput.data.teamId,
     }),
     ensureTemplateBelongsToTeam({
-      templateId: parsedInput.data.templateId,
-      teamId: parsedInput.data.teamId,
+      templateId: parsedFormInput.data.templateId,
+      teamId: parsedFormInput.data.teamId,
     }),
   ])
 
@@ -719,15 +870,42 @@ export async function createAssessmentRunAction(formData: FormData): Promise<voi
   }
 
   const supabase = await createServerSupabaseClient()
-  const { data: templateRow } = await supabase
-    .from("assessment_templates")
-    .select("name")
-    .eq("id", parsedInput.data.templateId)
-    .eq("team_id", parsedInput.data.teamId)
-    .maybeSingle()
+  const templateDefinition = await loadTemplateDefinitionForRun({
+    templateId: parsedFormInput.data.templateId,
+    teamId: parsedFormInput.data.teamId,
+    supabase,
+  })
+
+  if (!templateDefinition) {
+    redirect(
+      buildRedirect({
+        returnPath,
+        scope,
+        tab: "created",
+        error: "save_failed",
+      }),
+    )
+  }
+
+  const parsedInput = upsertAssessmentRunInputSchema.safeParse({
+    ...parsedFormInput.data,
+    definition: templateDefinition.definition,
+  })
+
+  if (!parsedInput.success) {
+    redirect(
+      buildRedirect({
+        returnPath,
+        scope,
+        tab: "created",
+        error: "invalid_input",
+      }),
+    )
+  }
+
   const runName = await buildRunName({
     campIds: parsedInput.data.campIds,
-    fallbackTemplateName: templateRow?.name,
+    fallbackTemplateName: templateDefinition.name,
   })
   const publishedAt = new Date().toISOString()
   const { data: runData, error: insertError } = await supabase
@@ -854,7 +1032,7 @@ export async function closeAssessmentRunAction(formData: FormData): Promise<void
   }
 
   if (
-    !canManageTeamStructure({
+    !canManageAssessmentsFromAccess({
       context,
       organizationId: scope.scopeOrgId,
       teamId: parsedInput.data.teamId,
@@ -940,7 +1118,7 @@ export async function deleteAssessmentRunAction(formData: FormData): Promise<voi
   }
 
   if (
-    !canManageTeamStructure({
+    !canManageAssessmentsFromAccess({
       context,
       organizationId: scope.scopeOrgId,
       teamId: parsedInput.data.teamId,
