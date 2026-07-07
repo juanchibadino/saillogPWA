@@ -1,15 +1,17 @@
 "use client";
 
 import * as React from "react";
-import { Loader2Icon, Trash2Icon } from "lucide-react";
+import { Loader2Icon, MoreHorizontalIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 
+import { buildAssessmentDetailHref } from "@/features/assessments/navigation";
 import {
   deleteAssessmentRunAction,
   closeAssessmentRunAction,
   submitAssessmentAnswersAction,
   upsertAssessmentRunAction,
-  upsertAssessmentTemplateAction,
 } from "@/features/venues/assessment-actions";
 import type {
   VenueAssessmentCategory,
@@ -18,20 +20,12 @@ import type {
   VenueAssessmentTemplate,
   VenueDetailCampItem,
 } from "@/features/venues/detail-types";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { NavigationScope } from "@/lib/navigation/types";
+import { cn } from "@/lib/utils";
+import { GradientCard } from "@/components/shared/gradient-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "@/components/ui/card";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import {
   Dialog,
   DialogContent,
@@ -41,8 +35,38 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type AssessmentQuestionDraft = {
@@ -89,36 +113,6 @@ function buildFixedScaleOptions(): Array<{ label: string }> {
   return [{ label: "1" }, { label: "2" }, { label: "3" }, { label: "4" }, { label: "5" }];
 }
 
-function buildDefaultQuestion(): AssessmentQuestionDraft {
-  return {
-    prompt: "",
-    isRequired: false,
-  };
-}
-
-function buildDefaultMode(): AssessmentModeDraft {
-  return {
-    name: "",
-    questions: [buildDefaultQuestion()],
-  };
-}
-
-function buildDefaultCategory(): AssessmentCategoryDraft {
-  return {
-    name: "General",
-    shape: "direct",
-    questions: [buildDefaultQuestion()],
-    modes: [],
-  };
-}
-
-function buildDefaultDefinition(): AssessmentDefinitionDraft {
-  return {
-    scaleOptions: buildFixedScaleOptions(),
-    categories: [buildDefaultCategory()],
-  };
-}
-
 function categoryHasModes(category: VenueAssessmentCategory): boolean {
   return Array.isArray(category.modes) && category.modes.length > 0;
 }
@@ -149,18 +143,6 @@ function normalizeDefinition(definition: AssessmentDefinitionDraft): SerializedA
       };
     }),
   };
-}
-
-function serializeDefinition(definition: AssessmentDefinitionDraft): string {
-  return JSON.stringify(normalizeDefinition(definition));
-}
-
-function buildCategoryAccordionValue(categoryIndex: number): string {
-  return `category-${categoryIndex}`;
-}
-
-function buildTemplateAccordionValue(templateId: string): string {
-  return `template-${templateId}`;
 }
 
 function RunTitleWithCamps(input: { camps: VenueAssessmentRun["camps"] }) {
@@ -243,58 +225,6 @@ function buildInitialModeByCategoryId(
   return modeByCategoryId;
 }
 
-function validateDefinition(definition: AssessmentDefinitionDraft): string | null {
-  if (definition.categories.length === 0) {
-    return "Add at least one category.";
-  }
-
-  for (const [categoryIndex, category] of definition.categories.entries()) {
-    const categoryName = category.name.trim();
-
-    if (categoryName.length === 0) {
-      return `Category ${categoryIndex + 1} needs a name.`;
-    }
-
-    if (category.shape === "mode") {
-      if (category.modes.length === 0) {
-        return `Category \"${categoryName}\" needs at least one mode.`;
-      }
-
-      for (const [modeIndex, mode] of category.modes.entries()) {
-        const modeName = mode.name.trim();
-
-        if (modeName.length === 0) {
-          return `Mode ${modeIndex + 1} in \"${categoryName}\" needs a name.`;
-        }
-
-        if (mode.questions.length === 0) {
-          return `Mode \"${modeName}\" in \"${categoryName}\" needs at least one item.`;
-        }
-
-        for (const [questionIndex, question] of mode.questions.entries()) {
-          if (question.prompt.trim().length === 0) {
-            return `Item ${questionIndex + 1} in mode \"${modeName}\" cannot be empty.`;
-          }
-        }
-      }
-
-      continue;
-    }
-
-    if (category.questions.length === 0) {
-      return `Category \"${categoryName}\" needs at least one assessment item.`;
-    }
-
-    for (const [questionIndex, question] of category.questions.entries()) {
-      if (question.prompt.trim().length === 0) {
-        return `Item ${questionIndex + 1} in \"${categoryName}\" cannot be empty.`;
-      }
-    }
-  }
-
-  return null;
-}
-
 function getTemplateDefinition(template: VenueAssessmentTemplate): AssessmentDefinitionDraft {
   return {
     scaleOptions: buildFixedScaleOptions(),
@@ -342,6 +272,34 @@ function getStatusBadgeVariant(status: VenueAssessmentRun["status"]):
   return "outline";
 }
 
+function formatAssessmentRunStatusLabel(status: VenueAssessmentRun["status"]): string {
+  if (status === "published") {
+    return "Published";
+  }
+
+  if (status === "closed") {
+    return "Completed";
+  }
+
+  return "Draft";
+}
+
+function AssessmentRunCampsBadges(input: { camps: VenueAssessmentRun["camps"] }) {
+  if (input.camps.length === 0) {
+    return <Badge variant="outline">No camp linked</Badge>;
+  }
+
+  return (
+    <span className="flex flex-wrap items-center gap-1.5">
+      {input.camps.map((camp) => (
+        <Badge key={camp.id} variant="secondary">
+          {camp.name}
+        </Badge>
+      ))}
+    </span>
+  );
+}
+
 function AssessmentScopeFields(input: {
   scope: NavigationScope;
   teamVenueId: string;
@@ -359,37 +317,6 @@ function AssessmentScopeFields(input: {
   );
 }
 
-function TemplateFormPendingFieldset(input: { children: React.ReactNode }) {
-  const { pending } = useFormStatus();
-
-  return (
-    <fieldset
-      disabled={pending}
-      className="space-y-4 border-0 p-0 m-0 min-w-0"
-      aria-busy={pending}
-    >
-      {input.children}
-    </fieldset>
-  );
-}
-
-function TemplateSubmitButton() {
-  const { pending } = useFormStatus();
-
-  return (
-    <Button type="submit" disabled={pending}>
-      {pending ? (
-        <>
-          <Loader2Icon className="size-4 animate-spin" />
-          Saving template...
-        </>
-      ) : (
-        "Save template"
-      )}
-    </Button>
-  );
-}
-
 function RunCreateFormPendingFieldset(input: { children: React.ReactNode }) {
   const { pending } = useFormStatus();
 
@@ -404,11 +331,15 @@ function RunCreateFormPendingFieldset(input: { children: React.ReactNode }) {
   );
 }
 
-function RunCreateSubmitButton(input: { disabledByValidation: boolean }) {
+function RunCreateSubmitButton(input: { disabledByValidation: boolean; className?: string }) {
   const { pending } = useFormStatus();
 
   return (
-    <Button type="submit" disabled={pending || input.disabledByValidation}>
+    <Button
+      type="submit"
+      disabled={pending || input.disabledByValidation}
+      className={input.className}
+    >
       {pending ? (
         <>
           <Loader2Icon className="size-4 animate-spin" />
@@ -438,20 +369,81 @@ function RunDeleteSubmitButton() {
   );
 }
 
-function CloseRunSubmitButton() {
+function CloseRunMenuItem() {
   const { pending } = useFormStatus();
 
   return (
-    <Button type="submit" size="sm" variant="secondary" disabled={pending}>
-      {pending ? (
-        <>
-          <Loader2Icon className="size-4 animate-spin" />
-          Closing...
-        </>
-      ) : (
-        "Close"
-      )}
-    </Button>
+    <DropdownMenuItem
+      nativeButton
+      render={<button type="submit" disabled={pending} />}
+      disabled={pending}
+    >
+      {pending ? <Loader2Icon className="size-4 animate-spin" /> : null}
+      {pending ? "Closing..." : "Close"}
+    </DropdownMenuItem>
+  );
+}
+
+function AssessmentRunActionsMenu(input: {
+  scope: NavigationScope;
+  teamVenueId: string;
+  selectedYear: number;
+  run: VenueAssessmentRun;
+  triggerClassName?: string;
+}) {
+  const [isDeleteOpen, setIsDeleteOpen] = React.useState(false);
+  const assessmentLabel = input.run.templateName ?? input.run.name;
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={input.triggerClassName}
+            />
+          }
+          aria-label={`Open actions for ${assessmentLabel}`}
+        >
+          <MoreHorizontalIcon className="size-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {input.run.status !== "closed" ? (
+            <form action={closeAssessmentRunAction}>
+              <AssessmentScopeFields
+                scope={input.scope}
+                teamVenueId={input.teamVenueId}
+                selectedYear={input.selectedYear}
+              />
+              <input type="hidden" name="runId" value={input.run.id} />
+              <CloseRunMenuItem />
+            </form>
+          ) : null}
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => {
+              setIsDeleteOpen(true);
+            }}
+          >
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <RunDeleteDialog
+        scope={input.scope}
+        teamVenueId={input.teamVenueId}
+        selectedYear={input.selectedYear}
+        runId={input.run.id}
+        runName={input.run.name}
+        open={isDeleteOpen}
+        onOpenChange={setIsDeleteOpen}
+        trigger={null}
+      />
+    </>
   );
 }
 
@@ -486,618 +478,6 @@ function RunAnswerSubmitButton() {
   );
 }
 
-function TemplateEditorDialog(input: {
-  scope: NavigationScope;
-  teamVenueId: string;
-  selectedYear: number;
-  template?: VenueAssessmentTemplate;
-  triggerLabel: string;
-}) {
-  const initialDefinition = React.useMemo(
-    () => (input.template ? getTemplateDefinition(input.template) : buildDefaultDefinition()),
-    [input.template],
-  );
-
-  const [definition, setDefinition] = React.useState<AssessmentDefinitionDraft>(initialDefinition);
-  const [formError, setFormError] = React.useState<string | null>(null);
-  const [openCategoryValues, setOpenCategoryValues] = React.useState<string[]>([
-    buildCategoryAccordionValue(0),
-  ]);
-
-  const definitionJson = React.useMemo(() => serializeDefinition(definition), [definition]);
-
-  function updateCategoryName(categoryIndex: number, name: string): void {
-    setFormError(null);
-    setDefinition((currentValue) => ({
-      ...currentValue,
-      categories: currentValue.categories.map((category, currentCategoryIndex) =>
-        currentCategoryIndex === categoryIndex
-          ? {
-              ...category,
-              name,
-            }
-          : category,
-      ),
-    }));
-  }
-
-  function setCategoryShape(categoryIndex: number, shape: "direct" | "mode"): void {
-    setFormError(null);
-    setDefinition((currentValue) => ({
-      ...currentValue,
-      categories: currentValue.categories.map((category, currentCategoryIndex) => {
-        if (currentCategoryIndex !== categoryIndex) {
-          return category;
-        }
-
-        if (shape === "mode") {
-          return {
-            ...category,
-            shape,
-            modes: category.modes.length > 0 ? category.modes : [buildDefaultMode()],
-          };
-        }
-
-        return {
-          ...category,
-          shape,
-          questions: category.questions.length > 0 ? category.questions : [buildDefaultQuestion()],
-        };
-      }),
-    }));
-  }
-
-  function addCategory(): void {
-    setFormError(null);
-    const nextCategoryIndex = definition.categories.length;
-    setDefinition((currentValue) => ({
-      ...currentValue,
-      categories: [...currentValue.categories, buildDefaultCategory()],
-    }));
-    setOpenCategoryValues([buildCategoryAccordionValue(nextCategoryIndex)]);
-  }
-
-  function removeCategory(categoryIndex: number): void {
-    setFormError(null);
-    const remainingCategoryCount = Math.max(1, definition.categories.length - 1);
-    const nextOpenCategoryIndex = Math.min(categoryIndex, remainingCategoryCount - 1);
-    setDefinition((currentValue) => ({
-      ...currentValue,
-      categories: currentValue.categories.filter(
-        (_, currentCategoryIndex) => currentCategoryIndex !== categoryIndex,
-      ),
-    }));
-    setOpenCategoryValues([buildCategoryAccordionValue(nextOpenCategoryIndex)]);
-  }
-
-  function updateDirectQuestion(
-    categoryIndex: number,
-    questionIndex: number,
-    updates: Partial<AssessmentQuestionDraft>,
-  ): void {
-    setFormError(null);
-    setDefinition((currentValue) => ({
-      ...currentValue,
-      categories: currentValue.categories.map((category, currentCategoryIndex) => {
-        if (currentCategoryIndex !== categoryIndex || category.shape !== "direct") {
-          return category;
-        }
-
-        return {
-          ...category,
-          questions: category.questions.map((question, currentQuestionIndex) => {
-            if (currentQuestionIndex !== questionIndex) {
-              return question;
-            }
-
-            return {
-              ...question,
-              ...updates,
-            };
-          }),
-        };
-      }),
-    }));
-  }
-
-  function addDirectQuestion(categoryIndex: number): void {
-    setFormError(null);
-    setDefinition((currentValue) => ({
-      ...currentValue,
-      categories: currentValue.categories.map((category, currentCategoryIndex) => {
-        if (currentCategoryIndex !== categoryIndex || category.shape !== "direct") {
-          return category;
-        }
-
-        return {
-          ...category,
-          questions: [...category.questions, buildDefaultQuestion()],
-        };
-      }),
-    }));
-  }
-
-  function removeDirectQuestion(categoryIndex: number, questionIndex: number): void {
-    setFormError(null);
-    setDefinition((currentValue) => ({
-      ...currentValue,
-      categories: currentValue.categories.map((category, currentCategoryIndex) => {
-        if (currentCategoryIndex !== categoryIndex || category.shape !== "direct") {
-          return category;
-        }
-
-        return {
-          ...category,
-          questions: category.questions.filter(
-            (_, currentQuestionIndex) => currentQuestionIndex !== questionIndex,
-          ),
-        };
-      }),
-    }));
-  }
-
-  function addMode(categoryIndex: number): void {
-    setFormError(null);
-    setDefinition((currentValue) => ({
-      ...currentValue,
-      categories: currentValue.categories.map((category, currentCategoryIndex) => {
-        if (currentCategoryIndex !== categoryIndex || category.shape !== "mode") {
-          return category;
-        }
-
-        const sourceQuestions = category.modes[0]?.questions ?? [];
-        const replicatedQuestions =
-          sourceQuestions.length > 0
-            ? sourceQuestions.map((question) => ({
-                prompt: question.prompt,
-                isRequired: question.isRequired,
-              }))
-            : [buildDefaultQuestion()];
-
-        return {
-          ...category,
-          modes: [
-            ...category.modes,
-            {
-              name: "",
-              questions: replicatedQuestions,
-            },
-          ],
-        };
-      }),
-    }));
-  }
-
-  function removeMode(categoryIndex: number, modeIndex: number): void {
-    setFormError(null);
-    setDefinition((currentValue) => ({
-      ...currentValue,
-      categories: currentValue.categories.map((category, currentCategoryIndex) => {
-        if (currentCategoryIndex !== categoryIndex || category.shape !== "mode") {
-          return category;
-        }
-
-        return {
-          ...category,
-          modes: category.modes.filter((_, currentModeIndex) => currentModeIndex !== modeIndex),
-        };
-      }),
-    }));
-  }
-
-  function updateModeName(categoryIndex: number, modeIndex: number, name: string): void {
-    setFormError(null);
-    setDefinition((currentValue) => ({
-      ...currentValue,
-      categories: currentValue.categories.map((category, currentCategoryIndex) => {
-        if (currentCategoryIndex !== categoryIndex || category.shape !== "mode") {
-          return category;
-        }
-
-        return {
-          ...category,
-          modes: category.modes.map((mode, currentModeIndex) =>
-            currentModeIndex === modeIndex
-              ? {
-                  ...mode,
-                  name,
-                }
-              : mode,
-          ),
-        };
-      }),
-    }));
-  }
-
-  function updateModeQuestion(
-    categoryIndex: number,
-    modeIndex: number,
-    questionIndex: number,
-    updates: Partial<AssessmentQuestionDraft>,
-  ): void {
-    setFormError(null);
-    setDefinition((currentValue) => ({
-      ...currentValue,
-      categories: currentValue.categories.map((category, currentCategoryIndex) => {
-        if (currentCategoryIndex !== categoryIndex || category.shape !== "mode") {
-          return category;
-        }
-
-        return {
-          ...category,
-          modes: category.modes.map((mode, currentModeIndex) => {
-            if (currentModeIndex !== modeIndex) {
-              return mode;
-            }
-
-            return {
-              ...mode,
-              questions: mode.questions.map((question, currentQuestionIndex) => {
-                if (currentQuestionIndex !== questionIndex) {
-                  return question;
-                }
-
-                return {
-                  ...question,
-                  ...updates,
-                };
-              }),
-            };
-          }),
-        };
-      }),
-    }));
-  }
-
-  function addModeQuestion(categoryIndex: number, modeIndex: number): void {
-    setFormError(null);
-    setDefinition((currentValue) => ({
-      ...currentValue,
-      categories: currentValue.categories.map((category, currentCategoryIndex) => {
-        if (currentCategoryIndex !== categoryIndex || category.shape !== "mode") {
-          return category;
-        }
-
-        return {
-          ...category,
-          modes: category.modes.map((mode, currentModeIndex) =>
-            currentModeIndex === modeIndex
-              ? {
-                  ...mode,
-                  questions: [...mode.questions, buildDefaultQuestion()],
-                }
-              : mode,
-          ),
-        };
-      }),
-    }));
-  }
-
-  function removeModeQuestion(
-    categoryIndex: number,
-    modeIndex: number,
-    questionIndex: number,
-  ): void {
-    setFormError(null);
-    setDefinition((currentValue) => ({
-      ...currentValue,
-      categories: currentValue.categories.map((category, currentCategoryIndex) => {
-        if (currentCategoryIndex !== categoryIndex || category.shape !== "mode") {
-          return category;
-        }
-
-        return {
-          ...category,
-          modes: category.modes.map((mode, currentModeIndex) => {
-            if (currentModeIndex !== modeIndex) {
-              return mode;
-            }
-
-            return {
-              ...mode,
-              questions: mode.questions.filter(
-                (_, currentQuestionIndex) => currentQuestionIndex !== questionIndex,
-              ),
-            };
-          }),
-        };
-      }),
-    }));
-  }
-
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>): void {
-    const validationError = validateDefinition(definition);
-
-    if (validationError) {
-      event.preventDefault();
-      setFormError(validationError);
-      return;
-    }
-
-    setFormError(null);
-  }
-
-  return (
-    <Dialog>
-      <DialogTrigger render={<Button type="button" variant="outline" size="sm" />}>
-        {input.triggerLabel}
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-4xl">
-        <DialogHeader>
-          <DialogTitle>
-            {input.template ? "Edit assessment template" : "Create assessment template"}
-          </DialogTitle>
-          <DialogDescription>
-            Add categories and assessment items. Scale is fixed from 1 to 5.
-          </DialogDescription>
-        </DialogHeader>
-
-        <form action={upsertAssessmentTemplateAction} className="space-y-4" onSubmit={handleSubmit}>
-          <AssessmentScopeFields
-            scope={input.scope}
-            teamVenueId={input.teamVenueId}
-            selectedYear={input.selectedYear}
-          />
-          {input.template ? <input type="hidden" name="templateId" value={input.template.id} /> : null}
-          <input type="hidden" name="description" value={input.template?.description ?? ""} />
-          <input type="hidden" name="definitionJson" value={definitionJson} />
-
-          <TemplateFormPendingFieldset>
-            <div className="max-h-[65vh] space-y-4 overflow-y-auto pr-1">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor={`template-name-${input.template?.id ?? "new"}`}>Name</Label>
-                  <Input
-                    id={`template-name-${input.template?.id ?? "new"}`}
-                    name="name"
-                    defaultValue={input.template?.name ?? ""}
-                    required
-                  />
-                </div>
-              </div>
-
-              <section className="space-y-3 rounded-lg border p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <h4 className="text-sm font-semibold">Categories</h4>
-                  <Button type="button" variant="outline" size="sm" onClick={addCategory}>
-                    Add category
-                  </Button>
-                </div>
-
-                <Accordion
-                  value={openCategoryValues}
-                  onValueChange={(values) =>
-                    setOpenCategoryValues(values.length > 0 ? [String(values[0])] : [])
-                  }
-                  className="space-y-3"
-                >
-                  {definition.categories.map((category, categoryIndex) => (
-                    <AccordionItem
-                      key={`category-${categoryIndex}`}
-                      value={buildCategoryAccordionValue(categoryIndex)}
-                      className="rounded-md border px-3"
-                    >
-                      <AccordionTrigger className="py-3 text-sm font-semibold no-underline hover:no-underline">
-                        {category.name.trim().length > 0
-                          ? category.name
-                          : `Category ${categoryIndex + 1}`}
-                      </AccordionTrigger>
-                      <AccordionContent className="space-y-3 pb-3">
-                        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                          <Input
-                            value={category.name}
-                            onChange={(event) => updateCategoryName(categoryIndex, event.target.value)}
-                            placeholder={`Category ${categoryIndex + 1}`}
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            onClick={() => removeCategory(categoryIndex)}
-                            disabled={definition.categories.length === 1}
-                            aria-label={`Remove category ${categoryIndex + 1}`}
-                          >
-                            <Trash2Icon />
-                          </Button>
-                        </div>
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-medium text-muted-foreground">Category shape</span>
-                        <div className="inline-flex rounded-md border p-1">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={category.shape === "direct" ? "secondary" : "ghost"}
-                            onClick={() => setCategoryShape(categoryIndex, "direct")}
-                          >
-                            Direct items
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={category.shape === "mode" ? "secondary" : "ghost"}
-                            onClick={() => setCategoryShape(categoryIndex, "mode")}
-                          >
-                            Mode-grouped items
-                          </Button>
-                        </div>
-                      </div>
-
-                      {category.shape === "direct" ? (
-                        <>
-                          <div className="space-y-2">
-                            {category.questions.map((question, questionIndex) => (
-                              <div
-                                key={`question-${categoryIndex}-${questionIndex}`}
-                                className="flex items-center gap-2"
-                              >
-                                <Input
-                                  value={question.prompt}
-                                  onChange={(event) =>
-                                    updateDirectQuestion(categoryIndex, questionIndex, {
-                                      prompt: event.target.value,
-                                    })
-                                  }
-                                  placeholder="Add assessment item"
-                                  className="min-w-0 flex-1"
-                                />
-
-                                <label className="inline-flex items-center justify-center">
-                                  <input
-                                    type="checkbox"
-                                    checked={question.isRequired}
-                                    onChange={(event) =>
-                                      updateDirectQuestion(categoryIndex, questionIndex, {
-                                        isRequired: event.target.checked,
-                                      })
-                                    }
-                                    className="size-4 rounded border-input"
-                                    aria-label={`Mark item ${questionIndex + 1} as required`}
-                                  />
-                                </label>
-
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  onClick={() => removeDirectQuestion(categoryIndex, questionIndex)}
-                                  disabled={category.questions.length === 1}
-                                  aria-label={`Remove item ${questionIndex + 1}`}
-                                >
-                                  <Trash2Icon />
-                                </Button>
-                              </div>
-                            ))}
-                          </div>
-
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => addDirectQuestion(categoryIndex)}
-                          >
-                            Add assessment item
-                          </Button>
-                        </>
-                      ) : (
-                        <section className="space-y-3 rounded-md border p-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <h5 className="text-sm font-semibold">Modes</h5>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => addMode(categoryIndex)}
-                            >
-                              Add mode
-                            </Button>
-                          </div>
-
-                          <div className="space-y-3">
-                            {category.modes.map((mode, modeIndex) => (
-                              <article
-                                key={`mode-${categoryIndex}-${modeIndex}`}
-                                className="space-y-3 rounded-md border p-3"
-                              >
-                                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                                  <Input
-                                    value={mode.name}
-                                    onChange={(event) =>
-                                      updateModeName(categoryIndex, modeIndex, event.target.value)
-                                    }
-                                    placeholder={`Mode ${modeIndex + 1}`}
-                                  />
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    onClick={() => removeMode(categoryIndex, modeIndex)}
-                                    disabled={category.modes.length === 1}
-                                    aria-label={`Remove mode ${modeIndex + 1}`}
-                                  >
-                                    <Trash2Icon />
-                                  </Button>
-                                </div>
-
-                                <div className="space-y-2">
-                                  {mode.questions.map((question, questionIndex) => (
-                                    <div
-                                      key={`mode-question-${categoryIndex}-${modeIndex}-${questionIndex}`}
-                                      className="flex items-center gap-2"
-                                    >
-                                      <Input
-                                        value={question.prompt}
-                                        onChange={(event) =>
-                                          updateModeQuestion(categoryIndex, modeIndex, questionIndex, {
-                                            prompt: event.target.value,
-                                          })
-                                        }
-                                        placeholder="Add assessment item"
-                                        className="min-w-0 flex-1"
-                                      />
-
-                                      <label className="inline-flex items-center justify-center">
-                                        <input
-                                          type="checkbox"
-                                          checked={question.isRequired}
-                                          onChange={(event) =>
-                                            updateModeQuestion(categoryIndex, modeIndex, questionIndex, {
-                                              isRequired: event.target.checked,
-                                            })
-                                          }
-                                          className="size-4 rounded border-input"
-                                          aria-label={`Mark mode item ${questionIndex + 1} as required`}
-                                        />
-                                      </label>
-
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon-sm"
-                                        onClick={() =>
-                                          removeModeQuestion(categoryIndex, modeIndex, questionIndex)
-                                        }
-                                        disabled={mode.questions.length === 1}
-                                        aria-label={`Remove mode item ${questionIndex + 1}`}
-                                      >
-                                        <Trash2Icon />
-                                      </Button>
-                                    </div>
-                                  ))}
-                                </div>
-
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => addModeQuestion(categoryIndex, modeIndex)}
-                                >
-                                  Add assessment item
-                                </Button>
-                              </article>
-                            ))}
-                          </div>
-                        </section>
-                      )}
-                      </AccordionContent>
-                    </AccordionItem>
-                  ))}
-                </Accordion>
-              </section>
-            </div>
-
-            {formError ? <p className="text-sm text-destructive">{formError}</p> : null}
-
-            <DialogFooter>
-              <TemplateSubmitButton />
-            </DialogFooter>
-          </TemplateFormPendingFieldset>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function RunCreateDialog(input: {
   scope: NavigationScope;
   teamVenueId: string;
@@ -1107,6 +487,8 @@ function RunCreateDialog(input: {
   triggerLabel: string;
   disabled?: boolean;
 }) {
+  const isMobile = useIsMobile();
+  const [isCreateDrawerOpen, setIsCreateDrawerOpen] = React.useState(false);
   const templatesById = React.useMemo(
     () => new Map(input.templates.map((template) => [template.id, template])),
     [input.templates],
@@ -1162,50 +544,54 @@ function RunCreateDialog(input: {
 
   const canSubmit = selectedTemplateId.length > 0 && selectedCampIds.length > 0;
 
-  function toggleCamp(campId: string) {
-    setSelectedCampIds((currentValue) => {
-      if (currentValue.includes(campId)) {
-        return currentValue.filter((value) => value !== campId);
-      }
-
-      return [...currentValue, campId];
-    });
-  }
-
-  return (
-    <Dialog>
-      <DialogTrigger render={<Button type="button" variant="outline" size="sm" disabled={input.disabled} />}>
-        {input.triggerLabel}
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Create assessment run</DialogTitle>
-          <DialogDescription>
-            Select one template and the camps that should answer this assessment.
-          </DialogDescription>
-        </DialogHeader>
-
-        <form action={upsertAssessmentRunAction} className="space-y-40">
-          <AssessmentScopeFields
-            scope={input.scope}
-            teamVenueId={input.teamVenueId}
-            selectedYear={input.selectedYear}
+  function renderCreateRunForm(surface: "drawer" | "sheet") {
+    const isDrawerSurface = surface === "drawer";
+    const selectClassName = isDrawerSurface
+      ? "h-11 w-full rounded-md border border-input bg-background px-3 text-base md:text-sm"
+      : "h-9 w-full rounded-md border border-input bg-background px-3 text-sm";
+    const checkboxRowClassName = isDrawerSurface
+      ? "flex min-h-11 items-start gap-2 py-1 text-sm"
+      : "flex items-start gap-2 text-sm";
+    const footer =
+      surface === "drawer" ? (
+        <DrawerFooter className="shrink-0 border-t">
+          <RunCreateSubmitButton
+            disabledByValidation={!canSubmit}
+            className="h-11 w-full"
           />
-          <input type="hidden" name="templateId" value={selectedTemplateId} />
-          <input type="hidden" name="campIdsJson" value={JSON.stringify(selectedCampIds)} />
-          <input type="hidden" name="name" value={runName} />
-          <input type="hidden" name="description" value="" />
-          <input type="hidden" name="definitionJson" value={definitionJson} />
+        </DrawerFooter>
+      ) : (
+        <SheetFooter className="shrink-0 border-t sm:justify-end">
+          <RunCreateSubmitButton disabledByValidation={!canSubmit} />
+        </SheetFooter>
+      );
 
+    return (
+      <form
+        action={upsertAssessmentRunAction}
+        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+      >
+        <AssessmentScopeFields
+          scope={input.scope}
+          teamVenueId={input.teamVenueId}
+          selectedYear={input.selectedYear}
+        />
+        <input type="hidden" name="templateId" value={selectedTemplateId} />
+        <input type="hidden" name="campIdsJson" value={JSON.stringify(selectedCampIds)} />
+        <input type="hidden" name="name" value={runName} />
+        <input type="hidden" name="description" value="" />
+        <input type="hidden" name="definitionJson" value={definitionJson} />
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
           <RunCreateFormPendingFieldset>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="run-template-new">Template</Label>
+                <Label htmlFor={`run-template-new-${surface}`}>Template</Label>
                 <select
-                  id="run-template-new"
+                  id={`run-template-new-${surface}`}
                   value={selectedTemplateId}
                   onChange={(event) => setSelectedTemplateId(event.target.value)}
-                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  className={selectClassName}
                 >
                   <option value="">Select template</option>
                   {input.templates.map((template) => (
@@ -1225,7 +611,7 @@ function RunCreateDialog(input: {
                 ) : (
                   <div className="grid gap-2 rounded-md border p-3">
                     {campOptions.map((camp) => (
-                      <label key={camp.id} className="flex items-start gap-2 text-sm">
+                      <label key={camp.id} className={checkboxRowClassName}>
                         <input
                           type="checkbox"
                           checked={selectedCampIds.includes(camp.id)}
@@ -1243,14 +629,72 @@ function RunCreateDialog(input: {
                 )}
               </div>
             </div>
-
-            <DialogFooter>
-              <RunCreateSubmitButton disabledByValidation={!canSubmit} />
-            </DialogFooter>
           </RunCreateFormPendingFieldset>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </div>
+
+        {footer}
+      </form>
+    );
+  }
+
+  function toggleCamp(campId: string) {
+    setSelectedCampIds((currentValue) => {
+      if (currentValue.includes(campId)) {
+        return currentValue.filter((value) => value !== campId);
+      }
+
+      return [...currentValue, campId];
+    });
+  }
+
+  if (isMobile) {
+    return (
+      <Drawer open={isCreateDrawerOpen} onOpenChange={setIsCreateDrawerOpen}>
+        <Button
+          type="button"
+          variant="default"
+          size="icon"
+          disabled={input.disabled}
+          aria-label="New assessment run"
+          aria-haspopup="dialog"
+          aria-expanded={isCreateDrawerOpen}
+          className="mobile-floating-action size-14 rounded-full shadow-lg shadow-black/20 md:hidden"
+          onClick={() => setIsCreateDrawerOpen(true)}
+        >
+          <PlusIcon className="size-6" />
+          <span className="sr-only">{input.triggerLabel}</span>
+        </Button>
+        <DrawerContent className="flex h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+          <DrawerHeader className="shrink-0 border-b text-left">
+            <DrawerTitle>Create assessment run</DrawerTitle>
+            <DrawerDescription>
+              Select one template and the camps that should answer this assessment.
+            </DrawerDescription>
+          </DrawerHeader>
+
+          {renderCreateRunForm("drawer")}
+        </DrawerContent>
+      </Drawer>
+    );
+  }
+
+  return (
+    <Sheet>
+      <SheetTrigger render={<Button type="button" variant="outline" size="sm" disabled={input.disabled} />}>
+        <PlusIcon className="size-4" />
+        {input.triggerLabel}
+      </SheetTrigger>
+      <SheetContent side="right" className="flex h-full flex-col gap-0 overflow-hidden sm:max-w-3xl">
+        <SheetHeader className="shrink-0 border-b">
+          <SheetTitle>Create assessment run</SheetTitle>
+          <SheetDescription>
+            Select one template and the camps that should answer this assessment.
+          </SheetDescription>
+        </SheetHeader>
+
+        {renderCreateRunForm("sheet")}
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -1260,12 +704,19 @@ function RunDeleteDialog(input: {
   selectedYear: number;
   runId: string;
   runName: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  trigger?: React.ReactNode | null;
 }) {
   return (
-    <Dialog>
-      <DialogTrigger render={<Button type="button" size="sm" variant="destructive" />}>
-        Delete
-      </DialogTrigger>
+    <Dialog open={input.open} onOpenChange={input.onOpenChange}>
+      {input.trigger === null ? null : (
+        input.trigger ?? (
+          <DialogTrigger render={<Button type="button" size="sm" variant="destructive" />}>
+            Delete
+          </DialogTrigger>
+        )
+      )}
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Delete assessment run?</DialogTitle>
@@ -1668,22 +1119,45 @@ export function VenueAssessmentsPanel(input: {
   runs: VenueAssessmentRun[];
   availableCamps: VenueDetailCampItem[];
 }) {
+  const router = useRouter();
+  const [navigatingRunId, setNavigatingRunId] = React.useState<string | null>(null);
+  const [, startRunNavigationTransition] = React.useTransition();
   const publishedAssignedRuns = React.useMemo(
     () => input.runs.filter((run) => run.status === "published" && run.isRespondent),
     [input.runs],
   );
   const crewRunsCardIsEmpty = publishedAssignedRuns.length === 0;
-  const [openTemplateValues, setOpenTemplateValues] = React.useState<string[]>([]);
   const canCreateRun = input.templates.length > 0;
   const runsCardIsEmpty = input.runs.length === 0;
-  const templatesCardIsEmpty = input.templates.length === 0;
+
+  function buildRunDetailHref(runId: string): string {
+    return buildAssessmentDetailHref({
+      scope: input.scope,
+      assessmentId: runId,
+    });
+  }
+
+  function navigateToRun(runId: string, detailHref: string): void {
+    setNavigatingRunId(runId);
+    startRunNavigationTransition(() => {
+      router.push(detailHref);
+    });
+  }
+
+  function prefetchRun(detailHref: string): void {
+    router.prefetch(detailHref);
+  }
 
   if (!input.canManageAssessments) {
     return (
       <div className="space-y-4">
-        <header className="space-y-1">
-          <h3 className="text-base font-semibold">Assessments</h3>
-          <p className="text-sm text-muted-foreground">Published assessments of {input.selectedYear}</p>
+        <header>
+          <h1 className="min-w-0 text-2xl font-semibold tracking-tight md:hidden">
+            Assessments {input.selectedYear}
+          </h1>
+          <h2 className="hidden text-lg font-semibold md:block">
+            Assessments {input.selectedYear}
+          </h2>
         </header>
 
         {crewRunsCardIsEmpty ? (
@@ -1723,219 +1197,227 @@ export function VenueAssessmentsPanel(input: {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      <Card className={`lg:col-span-2 ${runsCardIsEmpty ? "border-dashed bg-muted/40" : ""}`}>
-        {input.canManageAssessments && !runsCardIsEmpty ? (
-          <CardHeader className="pb-1">
-            <div className="flex justify-end">
-              <div className="flex flex-col items-end gap-1">
-                <RunCreateDialog
-                  scope={input.scope}
-                  teamVenueId={input.teamVenueId}
-                  selectedYear={input.selectedYear}
-                  availableCamps={input.availableCamps}
-                  templates={input.templates}
-                  triggerLabel="Create run"
-                  disabled={!canCreateRun}
-                />
-                {!canCreateRun ? (
-                  <p className="text-xs text-muted-foreground">
-                    Create a template first to add an assessment.
-                  </p>
-                ) : null}
-              </div>
-            </div>
-          </CardHeader>
-        ) : null}
+    <section className="space-y-4">
+      <header className="flex items-center justify-between gap-3">
+        <h1 className="min-w-0 text-2xl font-semibold tracking-tight md:hidden">
+          Assessments {input.selectedYear}
+        </h1>
+        <h2 className="hidden text-lg font-semibold md:block">
+          Assessments {input.selectedYear}
+        </h2>
+        <div className="shrink-0">
+          <RunCreateDialog
+            scope={input.scope}
+            teamVenueId={input.teamVenueId}
+            selectedYear={input.selectedYear}
+            availableCamps={input.availableCamps}
+            templates={input.templates}
+            triggerLabel="New"
+            disabled={!canCreateRun}
+          />
+        </div>
+      </header>
 
-        <CardContent className={runsCardIsEmpty ? "flex min-h-[150px] items-center justify-center" : "space-y-4"}>
-          {runsCardIsEmpty ? (
-            <div className="flex flex-col items-center justify-center gap-3 text-center">
-              <p className="text-sm text-muted-foreground">No assessment runs for this year.</p>
-              {input.canManageAssessments ? (
-                <div className="flex flex-col items-center gap-1">
-                  <RunCreateDialog
-                    scope={input.scope}
-                    teamVenueId={input.teamVenueId}
-                    selectedYear={input.selectedYear}
-                    availableCamps={input.availableCamps}
-                    templates={input.templates}
-                    triggerLabel="Create run"
-                    disabled={!canCreateRun}
-                  />
-                  {!canCreateRun ? (
-                    <p className="text-xs text-muted-foreground">
-                      Create a template first to add an assessment.
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {input.runs.map((run) => (
-                <article key={run.id} className="space-y-3 rounded-xl border bg-card p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-sm font-semibold">
-                          <RunTitleWithCamps camps={run.camps} />
-                        </h4>
-                        <Badge variant={getStatusBadgeVariant(run.status)}>{run.status}</Badge>
+      {!canCreateRun ? (
+        <p className="-mt-2 text-xs text-muted-foreground">
+          Create a template first to add an assessment.
+        </p>
+      ) : null}
+
+      <div className="md:hidden">
+        {runsCardIsEmpty ? (
+          <div className="flex min-h-[150px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed bg-muted/40 p-4 text-center">
+            <p className="text-sm text-muted-foreground">No assessment runs for this year.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {input.runs.map((run) => {
+              const detailHref = buildRunDetailHref(run.id);
+              const isNavigatingToRun = navigatingRunId === run.id;
+
+              return (
+                <GradientCard
+                  key={run.id}
+                  role="link"
+                  tabIndex={0}
+                  aria-busy={isNavigatingToRun}
+                  className={cn(
+                    "cursor-pointer space-y-3 px-3 py-3 transition-colors hover:bg-muted/30",
+                    isNavigatingToRun && "opacity-80",
+                  )}
+                  onMouseEnter={() => prefetchRun(detailHref)}
+                  onFocus={() => prefetchRun(detailHref)}
+                  onClick={() => navigateToRun(run.id, detailHref)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      navigateToRun(run.id, detailHref);
+                    }
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1 space-y-3">
+                      <h4 className="truncate text-sm font-semibold">
+                        {run.templateName ?? "Template unavailable"}
+                      </h4>
+
+                      <div className="space-y-1.5">
+                        <AssessmentRunCampsBadges camps={run.camps} />
                       </div>
-                      {run.description ? (
-                        <p className="mt-1 text-xs text-muted-foreground">{run.description}</p>
-                      ) : null}
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Template: {run.templateName ?? (run.templateId ? "Linked" : "Ad-hoc")}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Progress: {run.completedRespondentsCount}/{run.expectedRespondentsCount}
+
+                      <p className="text-sm font-medium tabular-nums">
+                        {run.completedRespondentsCount}/{run.expectedRespondentsCount}
                       </p>
                     </div>
 
-                    {input.canManageAssessments ? (
-                      <div className="flex flex-wrap gap-2">
-                        {run.status !== "closed" ? (
-                          <form action={closeAssessmentRunAction}>
-                            <AssessmentScopeFields
-                              scope={input.scope}
-                              teamVenueId={input.teamVenueId}
-                              selectedYear={input.selectedYear}
-                            />
-                            <input type="hidden" name="runId" value={run.id} />
-                            <CloseRunSubmitButton />
-                          </form>
-                        ) : null}
-
-                        <RunDeleteDialog
+                    <div
+                      className="shrink-0 self-center"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                      }}
+                      onKeyDown={(event) => {
+                        event.stopPropagation();
+                      }}
+                    >
+                      {isNavigatingToRun ? (
+                        <div className="flex h-11 w-11 items-center justify-center text-muted-foreground">
+                          <Loader2Icon className="size-4 animate-spin" />
+                        </div>
+                      ) : (
+                        <AssessmentRunActionsMenu
                           scope={input.scope}
                           teamVenueId={input.teamVenueId}
                           selectedYear={input.selectedYear}
-                          runId={run.id}
-                          runName={run.name}
+                          run={run}
+                          triggerClassName="h-11 w-11"
                         />
-                      </div>
-                    ) : null}
+                      )}
+                    </div>
                   </div>
 
                   {run.status === "published" && run.isRespondent ? (
-                    <RunAnswerForm
-                      scope={input.scope}
-                      teamVenueId={input.teamVenueId}
-                      selectedYear={input.selectedYear}
-                      run={run}
-                    />
-                  ) : run.status === "published" && !run.isRespondent ? (
-                    <p className="text-xs text-muted-foreground">
-                      You are not in the responder list for this run.
-                    </p>
+                    <div
+                      onClick={(event) => {
+                        event.stopPropagation();
+                      }}
+                      onKeyDown={(event) => {
+                        event.stopPropagation();
+                      }}
+                    >
+                      <RunAnswerForm
+                        scope={input.scope}
+                        teamVenueId={input.teamVenueId}
+                        selectedYear={input.selectedYear}
+                        run={run}
+                      />
+                    </div>
                   ) : null}
-                </article>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                </GradientCard>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
-      <Card className={templatesCardIsEmpty ? "border-dashed bg-muted/40" : ""}>
-        {input.canManageAssessments ? (
-          <CardHeader>
-            <div className="flex justify-end">
-              <TemplateEditorDialog
-                scope={input.scope}
-                teamVenueId={input.teamVenueId}
-                selectedYear={input.selectedYear}
-                triggerLabel="Create template"
-              />
-            </div>
-          </CardHeader>
-        ) : null}
+      <section className="hidden space-y-3 md:block">
+        <GradientCard className={`overflow-hidden p-0 ${runsCardIsEmpty ? "border-dashed bg-muted/40" : ""}`}>
+          <Table>
+            <TableHeader className="bg-muted/40">
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Assessment</TableHead>
+                <TableHead>Progress</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Camps</TableHead>
+                <TableHead className="w-20 text-right">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {runsCardIsEmpty ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-6 text-sm text-muted-foreground">
+                    No assessment runs for this year.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                input.runs.map((run) => {
+                  const detailHref = buildRunDetailHref(run.id);
+                  const isNavigatingToRun = navigatingRunId === run.id;
 
-        <CardContent className="space-y-3">
-          {templatesCardIsEmpty ? (
-            <p className="text-sm text-muted-foreground">No templates for this team</p>
-          ) : (
-            <Accordion
-              value={openTemplateValues}
-              onValueChange={(values) =>
-                setOpenTemplateValues(values.length > 0 ? [String(values[0])] : [])
-              }
-              className="space-y-3"
-            >
-              {input.templates.map((template) => {
-                const totalModes = template.categories.reduce(
-                  (count, category) => count + (category.modes?.length ?? 0),
-                  0,
-                );
-
-                return (
-                  <AccordionItem
-                    key={template.id}
-                    value={buildTemplateAccordionValue(template.id)}
-                    className="rounded-xl border bg-card px-4"
-                  >
-                    <AccordionTrigger className="py-4 no-underline hover:no-underline">
-                      <span className="text-left">
-                        <span className="block text-sm font-semibold">{template.name}</span>
-                        <span className="block text-xs text-muted-foreground">
-                          Scale options: {template.scaleOptions.length} • Categories:{" "}
-                          {template.categories.length}
-                          {totalModes > 0 ? ` • Modes: ${totalModes}` : ""}
-                        </span>
-                      </span>
-                    </AccordionTrigger>
-                    <AccordionContent className="space-y-3 pb-4">
-                      {input.canManageAssessments ? (
-                        <TemplateEditorDialog
-                          scope={input.scope}
-                          teamVenueId={input.teamVenueId}
-                          selectedYear={input.selectedYear}
-                          template={template}
-                          triggerLabel="Edit"
-                        />
-                      ) : null}
-
-                      <div className="space-y-2">
-                        {template.categories.map((category) => (
-                          <div key={category.id} className="rounded-md border p-2">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                              {category.name}
-                            </p>
-
-                            {categoryHasModes(category) ? (
-                              <div className="mt-2 space-y-2">
-                                {(category.modes ?? []).map((mode) => (
-                                  <div key={mode.id} className="rounded-md border p-2">
-                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                      {mode.name}
-                                    </p>
-                                    <ul className="mt-1 space-y-1 text-xs">
-                                      {mode.questions.map((question) => (
-                                        <li key={question.id}>{question.prompt}</li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <ul className="mt-1 space-y-1 text-xs">
-                                {category.questions.map((question) => (
-                                  <li key={question.id}>{question.prompt}</li>
-                                ))}
-                              </ul>
-                            )}
+                  return (
+                    <TableRow
+                      key={run.id}
+                      role="link"
+                      tabIndex={0}
+                      aria-busy={isNavigatingToRun}
+                      className={cn("cursor-pointer", isNavigatingToRun && "opacity-80")}
+                      onMouseEnter={() => prefetchRun(detailHref)}
+                      onFocus={() => prefetchRun(detailHref)}
+                      onClick={() => navigateToRun(run.id, detailHref)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          navigateToRun(run.id, detailHref);
+                        }
+                      }}
+                    >
+                      <TableCell className="font-medium">
+                        <Link
+                          href={detailHref}
+                          className="underline-offset-4 hover:underline"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            navigateToRun(run.id, detailHref);
+                          }}
+                          onMouseEnter={() => prefetchRun(detailHref)}
+                          onFocus={() => prefetchRun(detailHref)}
+                        >
+                          {run.templateName ?? "Template unavailable"}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="tabular-nums">
+                        {run.completedRespondentsCount}/{run.expectedRespondentsCount}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={getStatusBadgeVariant(run.status)}>
+                          {formatAssessmentRunStatusLabel(run.status)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <AssessmentRunCampsBadges camps={run.camps} />
+                      </TableCell>
+                      <TableCell
+                        className="text-right"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                        }}
+                        onKeyDown={(event) => {
+                          event.stopPropagation();
+                        }}
+                      >
+                        {isNavigatingToRun ? (
+                          <div className="flex justify-end text-muted-foreground">
+                            <Loader2Icon className="size-4 animate-spin" />
                           </div>
-                        ))}
-                      </div>
-                    </AccordionContent>
-                  </AccordionItem>
-                );
-              })}
-            </Accordion>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+                        ) : (
+                          <AssessmentRunActionsMenu
+                            scope={input.scope}
+                            teamVenueId={input.teamVenueId}
+                            selectedYear={input.selectedYear}
+                            run={run}
+                          />
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </GradientCard>
+      </section>
+    </section>
   );
 }

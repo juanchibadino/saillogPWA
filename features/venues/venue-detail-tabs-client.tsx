@@ -1165,6 +1165,7 @@ export function VenueDetailTabsClient(input: {
     if (
       tab === "sessions" ||
       tab === "camps" ||
+      tab === "assessments" ||
       tab === "wind-patterns" ||
       tab === "reports"
     ) {
@@ -1191,7 +1192,7 @@ export function VenueDetailTabsClient(input: {
           }}
           className="min-w-0"
         >
-          <div className="max-w-full overflow-x-auto">
+          <div className="no-scrollbar max-w-full overflow-x-auto overflow-y-hidden">
             <TabsList className="h-10 w-max">
               {input.availableYears.map((year) => (
                 <TabsTrigger key={year} value={String(year)} className="min-w-fit">

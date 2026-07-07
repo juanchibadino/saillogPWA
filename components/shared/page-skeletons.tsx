@@ -1367,7 +1367,9 @@ function formatVenueDetailSkeletonPanelTitle(input: {
     return "Wind Patterns"
   }
 
-  return "Assessments"
+  return typeof input.selectedYear === "number"
+    ? `Assessments ${input.selectedYear}`
+    : "Assessments"
 }
 
 export function VenueDetailSummaryCardsSkeleton({
@@ -1409,6 +1411,32 @@ export function VenueDetailSummaryCardsSkeleton({
   )
 }
 
+function VenueDetailSkeletonCreateButton() {
+  return (
+    <button
+      type="button"
+      disabled
+      className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium text-muted-foreground opacity-70"
+    >
+      <PlusIcon className="size-4" />
+      New
+    </button>
+  )
+}
+
+function VenueDetailSkeletonCreateFab({ ariaLabel }: { ariaLabel: string }) {
+  return (
+    <button
+      type="button"
+      disabled
+      className="mobile-floating-action inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground opacity-70 shadow-lg shadow-black/20 md:hidden"
+      aria-label={ariaLabel}
+    >
+      <PlusIcon className="size-6" />
+    </button>
+  )
+}
+
 function VenueDetailListPanelSkeleton({
   selectedTab,
   selectedYear,
@@ -1434,31 +1462,20 @@ function VenueDetailListPanelSkeleton({
 
         {showToolbarSkeleton ? (
           <>
-            <Skeleton className="h-11 w-11 shrink-0 md:hidden" />
+            <VenueDetailSkeletonCreateFab ariaLabel="Loading new session action" />
             <div className="hidden items-center justify-end gap-2 md:flex">
               <Skeleton className="h-8 w-28" />
               <Skeleton className="h-8 w-24" />
+              <VenueDetailSkeletonCreateButton />
             </div>
           </>
         ) : showCreateSkeleton ? (
           <>
-            <button
-              type="button"
-              disabled
-              className="mobile-floating-action inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground opacity-70 shadow-lg shadow-black/20 md:hidden"
-              aria-label={`Loading new ${createActionLabel} action`}
-            >
-              <PlusIcon className="size-6" />
-            </button>
+            <VenueDetailSkeletonCreateFab
+              ariaLabel={`Loading new ${createActionLabel} action`}
+            />
             <div className="hidden items-center justify-end md:flex">
-              <button
-                type="button"
-                disabled
-                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium text-muted-foreground opacity-70"
-              >
-                <PlusIcon className="size-4" />
-                New
-              </button>
+              <VenueDetailSkeletonCreateButton />
             </div>
           </>
         ) : null}
@@ -1555,18 +1572,13 @@ function VenueDetailWindPatternsPanelSkeleton() {
           <h2 className="hidden text-lg font-semibold md:block">Wind Patterns</h2>
           <Skeleton className="hidden h-3 w-56 max-w-full md:block" />
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Skeleton className="h-11 w-11 md:h-8 md:w-24" />
-          <Skeleton className="hidden h-8 w-16 md:block" />
+        <div className="hidden shrink-0 items-center gap-2 md:flex">
+          <Skeleton className="h-8 w-24" />
+          <VenueDetailSkeletonCreateButton />
         </div>
-        <button
-          type="button"
-          disabled
-          className="mobile-floating-action inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground opacity-70 shadow-lg shadow-black/20 md:hidden"
-          aria-label="Loading new wind pattern action"
-        >
-          <PlusIcon className="size-6" />
-        </button>
+        <VenueDetailSkeletonCreateFab
+          ariaLabel="Loading new wind pattern action"
+        />
       </header>
 
       <div className="space-y-2 md:hidden">
@@ -1619,44 +1631,80 @@ function VenueDetailWindPatternsPanelSkeleton() {
   )
 }
 
-function VenueDetailTextPanelSkeleton({
-  selectedTab,
+function VenueDetailAssessmentsPanelSkeleton({
   selectedYear,
 }: {
-  selectedTab: "assessments" | "wind-patterns"
   selectedYear?: number
 }) {
   const title = formatVenueDetailSkeletonPanelTitle({
-    selectedTab,
+    selectedTab: "assessments",
     selectedYear,
   })
 
   return (
-    <section className="rounded-xl border bg-card p-4 sm:p-6" aria-busy="true">
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="space-y-2">
-            <h3 className="text-base font-semibold">{title}</h3>
-            <Skeleton className="h-3 w-56 max-w-full" />
+    <section className="space-y-4" aria-busy="true">
+      <header className="flex items-center justify-between gap-3">
+        <h1 className="min-w-0 text-2xl font-semibold tracking-tight md:hidden">
+          {title}
+        </h1>
+        <h2 className="hidden text-lg font-semibold md:block">{title}</h2>
+        <div className="shrink-0">
+          <VenueDetailSkeletonCreateFab ariaLabel="Loading new assessment run action" />
+          <div className="hidden md:block">
+            <VenueDetailSkeletonCreateButton />
           </div>
-          <Skeleton className="h-11 w-20 md:h-8" />
         </div>
+      </header>
 
-        <div className="grid gap-3 md:grid-cols-2">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div
-              key={`venue-detail-text-panel-${index}`}
-              className="rounded-lg border bg-background p-4"
-            >
-              <div className="space-y-3">
-                <Skeleton className="h-4 w-28" />
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-4/5" />
+      <div className="space-y-4 md:hidden">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <GradientCard
+            key={`venue-detail-mobile-assessment-run-${index}`}
+            className="space-y-3 px-3 py-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-3">
+                <Skeleton className="h-4 w-40 max-w-full" />
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap gap-1.5">
+                    <Skeleton className="h-5 w-20 rounded-full" />
+                    <Skeleton className="h-5 w-24 rounded-full" />
+                  </div>
+                </div>
+                <Skeleton className="h-4 w-10" />
               </div>
+              <Skeleton className="h-11 w-11 shrink-0 self-center" />
+            </div>
+          </GradientCard>
+        ))}
+      </div>
+
+      <GradientCard className="hidden overflow-hidden p-0 md:block">
+        <div className="grid h-10 grid-cols-[1.3fr_0.7fr_0.8fr_1.3fr_4rem] items-center gap-4 border-b bg-muted/40 px-4 text-xs font-medium text-muted-foreground">
+          <span>Assessment</span>
+          <span>Progress</span>
+          <span>Status</span>
+          <span>Camps</span>
+          <span aria-hidden="true" />
+        </div>
+        <div className="divide-y divide-border">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div
+              key={`venue-detail-desktop-assessment-run-${index}`}
+              className="grid min-h-12 grid-cols-[1.3fr_0.7fr_0.8fr_1.3fr_4rem] items-center gap-4 px-4 py-2"
+            >
+              <Skeleton className="h-4 w-full max-w-44" />
+              <Skeleton className="h-4 w-full max-w-16" />
+              <Skeleton className="h-5 w-full max-w-24 rounded-full" />
+              <div className="flex flex-wrap gap-2">
+                <Skeleton className="h-5 w-20 rounded-full" />
+                <Skeleton className="h-5 w-24 rounded-full" />
+              </div>
+              <Skeleton className="ml-auto h-8 w-8" />
             </div>
           ))}
         </div>
-      </div>
+      </GradientCard>
     </section>
   )
 }
@@ -1696,12 +1744,7 @@ export function VenueDetailPanelSkeleton({
     return <VenueDetailWindPatternsPanelSkeleton />
   }
 
-  return (
-    <VenueDetailTextPanelSkeleton
-      selectedTab="assessments"
-      selectedYear={selectedYear}
-    />
-  )
+  return <VenueDetailAssessmentsPanelSkeleton selectedYear={selectedYear} />
 }
 
 export function VenueDetailTabsSkeleton({

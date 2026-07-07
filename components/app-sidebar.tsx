@@ -7,6 +7,7 @@ import {
   BarChart3Icon,
   Building2Icon,
   CheckIcon,
+  ClipboardCheckIcon,
   CircleIcon,
   CreditCardIcon,
   ChevronsUpDownIcon,
@@ -158,6 +159,12 @@ const teamNavItems = [
     title: "Sessions",
     url: "/team-sessions",
     icon: SailboatIcon,
+    comingSoon: false,
+  },
+  {
+    title: "Assessments",
+    url: "/team-assessments",
+    icon: ClipboardCheckIcon,
     comingSoon: false,
   },
   {
