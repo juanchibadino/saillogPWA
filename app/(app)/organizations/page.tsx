@@ -1,7 +1,8 @@
 import { TableFiltersToolbar } from "@/components/shared/table-filters-toolbar"
+import { requireOrganizationRouteAccess } from "@/lib/auth/organization-route-guard"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { isSuperAdmin } from "@/lib/auth/capabilities"
-import { getSingleSearchParamValue, resolveNavigationScope } from "@/lib/navigation/scope"
+import { getSingleSearchParamValue } from "@/lib/navigation/scope"
 import { CreateOrganizationDialog } from "@/features/organizations/organization-form-dialogs"
 import { OrganizationsFeedback } from "@/features/organizations/organizations-feedback"
 import { OrganizationsTable } from "@/features/organizations/organizations-table"
@@ -41,6 +42,11 @@ export default async function OrganizationsPage({
   searchParams: OrganizationsSearchParams
 }) {
   const context = await requireAuthenticatedAccessContext()
+  const resolvedSearchParams = await searchParams
+  const navigation = await requireOrganizationRouteAccess({
+    context,
+    searchParams: resolvedSearchParams,
+  })
   const canManageOrganizations = isSuperAdmin(context)
 
   if (!canManageOrganizations) {
@@ -56,13 +62,8 @@ export default async function OrganizationsPage({
     )
   }
 
-  const resolvedSearchParams = await searchParams
   const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
-  const navigation = await resolveNavigationScope({
-    context,
-    searchParams: resolvedSearchParams,
-  })
   const statusMessage = getStatusMessage(status)
   const errorMessage = getErrorMessage(error)
   const { organizations } = await getOrganizationsPageData()

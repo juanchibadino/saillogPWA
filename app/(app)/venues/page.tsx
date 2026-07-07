@@ -4,9 +4,9 @@ import { VenuesFeedback } from "@/features/venues/venues-feedback";
 import { VenuesTable } from "@/features/venues/venues-table";
 import { TableFiltersToolbar } from "@/components/shared/table-filters-toolbar";
 import { canManageOrganizationOperations } from "@/lib/auth/capabilities";
+import { requireOrganizationRouteAccess } from "@/lib/auth/organization-route-guard";
 import {
   getSingleSearchParamValue,
-  resolveNavigationScope,
 } from "@/lib/navigation/scope";
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access";
 
@@ -67,7 +67,7 @@ export default async function VenuesPage({
   const statusMessage = getStatusMessage(status);
   const errorMessage = getErrorMessage(error);
 
-  const navigation = await resolveNavigationScope({
+  const navigation = await requireOrganizationRouteAccess({
     context,
     searchParams: resolvedSearchParams,
   });

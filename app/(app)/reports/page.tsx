@@ -2,10 +2,10 @@ import { ReportsTable } from "@/features/reports/reports-table"
 import { getCurrentUtcYear, getOrganizationReportsPageData } from "@/features/reports/data"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageOrganizationOperations } from "@/lib/auth/capabilities"
+import { requireOrganizationRouteAccess } from "@/lib/auth/organization-route-guard"
 import { NAVIGATION_SCOPE_ORG_QUERY_KEY } from "@/lib/navigation/constants"
 import {
   getSingleSearchParamValue,
-  resolveNavigationScope,
 } from "@/lib/navigation/scope"
 
 type ReportsSearchParams = Promise<Record<string, string | string[] | undefined>>
@@ -38,7 +38,7 @@ export default async function ReportsPage({
   const requestedTeamId = getSingleSearchParamValue(resolvedSearchParams.team)
   const requestedVenueId = getSingleSearchParamValue(resolvedSearchParams.venue)
 
-  const navigation = await resolveNavigationScope({
+  const navigation = await requireOrganizationRouteAccess({
     context,
     searchParams: resolvedSearchParams,
   })

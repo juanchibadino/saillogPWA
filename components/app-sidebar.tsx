@@ -410,7 +410,7 @@ export function AppSidebar({
   }, [isScopeSwitchPending])
 
   React.useEffect(() => {
-    if (!activeOrgId) {
+    if (!canAccessOrganizationModules || !activeOrgId) {
       return
     }
 
@@ -460,9 +460,12 @@ export function AppSidebar({
     return () => {
       controller.abort()
     }
-  }, [activeOrgId, planTierByOrganizationId])
+  }, [activeOrgId, canAccessOrganizationModules, planTierByOrganizationId])
 
-  const activePlanTier = activeOrgId ? planTierByOrganizationId[activeOrgId] : null
+  const activePlanTier =
+    canAccessOrganizationModules && activeOrgId
+      ? planTierByOrganizationId[activeOrgId]
+      : null
   const planBadgeLabel =
     activePlanTier === "pro"
       ? "Pro Plan"
@@ -965,12 +968,14 @@ export function AppSidebar({
                         <span className="truncate text-xs text-muted-foreground/80">
                           {user.role}
                         </span>
-                        <Badge
-                          variant="secondary"
-                          className="mt-1 inline-flex w-fit text-[10px] font-medium"
-                        >
-                          {planBadgeLabel}
-                        </Badge>
+                        {canAccessOrganizationModules ? (
+                          <Badge
+                            variant="secondary"
+                            className="mt-1 inline-flex w-fit text-[10px] font-medium"
+                          >
+                            {planBadgeLabel}
+                          </Badge>
+                        ) : null}
                       </div>
                     </div>
                   </DropdownMenuLabel>

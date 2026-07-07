@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 
+import { getCurrentAccessContext } from "@/lib/auth/access"
+import { canManageOrganizationOperations } from "@/lib/auth/capabilities"
 import { resolveOrganizationSubscription } from "@/lib/billing/entitlements"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 
@@ -17,14 +19,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ planTier: null }, { status: 400 })
   }
 
-  const supabase = await createServerSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const context = await getCurrentAccessContext()
 
-  if (!user) {
+  if (!context.user) {
     return NextResponse.json({ planTier: null }, { status: 401 })
   }
+
+  if (!canManageOrganizationOperations(context, organizationId)) {
+    return NextResponse.json({ planTier: null }, { status: 403 })
+  }
+
+  const supabase = await createServerSupabaseClient()
 
   try {
     const subscription = await resolveOrganizationSubscription(organizationId, supabase)

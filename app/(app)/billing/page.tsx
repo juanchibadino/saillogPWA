@@ -11,8 +11,9 @@ import {
 import { PaypalSubscriptionCard } from "@/features/billing/paypal-subscription-card"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageOrganizationOperations } from "@/lib/auth/capabilities"
+import { requireOrganizationRouteAccess } from "@/lib/auth/organization-route-guard"
 import { resolveOrganizationBillingSnapshot } from "@/lib/billing/entitlements"
-import { getSingleSearchParamValue, resolveNavigationScope } from "@/lib/navigation/scope"
+import { getSingleSearchParamValue } from "@/lib/navigation/scope"
 
 const CONTACT_SALES_EMAIL = "billing@sailog.app"
 
@@ -115,7 +116,7 @@ export default async function BillingPage({
   const statusMessage = getStatusMessage(status)
   const errorMessage = getErrorMessage(error)
 
-  const navigation = await resolveNavigationScope({
+  const navigation = await requireOrganizationRouteAccess({
     context,
     searchParams: resolvedSearchParams,
   })

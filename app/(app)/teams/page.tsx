@@ -5,7 +5,8 @@ import { TeamsTable } from "@/features/teams/teams-table"
 import { getTeamsPageData } from "@/features/teams/data"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageOrganizationOperations } from "@/lib/auth/capabilities"
-import { getSingleSearchParamValue, resolveNavigationScope } from "@/lib/navigation/scope"
+import { requireOrganizationRouteAccess } from "@/lib/auth/organization-route-guard"
+import { getSingleSearchParamValue } from "@/lib/navigation/scope"
 
 type TeamsSearchParams = Promise<
   Record<string, string | string[] | undefined>
@@ -52,7 +53,7 @@ export default async function TeamsPage({
   const resolvedSearchParams = await searchParams
   const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
-  const navigation = await resolveNavigationScope({
+  const navigation = await requireOrganizationRouteAccess({
     context,
     searchParams: resolvedSearchParams,
   })

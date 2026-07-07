@@ -2,7 +2,7 @@ import {
   hasAppAccess,
   requireAuthenticatedAccessContext,
 } from "@/lib/auth/access";
-import { resolveNavigationScope } from "@/lib/navigation/scope";
+import { requireOrganizationRouteAccess } from "@/lib/auth/organization-route-guard";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
   Card,
@@ -28,7 +28,7 @@ export default async function DashboardPage({
   }
 
   const resolvedSearchParams = await searchParams;
-  const navigation = await resolveNavigationScope({
+  const navigation = await requireOrganizationRouteAccess({
     context,
     searchParams: resolvedSearchParams,
   });

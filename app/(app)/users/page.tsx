@@ -4,9 +4,9 @@ import { UsersTable } from "@/features/users/users-table"
 import { getUsersPageData, type UsersPageData } from "@/features/users/data"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageOrganizationOperations } from "@/lib/auth/capabilities"
+import { requireOrganizationRouteAccess } from "@/lib/auth/organization-route-guard"
 import {
   getSingleSearchParamValue,
-  resolveNavigationScope,
 } from "@/lib/navigation/scope"
 
 type UsersSearchParams = Promise<
@@ -60,7 +60,7 @@ export default async function UsersPage({
   const statusMessage = getStatusMessage(status)
   const errorMessage = getErrorMessage(error)
 
-  const navigation = await resolveNavigationScope({
+  const navigation = await requireOrganizationRouteAccess({
     context,
     searchParams: resolvedSearchParams,
   })
