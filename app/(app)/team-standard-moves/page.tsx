@@ -1,24 +1,32 @@
-import { CreateStandardMoveDialog } from "@/features/standard-moves/standard-moves-form-dialogs"
-import { StandardMovesFeedback } from "@/features/standard-moves/standard-moves-feedback"
-import { TeamStandardMovesTable } from "@/features/standard-moves/standard-moves-table"
-import { TeamStandardMovesToolbar } from "@/features/standard-moves/team-standard-moves-toolbar"
+import { Suspense } from "react"
+
 import {
-  getTeamStandardMovesPageData,
-  type TeamStandardMoveListItem,
+  TeamStandardMovesPageSkeleton,
+  TeamStandardMovesResultsSkeleton,
+} from "@/components/shared/page-skeletons"
+import { resolveTeamStandardMovesListRequest } from "@/features/standard-moves/list-route-state.mjs"
+import { StandardMovesFeedback } from "@/features/standard-moves/standard-moves-feedback"
+import { StandardMovesResultsRetry } from "@/features/standard-moves/standard-moves-results-retry"
+import { TeamStandardMovesTable } from "@/features/standard-moves/standard-moves-table"
+import { TeamStandardMovesRouteShell } from "@/features/standard-moves/team-standard-moves-route-shell"
+import {
+  getTeamStandardMovesChromeData,
+  getTeamStandardMovesResultsData,
+  type TeamStandardMoveStatusFilter,
+  type TeamStandardMovesChromeData,
 } from "@/features/standard-moves/data"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageTeamSessions } from "@/lib/auth/capabilities"
-import {
-  NAVIGATION_SCOPE_ORG_QUERY_KEY,
-  NAVIGATION_SCOPE_TEAM_QUERY_KEY,
-} from "@/lib/navigation/constants"
 import {
   getSingleSearchParamValue,
   resolveNavigationScope,
 } from "@/lib/navigation/scope"
 
 type TeamStandardMovesSearchParams = Promise<Record<string, string | string[] | undefined>>
-type TeamStandardMoveStatusFilter = "active" | "archived" | "all"
+type ResolvedTeamStandardMovesScope = NonNullable<
+  Awaited<ReturnType<typeof resolveNavigationScope>>["scope"]
+>
+type TeamStandardMovesChromeDataPromise = Promise<TeamStandardMovesChromeData>
 
 function getStatusMessage(status: string | undefined): string | null {
   if (status === "created") {
@@ -60,52 +68,99 @@ function getErrorMessage(error: string | undefined): string | null {
   return null
 }
 
-function resolveStatusFilter(value: string | undefined): TeamStandardMoveStatusFilter {
-  if (value === "archived") {
-    return "archived"
+function getEmptyTeamStandardMovesChromeData(input: {
+  requestedStatusFilter: TeamStandardMoveStatusFilter
+}): TeamStandardMovesChromeData {
+  return {
+    selectedStatusFilter: input.requestedStatusFilter,
+    statusCounts: {
+      active: 0,
+      archived: 0,
+    },
   }
-
-  if (value === "all") {
-    return "all"
-  }
-
-  return "active"
 }
 
-function buildTeamStandardMovesFiltersHref(input: {
-  scope: {
-    activeOrgId: string
-    activeTeamId: string | null
-  }
-  statusFilter?: TeamStandardMoveStatusFilter
-}): string {
-  const params = new URLSearchParams()
-  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.scope.activeOrgId)
+async function TeamStandardMovesShellSlot(input: {
+  activeTeamId: string | null
+  canManageStandardMoves: boolean
+  chromeDataPromise: TeamStandardMovesChromeDataPromise
+  noTeamSelected: boolean
+  requestedLoadMoreMode: boolean
+  requestedPage: number
+  scope: ResolvedTeamStandardMovesScope
+}) {
+  const chromeData = await input.chromeDataPromise
 
-  if (input.scope.activeTeamId) {
-    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scope.activeTeamId)
-  }
-
-  if (input.statusFilter && input.statusFilter !== "active") {
-    params.set("statusFilter", input.statusFilter)
-  }
-
-  return `/team-standard-moves?${params.toString()}`
+  return (
+    <TeamStandardMovesRouteShell
+      canManageStandardMoves={input.canManageStandardMoves}
+      chromeData={chromeData}
+      currentPage={input.requestedPage}
+      loadMoreMode={input.requestedLoadMoreMode}
+      noTeamSelected={input.noTeamSelected}
+      scope={input.scope}
+    >
+      <Suspense fallback={<TeamStandardMovesResultsSkeleton />}>
+        <TeamStandardMovesResultsContent
+          activeTeamId={input.activeTeamId}
+          canManageStandardMoves={input.canManageStandardMoves}
+          chromeData={chromeData}
+          noTeamSelected={input.noTeamSelected}
+          requestedLoadMoreMode={input.requestedLoadMoreMode}
+          requestedPage={input.requestedPage}
+          scope={input.scope}
+        />
+      </Suspense>
+    </TeamStandardMovesRouteShell>
+  )
 }
 
-function filterMovesByStatus(input: {
-  moves: TeamStandardMoveListItem[]
-  statusFilter: TeamStandardMoveStatusFilter
-}): TeamStandardMoveListItem[] {
-  if (input.statusFilter === "all") {
-    return input.moves
+async function TeamStandardMovesResultsContent(input: {
+  activeTeamId: string | null
+  canManageStandardMoves: boolean
+  chromeData: TeamStandardMovesChromeData
+  noTeamSelected: boolean
+  requestedLoadMoreMode: boolean
+  requestedPage: number
+  scope: ResolvedTeamStandardMovesScope
+}) {
+  let resultsData: Awaited<ReturnType<typeof getTeamStandardMovesResultsData>>
+
+  try {
+    resultsData = input.activeTeamId
+      ? await getTeamStandardMovesResultsData({
+          activeTeamId: input.activeTeamId,
+          chromeData: input.chromeData,
+          page: input.requestedPage,
+          accumulatePages: input.requestedLoadMoreMode,
+        })
+      : {
+          moves: [],
+          totalCount: 0,
+          currentPage: input.requestedPage,
+          pageCount: 1,
+          hasPreviousPage: input.requestedPage > 1,
+          hasNextPage: false,
+        }
+  } catch {
+    return <StandardMovesResultsRetry />
   }
 
-  if (input.statusFilter === "archived") {
-    return input.moves.filter((move) => !move.isActive)
-  }
-
-  return input.moves.filter((move) => move.isActive)
+  return (
+    <TeamStandardMovesTable
+      moves={resultsData.moves}
+      canManageStandardMoves={input.canManageStandardMoves}
+      noTeamSelected={input.noTeamSelected}
+      selectedStatusFilter={input.chromeData.selectedStatusFilter}
+      scope={input.scope}
+      currentPage={resultsData.currentPage}
+      pageCount={resultsData.pageCount}
+      hasPreviousPage={resultsData.hasPreviousPage}
+      hasNextPage={resultsData.hasNextPage}
+      loadMoreMode={input.requestedLoadMoreMode}
+      hideChrome
+    />
+  )
 }
 
 export default async function TeamStandardMovesPage({
@@ -118,9 +173,19 @@ export default async function TeamStandardMovesPage({
 
   const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
-  const requestedStatusFilter = resolveStatusFilter(
-    getSingleSearchParamValue(resolvedSearchParams.statusFilter),
-  )
+  const {
+    requestedLoadMoreMode,
+    requestedPage,
+    requestedStatusFilter,
+  } = resolveTeamStandardMovesListRequest({
+    statusFilterParam: getSingleSearchParamValue(resolvedSearchParams.statusFilter),
+    pageParam: getSingleSearchParamValue(resolvedSearchParams.page),
+    loadMoreParam: getSingleSearchParamValue(resolvedSearchParams.loadMore),
+  }) as {
+    requestedLoadMoreMode: boolean
+    requestedPage: number
+    requestedStatusFilter: TeamStandardMoveStatusFilter
+  }
   const statusMessage = getStatusMessage(status)
   const errorMessage = getErrorMessage(error)
 
@@ -152,24 +217,18 @@ export default async function TeamStandardMovesPage({
       teamId: activeTeamId,
     })
 
-  let moves: TeamStandardMoveListItem[] = []
-  let activeCount = 0
-  let archivedCount = 0
-
-  if (activeTeamId) {
-    const pageData = await getTeamStandardMovesPageData({
-      activeTeamId,
-    })
-
-    moves = filterMovesByStatus({
-      moves: pageData.moves,
-      statusFilter: requestedStatusFilter,
-    })
-    activeCount = pageData.activeCount
-    archivedCount = pageData.archivedCount
-  }
-
-  const createDisabled = noTeamSelected || !canManageStandardMoves
+  const chromeDataPromise: TeamStandardMovesChromeDataPromise = activeTeamId
+    ? getTeamStandardMovesChromeData({
+        activeTeamId,
+        statusFilter: requestedStatusFilter,
+        page: requestedPage,
+        accumulatePages: requestedLoadMoreMode,
+      })
+    : Promise.resolve(
+        getEmptyTeamStandardMovesChromeData({
+          requestedStatusFilter,
+        }),
+      )
 
   return (
     <div className="space-y-6">
@@ -194,55 +253,17 @@ export default async function TeamStandardMovesPage({
         </section>
       ) : null}
 
-      <TeamStandardMovesTable
-        moves={moves}
-        canManageStandardMoves={canManageStandardMoves}
-        noTeamSelected={noTeamSelected}
-        selectedStatusFilter={requestedStatusFilter}
-        scope={scope}
-        toolbar={
-          <TeamStandardMovesToolbar
-            selectedValue={requestedStatusFilter}
-            disabled={noTeamSelected}
-            options={[
-              {
-                value: "active",
-                label: "Active",
-                href: buildTeamStandardMovesFiltersHref({
-                  scope,
-                  statusFilter: "active",
-                }),
-                count: activeCount,
-              },
-              {
-                value: "archived",
-                label: "Archived",
-                href: buildTeamStandardMovesFiltersHref({
-                  scope,
-                  statusFilter: "archived",
-                }),
-                count: archivedCount,
-              },
-              {
-                value: "all",
-                label: "All",
-                href: buildTeamStandardMovesFiltersHref({
-                  scope,
-                  statusFilter: "all",
-                }),
-                count: activeCount + archivedCount,
-              },
-            ]}
-            action={
-              <CreateStandardMoveDialog
-                scope={scope}
-                statusFilter={requestedStatusFilter}
-                disabled={createDisabled}
-              />
-            }
-          />
-        }
-      />
+      <Suspense fallback={<TeamStandardMovesPageSkeleton />}>
+        <TeamStandardMovesShellSlot
+          activeTeamId={activeTeamId}
+          canManageStandardMoves={canManageStandardMoves}
+          chromeDataPromise={chromeDataPromise}
+          noTeamSelected={noTeamSelected}
+          requestedLoadMoreMode={requestedLoadMoreMode}
+          requestedPage={requestedPage}
+          scope={scope}
+        />
+      </Suspense>
     </div>
   )
 }

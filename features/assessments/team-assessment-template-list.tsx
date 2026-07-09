@@ -60,11 +60,13 @@ function shouldHandleTemplateNavigation(
 }
 
 export function TeamAssessmentTemplateList({
+  canManageAssessments,
   onTemplateOpen,
   scope,
   selectedTemplateId,
   templates,
 }: {
+  canManageAssessments: boolean
   onTemplateOpen?: (href: string) => void
   scope: NavigationScope
   selectedTemplateId?: string
@@ -87,6 +89,28 @@ export function TeamAssessmentTemplateList({
                 templateId: template.id,
               })
 
+              const templateCard = (
+                <GradientCard
+                  className={cn(
+                    "px-3 py-3",
+                    canManageAssessments &&
+                      "transition-colors hover:bg-muted/30",
+                    selectedTemplateId === template.id && "border-primary/60",
+                  )}
+                >
+                  <p className="truncate text-sm font-semibold">{template.name}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {counts.categoryCount} categories
+                    {counts.modeCount > 0 ? ` - ${counts.modeCount} modes` : ""} -{" "}
+                    {counts.questionCount} items
+                  </p>
+                </GradientCard>
+              )
+
+              if (!canManageAssessments) {
+                return <div key={template.id}>{templateCard}</div>
+              }
+
               return (
                 <Link
                   key={template.id}
@@ -100,19 +124,7 @@ export function TeamAssessmentTemplateList({
                     onTemplateOpen(href)
                   }}
                 >
-                  <GradientCard
-                    className={cn(
-                      "px-3 py-3 transition-colors hover:bg-muted/30",
-                      selectedTemplateId === template.id && "border-primary/60",
-                    )}
-                  >
-                    <p className="truncate text-sm font-semibold">{template.name}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {counts.categoryCount} categories
-                      {counts.modeCount > 0 ? ` - ${counts.modeCount} modes` : ""} -{" "}
-                      {counts.questionCount} items
-                    </p>
-                  </GradientCard>
+                  {templateCard}
                 </Link>
               )
             })}
@@ -149,28 +161,39 @@ export function TeamAssessmentTemplateList({
                   <TableRow
                     key={template.id}
                     className={cn(
-                      "cursor-pointer",
+                      canManageAssessments && "cursor-pointer",
                       selectedTemplateId === template.id && "bg-muted/50",
                     )}
-                    onClick={onTemplateOpen ? () => onTemplateOpen(href) : undefined}
+                    onClick={
+                      canManageAssessments && onTemplateOpen
+                        ? () => onTemplateOpen(href)
+                        : undefined
+                    }
                   >
                     <TableCell className="font-medium">
-                      <Link
-                        href={href}
-                        className="underline-offset-4 hover:underline"
-                        onClick={(event) => {
-                          event.stopPropagation()
+                      {canManageAssessments ? (
+                        <Link
+                          href={href}
+                          className="underline-offset-4 hover:underline"
+                          onClick={(event) => {
+                            event.stopPropagation()
 
-                          if (!onTemplateOpen || !shouldHandleTemplateNavigation(event)) {
-                            return
-                          }
+                            if (
+                              !onTemplateOpen ||
+                              !shouldHandleTemplateNavigation(event)
+                            ) {
+                              return
+                            }
 
-                          event.preventDefault()
-                          onTemplateOpen(href)
-                        }}
-                      >
-                        {template.name}
-                      </Link>
+                            event.preventDefault()
+                            onTemplateOpen(href)
+                          }}
+                        >
+                          {template.name}
+                        </Link>
+                      ) : (
+                        template.name
+                      )}
                     </TableCell>
                     <TableCell>
                       {counts.categoryCount} categories

@@ -65,11 +65,23 @@ function getErrorMessage(error: string | undefined): string | null {
   }
 
   if (error === "forbidden") {
-    return "You do not have access to this scope or the required organization admin permissions."
+    return "You do not have access to this scope or the required team venue permissions."
   }
 
   if (error === "already_linked") {
     return "This venue is already linked to the active team."
+  }
+
+  if (error === "venue_already_exists") {
+    return "A venue with this name already exists in this organization. Link the existing venue instead."
+  }
+
+  if (error === "plan_limit_reached") {
+    return "Plan limit reached for venues in this organization. Upgrade or change plan in Billing to continue."
+  }
+
+  if (error === "payment_required") {
+    return "Your paid plan is inactive. Recover payment in Billing to continue creating venues."
   }
 
   if (error === "create_failed") {
@@ -282,17 +294,6 @@ export default async function TeamVenuesPage({
           </h2>
           <p className="mt-2 text-sm text-amber-800">
             Team modules are disabled until a team is selected in the scope picker.
-          </p>
-        </section>
-      ) : null}
-
-      {!noTeamSelected && !canManageVenueRows ? (
-        <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
-          <h2 className="text-lg font-semibold text-amber-900">
-            Team venue management unavailable
-          </h2>
-          <p className="mt-2 text-sm text-amber-800">
-            Team venue changes require active membership in the selected team.
           </p>
         </section>
       ) : null}

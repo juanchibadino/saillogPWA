@@ -45,6 +45,7 @@ export function TeamAssessmentTemplateEditorShell({
   return (
     <div>
       <TeamAssessmentTemplateList
+        canManageAssessments={canManageAssessments}
         onTemplateOpen={onTemplateOpen}
         scope={scope}
         selectedTemplateId={selectedTemplateId}

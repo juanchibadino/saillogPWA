@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access";
+import { resolveOrganizationWriteEntitlement } from "@/lib/billing/entitlements";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { scopeFormInputSchema } from "@/lib/validation/navigation";
 import {
@@ -261,6 +262,20 @@ export async function createAndLinkTeamVenueAction(
     );
   }
 
+  const entitlementDecision = await resolveOrganizationWriteEntitlement({
+    organizationId: scope.scopeOrgId,
+    resource: "venues",
+  });
+
+  if (!entitlementDecision.allowed && entitlementDecision.reason) {
+    redirect(
+      buildTeamVenuesRedirectPath({
+        error: entitlementDecision.reason,
+        ...scope,
+      }),
+    );
+  }
+
   const supabase = await createServerSupabaseClient();
   const { data: createdVenue, error: createVenueError } = await supabase
     .from("venues")
@@ -275,6 +290,15 @@ export async function createAndLinkTeamVenueAction(
     .single();
 
   if (createVenueError || !createdVenue) {
+    if (createVenueError?.code === "23505") {
+      redirect(
+        buildTeamVenuesRedirectPath({
+          error: "venue_already_exists",
+          ...scope,
+        }),
+      );
+    }
+
     redirect(
       buildTeamVenuesRedirectPath({
         error: "create_failed",

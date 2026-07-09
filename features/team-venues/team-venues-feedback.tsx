@@ -2,8 +2,7 @@
 
 import * as React from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-
-const STATUS_AUTO_DISMISS_MS = 15_000
+import { toast } from "sonner"
 
 export function TeamVenuesFeedback({
   statusMessage,
@@ -15,61 +14,45 @@ export function TeamVenuesFeedback({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const [activeStatusMessage, setActiveStatusMessage] = React.useState<string | null>(
-    statusMessage,
-  )
-  const [isStatusVisible, setIsStatusVisible] = React.useState(Boolean(statusMessage))
-
-  React.useEffect(() => {
-    if (!statusMessage) {
-      return
-    }
-
-    setActiveStatusMessage(statusMessage)
-    setIsStatusVisible(true)
-  }, [statusMessage])
-
-  React.useEffect(() => {
-    if (!activeStatusMessage) {
-      return
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setIsStatusVisible(false)
-    }, STATUS_AUTO_DISMISS_MS)
-
-    return () => {
-      window.clearTimeout(timeoutId)
-    }
-  }, [activeStatusMessage])
 
   React.useEffect(() => {
     const result = searchParams.get("result")
-    if (!statusMessage || !result) {
+    const error = searchParams.get("error")
+
+    if (statusMessage && result) {
+      toast.success(statusMessage, {
+        id: `team-venues-feedback:${pathname}:result:${result}`,
+      })
+    }
+
+    if (errorMessage && error) {
+      toast.error(errorMessage, {
+        id: `team-venues-feedback:${pathname}:error:${error}`,
+      })
+    }
+
+    const shouldDeleteResult = Boolean(statusMessage && result)
+    const shouldDeleteError = Boolean(errorMessage && error)
+
+    if (!shouldDeleteResult && !shouldDeleteError) {
       return
     }
 
     const nextParams = new URLSearchParams(searchParams.toString())
-    nextParams.delete("result")
+
+    if (shouldDeleteResult) {
+      nextParams.delete("result")
+    }
+
+    if (shouldDeleteError) {
+      nextParams.delete("error")
+    }
+
     const nextSearch = nextParams.toString()
     const nextUrl = nextSearch.length > 0 ? `${pathname}?${nextSearch}` : pathname
 
     router.replace(nextUrl, { scroll: false })
-  }, [statusMessage, searchParams, pathname, router])
+  }, [errorMessage, statusMessage, searchParams, pathname, router])
 
-  return (
-    <>
-      {activeStatusMessage && isStatusVisible ? (
-        <p className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {activeStatusMessage}
-        </p>
-      ) : null}
-
-      {errorMessage ? (
-        <p className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-          {errorMessage}
-        </p>
-      ) : null}
-    </>
-  )
+  return null
 }

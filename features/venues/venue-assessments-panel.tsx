@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Loader2Icon, MoreHorizontalIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { Loader2Icon, MoreHorizontalIcon, PlusIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
@@ -10,12 +10,10 @@ import { buildAssessmentDetailHref } from "@/features/assessments/navigation";
 import {
   deleteAssessmentRunAction,
   closeAssessmentRunAction,
-  submitAssessmentAnswersAction,
   upsertAssessmentRunAction,
 } from "@/features/venues/assessment-actions";
 import type {
   VenueAssessmentCategory,
-  VenueAssessmentQuestion,
   VenueAssessmentRun,
   VenueAssessmentTemplate,
   VenueDetailCampItem,
@@ -67,7 +65,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type AssessmentQuestionDraft = {
   prompt: string;
@@ -143,86 +140,6 @@ function normalizeDefinition(definition: AssessmentDefinitionDraft): SerializedA
       };
     }),
   };
-}
-
-function RunTitleWithCamps(input: { camps: VenueAssessmentRun["camps"] }) {
-  return (
-    <span className="flex flex-wrap items-center gap-2">
-      <span>Assessment for</span>
-      {input.camps.length > 0 ? (
-        input.camps.map((camp) => (
-          <Badge key={camp.id} variant="secondary">
-            {camp.name}
-          </Badge>
-        ))
-      ) : (
-        <Badge variant="outline">No camp linked</Badge>
-      )}
-    </span>
-  );
-}
-
-function buildInitialSelectionByQuestionId(
-  answers: VenueAssessmentRun["myAnswers"],
-): Record<string, string> {
-  const draft: Record<string, string> = {};
-
-  for (const answer of answers) {
-    draft[answer.questionId] = answer.scaleOptionId;
-  }
-
-  return draft;
-}
-
-function buildRunAnswerPayloadRows(input: {
-  categories: VenueAssessmentCategory[];
-  selectionByQuestionId: Record<string, string>;
-}): Array<{ questionId: string; scaleOptionId: string | null }> {
-  const rows: Array<{ questionId: string; scaleOptionId: string | null }> = [];
-
-  for (const category of input.categories) {
-    if (categoryHasModes(category)) {
-      for (const mode of category.modes ?? []) {
-        for (const question of mode.questions) {
-          rows.push({
-            questionId: question.id,
-            scaleOptionId: input.selectionByQuestionId[question.id] ?? null,
-          });
-        }
-      }
-
-      continue;
-    }
-
-    for (const question of category.questions) {
-      rows.push({
-        questionId: question.id,
-        scaleOptionId: input.selectionByQuestionId[question.id] ?? null,
-      });
-    }
-  }
-
-  return rows;
-}
-
-function buildInitialModeByCategoryId(
-  categories: VenueAssessmentCategory[],
-): Record<string, string> {
-  const modeByCategoryId: Record<string, string> = {};
-
-  for (const category of categories) {
-    if (!categoryHasModes(category)) {
-      continue;
-    }
-
-    const firstModeId = category.modes?.[0]?.id;
-
-    if (firstModeId) {
-      modeByCategoryId[category.id] = firstModeId;
-    }
-  }
-
-  return modeByCategoryId;
 }
 
 function getTemplateDefinition(template: VenueAssessmentTemplate): AssessmentDefinitionDraft {
@@ -444,37 +361,6 @@ function AssessmentRunActionsMenu(input: {
         trigger={null}
       />
     </>
-  );
-}
-
-function RunAnswerFormPendingFieldset(input: { children: React.ReactNode; className?: string }) {
-  const { pending } = useFormStatus();
-
-  return (
-    <div
-      className={`m-0 min-w-0 ${input.className ?? ""} ${pending ? "pointer-events-none" : ""}`}
-      aria-busy={pending}
-      aria-disabled={pending}
-    >
-      {input.children}
-    </div>
-  );
-}
-
-function RunAnswerSubmitButton() {
-  const { pending } = useFormStatus();
-
-  return (
-    <Button type="submit" disabled={pending}>
-      {pending ? (
-        <>
-          <Loader2Icon className="size-4 animate-spin" />
-          Saving answers...
-        </>
-      ) : (
-        "Save answers"
-      )}
-    </Button>
   );
 }
 
@@ -742,374 +628,6 @@ function RunDeleteDialog(input: {
   );
 }
 
-function renderRunQuestionField(input: {
-  question: VenueAssessmentQuestion;
-  selectionByQuestionId: Record<string, string>;
-  setValue: (questionId: string, value: string) => void;
-  scaleOptions: VenueAssessmentRun["scaleOptions"];
-}) {
-  return (
-    <div key={input.question.id} className="space-y-2">
-      <p className="text-sm font-medium">{input.question.prompt}</p>
-      <select
-        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-        value={input.selectionByQuestionId[input.question.id] ?? ""}
-        onChange={(event) => input.setValue(input.question.id, event.target.value)}
-      >
-        <option value="">No answer</option>
-        {input.scaleOptions.map((option) => (
-          <option key={option.id} value={option.id}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-function RunAnswerForm(input: {
-  scope: NavigationScope;
-  teamVenueId: string;
-  selectedYear: number;
-  run: VenueAssessmentRun;
-}) {
-  const initialValues = React.useMemo(() => {
-    return buildInitialSelectionByQuestionId(input.run.myAnswers);
-  }, [input.run.myAnswers]);
-
-  const [selectionByQuestionId, setSelectionByQuestionId] = React.useState<Record<string, string>>(
-    initialValues,
-  );
-
-  function setValue(questionId: string, value: string): void {
-    setSelectionByQuestionId((currentValue) => ({
-      ...currentValue,
-      [questionId]: value,
-    }));
-  }
-
-  const payload = React.useMemo(
-    () =>
-      JSON.stringify(
-        buildRunAnswerPayloadRows({
-          categories: input.run.categories,
-          selectionByQuestionId,
-        }),
-      ),
-    [input.run.categories, selectionByQuestionId],
-  );
-
-  return (
-    <form action={submitAssessmentAnswersAction} className="space-y-4">
-      <AssessmentScopeFields
-        scope={input.scope}
-        teamVenueId={input.teamVenueId}
-        selectedYear={input.selectedYear}
-      />
-      <input type="hidden" name="runId" value={input.run.id} />
-      <input type="hidden" name="answersJson" value={payload} />
-
-      <RunAnswerFormPendingFieldset>
-        {input.run.categories.map((category) => (
-          <div key={category.id} className="space-y-3 rounded-md border p-3">
-            <h4 className="text-sm font-semibold">{category.name}</h4>
-
-            {categoryHasModes(category) ? (
-              <div className="space-y-3">
-                {(category.modes ?? []).map((mode) => (
-                  <section key={mode.id} className="space-y-2 rounded-md border p-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {mode.name}
-                    </p>
-                    {mode.questions.map((question) =>
-                      renderRunQuestionField({
-                        question,
-                        selectionByQuestionId,
-                        setValue,
-                        scaleOptions: input.run.scaleOptions,
-                      }),
-                    )}
-                  </section>
-                ))}
-              </div>
-            ) : (
-              category.questions.map((question) =>
-                renderRunQuestionField({
-                  question,
-                  selectionByQuestionId,
-                  setValue,
-                  scaleOptions: input.run.scaleOptions,
-                }),
-              )
-            )}
-          </div>
-        ))}
-
-        <RunAnswerSubmitButton />
-      </RunAnswerFormPendingFieldset>
-    </form>
-  );
-}
-
-function CrewAssessmentDialog(input: {
-  scope: NavigationScope;
-  teamVenueId: string;
-  selectedYear: number;
-  run: VenueAssessmentRun;
-  triggerContent?: React.ReactNode;
-}) {
-  const [isOpen, setIsOpen] = React.useState(false);
-  const [selectedCategoryId, setSelectedCategoryId] = React.useState(
-    input.run.categories[0]?.id ?? "",
-  );
-  const [selectedModeByCategoryId, setSelectedModeByCategoryId] = React.useState<
-    Record<string, string>
-  >(() => buildInitialModeByCategoryId(input.run.categories));
-
-  const initialValues = React.useMemo(
-    () => buildInitialSelectionByQuestionId(input.run.myAnswers),
-    [input.run.myAnswers],
-  );
-  const [selectionByQuestionId, setSelectionByQuestionId] = React.useState<Record<string, string>>(
-    initialValues,
-  );
-
-  const selectedCategory = React.useMemo(
-    () =>
-      input.run.categories.find((category) => category.id === selectedCategoryId) ??
-      input.run.categories[0] ??
-      null,
-    [input.run.categories, selectedCategoryId],
-  );
-  const selectedCategoryUsesModes = selectedCategory ? categoryHasModes(selectedCategory) : false;
-  const selectedModeId =
-    selectedCategory && selectedCategoryUsesModes
-      ? (selectedModeByCategoryId[selectedCategory.id] ?? selectedCategory.modes?.[0]?.id ?? "")
-      : "";
-  const selectedMode =
-    selectedCategory && selectedCategoryUsesModes
-      ? (selectedCategory.modes?.find((mode) => mode.id === selectedModeId) ??
-        selectedCategory.modes?.[0] ??
-        null)
-      : null;
-  const activeQuestions = React.useMemo(() => {
-    if (!selectedCategory) {
-      return [] as VenueAssessmentQuestion[];
-    }
-
-    if (selectedCategoryUsesModes) {
-      return selectedMode?.questions ?? [];
-    }
-
-    return selectedCategory.questions;
-  }, [selectedCategory, selectedCategoryUsesModes, selectedMode]);
-
-  function setValue(questionId: string, value: string): void {
-    setSelectionByQuestionId((currentValue) => ({
-      ...currentValue,
-      [questionId]: value,
-    }));
-  }
-
-  function clearValue(questionId: string): void {
-    setSelectionByQuestionId((currentValue) => ({
-      ...currentValue,
-      [questionId]: "",
-    }));
-  }
-
-  function handleOpenChange(nextOpen: boolean): void {
-    setIsOpen(nextOpen);
-
-    const resetCategoryId = input.run.categories[0]?.id ?? "";
-    const resetSelectionByQuestionId = buildInitialSelectionByQuestionId(input.run.myAnswers);
-    const resetModeByCategoryId = buildInitialModeByCategoryId(input.run.categories);
-
-    setSelectionByQuestionId(resetSelectionByQuestionId);
-    setSelectedCategoryId(resetCategoryId);
-    setSelectedModeByCategoryId(resetModeByCategoryId);
-  }
-
-  function handleCategoryChange(nextCategoryId: string): void {
-    setSelectedCategoryId(nextCategoryId);
-  }
-
-  function handleModeChange(categoryId: string, modeId: string): void {
-    setSelectedModeByCategoryId((currentValue) => ({
-      ...currentValue,
-      [categoryId]: modeId,
-    }));
-  }
-
-  function renderQuestionRow(question: VenueAssessmentQuestion): React.ReactNode {
-    const selectedValue = selectionByQuestionId[question.id] ?? "";
-
-    return (
-      <article key={question.id} className="rounded-lg border p-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <p className="text-sm font-medium break-words">{question.prompt}</p>
-            {question.isRequired ? (
-              <span className="text-xs font-medium text-muted-foreground">Required</span>
-            ) : null}
-          </div>
-
-          <div className="flex shrink-0 items-center gap-1.5">
-            {input.run.scaleOptions.map((option) => {
-              const isActive = selectedValue === option.id;
-
-              return (
-                <Button
-                  key={option.id}
-                  type="button"
-                  variant={isActive ? "default" : "outline"}
-                  className="size-8 rounded-full p-0"
-                  onClick={() => setValue(question.id, option.id)}
-                >
-                  {option.label}
-                </Button>
-              );
-            })}
-
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="size-8 rounded-full"
-              onClick={() => clearValue(question.id)}
-              disabled={selectedValue.length === 0}
-              aria-label={`Clear selection for ${question.prompt}`}
-            >
-              <Trash2Icon />
-            </Button>
-          </div>
-        </div>
-      </article>
-    );
-  }
-
-  const payload = React.useMemo(
-    () =>
-      JSON.stringify(
-        buildRunAnswerPayloadRows({
-          categories: input.run.categories,
-          selectionByQuestionId,
-        }),
-      ),
-    [input.run.categories, selectionByQuestionId],
-  );
-
-  return (
-    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      {input.triggerContent ? (
-        <DialogTrigger
-          render={
-            <button
-              type="button"
-              className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md px-2 py-3 text-left transition-colors hover:bg-muted/40"
-            />
-          }
-        >
-          {input.triggerContent}
-        </DialogTrigger>
-      ) : (
-        <DialogTrigger render={<Button type="button" size="sm" />}>Complete</DialogTrigger>
-      )}
-      <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-4xl">
-        <DialogHeader>
-          <DialogTitle className="flex flex-wrap items-center gap-2">
-            <RunTitleWithCamps camps={input.run.camps} />
-          </DialogTitle>
-          <DialogDescription>
-            Select a category, switch mode tabs when available, and score each indicator from 1 to 5.
-          </DialogDescription>
-        </DialogHeader>
-
-        <form action={submitAssessmentAnswersAction} className="flex min-h-0 flex-1 flex-col">
-          <AssessmentScopeFields
-            scope={input.scope}
-            teamVenueId={input.teamVenueId}
-            selectedYear={input.selectedYear}
-          />
-          <input type="hidden" name="runId" value={input.run.id} />
-          <input type="hidden" name="answersJson" value={payload} />
-
-          <RunAnswerFormPendingFieldset className="min-h-0 flex flex-1 flex-col overflow-hidden">
-            <div className="min-h-0 flex flex-1 flex-col gap-4 overflow-hidden">
-              <div className="shrink-0 space-y-3">
-                {input.run.categories.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No categories configured for this assessment run.
-                  </p>
-                ) : (
-                  <>
-                    <div className="space-y-2">
-                      <Label htmlFor={`crew-assessment-category-${input.run.id}`}>Category</Label>
-                      <select
-                        id={`crew-assessment-category-${input.run.id}`}
-                        value={selectedCategory?.id ?? ""}
-                        onChange={(event) => handleCategoryChange(event.target.value)}
-                        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                      >
-                        {input.run.categories.map((category) => (
-                          <option key={category.id} value={category.id}>
-                            {category.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {selectedCategory && selectedCategoryUsesModes ? (
-                      (selectedCategory.modes?.length ?? 0) > 0 ? (
-                        <Tabs
-                          value={selectedMode?.id ?? selectedCategory.modes?.[0]?.id ?? ""}
-                          onValueChange={(nextModeId) =>
-                            handleModeChange(selectedCategory.id, String(nextModeId))
-                          }
-                          className="gap-0"
-                        >
-                          <TabsList className="h-9 w-full justify-start overflow-x-auto">
-                            {(selectedCategory.modes ?? []).map((mode) => (
-                              <TabsTrigger key={mode.id} value={mode.id} className="min-w-fit">
-                                {mode.name}
-                              </TabsTrigger>
-                            ))}
-                          </TabsList>
-                        </Tabs>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">
-                          No modes configured for this category.
-                        </p>
-                      )
-                    ) : null}
-                  </>
-                )}
-              </div>
-
-              <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
-                {input.run.categories.length === 0 ? null : !selectedCategory ? null : selectedCategoryUsesModes &&
-                  (selectedCategory.modes?.length ?? 0) === 0 ? null : activeQuestions.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No indicators configured for this {selectedCategoryUsesModes ? "mode" : "category"}.
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {activeQuestions.map((question) => renderQuestionRow(question))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </RunAnswerFormPendingFieldset>
-
-          <DialogFooter>
-            <RunAnswerSubmitButton />
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 export function VenueAssessmentsPanel(input: {
   scope: NavigationScope;
   teamVenueId: string;
@@ -1163,34 +681,125 @@ export function VenueAssessmentsPanel(input: {
         {crewRunsCardIsEmpty ? (
           <p className="text-sm text-muted-foreground">No assessments created by coach yet.</p>
         ) : (
-          <ul className="divide-y divide-border">
-            {publishedAssignedRuns.map((run) => (
-              <li key={run.id}>
-                <CrewAssessmentDialog
-                  scope={input.scope}
-                  teamVenueId={input.teamVenueId}
-                  selectedYear={input.selectedYear}
-                  run={run}
-                  triggerContent={
-                    <>
-                      <div className="min-w-0">
-                        <h4 className="text-sm font-semibold">
-                          <RunTitleWithCamps camps={run.camps} />
+          <>
+            <div className="space-y-4 md:hidden">
+              {publishedAssignedRuns.map((run) => {
+                const detailHref = buildRunDetailHref(run.id);
+                const isNavigatingToRun = navigatingRunId === run.id;
+
+                return (
+                  <GradientCard
+                    key={run.id}
+                    role="link"
+                    tabIndex={0}
+                    aria-busy={isNavigatingToRun}
+                    className={cn(
+                      "cursor-pointer space-y-3 px-3 py-3 transition-colors hover:bg-muted/30",
+                      isNavigatingToRun && "opacity-80",
+                    )}
+                    onMouseEnter={() => prefetchRun(detailHref)}
+                    onFocus={() => prefetchRun(detailHref)}
+                    onClick={() => navigateToRun(run.id, detailHref)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        navigateToRun(run.id, detailHref);
+                      }
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1 space-y-3">
+                        <h4 className="truncate text-sm font-semibold">
+                          {run.templateName ?? "Template unavailable"}
                         </h4>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {run.templateName ?? (run.templateId ? "Linked" : "Ad-hoc")} • Crew Completion:{" "}
+
+                        <div className="space-y-1.5">
+                          <AssessmentRunCampsBadges camps={run.camps} />
+                        </div>
+
+                        <p className="text-sm font-medium tabular-nums">
                           {run.completedRespondentsCount}/{run.expectedRespondentsCount}
                         </p>
                       </div>
-                      <span className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground">
+
+                      <span className="inline-flex h-11 items-center justify-center gap-1.5 self-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">
+                        {isNavigatingToRun ? (
+                          <Loader2Icon className="size-4 animate-spin" />
+                        ) : null}
                         Complete
                       </span>
-                    </>
-                  }
-                />
-              </li>
-            ))}
-          </ul>
+                    </div>
+                  </GradientCard>
+                );
+              })}
+            </div>
+
+            <section className="hidden space-y-3 md:block">
+              <GradientCard className="overflow-hidden p-0">
+                <Table>
+                  <TableHeader className="bg-muted/40">
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead>Assessment</TableHead>
+                      <TableHead>Progress</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Camps</TableHead>
+                      <TableHead className="w-28 text-right">
+                        <span className="sr-only">Action</span>
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {publishedAssignedRuns.map((run) => {
+                      const detailHref = buildRunDetailHref(run.id);
+                      const isNavigatingToRun = navigatingRunId === run.id;
+
+                      return (
+                        <TableRow
+                          key={run.id}
+                          role="link"
+                          tabIndex={0}
+                          aria-busy={isNavigatingToRun}
+                          className={cn("cursor-pointer", isNavigatingToRun && "opacity-80")}
+                          onMouseEnter={() => prefetchRun(detailHref)}
+                          onFocus={() => prefetchRun(detailHref)}
+                          onClick={() => navigateToRun(run.id, detailHref)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              navigateToRun(run.id, detailHref);
+                            }
+                          }}
+                        >
+                          <TableCell className="font-medium">
+                            {run.templateName ?? "Template unavailable"}
+                          </TableCell>
+                          <TableCell className="tabular-nums">
+                            {run.completedRespondentsCount}/{run.expectedRespondentsCount}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={getStatusBadgeVariant(run.status)}>
+                              {formatAssessmentRunStatusLabel(run.status)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <AssessmentRunCampsBadges camps={run.camps} />
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground">
+                              {isNavigatingToRun ? (
+                                <Loader2Icon className="size-4 animate-spin" />
+                              ) : null}
+                              Complete
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </GradientCard>
+            </section>
+          </>
         )}
       </div>
     );
@@ -1294,24 +903,6 @@ export function VenueAssessmentsPanel(input: {
                       )}
                     </div>
                   </div>
-
-                  {run.status === "published" && run.isRespondent ? (
-                    <div
-                      onClick={(event) => {
-                        event.stopPropagation();
-                      }}
-                      onKeyDown={(event) => {
-                        event.stopPropagation();
-                      }}
-                    >
-                      <RunAnswerForm
-                        scope={input.scope}
-                        teamVenueId={input.teamVenueId}
-                        selectedYear={input.selectedYear}
-                        run={run}
-                      />
-                    </div>
-                  ) : null}
                 </GradientCard>
               );
             })}

@@ -9,7 +9,25 @@ function cloneRow(row) {
 }
 
 function rowMatchesFilters(row, filters) {
-  return filters.every((filter) => row[filter.column] === filter.value)
+  return filters.every((filter) => {
+    if (filter.operator === "ilike") {
+      const value = row[filter.column]
+
+      if (typeof value !== "string") {
+        return false
+      }
+
+      const escapedPattern = String(filter.value)
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        .replace(/%/g, ".*")
+        .replace(/_/g, ".")
+      const regex = new RegExp(`^${escapedPattern}$`, "i")
+
+      return regex.test(value)
+    }
+
+    return row[filter.column] === filter.value
+  })
 }
 
 function createRedirectError(path) {
@@ -48,6 +66,8 @@ class MockSupabaseQuery {
     this.filters = []
     this.limitValue = null
     this.operation = input.operation ?? "select"
+    this.insertErrors = input.insertErrors
+    this.insertValues = input.insertValues ?? null
     this.rowsByTable = input.rowsByTable
     this.selectErrors = input.selectErrors
     this.tableName = input.tableName
@@ -62,6 +82,7 @@ class MockSupabaseQuery {
   update(values) {
     return new MockSupabaseQuery({
       operation: "update",
+      insertErrors: this.insertErrors,
       rowsByTable: this.rowsByTable,
       selectErrors: this.selectErrors,
       tableName: this.tableName,
@@ -70,8 +91,25 @@ class MockSupabaseQuery {
     })
   }
 
+  insert(values) {
+    return new MockSupabaseQuery({
+      operation: "insert",
+      insertErrors: this.insertErrors,
+      insertValues: values,
+      rowsByTable: this.rowsByTable,
+      selectErrors: this.selectErrors,
+      tableName: this.tableName,
+      updateErrors: this.updateErrors,
+    })
+  }
+
   eq(column, value) {
-    this.filters.push({ column, value })
+    this.filters.push({ column, operator: "eq", value })
+    return this
+  }
+
+  ilike(column, value) {
+    this.filters.push({ column, operator: "ilike", value })
     return this
   }
 
@@ -115,8 +153,30 @@ class MockSupabaseQuery {
   }
 
   execute() {
-    if (this.operation !== "update") {
+    if (this.operation === "select") {
       return { data: this.getMatchingRows().map(cloneRow), error: null }
+    }
+
+    if (this.operation === "insert") {
+      const error = this.insertErrors[this.tableName]
+
+      if (error) {
+        return { data: null, error }
+      }
+
+      const values = Array.isArray(this.insertValues)
+        ? this.insertValues
+        : [this.insertValues]
+
+      if (!this.rowsByTable[this.tableName]) {
+        this.rowsByTable[this.tableName] = []
+      }
+
+      for (const row of values) {
+        this.rowsByTable[this.tableName].push(cloneRow(row))
+      }
+
+      return { data: null, error: null }
     }
 
     const error = this.updateErrors[this.tableName]
@@ -135,6 +195,7 @@ class MockSupabaseQuery {
 
 export function createMockSupabaseClient(input) {
   const rowsByTable = normalizeTableRows(input.tables ?? {})
+  const insertErrors = input.insertErrors ?? {}
   const selectErrors = input.selectErrors ?? {}
   const updateErrors = input.updateErrors ?? {}
 
@@ -142,6 +203,7 @@ export function createMockSupabaseClient(input) {
     rowsByTable,
     from(tableName) {
       return new MockSupabaseQuery({
+        insertErrors,
         rowsByTable,
         selectErrors,
         tableName,

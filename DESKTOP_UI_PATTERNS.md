@@ -115,6 +115,21 @@ Use this with `MOBILE_UI_PATTERNS.md`: desktop uses tables, mobile uses cards.
 - Read-only users should see disabled or unavailable actions, not hidden
   permissions that make the row layout jump.
 
+## Feedback And Toasts
+
+- Transient server-action completion feedback should use the global Sonner
+  toaster mounted once in `app/layout.tsx` at `bottom-center`.
+- Use `toast.success()` and `toast.error()` for create, update, delete,
+  archive, and restore results. Do not render success/error banners above
+  operational tables when the message is only confirming a completed action.
+- Use stable toast ids keyed by route plus status/error value, then remove the
+  consumed URL params with `router.replace(..., { scroll: false })`.
+- Pending state remains local to the submitted button, row action, table overlay,
+  or pagination control. Do not replace desktop pending states with loading
+  toasts.
+- Persistent warnings such as missing scope, read-only access, and setup blockers
+  stay inline above the table.
+
 ## States
 
 - Empty state lives inside the table body and spans all columns.

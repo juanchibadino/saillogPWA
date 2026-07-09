@@ -116,6 +116,26 @@ Current implementation references:
 - `features/sessions/detail/info-panel.tsx`
 - `features/sessions/detail/gear-panel.tsx`
 
+## 3.1 Mobile Sonner Toast Feedback
+
+Goal:
+- Mobile save feedback should confirm the result without pushing the current
+  list, card, Drawer, or Sheet layout.
+
+Rules:
+- Use the global Sonner toaster from `app/layout.tsx`; do not mount another
+  `<Toaster>` in a route or mobile surface.
+- Transient create/update/delete/archive/restore completion uses
+  `toast.success()` or `toast.error()` at bottom center.
+- Use stable toast ids keyed by route plus status/error so mobile refreshes and
+  client effects do not duplicate messages.
+- Remove consumed URL params such as `status`, `result`, and `error` after the
+  toast fires.
+- Keep pending feedback in the submitted `h-11` button with spinner plus pending
+  copy. Do not use a toast as the only indication that a save is in progress.
+- Keep persistent missing-scope, read-only, and setup-blocker messages inline.
+  Those are not transient toast feedback.
+
 ## 4. Inputs, Selects, And Textareas
 
 Goal:
@@ -571,6 +591,7 @@ When adding or refactoring a mobile team module:
 7. Async UX:
    - Save button disabled with spinner
    - results loading stays inside the result area
+   - transient completion feedback uses Sonner toast success/error
 8. Keyboard:
    - focused input stays visible after keyboard opens
    - scroll region has enough bottom padding

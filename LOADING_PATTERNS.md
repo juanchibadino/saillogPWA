@@ -3,8 +3,9 @@
 Source of truth for Sailog route loading, deferred content, skeletons, and
 secondary pending states.
 
-Current references: `/team-sessions`, `/team-sessions/[id]`, and
-`/team-camps/[id]`, implemented by:
+Current references: `/team-sessions`, `/team-sessions/[id]`,
+`/team-camps/[id]`, `/team-standard-moves`, and `/team-assessments/[id]`,
+implemented by:
 
 - `app/(app)/team-sessions/page.tsx`
 - `app/(app)/team-sessions/loading.tsx`
@@ -12,10 +13,17 @@ Current references: `/team-sessions`, `/team-sessions/[id]`, and
 - `app/(app)/team-sessions/[id]/loading.tsx`
 - `app/(app)/team-camps/[id]/page.tsx`
 - `app/(app)/team-camps/[id]/loading.tsx`
+- `app/(app)/team-standard-moves/page.tsx`
+- `app/(app)/team-standard-moves/loading.tsx`
+- `app/(app)/team-assessments/[id]/page.tsx`
+- `app/(app)/team-assessments/[id]/loading.tsx`
 - `components/shared/page-skeletons.tsx`
 - `features/sessions/team-sessions-route-shell.tsx`
 - `features/sessions/data.ts`
 - `features/sessions/sessions-table.tsx`
+- `features/standard-moves/team-standard-moves-route-shell.tsx`
+- `features/standard-moves/data.ts`
+- `features/standard-moves/standard-moves-table.tsx`
 - `features/sessions/session-detail-tabs-client.tsx`
 - `features/camps/camp-detail-tabs-client.tsx`
 
@@ -47,6 +55,9 @@ while rows/cards load.
 - Split data into a chrome payload and a results payload. In Team Sessions this
   is `getTeamSessionsChromeData()` for filters/create options and
   `getTeamSessionsResultsData()` for rows, `pageCount`, and pagination flags.
+  In Team Standard Moves, the same split is
+  `getTeamStandardMovesChromeData()` for status counts and
+  `getTeamStandardMovesResultsData()` for bounded rows and usage counts.
 - Render a client route shell for stable controls. In Team Sessions this is
   `TeamSessionsRouteShell`, which owns title, filters, desktop `New`, mobile
   FAB, and filter-pending overlays.
@@ -88,6 +99,21 @@ while rows/cards load.
 - Goals and Notes skeletons mirror their final rounded content panels instead
   of using a generic dashed loading block.
 - Inactive Camp tabs keep using the scoped tab-data API when selected.
+
+## Team Assessment Detail Pattern
+
+- `page.tsx` resolves auth, navigation scope, feedback params, and manager
+  capability first.
+- The feedback and read-only scope message render outside the heavy detail
+  boundary so route chrome can settle before assessment analytics load.
+- The current assessment, comparison runs, answer matrix, and analytics payload
+  load behind a nested `Suspense` boundary.
+- The boundary fallback is `TeamAssessmentDetailDeferredContentSkeleton`, which
+  keeps the final `Analytics` and `Answers` labels visible and skeletonizes
+  only values, select triggers, chart area, and table/card rows.
+- Route-level `loading.tsx` reuses `TeamAssessmentDetailPageSkeleton` so direct
+  navigation and in-route deferred loading share the same analytics-first
+  surface.
 
 ## Immediate Tab Switch Pattern
 
@@ -131,6 +157,24 @@ loading a new payload.
   surface stable.
 - Deferred tab failures should show an in-panel retry state instead of collapsing
   the whole route.
+
+## Route Feedback Toasts
+
+- Transient server-action completion feedback should use the global Sonner
+  toaster mounted once in `app/layout.tsx` at `bottom-center`.
+- Use `toast.success()` for completed create/update/delete/archive/restore saves
+  and `toast.error()` for action errors. Do not mount another `<Toaster>` in a
+  route or feature component.
+- Use stable toast ids keyed by route plus status/error value so reloads,
+  refreshes, and client effects do not duplicate the same message.
+- After emitting a URL-param-driven toast, remove the consumed `status`,
+  `result`, and/or `error` params with `router.replace(..., { scroll: false })`.
+- Keep pending feedback inside the submitted button or local loading surface.
+  Completion toasts should confirm the result; they should not replace button
+  spinners while a save is still in flight.
+- Persistent state explanations such as missing scope, read-only access, and
+  setup blockers should remain inline panels because they affect the user's next
+  decision.
 
 ## Documentation Links
 

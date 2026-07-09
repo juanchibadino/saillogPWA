@@ -17,9 +17,11 @@ import {
   LogOutIcon,
   MapPinIcon,
   SailboatIcon,
+  WindIcon,
   UserIcon,
   UsersIcon,
   WrenchIcon,
+  type LucideIcon,
 } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -92,6 +94,17 @@ type BillingPlanResponse = {
   planTier: BillingPlanTier | null
 }
 
+type SidebarNavItem = {
+  title: string
+  url?: string
+  icon: LucideIcon
+}
+
+type SidebarNavSection = {
+  title: string
+  items: SidebarNavItem[]
+}
+
 const NAVIGATION_SCOPE_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
 
 const homeNavItem = {
@@ -136,60 +149,70 @@ const organizationNavItems = [
   },
 ]
 
-const teamNavItems = [
+const teamNavSections: SidebarNavSection[] = [
   {
-    title: "Home",
-    url: "/team-home",
-    icon: HomeIcon,
-    comingSoon: false,
+    title: "Team",
+    items: [
+      {
+        title: "Home",
+        url: "/team-home",
+        icon: HomeIcon,
+      },
+      {
+        title: "Venue",
+        url: "/team-venues",
+        icon: MapPinIcon,
+      },
+      {
+        title: "Camps",
+        url: "/team-camps",
+        icon: CircleIcon,
+      },
+      {
+        title: "Session",
+        url: "/team-sessions",
+        icon: SailboatIcon,
+      },
+    ],
   },
   {
-    title: "Venues",
-    url: "/team-venues",
-    icon: MapPinIcon,
-    comingSoon: false,
+    title: "Strategy",
+    items: [
+      {
+        title: "Std. Moves",
+        url: "/team-standard-moves",
+        icon: CheckIcon,
+      },
+      {
+        title: "Wind Patterns",
+        icon: WindIcon,
+      },
+      {
+        title: "Notes",
+        url: "/team-notes",
+        icon: NotebookTextIcon,
+      },
+    ],
   },
   {
-    title: "Camps",
-    url: "/team-camps",
-    icon: CircleIcon,
-    comingSoon: false,
-  },
-  {
-    title: "Sessions",
-    url: "/team-sessions",
-    icon: SailboatIcon,
-    comingSoon: false,
-  },
-  {
-    title: "Assessments",
-    url: "/team-assessments",
-    icon: ClipboardCheckIcon,
-    comingSoon: false,
-  },
-  {
-    title: "Gear",
-    url: "/team-gear",
-    icon: WrenchIcon,
-    comingSoon: false,
-  },
-  {
-    title: "Reports",
-    url: "/team-reports",
-    icon: BarChart3Icon,
-    comingSoon: false,
-  },
-  {
-    title: "Notes",
-    url: "/team-notes",
-    icon: NotebookTextIcon,
-    comingSoon: false,
-  },
-  {
-    title: "Std. Moves",
-    url: "/team-standard-moves",
-    icon: CheckIcon,
-    comingSoon: false,
+    title: "Others",
+    items: [
+      {
+        title: "Reports",
+        url: "/team-reports",
+        icon: BarChart3Icon,
+      },
+      {
+        title: "Assessments",
+        url: "/team-assessments",
+        icon: ClipboardCheckIcon,
+      },
+      {
+        title: "Gear",
+        url: "/team-gear",
+        icon: WrenchIcon,
+      },
+    ],
   },
 ]
 
@@ -852,57 +875,53 @@ export function AppSidebar({
               </SidebarGroup>
             ) : null}
 
-            <SidebarGroup>
-              <SidebarGroupLabel>Team</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {teamNavItems.map((item) => {
-                    const disabled = item.comingSoon || noTeamSelected
-                    const tooltip = item.comingSoon
-                      ? `${item.title} (NIY)`
-                      : noTeamSelected
+            {teamNavSections.map((section) => (
+              <SidebarGroup key={section.title}>
+                <SidebarGroupLabel>{section.title}</SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {section.items.map((item) => {
+                      const disabled = !item.url || noTeamSelected
+                      const tooltip = noTeamSelected
                         ? `${item.title} (Select a team first)`
                         : item.title
 
-                    return (
-                      <SidebarMenuItem key={item.title}>
-                        <SidebarMenuButton
-                          isActive={item.url ? isItemActive(pathname, item.url) : false}
-                          tooltip={tooltip}
-                          disabled={disabled}
-                          render={
-                            item.url && !disabled
-                              ? (
-                                  <Link
-                                    href={buildScopedHref(
-                                      item.url,
-                                      activeOrgId,
-                                      activeTeamId,
-                                    )}
-                                    onClick={handleSidebarNavigationClick}
-                                  />
-                                )
-                              : undefined
-                          }
-                        >
-                          <item.icon />
-                          <span>{item.title}</span>
-                          {item.comingSoon ? (
-                            <span className="ml-auto text-[10px] text-muted-foreground">
-                              NIY
-                            </span>
-                          ) : noTeamSelected ? (
-                            <span className="ml-auto text-[10px] text-muted-foreground">
-                              TEAM
-                            </span>
-                          ) : null}
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    )
-                  })}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
+                      return (
+                        <SidebarMenuItem key={item.title}>
+                          <SidebarMenuButton
+                            isActive={item.url ? isItemActive(pathname, item.url) : false}
+                            tooltip={tooltip}
+                            disabled={disabled}
+                            render={
+                              item.url && !disabled
+                                ? (
+                                    <Link
+                                      href={buildScopedHref(
+                                        item.url,
+                                        activeOrgId,
+                                        activeTeamId,
+                                      )}
+                                      onClick={handleSidebarNavigationClick}
+                                    />
+                                  )
+                                : undefined
+                            }
+                          >
+                            <item.icon />
+                            <span>{item.title}</span>
+                            {noTeamSelected ? (
+                              <span className="ml-auto text-[10px] text-muted-foreground">
+                                TEAM
+                              </span>
+                            ) : null}
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      )
+                    })}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            ))}
           </>
         ) : (
           <SidebarGroup>

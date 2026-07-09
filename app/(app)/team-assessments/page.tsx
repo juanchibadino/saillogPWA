@@ -196,16 +196,6 @@ export default async function TeamAssessmentsPage({
         </section>
       ) : null}
 
-      {!noTeamSelected && !canManageAssessments ? (
-        <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
-          <h2 className="text-lg font-semibold text-amber-900">Read-only access</h2>
-          <p className="mt-2 text-sm text-amber-800">
-            You can view assessments in this scope, but only super admins,
-            organization admins, team admins, and coaches can create or edit them.
-          </p>
-        </section>
-      ) : null}
-
       <TeamAssessmentsPageClient
         canManageAssessments={canManageAssessments}
         createdData={createdData}

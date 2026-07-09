@@ -1,3 +1,6 @@
+import { Suspense } from "react"
+
+import { TeamAssessmentDetailDeferredContentSkeleton } from "@/components/shared/page-skeletons"
 import { AssessmentDetailClient } from "@/features/assessments/assessment-detail-client"
 import { AssessmentsFeedback } from "@/features/assessments/assessments-feedback"
 import { getTeamAssessmentDetailData } from "@/features/assessments/data"
@@ -13,6 +16,10 @@ type TeamAssessmentDetailParams = Promise<{ id: string }>
 type TeamAssessmentDetailSearchParams = Promise<
   Record<string, string | string[] | undefined>
 >
+type ResolvedTeamAssessmentDetailScope = NonNullable<
+  Awaited<ReturnType<typeof resolveNavigationScope>>["scope"]
+>
+type TeamAssessmentDetailDataPromise = ReturnType<typeof getTeamAssessmentDetailData>
 
 function getErrorMessage(error: string | undefined): string | null {
   if (error === "invalid_input") {
@@ -21,10 +28,6 @@ function getErrorMessage(error: string | undefined): string | null {
 
   if (error === "forbidden") {
     return "You do not have permission to manage this assessment in the active scope."
-  }
-
-  if (error === "close_failed") {
-    return "Could not close the assessment. Confirm your permissions and try again."
   }
 
   if (error === "delete_failed") {
@@ -36,6 +39,40 @@ function getErrorMessage(error: string | undefined): string | null {
   }
 
   return null
+}
+
+async function TeamAssessmentDetailResolvedContent({
+  canManageAssessments,
+  detailDataPromise,
+  scope,
+}: {
+  canManageAssessments: boolean
+  detailDataPromise: TeamAssessmentDetailDataPromise
+  scope: ResolvedTeamAssessmentDetailScope
+}) {
+  const detail = await detailDataPromise
+
+  if (!detail) {
+    return (
+      <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
+        <h2 className="text-lg font-semibold text-amber-900">
+          Assessment unavailable
+        </h2>
+        <p className="mt-2 text-sm text-amber-800">
+          This assessment does not exist in the active team scope or is not
+          accessible.
+        </p>
+      </section>
+    )
+  }
+
+  return (
+    <AssessmentDetailClient
+      canManageAssessments={canManageAssessments}
+      detail={detail}
+      scope={scope}
+    />
+  )
 }
 
 export default async function TeamAssessmentDetailPage({
@@ -108,7 +145,7 @@ export default async function TeamAssessmentDetailPage({
     organizationId: scope.activeOrgId,
     teamId: scope.activeTeamId,
   })
-  const detail = await getTeamAssessmentDetailData({
+  const detailDataPromise = getTeamAssessmentDetailData({
     activeTeamId: scope.activeTeamId,
     currentProfileId: context.profile.id,
     assessmentId: resolvedParams.id,
@@ -118,31 +155,19 @@ export default async function TeamAssessmentDetailPage({
     <div className="space-y-6">
       <AssessmentsFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
 
-      {!canManageAssessments ? (
-        <section className="rounded-xl border border-amber-300 bg-amber-50 p-4">
-          <p className="text-sm text-amber-800">
-            You have read-only access in this scope. Management actions are disabled.
-          </p>
-        </section>
-      ) : null}
-
-      {detail ? (
-        <AssessmentDetailClient
+      <Suspense
+        fallback={
+          <TeamAssessmentDetailDeferredContentSkeleton
+            canManageAssessments={canManageAssessments}
+          />
+        }
+      >
+        <TeamAssessmentDetailResolvedContent
           canManageAssessments={canManageAssessments}
-          detail={detail}
+          detailDataPromise={detailDataPromise}
           scope={scope}
         />
-      ) : (
-        <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
-          <h2 className="text-lg font-semibold text-amber-900">
-            Assessment unavailable
-          </h2>
-          <p className="mt-2 text-sm text-amber-800">
-            This assessment does not exist in the active team scope or is not
-            accessible.
-          </p>
-        </section>
-      )}
+      </Suspense>
     </div>
   )
 }

@@ -144,9 +144,27 @@ test("builds Team Venue action redirects preserving status page and load-more st
   )
 })
 
-test("allows all active selected-team members to create link update and delete Team Venues", () => {
+test("allows organization admins team admins and coaches to create link update and delete Team Venues", () => {
   for (const action of TEAM_VENUE_WRITE_ACTIONS) {
-    for (const role of ["team_admin", "coach", "crew"]) {
+    assert.equal(
+      canRunTeamVenueWriteAction({
+        action,
+        context: buildContext({
+          organizationMemberships: [
+            {
+              organization_id: "org-1",
+              role: "organization_admin",
+            },
+          ],
+        }),
+        organizationId: "org-1",
+        teamId: "team-1",
+      }),
+      true,
+      `${action}:organization_admin`,
+    )
+
+    for (const role of ["team_admin", "coach"]) {
       assert.equal(
         canRunTeamVenueWriteAction({
           action,
@@ -169,16 +187,17 @@ test("allows all active selected-team members to create link update and delete T
   }
 })
 
-test("forbids Team Venue create link update and delete without active selected-team membership", () => {
+test("forbids Team Venue create link update and delete without structure permissions", () => {
   for (const action of TEAM_VENUE_WRITE_ACTIONS) {
     assert.equal(
       canRunTeamVenueWriteAction({
         action,
         context: buildContext({
-          organizationMemberships: [
+          teamMemberships: [
             {
-              organization_id: "org-1",
-              role: "organization_admin",
+              team_id: "team-1",
+              role: "crew",
+              is_active: true,
             },
           ],
         }),
@@ -186,7 +205,7 @@ test("forbids Team Venue create link update and delete without active selected-t
         teamId: "team-1",
       }),
       false,
-      `${action}:organization-admin-only`,
+      `${action}:crew`,
     )
 
     assert.equal(

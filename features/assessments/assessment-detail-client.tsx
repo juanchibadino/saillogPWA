@@ -1,19 +1,15 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 import {
-  Bar,
-  BarChart,
+  Area,
+  AreaChart,
   CartesianGrid,
-  Line,
-  LineChart,
   XAxis,
   YAxis,
 } from "recharts"
 import {
-  ArrowLeftIcon,
   Loader2Icon,
   MoreHorizontalIcon,
   Trash2Icon,
@@ -21,26 +17,18 @@ import {
 import { useFormStatus } from "react-dom"
 
 import {
-  closeAssessmentRunAction,
   deleteAssessmentRunAction,
   submitAssessmentAnswersAction,
 } from "@/features/assessments/actions"
-import {
-  buildTeamAssessmentsHref,
-} from "@/features/assessments/navigation"
 import type {
   TeamAssessmentDetailData,
+  TeamAssessmentMode,
   TeamAssessmentQuestion,
   TeamAssessmentRun,
 } from "@/features/assessments/data"
 import type { NavigationScope } from "@/lib/navigation/types"
+import { cn } from "@/lib/utils"
 import { GradientCard } from "@/components/shared/gradient-card"
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -63,63 +51,39 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 
-const progressChartConfig = {
-  average: {
-    label: "Average",
-    color: "var(--chart-1)",
-  },
-} satisfies ChartConfig
+const RESPONDENT_LINE_COLORS = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+]
 
-const categoryChartConfig = {
-  currentAverage: {
-    label: "Current",
-    color: "var(--chart-1)",
-  },
-  historicalAverage: {
-    label: "Historical",
-    color: "var(--chart-2)",
-  },
-} satisfies ChartConfig
-
-function formatAssessmentRunStatusLabel(status: TeamAssessmentRun["status"]): string {
-  if (status === "published") {
-    return "Published"
-  }
-
-  if (status === "closed") {
-    return "Completed"
-  }
-
-  return "Draft"
+function getRespondentSeriesColor(index: number): string {
+  return RESPONDENT_LINE_COLORS[index % RESPONDENT_LINE_COLORS.length]
 }
 
-function getStatusBadgeVariant(
-  status: TeamAssessmentRun["status"],
-): "secondary" | "default" | "outline" {
-  if (status === "published") {
-    return "default"
-  }
+function getRespondentSeriesColorByDataKey(dataKey: string): string {
+  const match = /^respondent(\d+)$/.exec(dataKey)
+  const index = match ? Number.parseInt(match[1], 10) - 1 : 0
 
-  if (status === "closed") {
-    return "secondary"
-  }
-
-  return "outline"
-}
-
-function formatDateTimeLabel(value: string | null): string {
-  if (!value) {
-    return "-"
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value))
+  return getRespondentSeriesColor(Math.max(index, 0))
 }
 
 function normalizeInternalHref(href: string): string {
@@ -135,21 +99,6 @@ function AssessmentScopeFields({ scope }: { scope: NavigationScope }) {
         <input type="hidden" name="scopeTeamId" value={scope.activeTeamId} />
       ) : null}
     </>
-  )
-}
-
-function CloseRunMenuItem() {
-  const { pending } = useFormStatus()
-
-  return (
-    <DropdownMenuItem
-      nativeButton
-      render={<button type="submit" disabled={pending} />}
-      disabled={pending}
-    >
-      {pending ? <Loader2Icon className="size-4 animate-spin" /> : null}
-      {pending ? "Closing..." : "Close"}
-    </DropdownMenuItem>
   )
 }
 
@@ -239,15 +188,6 @@ function AssessmentDetailActions({
           <MoreHorizontalIcon className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          {run.status !== "closed" ? (
-            <form action={closeAssessmentRunAction}>
-              <AssessmentScopeFields scope={scope} />
-              <input type="hidden" name="returnPath" value={returnPath} />
-              <input type="hidden" name="runId" value={run.id} />
-              <input type="hidden" name="teamVenueId" value={run.teamVenueId} />
-              <CloseRunMenuItem />
-            </form>
-          ) : null}
           <DropdownMenuItem
             variant="destructive"
             onClick={() => {
@@ -310,15 +250,150 @@ function buildRunAnswerPayloadRows(input: {
   return rows
 }
 
-function countRunCategoryItems(category: TeamAssessmentRun["categories"][number]): number {
+type TeamAssessmentCategory = TeamAssessmentRun["categories"][number]
+type TeamAssessmentAnalyticsItem = TeamAssessmentDetailData["analytics"]["items"][number]
+type TeamAssessmentCrewAnswer = TeamAssessmentAnalyticsItem["crewAnswers"][number]
+type TeamAssessmentAnalyticsRespondent =
+  TeamAssessmentDetailData["analytics"]["respondentSummaries"][number]
+type TeamAssessmentChartDatum = Record<string, string | number | boolean | undefined> & {
+  label: string
+  runName: string
+  venueName: string
+  isCurrent: boolean
+}
+type TeamAssessmentTooltipPayload = ReadonlyArray<{
+  payload?: {
+    venueName?: unknown
+  }
+}>
+
+function formatTrendTooltipLabel(
+  fallbackLabel: React.ReactNode,
+  payload: TeamAssessmentTooltipPayload,
+): React.ReactNode {
+  const venueName = payload[0]?.payload?.venueName
+
+  if (typeof venueName === "string" && venueName.trim().length > 0) {
+    return venueName
+  }
+
+  return fallbackLabel
+}
+
+function VenueAxisTick({
+  payload,
+  venueNameByLabel,
+  x = 0,
+  y = 0,
+}: {
+  payload?: {
+    value?: string | number
+  }
+  venueNameByLabel: Map<string, string>
+  x?: number
+  y?: number
+}) {
+  const label = String(payload?.value ?? "")
+  const venueName = venueNameByLabel.get(label)
+
   return (
-    category.questions.length +
-    (category.modes ?? []).reduce((count, mode) => count + mode.questions.length, 0)
+    <text x={x} y={y} dy={16} textAnchor="middle">
+      {venueName ? <title>{venueName}</title> : null}
+      {label}
+    </text>
   )
 }
 
-function countRunCategoryModes(category: TeamAssessmentRun["categories"][number]): number {
-  return category.modes?.length ?? 0
+function buildInitialModeByCategoryId(
+  categories: TeamAssessmentRun["categories"],
+): Record<string, string> {
+  const modeByCategoryId: Record<string, string> = {}
+
+  for (const category of categories) {
+    const firstMode = category.modes?.[0]
+
+    if (firstMode) {
+      modeByCategoryId[category.id] = firstMode.id
+    }
+  }
+
+  return modeByCategoryId
+}
+
+function categoryUsesModes(category: TeamAssessmentCategory | null): boolean {
+  return (category?.modes?.length ?? 0) > 0
+}
+
+function getSelectedMode(input: {
+  category: TeamAssessmentCategory | null
+  modeByCategoryId: Record<string, string>
+}): TeamAssessmentMode | null {
+  if (!categoryUsesModes(input.category) || !input.category) {
+    return null
+  }
+
+  return (
+    input.category.modes?.find(
+      (mode) => mode.id === input.modeByCategoryId[input.category?.id ?? ""],
+    ) ??
+    input.category.modes?.[0] ??
+    null
+  )
+}
+
+function getQuestionsForSelection(input: {
+  category: TeamAssessmentCategory | null
+  mode: TeamAssessmentMode | null
+}): TeamAssessmentQuestion[] {
+  if (!input.category) {
+    return []
+  }
+
+  if (categoryUsesModes(input.category)) {
+    return input.mode?.questions ?? []
+  }
+
+  return input.category.questions
+}
+
+function getFirstQuestionIdForSelection(input: {
+  category: TeamAssessmentCategory | null
+  mode: TeamAssessmentMode | null
+}): string {
+  return getQuestionsForSelection(input)[0]?.id ?? ""
+}
+
+function getSelectTriggerWidthStyle(labels: string[]): React.CSSProperties {
+  const longestLabelLength = Math.max(1, ...labels.map((label) => label.length))
+
+  return {
+    maxWidth: "100%",
+    width: `min(100%, calc(${longestLabelLength}ch + 4.5rem))`,
+  }
+}
+
+function findAnalyticsItem(input: {
+  detail: TeamAssessmentDetailData
+  questionId: string
+}): TeamAssessmentAnalyticsItem | null {
+  return (
+    input.detail.analytics.items.find((item) => item.questionId === input.questionId) ??
+    null
+  )
+}
+
+function getAnalyticsItemsForSelection(input: {
+  detail: TeamAssessmentDetailData
+  categoryId: string | null
+  modeId: string | null
+}): TeamAssessmentAnalyticsItem[] {
+  return input.detail.analytics.items
+    .filter(
+      (item) =>
+        item.categoryId === input.categoryId &&
+        (input.modeId ? item.modeId === input.modeId : item.modeId === null),
+    )
+    .sort((left, right) => left.position - right.position)
 }
 
 function QuestionScoreRow({
@@ -365,6 +440,159 @@ function QuestionScoreRow({
   )
 }
 
+function AssessmentModeSelect({
+  category,
+  idPrefix,
+  onModeChange,
+  selectedMode,
+}: {
+  category: TeamAssessmentCategory | null
+  idPrefix: string
+  onModeChange: (modeId: string) => void
+  selectedMode: TeamAssessmentMode | null
+}) {
+  if (!categoryUsesModes(category) || !category) {
+    return null
+  }
+
+  const modes = category.modes ?? []
+
+  return (
+    <div>
+      <Select
+        value={selectedMode?.id ?? ""}
+        onValueChange={(value) => onModeChange(String(value))}
+      >
+        <SelectTrigger
+          id={`${idPrefix}-mode`}
+          className="max-w-full"
+          style={getSelectTriggerWidthStyle([
+            ...modes.map((mode) => mode.name),
+            "Mode",
+          ])}
+          aria-label="Mode"
+        >
+          <SelectValue>{selectedMode?.name ?? "Mode"}</SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {modes.map((mode) => (
+            <SelectItem key={mode.id} value={mode.id}>
+              {mode.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+function AssessmentSelectionControls({
+  categoryLabel = "Category",
+  className,
+  idPrefix,
+  itemLabel = "Item",
+  onCategoryChange,
+  onModeChange,
+  onQuestionChange,
+  questions,
+  run,
+  selectedCategory,
+  selectedMode,
+  selectedQuestionId,
+  showQuestionSelect,
+}: {
+  categoryLabel?: string
+  className?: string
+  idPrefix: string
+  itemLabel?: string
+  onCategoryChange: (categoryId: string) => void
+  onModeChange: (modeId: string) => void
+  onQuestionChange?: (questionId: string) => void
+  questions: TeamAssessmentQuestion[]
+  run: TeamAssessmentRun
+  selectedCategory: TeamAssessmentCategory | null
+  selectedMode: TeamAssessmentMode | null
+  selectedQuestionId?: string
+  showQuestionSelect?: boolean
+}) {
+  const categoryNames = [
+    ...run.categories.map((category) => category.name),
+    "Select category",
+  ]
+  const questionLabels = [
+    ...questions.map((question) => question.prompt),
+    "Select item",
+  ]
+
+  return (
+    <div
+      className={cn(
+        "grid gap-3 md:grid-cols-[max-content_max-content_max-content] md:items-end",
+        className,
+      )}
+    >
+      <div>
+        <Select
+          value={selectedCategory?.id ?? ""}
+          onValueChange={(value) => onCategoryChange(String(value))}
+        >
+          <SelectTrigger
+            id={`${idPrefix}-category`}
+            className="max-w-full"
+            style={getSelectTriggerWidthStyle(categoryNames)}
+            aria-label={categoryLabel}
+          >
+            <SelectValue>{selectedCategory?.name ?? "Select category"}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {run.categories.map((category) => (
+              <SelectItem key={category.id} value={category.id}>
+                {category.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <AssessmentModeSelect
+        category={selectedCategory}
+        idPrefix={idPrefix}
+        selectedMode={selectedMode}
+        onModeChange={onModeChange}
+      />
+
+      {showQuestionSelect ? (
+        <div>
+          <Select
+            value={selectedQuestionId ?? ""}
+            onValueChange={(value) => onQuestionChange?.(String(value))}
+            disabled={questions.length === 0}
+          >
+            <SelectTrigger
+              id={`${idPrefix}-question`}
+              className="max-w-full"
+              style={getSelectTriggerWidthStyle(questionLabels)}
+              aria-label={itemLabel}
+            >
+              <SelectValue>
+                {questions.find((question) => question.id === selectedQuestionId)?.prompt ??
+                  "Select item"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {questions.map((question) => (
+                <SelectItem key={question.id} value={question.id}>
+                  {question.prompt}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function AssessmentAnswerForm({
   returnPath,
   run,
@@ -377,6 +605,12 @@ function AssessmentAnswerForm({
   const [selectionByQuestionId, setSelectionByQuestionId] = React.useState<
     Record<string, string>
   >(() => buildInitialSelectionByQuestionId(run.myAnswers))
+  const [selectedCategoryId, setSelectedCategoryId] = React.useState(
+    () => run.categories[0]?.id ?? "",
+  )
+  const [modeByCategoryId, setModeByCategoryId] = React.useState<
+    Record<string, string>
+  >(() => buildInitialModeByCategoryId(run.categories))
   const payload = React.useMemo(
     () =>
       JSON.stringify(
@@ -387,6 +621,47 @@ function AssessmentAnswerForm({
       ),
     [run.categories, selectionByQuestionId],
   )
+  const selectedCategory =
+    run.categories.find((category) => category.id === selectedCategoryId) ??
+    run.categories[0] ??
+    null
+  const selectedMode = getSelectedMode({
+    category: selectedCategory,
+    modeByCategoryId,
+  })
+  const activeQuestions = getQuestionsForSelection({
+    category: selectedCategory,
+    mode: selectedMode,
+  })
+
+  function updateSelectedCategory(categoryId: string): void {
+    const nextCategory =
+      run.categories.find((category) => category.id === categoryId) ?? null
+    const nextMode = getSelectedMode({
+      category: nextCategory,
+      modeByCategoryId,
+    })
+
+    setSelectedCategoryId(categoryId)
+
+    if (nextCategory && categoryUsesModes(nextCategory) && nextMode) {
+      setModeByCategoryId((currentValue) => ({
+        ...currentValue,
+        [nextCategory.id]: nextMode.id,
+      }))
+    }
+  }
+
+  function updateSelectedMode(modeId: string): void {
+    if (!selectedCategory) {
+      return
+    }
+
+    setModeByCategoryId((currentValue) => ({
+      ...currentValue,
+      [selectedCategory.id]: modeId,
+    }))
+  }
 
   function setValue(questionId: string, value: string): void {
     setSelectionByQuestionId((currentValue) => ({
@@ -411,73 +686,33 @@ function AssessmentAnswerForm({
         <input type="hidden" name="teamVenueId" value={run.teamVenueId} />
         <input type="hidden" name="answersJson" value={payload} />
 
-        <Accordion className="gap-3">
-          {run.categories.map((category) => {
-            const modeCount = countRunCategoryModes(category)
-            const itemCount = countRunCategoryItems(category)
+        <AssessmentSelectionControls
+          idPrefix={`answer-${run.id}`}
+          run={run}
+          selectedCategory={selectedCategory}
+          selectedMode={selectedMode}
+          questions={activeQuestions}
+          onCategoryChange={updateSelectedCategory}
+          onModeChange={updateSelectedMode}
+        />
 
-            return (
-              <AccordionItem key={category.id} value={category.id} className="rounded-lg border">
-                <AccordionTrigger className="px-3 py-3 hover:no-underline">
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold">
-                      {category.name}
-                    </span>
-                    <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                      {modeCount > 0 ? `${modeCount} modes - ` : ""}
-                      {itemCount} items
-                    </span>
-                  </span>
-                </AccordionTrigger>
-                <AccordionContent className="space-y-3 px-3 pb-3">
-                  {category.questions.map((question) => (
-                    <QuestionScoreRow
-                      key={question.id}
-                      question={question}
-                      run={run}
-                      selectedValue={selectionByQuestionId[question.id] ?? ""}
-                      setValue={setValue}
-                    />
-                  ))}
-
-                  {(category.modes ?? []).length > 0 ? (
-                    <Accordion className="gap-2">
-                      {(category.modes ?? []).map((mode) => (
-                        <AccordionItem
-                          key={mode.id}
-                          value={mode.id}
-                          className="rounded-lg border"
-                        >
-                          <AccordionTrigger className="px-3 py-3 hover:no-underline">
-                            <span className="min-w-0">
-                              <span className="block truncate text-sm font-semibold">
-                                {mode.name}
-                              </span>
-                              <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                                {mode.questions.length} items
-                              </span>
-                            </span>
-                          </AccordionTrigger>
-                          <AccordionContent className="space-y-3 px-3 pb-3">
-                            {mode.questions.map((question) => (
-                              <QuestionScoreRow
-                                key={question.id}
-                                question={question}
-                                run={run}
-                                selectedValue={selectionByQuestionId[question.id] ?? ""}
-                                setValue={setValue}
-                              />
-                            ))}
-                          </AccordionContent>
-                        </AccordionItem>
-                      ))}
-                    </Accordion>
-                  ) : null}
-                </AccordionContent>
-              </AccordionItem>
-            )
-          })}
-        </Accordion>
+        {activeQuestions.length > 0 ? (
+          <div className="space-y-3">
+            {activeQuestions.map((question) => (
+              <QuestionScoreRow
+                key={question.id}
+                question={question}
+                run={run}
+                selectedValue={selectionByQuestionId[question.id] ?? ""}
+                setValue={setValue}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+            No indicators are configured for this selection.
+          </p>
+        )}
 
         <div className="flex justify-end border-t pt-4">
           <AnswerSubmitButton />
@@ -487,128 +722,404 @@ function AssessmentAnswerForm({
   )
 }
 
-function ProgressCharts({ detail }: { detail: TeamAssessmentDetailData }) {
-  const progressData = detail.progressPoints.map((point) => ({
-    ...point,
-    marker: point.isCurrent ? "Current" : "",
-  }))
-  const categoryData = detail.categoryProgress.map((category) => ({
-    categoryName: category.categoryName,
-    currentAverage: category.currentAverage ?? 0,
-    historicalAverage: category.historicalAverage ?? 0,
-  }))
+function SelectedItemTrendChart({ item }: { item: TeamAssessmentAnalyticsItem | null }) {
+  const rawGradientId = React.useId()
+  const gradientRootId = `assessment-respondent-${rawGradientId.replace(/[^a-zA-Z0-9_-]/g, "")}`
+  const chartConfig = React.useMemo<ChartConfig>(() => {
+    const config: ChartConfig = {}
+
+    for (const line of item?.respondentLines ?? []) {
+      config[line.dataKey] = {
+        label: line.label,
+        color: getRespondentSeriesColorByDataKey(line.dataKey),
+      }
+    }
+
+    return config
+  }, [item])
+  const chartData = React.useMemo(
+    () =>
+      (item?.trendPoints ?? []).map((point) => {
+        const row: TeamAssessmentChartDatum = {
+          label: point.label,
+          runName: point.runName,
+          venueName: point.venueName,
+          isCurrent: point.isCurrent,
+        }
+
+        for (const line of item?.respondentLines ?? []) {
+          row[line.dataKey] = point.respondentScores[line.profileId] ?? undefined
+        }
+
+        return row
+      }),
+    [item],
+  )
+  const venueNameByLabel = React.useMemo(
+    () => new Map(chartData.map((point) => [point.label, point.venueName])),
+    [chartData],
+  )
+  const hasData = chartData.some((point) =>
+    Object.entries(point).some(
+      ([key, value]) =>
+        key !== "label" &&
+        key !== "runName" &&
+        key !== "venueName" &&
+        key !== "isCurrent" &&
+        typeof value === "number",
+    ),
+  )
+
+  if (!item || !hasData) {
+    return (
+      <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+        No answers have been submitted for this item yet.
+      </p>
+    )
+  }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-2">
-      <GradientCard className="space-y-3 p-4">
-        <div>
-          <h2 className="text-base font-semibold">Progress by assessment</h2>
-          <p className="text-sm text-muted-foreground">
-            Same team and template, ordered by creation date.
-          </p>
-        </div>
-        {detail.progressPoints.some((point) => point.average !== null) ? (
-          <ChartContainer config={progressChartConfig} className="h-72 w-full">
-            <LineChart accessibilityLayer data={progressData} margin={{ left: 12, right: 12 }}>
-              <CartesianGrid vertical={false} />
-              <XAxis dataKey="label" tickLine={false} axisLine={false} />
-              <YAxis domain={[0, 5]} tickLine={false} axisLine={false} width={28} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Line
-                dataKey="average"
-                type="monotone"
-                stroke="var(--color-average)"
-                strokeWidth={2}
-                dot={(props) => {
-                  const payload = props.payload as { isCurrent?: boolean }
-                  return (
-                    <circle
-                      cx={props.cx}
-                      cy={props.cy}
-                      r={payload.isCurrent ? 5 : 3}
-                      fill="var(--color-average)"
-                      stroke="var(--background)"
-                      strokeWidth={2}
-                    />
-                  )
-                }}
+    <ChartContainer config={chartConfig} className="h-72 w-full">
+      <AreaChart accessibilityLayer data={chartData} margin={{ left: 12, right: 12 }}>
+        <CartesianGrid vertical={false} />
+        <XAxis
+          dataKey="label"
+          tick={<VenueAxisTick venueNameByLabel={venueNameByLabel} />}
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+        />
+        <YAxis
+          domain={[0, 5]}
+          ticks={[0, 1, 2, 3, 4, 5]}
+          tickLine={false}
+          axisLine={false}
+          width={28}
+        />
+        <ChartTooltip
+          cursor={false}
+          content={
+            <ChartTooltipContent
+              indicator="line"
+              labelFormatter={formatTrendTooltipLabel}
+            />
+          }
+        />
+        <defs>
+          {item.respondentLines.map((line) => (
+            <linearGradient
+              key={line.profileId}
+              id={`${gradientRootId}-${line.dataKey}`}
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="1"
+            >
+              <stop
+                offset="5%"
+                stopColor={`var(--color-${line.dataKey})`}
+                stopOpacity={0.75}
               />
-            </LineChart>
-          </ChartContainer>
-        ) : (
-          <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-            No answers have been submitted yet.
-          </p>
-        )}
-      </GradientCard>
-
-      <GradientCard className="space-y-3 p-4">
-        <div>
-          <h2 className="text-base font-semibold">Category comparison</h2>
-          <p className="text-sm text-muted-foreground">
-            Current run compared with previous runs using this template.
-          </p>
-        </div>
-        {detail.categoryProgress.length > 0 ? (
-          <ChartContainer config={categoryChartConfig} className="h-72 w-full">
-            <BarChart accessibilityLayer data={categoryData} margin={{ left: 12, right: 12 }}>
-              <CartesianGrid vertical={false} />
-              <XAxis
-                dataKey="categoryName"
-                tickLine={false}
-                axisLine={false}
-                interval={0}
-                tickMargin={8}
+              <stop
+                offset="95%"
+                stopColor={`var(--color-${line.dataKey})`}
+                stopOpacity={0.08}
               />
-              <YAxis domain={[0, 5]} tickLine={false} axisLine={false} width={28} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar dataKey="historicalAverage" fill="var(--color-historicalAverage)" radius={3} />
-              <Bar dataKey="currentAverage" fill="var(--color-currentAverage)" radius={3} />
-            </BarChart>
-          </ChartContainer>
-        ) : (
-          <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-            No category data is available for this assessment.
-          </p>
-        )}
-      </GradientCard>
-    </div>
+            </linearGradient>
+          ))}
+        </defs>
+        {item.respondentLines.map((line) => (
+          <Area
+            key={line.profileId}
+            dataKey={line.dataKey}
+            type="natural"
+            fill={`url(#${gradientRootId}-${line.dataKey})`}
+            fillOpacity={0.3}
+            stroke={`var(--color-${line.dataKey})`}
+            strokeWidth={2}
+            dot={false}
+            activeDot={{ r: 4 }}
+            connectNulls={false}
+          />
+        ))}
+      </AreaChart>
+    </ChartContainer>
   )
 }
 
-function AnswerSummaries({ detail }: { detail: TeamAssessmentDetailData }) {
+function getCrewRespondentsForItems(
+  items: TeamAssessmentAnalyticsItem[],
+  respondents: TeamAssessmentAnalyticsRespondent[],
+): TeamAssessmentAnalyticsRespondent[] {
+  const answeredProfileIds = new Set<string>()
+
+  for (const item of items) {
+    for (const answer of item.crewAnswers) {
+      answeredProfileIds.add(answer.profileId)
+    }
+  }
+
+  return respondents.filter((respondent) => answeredProfileIds.has(respondent.profileId))
+}
+
+function getCrewAnswerForItem(input: {
+  item: TeamAssessmentAnalyticsItem
+  profileId: string
+}): TeamAssessmentCrewAnswer | null {
+  return (
+    input.item.crewAnswers.find((answer) => answer.profileId === input.profileId) ??
+    null
+  )
+}
+
+function AnswerMatrix({
+  items,
+  respondents,
+}: {
+  items: TeamAssessmentAnalyticsItem[]
+  respondents: TeamAssessmentAnalyticsRespondent[]
+}) {
+  const crewRespondents = getCrewRespondentsForItems(items, respondents)
+
   return (
     <GradientCard className="overflow-hidden p-0">
       <div className="border-b bg-muted/40 px-4 py-3">
-        <h2 className="text-base font-semibold">Answer summary</h2>
+        <h2 className="text-base font-semibold">Answers</h2>
       </div>
-      {detail.questionSummaries.length === 0 ? (
-        <p className="p-4 text-sm text-muted-foreground">No questions configured.</p>
+      {items.length === 0 ? (
+        <p className="p-4 text-sm text-muted-foreground">
+          No indicators are configured for this selection.
+        </p>
+      ) : crewRespondents.length === 0 ? (
+        <p className="p-4 text-sm text-muted-foreground">
+          No crew answers have been submitted for this selection.
+        </p>
       ) : (
-        <div className="divide-y divide-border">
-          {detail.questionSummaries.map((summary) => (
-            <article
-              key={summary.questionId}
-              className="grid gap-2 px-4 py-3 md:grid-cols-[minmax(0,1fr)_7rem_6rem]"
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-medium">{summary.prompt}</p>
-                <p className="text-xs text-muted-foreground">
-                  {summary.categoryName}
-                  {summary.modeName ? ` - ${summary.modeName}` : ""}
-                </p>
-              </div>
-              <p className="text-sm tabular-nums">
-                Average: {summary.average === null ? "-" : summary.average.toFixed(2)}
-              </p>
-              <p className="text-sm text-muted-foreground tabular-nums">
-                {summary.answerCount} answers
-              </p>
-            </article>
-          ))}
-        </div>
+        <>
+          <div className="hidden md:block">
+            <Table className="min-w-max">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="min-w-64">Indicator</TableHead>
+                  {crewRespondents.map((respondent) => (
+                    <TableHead key={respondent.profileId} className="min-w-28">
+                      <span className="inline-flex items-center gap-2">
+                        <span
+                          aria-hidden="true"
+                          className="size-2 rounded-full"
+                          style={{
+                            backgroundColor: getRespondentSeriesColorByDataKey(
+                              respondent.dataKey,
+                            ),
+                          }}
+                        />
+                        <span>{respondent.label}</span>
+                      </span>
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map((item) => (
+                  <TableRow key={item.questionId}>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        <span>{item.prompt}</span>
+                        {item.isRequired ? (
+                          <Badge variant="outline" className="h-5">
+                            Required
+                          </Badge>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    {crewRespondents.map((respondent) => {
+                      const answer = getCrewAnswerForItem({
+                        item,
+                        profileId: respondent.profileId,
+                      })
+
+                      return (
+                        <TableCell
+                          key={`${item.questionId}-${respondent.profileId}`}
+                          className="font-mono tabular-nums"
+                        >
+                          {answer?.scaleLabel ?? "-"}
+                        </TableCell>
+                      )
+                    })}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="divide-y divide-border md:hidden">
+            {items.map((item) => (
+              <article key={item.questionId} className="space-y-3 px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-sm font-medium">{item.prompt}</p>
+                  {item.isRequired ? (
+                    <Badge variant="outline" className="h-5 shrink-0">
+                      Required
+                    </Badge>
+                  ) : null}
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  {crewRespondents.map((respondent) => {
+                    const answer = getCrewAnswerForItem({
+                      item,
+                      profileId: respondent.profileId,
+                    })
+
+                    return (
+                      <div key={`${item.questionId}-${respondent.profileId}`}>
+                        <p className="flex items-center gap-2 truncate text-xs text-muted-foreground">
+                          <span
+                            aria-hidden="true"
+                            className="size-2 shrink-0 rounded-full"
+                            style={{
+                              backgroundColor: getRespondentSeriesColorByDataKey(
+                                respondent.dataKey,
+                              ),
+                            }}
+                          />
+                          <span className="min-w-0 truncate">{respondent.label}</span>
+                        </p>
+                        <p className="font-mono tabular-nums">
+                          {answer?.scaleLabel ?? "-"}
+                        </p>
+                      </div>
+                    )
+                  })}
+                </div>
+              </article>
+            ))}
+          </div>
+        </>
       )}
     </GradientCard>
+  )
+}
+
+function AssessmentAnalyticsSection({ detail }: { detail: TeamAssessmentDetailData }) {
+  const run = detail.run
+  const [selectedCategoryId, setSelectedCategoryId] = React.useState(
+    () => run.categories[0]?.id ?? "",
+  )
+  const [modeByCategoryId, setModeByCategoryId] = React.useState<
+    Record<string, string>
+  >(() => buildInitialModeByCategoryId(run.categories))
+  const [selectedQuestionId, setSelectedQuestionId] = React.useState(() => {
+    const category = run.categories[0] ?? null
+    const mode = getSelectedMode({
+      category,
+      modeByCategoryId: buildInitialModeByCategoryId(run.categories),
+    })
+
+    return getFirstQuestionIdForSelection({ category, mode })
+  })
+  const selectedCategory =
+    run.categories.find((category) => category.id === selectedCategoryId) ??
+    run.categories[0] ??
+    null
+  const selectedMode = getSelectedMode({
+    category: selectedCategory,
+    modeByCategoryId,
+  })
+  const activeQuestions = getQuestionsForSelection({
+    category: selectedCategory,
+    mode: selectedMode,
+  })
+  const activeQuestionIds = activeQuestions.map((question) => question.id).join("|")
+  const resolvedQuestionId = activeQuestions.some(
+    (question) => question.id === selectedQuestionId,
+  )
+    ? selectedQuestionId
+    : activeQuestions[0]?.id ?? ""
+  const selectedItem = findAnalyticsItem({
+    detail,
+    questionId: resolvedQuestionId,
+  })
+  const matrixItems = getAnalyticsItemsForSelection({
+    detail,
+    categoryId: selectedCategory?.id ?? null,
+    modeId: selectedMode?.id ?? null,
+  })
+
+  React.useEffect(() => {
+    if (resolvedQuestionId !== selectedQuestionId) {
+      setSelectedQuestionId(resolvedQuestionId)
+    }
+  }, [activeQuestionIds, resolvedQuestionId, selectedQuestionId])
+
+  function updateSelectedCategory(categoryId: string): void {
+    const nextCategory =
+      run.categories.find((category) => category.id === categoryId) ?? null
+    const nextMode = getSelectedMode({
+      category: nextCategory,
+      modeByCategoryId,
+    })
+
+    setSelectedCategoryId(categoryId)
+    setSelectedQuestionId(
+      getFirstQuestionIdForSelection({
+        category: nextCategory,
+        mode: nextMode,
+      }),
+    )
+  }
+
+  function updateSelectedMode(modeId: string): void {
+    if (!selectedCategory) {
+      return
+    }
+
+    const nextMode =
+      selectedCategory.modes?.find((mode) => mode.id === modeId) ?? null
+
+    setModeByCategoryId((currentValue) => ({
+      ...currentValue,
+      [selectedCategory.id]: modeId,
+    }))
+    setSelectedQuestionId(
+      getFirstQuestionIdForSelection({
+        category: selectedCategory,
+        mode: nextMode,
+      }),
+    )
+  }
+
+  return (
+    <section className="space-y-4">
+      <GradientCard className="space-y-4 p-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="shrink-0">
+            <h2 className="text-base font-semibold">Analytics</h2>
+          </div>
+
+          <AssessmentSelectionControls
+            className="xl:ml-auto xl:w-auto"
+            idPrefix={`analytics-${run.id}`}
+            run={run}
+            selectedCategory={selectedCategory}
+            selectedMode={selectedMode}
+            selectedQuestionId={resolvedQuestionId}
+            questions={activeQuestions}
+            showQuestionSelect
+            onCategoryChange={updateSelectedCategory}
+            onModeChange={updateSelectedMode}
+            onQuestionChange={setSelectedQuestionId}
+          />
+        </div>
+
+        <SelectedItemTrendChart item={selectedItem} />
+      </GradientCard>
+
+      <AnswerMatrix
+        items={matrixItems}
+        respondents={detail.analytics.respondentSummaries}
+      />
+    </section>
   )
 }
 
@@ -623,10 +1134,6 @@ export function AssessmentDetailClient({
 }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const listHref = buildTeamAssessmentsHref({
-    scope,
-    tab: "created",
-  })
   const currentHref = normalizeInternalHref(
     searchParams.toString().length > 0
       ? `${pathname}?${searchParams.toString()}`
@@ -639,28 +1146,19 @@ export function AssessmentDetailClient({
     <div className="space-y-6">
       <section className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 space-y-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              nativeButton={false}
-              render={<Link href={listHref} />}
-            >
-              <ArrowLeftIcon className="size-4" />
-              Assessments
-            </Button>
-            <div className="space-y-1">
-              <h1 className="text-2xl font-semibold tracking-tight">
-                {run.templateName ?? run.name}
-              </h1>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant={getStatusBadgeVariant(run.status)}>
-                  {formatAssessmentRunStatusLabel(run.status)}
+          <div className="min-w-0 space-y-1">
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {run.templateName ?? run.name}
+            </h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-muted-foreground">
+                {run.venueName}
+              </span>
+              {run.camps.map((camp) => (
+                <Badge key={camp.id} variant="secondary">
+                  {camp.name}
                 </Badge>
-                <span className="text-sm text-muted-foreground">
-                  {run.venueName} - {run.venueLocation}
-                </span>
-              </div>
+              ))}
             </div>
           </div>
 
@@ -671,44 +1169,9 @@ export function AssessmentDetailClient({
             scope={scope}
           />
         </div>
-
-        <div className="grid gap-3 md:grid-cols-4">
-          <GradientCard className="p-4">
-            <p className="text-xs text-muted-foreground">Created</p>
-            <p className="mt-1 text-sm font-medium">{formatDateTimeLabel(run.createdAt)}</p>
-          </GradientCard>
-          <GradientCard className="p-4">
-            <p className="text-xs text-muted-foreground">Published</p>
-            <p className="mt-1 text-sm font-medium">{formatDateTimeLabel(run.publishedAt)}</p>
-          </GradientCard>
-          <GradientCard className="p-4">
-            <p className="text-xs text-muted-foreground">Progress</p>
-            <p className="mt-1 text-sm font-medium tabular-nums">
-              {run.completedRespondentsCount}/{run.expectedRespondentsCount}
-            </p>
-          </GradientCard>
-          <GradientCard className="p-4">
-            <p className="text-xs text-muted-foreground">Camps</p>
-            <p className="mt-1 text-sm font-medium">{run.camps.length}</p>
-          </GradientCard>
-        </div>
       </section>
 
-      {run.camps.length > 0 ? (
-        <GradientCard className="p-4">
-          <h2 className="text-base font-semibold">Linked camps</h2>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {run.camps.map((camp) => (
-              <Badge key={camp.id} variant="secondary">
-                {camp.name}
-              </Badge>
-            ))}
-          </div>
-        </GradientCard>
-      ) : null}
-
-      <ProgressCharts detail={detail} />
-      <AnswerSummaries detail={detail} />
+      <AssessmentAnalyticsSection detail={detail} />
 
       {canAnswer ? (
         <AssessmentAnswerForm returnPath={currentHref} run={run} scope={scope} />

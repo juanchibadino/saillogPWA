@@ -588,31 +588,127 @@ export function TeamNotesPageSkeleton() {
   )
 }
 
-export function TeamStandardMovesPageSkeleton() {
+const TEAM_STANDARD_MOVES_TABLE_HEADERS = [
+  "Name",
+  "Description",
+  "Used By",
+  "Updated",
+  "Status",
+]
+const TEAM_STANDARD_MOVES_TABLE_GRID_CLASS =
+  "grid grid-cols-[minmax(0,20fr)_minmax(0,53fr)_minmax(0,7fr)_minmax(0,10fr)_minmax(0,6fr)_3rem] items-center gap-4"
+
+export function TeamStandardMovesChromeSkeleton() {
   return (
-    <div className="space-y-6">
-      <div className="rounded-xl border bg-card p-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="space-y-1">
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-9 w-40" />
+    <section className="space-y-4" aria-busy="true">
+      <header className="flex items-center justify-between gap-3">
+        <h1 className="min-w-0 text-2xl font-semibold tracking-tight md:hidden">
+          Standard Moves
+        </h1>
+        <h2 className="hidden text-lg font-semibold md:block">Standard Moves</h2>
+
+        <div className="flex shrink-0 items-center justify-end gap-2 md:w-auto">
+          <button
+            type="button"
+            disabled
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground opacity-70 md:hidden"
+            aria-label="Loading status filters"
+          >
+            <Skeleton className="size-4" />
+          </button>
+
+          <div className="hidden items-center justify-end gap-2 md:flex">
+            <Skeleton className="h-8 w-28" />
+            <button
+              type="button"
+              disabled
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium text-muted-foreground opacity-70"
+            >
+              <PlusIcon className="size-4" />
+              New
+            </button>
           </div>
-          <Skeleton className="h-8 w-20" />
+        </div>
+      </header>
+
+      <button
+        type="button"
+        disabled
+        className="mobile-floating-action inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground opacity-70 shadow-lg shadow-black/20 md:hidden"
+        aria-label="Loading new standard move action"
+      >
+        <PlusIcon className="size-6" />
+      </button>
+    </section>
+  )
+}
+
+export function TeamStandardMovesResultsSkeleton() {
+  return (
+    <section className="space-y-4" aria-busy="true">
+      <div className="space-y-2 md:hidden">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <GradientCard key={`team-standard-moves-mobile-row-${index}`} className="px-3 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-4 w-40 max-w-full" />
+                <Skeleton className="h-3 w-52 max-w-full" />
+                <Skeleton className="h-3 w-44 max-w-full" />
+                <Skeleton className="h-5 w-16" />
+              </div>
+              <Skeleton className="h-11 w-11 shrink-0" />
+            </div>
+          </GradientCard>
+        ))}
+        <div className="pb-4 pt-3">
+          <Skeleton className="h-11 w-full" />
         </div>
       </div>
 
-      <div className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <Skeleton className="h-6 w-28" />
-          <Skeleton className="h-8 w-24" />
+      <GradientCard className="hidden overflow-hidden p-0 md:block">
+        <div
+          className={`${TEAM_STANDARD_MOVES_TABLE_GRID_CLASS} bg-muted/40 px-4 py-3 text-sm font-medium text-muted-foreground`}
+        >
+          {TEAM_STANDARD_MOVES_TABLE_HEADERS.map((header) => (
+            <span key={`team-standard-moves-header-${header}`} className="truncate">
+              {header}
+            </span>
+          ))}
+          <span aria-hidden="true" />
         </div>
-        <div className="space-y-3">
-          <Skeleton className="h-10 w-full" />
+        <div className="divide-y divide-border">
           {Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton key={`team-standard-moves-row-${index}`} className="h-12 w-full" />
+            <div
+              key={`team-standard-moves-desktop-row-${index}`}
+              className={`${TEAM_STANDARD_MOVES_TABLE_GRID_CLASS} min-h-12 px-4 py-3`}
+            >
+              <Skeleton className="h-4 w-full max-w-32" />
+              <Skeleton className="h-4 w-full max-w-48" />
+              <Skeleton className="h-4 w-full max-w-10" />
+              <Skeleton className="h-4 w-full max-w-24" />
+              <Skeleton className="h-5 w-full max-w-16" />
+              <Skeleton className="ml-auto h-8 w-8" />
+            </div>
           ))}
         </div>
+      </GradientCard>
+
+      <div className="hidden items-center gap-1 md:flex">
+        <Skeleton className="h-9 w-24" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-16" />
       </div>
+    </section>
+  )
+}
+
+export function TeamStandardMovesPageSkeleton() {
+  return (
+    <div className="space-y-6">
+      <TeamStandardMovesChromeSkeleton />
+      <TeamStandardMovesResultsSkeleton />
     </div>
   )
 }
@@ -686,6 +782,123 @@ export function OrganizationReportsPageSkeleton() {
           ))}
         </div>
       </div>
+    </div>
+  )
+}
+
+function TeamAssessmentDetailHeaderSkeleton({
+  canManageAssessments = true,
+}: {
+  canManageAssessments?: boolean
+}) {
+  return (
+    <section className="space-y-4" aria-busy="true">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 space-y-2">
+          <Skeleton className="h-8 w-64 max-w-full" />
+          <Skeleton className="h-4 w-72 max-w-full" />
+        </div>
+        {canManageAssessments ? <Skeleton className="h-9 w-9" /> : null}
+      </div>
+    </section>
+  )
+}
+
+function TeamAssessmentDetailAnalyticsSkeleton() {
+  return (
+    <section className="space-y-4" aria-busy="true">
+      <GradientCard className="space-y-4 p-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <h2 className="text-base font-semibold">Analytics</h2>
+
+          <div className="grid gap-3 md:grid-cols-[max-content_max-content_max-content] md:items-end xl:ml-auto xl:w-auto">
+            <Skeleton className="h-8 w-28" />
+            <Skeleton className="h-8 w-36" />
+            <Skeleton className="h-8 w-40" />
+          </div>
+        </div>
+
+        <Skeleton className="h-72 w-full" />
+      </GradientCard>
+    </section>
+  )
+}
+
+function TeamAssessmentDetailAnswersSkeleton() {
+  return (
+    <GradientCard className="overflow-hidden p-0" aria-busy="true">
+      <div className="border-b bg-muted/40 px-4 py-3">
+        <h2 className="text-base font-semibold">Answers</h2>
+      </div>
+
+      <div className="divide-y divide-border md:hidden">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <article
+            key={`team-assessment-mobile-answer-${index}`}
+            className="space-y-3 px-4 py-3"
+          >
+            <Skeleton className="h-4 w-full max-w-48" />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Skeleton className="h-3 w-16" />
+                <Skeleton className="h-4 w-10" />
+              </div>
+              <div className="space-y-1">
+                <Skeleton className="h-3 w-16" />
+                <Skeleton className="h-4 w-10" />
+              </div>
+              <div className="space-y-1">
+                <Skeleton className="h-3 w-16" />
+                <Skeleton className="h-4 w-10" />
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      <div className="hidden md:block">
+        <div className="grid grid-cols-[minmax(16rem,1fr)_7rem_7rem_7rem] gap-4 bg-muted/40 px-4 py-3 text-sm font-medium text-muted-foreground">
+          <span>Indicator</span>
+          <span>Crew 1</span>
+          <span>Crew 2</span>
+          <span>Crew 3</span>
+        </div>
+        <div className="divide-y divide-border">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div
+              key={`team-assessment-desktop-answer-${index}`}
+              className="grid min-h-12 grid-cols-[minmax(16rem,1fr)_7rem_7rem_7rem] items-center gap-4 px-4 py-3"
+            >
+              <Skeleton className="h-4 w-full max-w-56" />
+              <Skeleton className="h-4 w-14" />
+              <Skeleton className="h-4 w-14" />
+              <Skeleton className="h-4 w-14" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </GradientCard>
+  )
+}
+
+export function TeamAssessmentDetailDeferredContentSkeleton({
+  canManageAssessments = true,
+}: {
+  canManageAssessments?: boolean
+}) {
+  return (
+    <>
+      <TeamAssessmentDetailHeaderSkeleton canManageAssessments={canManageAssessments} />
+      <TeamAssessmentDetailAnalyticsSkeleton />
+      <TeamAssessmentDetailAnswersSkeleton />
+    </>
+  )
+}
+
+export function TeamAssessmentDetailPageSkeleton() {
+  return (
+    <div className="space-y-6">
+      <TeamAssessmentDetailDeferredContentSkeleton />
     </div>
   )
 }

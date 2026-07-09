@@ -56,6 +56,11 @@ type CampBreadcrumbResponse = {
   team_venue_id: string | null
 }
 
+type AssessmentBreadcrumbResponse = {
+  team_name: string | null
+  assessment_name: string | null
+}
+
 function getSectionTitle(pathname: string): string {
   if (pathname.startsWith("/organizations")) {
     return "Organizations"
@@ -94,7 +99,7 @@ function getSectionTitle(pathname: string): string {
   }
 
   if (pathname.startsWith("/team-standard-moves")) {
-    return "Team Std. Moves"
+    return "Standard Moves"
   }
 
   if (pathname.startsWith("/team-reports")) {
@@ -322,7 +327,7 @@ function getTeamStandardMovesTitle(
   searchParams: ReadonlyURLSearchParams,
 ): string {
   if (!navigation?.scope) {
-    return "Team Std. Moves"
+    return "Standard Moves"
   }
 
   const activeOrgId =
@@ -339,7 +344,7 @@ function getTeamStandardMovesTitle(
     teamsForOrganization.find((team) => team.id === activeTeamId)?.name ??
     "No team selected"
 
-  return `${activeTeamLabel} > Std. Moves`
+  return `${activeTeamLabel} > Standard Moves`
 }
 
 function getTeamGearTitle(
@@ -466,6 +471,10 @@ function shouldUsePhaseOneMobileHeader(pathname: string): boolean {
     return true
   }
 
+  if (pathname.startsWith("/team-standard-moves")) {
+    return true
+  }
+
   return false
 }
 
@@ -502,6 +511,10 @@ function resolveMobileBackFallbackPath(pathname: string): string {
     return "/team-home"
   }
 
+  if (pathname.startsWith("/team-standard-moves")) {
+    return "/team-home"
+  }
+
   return "/team-home"
 }
 
@@ -523,6 +536,9 @@ export function SiteHeader({
   >({})
   const [campBreadcrumbById, setCampBreadcrumbById] = useState<
     Record<string, CampBreadcrumbResponse | null>
+  >({})
+  const [assessmentBreadcrumbById, setAssessmentBreadcrumbById] = useState<
+    Record<string, AssessmentBreadcrumbResponse | null>
   >({})
 
   const sectionTitle = pathname.startsWith("/team-venues")
@@ -546,6 +562,7 @@ export function SiteHeader({
   const isTeamCampsListHeader = pathname === "/team-camps"
   const isTeamSessionsHeader = pathname.startsWith("/team-sessions")
   const isTeamAssessmentsHeader = pathname.startsWith("/team-assessments")
+  const isTeamStandardMovesHeader = pathname.startsWith("/team-standard-moves")
   const teamScopeSectionLabel = pathname.startsWith("/team-venues")
     ? "Venues"
     : pathname.startsWith("/team-camps")
@@ -559,7 +576,7 @@ export function SiteHeader({
         : pathname.startsWith("/team-notes")
           ? "Notes"
         : pathname.startsWith("/team-standard-moves")
-          ? "Std. Moves"
+          ? "Standard Moves"
         : pathname.startsWith("/team-reports")
           ? "Reports"
         : null
@@ -780,11 +797,76 @@ export function SiteHeader({
     }
   }, [activeScope.activeOrgId, activeScope.activeTeamId, sessionDetailId])
 
+  useEffect(() => {
+    if (!assessmentDetailId) {
+      return
+    }
+
+    const params = new URLSearchParams()
+
+    if (activeScope.activeOrgId) {
+      params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, activeScope.activeOrgId)
+    }
+
+    if (activeScope.activeTeamId) {
+      params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, activeScope.activeTeamId)
+    }
+
+    const query = params.toString()
+    const requestPath =
+      query.length > 0
+        ? `/api/team-assessments/${assessmentDetailId}/breadcrumb?${query}`
+        : `/api/team-assessments/${assessmentDetailId}/breadcrumb`
+
+    const controller = new AbortController()
+
+    const loadAssessmentBreadcrumb = async () => {
+      try {
+        const response = await fetch(requestPath, {
+          cache: "no-store",
+          signal: controller.signal,
+        })
+
+        if (!response.ok) {
+          setAssessmentBreadcrumbById((currentValue) => ({
+            ...currentValue,
+            [assessmentDetailId]: null,
+          }))
+          return
+        }
+
+        const payload = (await response.json()) as AssessmentBreadcrumbResponse
+        setAssessmentBreadcrumbById((currentValue) => ({
+          ...currentValue,
+          [assessmentDetailId]: payload,
+        }))
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return
+        }
+
+        setAssessmentBreadcrumbById((currentValue) => ({
+          ...currentValue,
+          [assessmentDetailId]: null,
+        }))
+      }
+    }
+
+    void loadAssessmentBreadcrumb()
+
+    return () => {
+      controller.abort()
+    }
+  }, [activeScope.activeOrgId, activeScope.activeTeamId, assessmentDetailId])
+
   const venueName = teamVenueDetailId
     ? venueNameById[teamVenueDetailId] ?? null
     : null
   const sessionBreadcrumb = sessionDetailId
     ? sessionBreadcrumbById[sessionDetailId] ?? null
+    : null
+  const assessmentBreadcrumb = assessmentDetailId
+    ? assessmentBreadcrumbById[assessmentDetailId] ?? null
     : null
   const campBreadcrumb = campDetailId ? campBreadcrumbById[campDetailId] ?? null : null
   const hasCampBreadcrumbResult =
@@ -798,13 +880,19 @@ export function SiteHeader({
   const campVenueLabel = normalizeBreadcrumbLabel(campBreadcrumb?.venue_name)
   const campNameLabel = normalizeBreadcrumbLabel(campBreadcrumb?.camp_name)
   const campDetailTitle = campNameLabel ?? "Camp"
+  const assessmentTeamLabel =
+    normalizeBreadcrumbLabel(assessmentBreadcrumb?.team_name) ?? activeTeamLabel
+  const assessmentNameLabel = normalizeBreadcrumbLabel(
+    assessmentBreadcrumb?.assessment_name,
+  )
+  const assessmentDetailTitle = assessmentNameLabel ?? "Assessment"
   const teamVenueDetailTitle = venueName ?? "Venue"
   const mobileHeaderTitle = teamVenueDetailId
     ? teamVenueDetailTitle
     : sessionDetailId
       ? sessionDetailTitle
       : assessmentDetailId
-        ? "Assessment"
+        ? assessmentDetailTitle
         : campDetailId
           ? campDetailTitle
           : getSectionTitle(pathname)
@@ -861,7 +949,12 @@ export function SiteHeader({
       return
     }
 
-    if (isTeamCampsListHeader || isTeamSessionsHeader || isTeamAssessmentsHeader) {
+    if (
+      isTeamCampsListHeader ||
+      isTeamSessionsHeader ||
+      isTeamAssessmentsHeader ||
+      isTeamStandardMovesHeader
+    ) {
       router.push(teamHomeHref)
       return
     }
@@ -932,6 +1025,20 @@ export function SiteHeader({
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
+        ) : assessmentDetailId ? (
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink render={<Link href={teamHomeHref} />}>
+                  {assessmentTeamLabel}
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>{assessmentDetailTitle}</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
         ) : teamVenueDetailId ? (
           <Breadcrumb>
             <BreadcrumbList>
@@ -983,7 +1090,10 @@ export function SiteHeader({
           ? "Go to Assessments"
           : isTeamCampDetailHeader
             ? "Go to Venue"
-            : isTeamCampsListHeader || isTeamSessionsHeader || isTeamAssessmentsHeader
+            : isTeamCampsListHeader ||
+                isTeamSessionsHeader ||
+                isTeamAssessmentsHeader ||
+                isTeamStandardMovesHeader
               ? "Go to Team Home"
               : "Go back"
 

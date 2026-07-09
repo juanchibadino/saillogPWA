@@ -320,6 +320,39 @@ begin
     where id = test_org_id;
   end if;
 
+  insert into public.organization_subscriptions (
+    organization_id,
+    plan_tier,
+    billing_cycle,
+    status,
+    paypal_subscription_id,
+    paypal_plan_id,
+    current_period_start_at,
+    current_period_end_at,
+    created_by_profile_id
+  )
+  values (
+    test_org_id,
+    'pro'::public.plan_tier,
+    'yearly'::public.billing_cycle,
+    'active'::public.subscription_status,
+    null,
+    null,
+    timezone('utc', now()),
+    timezone('utc', now()) + interval '1 year',
+    null
+  )
+  on conflict (organization_id) do update
+  set
+    plan_tier = 'pro'::public.plan_tier,
+    billing_cycle = 'yearly'::public.billing_cycle,
+    status = 'active'::public.subscription_status,
+    paypal_subscription_id = null,
+    paypal_plan_id = null,
+    current_period_start_at = timezone('utc', now()),
+    current_period_end_at = timezone('utc', now()) + interval '1 year',
+    updated_at = timezone('utc', now());
+
   select t.id
   into test_team_id
   from public.teams t

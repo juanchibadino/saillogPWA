@@ -1,11 +1,17 @@
 import "server-only"
 
 import {
+  buildTeamAssessmentDetailAnalytics,
+  type TeamAssessmentDetailAnalytics,
+  type TeamAssessmentDetailAnalyticsProfile,
+} from "@/features/assessments/detail-analytics.mjs"
+import {
   formatTeamAssessmentsListTimingError,
   logTeamAssessmentsListTiming,
   startTeamAssessmentsListTiming,
 } from "@/features/assessments/list-timing"
 import { resolveAssessmentPagination } from "@/features/assessments/list-route-state.mjs"
+import { createAdminSupabaseClient } from "@/lib/supabase/admin"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import type { Database } from "@/types/database"
 
@@ -37,6 +43,7 @@ const ASSESSMENT_RUN_RESPONDENT_SELECT_COLUMNS =
   "assessment_run_id,profile_id,responded_at"
 const ASSESSMENT_RUN_ANSWER_SELECT_COLUMNS =
   "assessment_run_id,assessment_run_question_id,respondent_profile_id,assessment_run_scale_option_id"
+const PROFILE_SELECT_COLUMNS = "id,first_name,last_name,email"
 
 export const TEAM_ASSESSMENTS_PAGE_SIZE = 10
 const DETAIL_COMPARISON_RUN_LIMIT = 50
@@ -141,6 +148,11 @@ type AssessmentRunAnswerRow = Pick<
   | "assessment_run_question_id"
   | "respondent_profile_id"
   | "assessment_run_scale_option_id"
+>
+
+type ProfileDisplayRow = Pick<
+  Database["public"]["Tables"]["profiles"]["Row"],
+  "id" | "first_name" | "last_name" | "email"
 >
 
 type ServerSupabaseClient = Awaited<ReturnType<typeof createServerSupabaseClient>>
@@ -304,6 +316,7 @@ export type TeamAssessmentDetailData = {
   progressPoints: TeamAssessmentProgressPoint[]
   categoryProgress: TeamAssessmentCategoryProgress[]
   questionSummaries: TeamAssessmentQuestionSummary[]
+  analytics: TeamAssessmentDetailAnalytics
 }
 
 type TeamVenueContext = {
@@ -317,6 +330,53 @@ type TeamVenueContext = {
 
 function uniqueIds(values: Array<string | null>): string[] {
   return [...new Set(values.filter((value): value is string => Boolean(value)))]
+}
+
+function formatProfileLabel(profile: ProfileDisplayRow): string {
+  const name = [profile.first_name, profile.last_name]
+    .map((value) => value?.trim() ?? "")
+    .filter(Boolean)
+    .join(" ")
+
+  if (name.length > 0) {
+    return name
+  }
+
+  return profile.email?.trim() || `Crew ${profile.id.slice(0, 8)}`
+}
+
+function getAssessmentRespondentProfileIds(runs: TeamAssessmentRun[]): string[] {
+  return uniqueIds(
+    runs.flatMap((run) =>
+      run.allAnswers.map((answer) => answer.respondentProfileId),
+    ),
+  )
+}
+
+async function loadAssessmentRespondentProfiles(input: {
+  profileIds: string[]
+  supabase: ServerSupabaseClient
+}): Promise<TeamAssessmentDetailAnalyticsProfile[]> {
+  if (input.profileIds.length === 0) {
+    return []
+  }
+
+  const { data, error } = await input.supabase
+    .from("profiles")
+    .select(PROFILE_SELECT_COLUMNS)
+    .in("id", input.profileIds)
+
+  if (error) {
+    throw new Error(`Could not load assessment respondent profiles: ${error.message}`)
+  }
+
+  return ((data ?? []) as ProfileDisplayRow[]).map((profile) => ({
+    id: profile.id,
+    label: formatProfileLabel(profile),
+    firstName: profile.first_name,
+    lastName: profile.last_name,
+    email: profile.email,
+  }))
 }
 
 function buildLocation(venue: Pick<VenueRow, "city" | "country">): string {
@@ -873,11 +933,13 @@ async function loadRunsByIds(input: {
   currentProfileId: string
   templateNameById: Map<string, string>
   supabase: ServerSupabaseClient
+  answerSupabase?: ServerSupabaseClient
 }): Promise<TeamAssessmentRun[]> {
   if (input.runIds.length === 0) {
     return []
   }
 
+  const answerSupabase = input.answerSupabase ?? input.supabase
   const [
     { data: scaleOptionData, error: scaleOptionError },
     { data: categoryData, error: categoryError },
@@ -901,7 +963,7 @@ async function loadRunsByIds(input: {
       .from("assessment_run_respondents")
       .select(ASSESSMENT_RUN_RESPONDENT_SELECT_COLUMNS)
       .in("assessment_run_id", input.runIds),
-    input.supabase
+    answerSupabase
       .from("assessment_run_answers")
       .select(ASSESSMENT_RUN_ANSWER_SELECT_COLUMNS)
       .in("assessment_run_id", input.runIds),
@@ -1088,7 +1150,7 @@ function averageNumbers(values: Array<number | null>): number | null {
 function buildDetailSummaries(input: {
   run: TeamAssessmentRun
   comparisonRuns: TeamAssessmentRun[]
-}): Omit<TeamAssessmentDetailData, "run" | "comparisonRuns"> {
+}): Omit<TeamAssessmentDetailData, "run" | "comparisonRuns" | "analytics"> {
   const questionMetadata = getQuestionsForRun(input.run)
   const progressPoints = input.comparisonRuns.map((run, index) => ({
     runId: run.id,
@@ -1504,6 +1566,7 @@ export async function getTeamAssessmentDetailData(input: {
     return null
   }
 
+  const adminSupabase = createAdminSupabaseClient()
   const currentRunRow = runData as AssessmentRunRow
   const [context, templates] = await Promise.all([
     loadTeamVenueContext({
@@ -1550,6 +1613,7 @@ export async function getTeamAssessmentDetailData(input: {
     currentProfileId: input.currentProfileId,
     templateNameById,
     supabase,
+    answerSupabase: adminSupabase,
   })
   const run = comparisonRuns.find((comparisonRun) => comparisonRun.id === currentRunRow.id)
 
@@ -1557,12 +1621,22 @@ export async function getTeamAssessmentDetailData(input: {
     return null
   }
 
+  const respondentProfiles = await loadAssessmentRespondentProfiles({
+    profileIds: getAssessmentRespondentProfileIds(comparisonRuns),
+    supabase: adminSupabase,
+  })
+
   return {
     run,
     comparisonRuns,
     ...buildDetailSummaries({
       run,
       comparisonRuns,
+    }),
+    analytics: buildTeamAssessmentDetailAnalytics({
+      run,
+      comparisonRuns,
+      respondentProfiles,
     }),
   }
 }

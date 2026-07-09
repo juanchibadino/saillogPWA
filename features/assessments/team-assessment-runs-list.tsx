@@ -502,10 +502,7 @@ export function TeamAssessmentRunsList({
                         </Link>
                       </TableCell>
                       <TableCell>
-                        <span className="block">{run.venueName}</span>
-                        <span className="block text-xs text-muted-foreground">
-                          {run.venueLocation}
-                        </span>
+                        {run.venueName}
                       </TableCell>
                       <TableCell>
                         <AssessmentRunCampsBadges camps={run.camps} />
