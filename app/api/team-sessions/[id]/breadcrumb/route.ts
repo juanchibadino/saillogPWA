@@ -8,6 +8,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server"
 
 type SessionBreadcrumbPayload = {
   team_name: string | null
+  team_venue_id: string | null
   venue_id: string | null
   venue_name: string | null
   camp_id: string | null
@@ -22,6 +23,7 @@ type RouteContext = {
 
 const emptySessionBreadcrumbPayload: SessionBreadcrumbPayload = {
   team_name: null,
+  team_venue_id: null,
   venue_id: null,
   venue_name: null,
   camp_id: null,
@@ -117,6 +119,7 @@ export async function GET(request: Request, context: RouteContext) {
 
   return NextResponse.json({
     team_name: teamRow.name ?? null,
+    team_venue_id: teamVenueRow.id ?? null,
     venue_id: venueRow.id ?? null,
     venue_name: venueRow.name ?? null,
     camp_id: campRow.id ?? null,

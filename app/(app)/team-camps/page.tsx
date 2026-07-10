@@ -286,16 +286,6 @@ export default async function TeamCampsPage({
         </section>
       ) : null}
 
-      {!noTeamSelected && !canManageCamps ? (
-        <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
-          <h2 className="text-lg font-semibold text-amber-900">Read-only access</h2>
-          <p className="mt-2 text-sm text-amber-800">
-            You can view camps in this scope, but only super admins, organization
-            admins, team admins, and coaches can create or edit camps.
-          </p>
-        </section>
-      ) : null}
-
       <Suspense fallback={<TeamCampsPageSkeleton />}>
         <TeamCampsShellSlot
           activeTeamId={activeTeamId}

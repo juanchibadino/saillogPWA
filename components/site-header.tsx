@@ -41,6 +41,7 @@ type VenueBreadcrumbResponse = {
 
 type SessionBreadcrumbResponse = {
   team_name: string | null
+  team_venue_id: string | null
   venue_id: string | null
   venue_name: string | null
   camp_id: string | null
@@ -918,8 +919,13 @@ export function SiteHeader({
           ? campDetailTitle
           : getSectionTitle(pathname)
   const sessionVenueHref =
-    sessionBreadcrumb?.venue_id !== null && sessionBreadcrumb?.venue_id !== undefined
-      ? buildScopedHrefWithTab(`/venues/${sessionBreadcrumb.venue_id}`, activeScope, "sessions")
+    sessionBreadcrumb?.team_venue_id !== null &&
+    sessionBreadcrumb?.team_venue_id !== undefined
+      ? buildScopedHrefWithTab(
+          `/venues/${sessionBreadcrumb.team_venue_id}`,
+          activeScope,
+          "sessions",
+        )
       : venuesHref
   const sessionCampHref =
     sessionBreadcrumb?.camp_id !== null && sessionBreadcrumb?.camp_id !== undefined

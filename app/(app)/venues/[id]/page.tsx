@@ -20,6 +20,7 @@ import {
   buildVenueDetailHref,
   type VenueDetailTab,
 } from "@/features/venues/navigation"
+import { VenueUnavailableRedirect } from "@/features/venues/venue-unavailable-redirect"
 import { resolveVenueDetailRouteRequest } from "@/features/venues/detail-route-state.mjs"
 import { RouteCacheInvalidationOnSuccess } from "@/features/shared/route-cache-invalidation-on-success"
 import { VenuesFeedback } from "@/features/venues/venues-feedback"
@@ -35,6 +36,10 @@ import {
   getSingleSearchParamValue,
   resolveNavigationScope,
 } from "@/lib/navigation/scope"
+import {
+  NAVIGATION_SCOPE_ORG_QUERY_KEY,
+  NAVIGATION_SCOPE_TEAM_QUERY_KEY,
+} from "@/lib/navigation/constants"
 
 type VenueDetailSearchParams = Promise<
   Record<string, string | string[] | undefined>
@@ -45,6 +50,17 @@ type WindPatternStatusFilter = "active" | "archived" | "all"
 type ResolvedVenueDetailScope = NonNullable<
   Awaited<ReturnType<typeof resolveNavigationScope>>["scope"]
 >
+
+function buildTeamHomeHref(scope: ResolvedVenueDetailScope): string {
+  const params = new URLSearchParams()
+  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, scope.activeOrgId)
+
+  if (scope.activeTeamId) {
+    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, scope.activeTeamId)
+  }
+
+  return `/team-home?${params.toString()}`
+}
 
 function getStatusMessage(
   status: string | undefined,
@@ -341,14 +357,7 @@ export default async function VenueDetailPage({
   const venue = chromeData.venue
 
   if (!venue) {
-    return (
-      <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
-        <h2 className="text-lg font-semibold text-amber-900">Venue unavailable</h2>
-        <p className="mt-2 text-sm text-amber-800">
-          This venue does not exist in the active organization scope or is not accessible.
-        </p>
-      </section>
-    )
+    return <VenueUnavailableRedirect href={buildTeamHomeHref(scope)} />
   }
 
   const teamsForOrganization =
