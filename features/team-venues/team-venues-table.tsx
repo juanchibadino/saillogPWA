@@ -114,6 +114,27 @@ function formatLocation(city: string, country: string): string {
   return `${city}, ${country}`
 }
 
+function VenueCampCountValue({
+  value,
+}: {
+  value: TeamVenueListItem["campCountCurrentYear"]
+}) {
+  if (typeof value === "number") {
+    return <>{value}</>
+  }
+
+  return (
+    <span
+      aria-live="polite"
+      className="inline-flex items-center gap-1 text-muted-foreground"
+    >
+      <Loader2Icon className="size-3 animate-spin" />
+      <span className="sr-only">Loading camp count</span>
+      <span aria-hidden="true">...</span>
+    </span>
+  )
+}
+
 function normalizeText(value: string): string {
   return value.trim()
 }
@@ -853,9 +874,12 @@ function TeamVenueRowActionsMenu({
 }) {
   const [isEditOpen, setIsEditOpen] = React.useState(false)
   const [isDeleteOpen, setIsDeleteOpen] = React.useState(false)
-  const canDeleteTeamVenue = canDeleteTeamVenueLink({
-    totalCampCount: teamVenue.totalCampCount,
-  })
+  const isDeleteRulePending = typeof teamVenue.totalCampCount !== "number"
+  const canDeleteTeamVenue =
+    !isDeleteRulePending &&
+    canDeleteTeamVenueLink({
+      totalCampCount: teamVenue.totalCampCount,
+    })
 
   return (
     <>
@@ -881,7 +905,7 @@ function TeamVenueRowActionsMenu({
               setIsDeleteOpen(true)
             }}
           >
-            Delete
+            {isDeleteRulePending ? "Checking delete..." : "Delete"}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -1172,7 +1196,9 @@ export function TeamVenuesTable({
                         </Link>
                       </TableCell>
                       <TableCell>{formatLocation(item.city, item.country)}</TableCell>
-                      <TableCell>{item.campCountCurrentYear}</TableCell>
+                      <TableCell>
+                        <VenueCampCountValue value={item.campCountCurrentYear} />
+                      </TableCell>
                       <TableCell
                         className="text-right"
                         onClick={(event) => {

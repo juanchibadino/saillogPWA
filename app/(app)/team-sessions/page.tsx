@@ -4,8 +4,9 @@ import {
   TeamSessionsPageSkeleton,
   TeamSessionsResultsSkeleton,
 } from "@/components/shared/page-skeletons"
+import { RouteCacheInvalidationOnSuccess } from "@/features/shared/route-cache-invalidation-on-success"
 import { SessionsFeedback } from "@/features/sessions/sessions-feedback"
-import { TeamSessionsTable } from "@/features/sessions/sessions-table"
+import { TeamSessionsResultsClient } from "@/features/sessions/team-sessions-results-client"
 import { TeamSessionsRouteShell } from "@/features/sessions/team-sessions-route-shell"
 import {
   logTeamSessionsListTiming,
@@ -154,21 +155,14 @@ async function TeamSessionsResultsContent(input: {
       }
 
   return (
-    <TeamSessionsTable
-      sessions={resultsData.sessions}
-      campOptions={input.chromeData.campOptions}
+    <TeamSessionsResultsClient
+      initialResultsData={resultsData}
+      chromeData={input.chromeData}
       canManageSessions={input.canManageSessions}
       noTeamSelected={noTeamSelected}
       scope={input.scope}
-      selectedVenueId={input.chromeData.selectedVenueId}
-      selectedCampId={input.chromeData.selectedCampId}
-      selectedHighlight={input.chromeData.selectedHighlight}
-      currentPage={resultsData.currentPage}
-      pageCount={resultsData.pageCount}
-      hasPreviousPage={resultsData.hasPreviousPage}
-      hasNextPage={resultsData.hasNextPage}
-      hideChrome
-      hideCreateFab
+      requestedLoadMoreMode={input.requestedLoadMoreMode}
+      requestedPage={input.requestedPage}
     />
   )
 }
@@ -184,6 +178,9 @@ export default async function TeamSessionsPage({
 
   const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
+  const cacheSessionId = getSingleSearchParamValue(resolvedSearchParams.cacheSession)
+  const cacheCampId = getSingleSearchParamValue(resolvedSearchParams.cacheCamp)
+  const cacheTeamVenueId = getSingleSearchParamValue(resolvedSearchParams.cacheTeamVenue)
   const requestedVenueId = getSingleSearchParamValue(resolvedSearchParams.venue)
   const requestedCampId = getSingleSearchParamValue(resolvedSearchParams.camp)
   const {
@@ -260,6 +257,15 @@ export default async function TeamSessionsPage({
         statusMessage={statusMessage}
         errorMessage={errorMessage}
       />
+      {activeTeamId ? (
+        <RouteCacheInvalidationOnSuccess
+          mutation="session"
+          scope={scope}
+          sessionId={cacheSessionId}
+          campId={cacheCampId ?? requestedCampId}
+          teamVenueId={cacheTeamVenueId ?? requestedVenueId}
+        />
+      ) : null}
 
       {noTeamSelected ? (
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">

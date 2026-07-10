@@ -178,10 +178,14 @@ export async function createTeamVenueLinkAction(formData: FormData): Promise<voi
     );
   }
 
-  const { error: insertError } = await supabase.from("team_venues").insert({
-    team_id: scope.scopeTeamId,
-    venue_id: parsedInput.data.venueId,
-  });
+  const { data: createdTeamVenue, error: insertError } = await supabase
+    .from("team_venues")
+    .insert({
+      team_id: scope.scopeTeamId,
+      venue_id: parsedInput.data.venueId,
+    })
+    .select("id")
+    .single();
 
   if (insertError) {
     if (insertError.code === "23505") {
@@ -206,6 +210,7 @@ export async function createTeamVenueLinkAction(formData: FormData): Promise<voi
   redirect(
     buildTeamVenuesRedirectPath({
       result: "linked_existing",
+      cacheTeamVenueId: createdTeamVenue?.id,
       ...scope,
     }),
   );
@@ -307,10 +312,14 @@ export async function createAndLinkTeamVenueAction(
     );
   }
 
-  const { error: linkError } = await supabase.from("team_venues").insert({
-    team_id: scope.scopeTeamId,
-    venue_id: createdVenue.id,
-  });
+  const { data: createdTeamVenue, error: linkError } = await supabase
+    .from("team_venues")
+    .insert({
+      team_id: scope.scopeTeamId,
+      venue_id: createdVenue.id,
+    })
+    .select("id")
+    .single();
 
   if (linkError) {
     redirect(
@@ -326,6 +335,7 @@ export async function createAndLinkTeamVenueAction(
   redirect(
     buildTeamVenuesRedirectPath({
       result: "created_and_linked",
+      cacheTeamVenueId: createdTeamVenue?.id,
       ...scope,
     }),
   );
@@ -422,6 +432,7 @@ export async function updateTeamVenueAction(formData: FormData): Promise<void> {
   redirect(
     buildTeamVenuesRedirectPath({
       result: "updated",
+      cacheTeamVenueId: parsedInput.data.teamVenueId,
       ...scope,
     }),
   );
@@ -539,6 +550,7 @@ export async function deleteTeamVenueAction(formData: FormData): Promise<void> {
   redirect(
     buildTeamVenuesRedirectPath({
       result: "deleted",
+      cacheTeamVenueId: parsedInput.data.teamVenueId,
       ...scope,
     }),
   );

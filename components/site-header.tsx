@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useSyncExternalStore } from "react"
 import {
   type ReadonlyURLSearchParams,
   usePathname,
@@ -59,6 +59,18 @@ type CampBreadcrumbResponse = {
 type AssessmentBreadcrumbResponse = {
   team_name: string | null
   assessment_name: string | null
+}
+
+function subscribeToHydrationStore(): () => void {
+  return () => {}
+}
+
+function getHydratedClientSnapshot(): boolean {
+  return true
+}
+
+function getHydratedServerSnapshot(): boolean {
+  return false
 }
 
 function getSectionTitle(pathname: string): string {
@@ -540,6 +552,11 @@ export function SiteHeader({
   const [assessmentBreadcrumbById, setAssessmentBreadcrumbById] = useState<
     Record<string, AssessmentBreadcrumbResponse | null>
   >({})
+  const hasHydrated = useSyncExternalStore(
+    subscribeToHydrationStore,
+    getHydratedClientSnapshot,
+    getHydratedServerSnapshot,
+  )
 
   const sectionTitle = pathname.startsWith("/team-venues")
     ? getTeamVenuesTitle(navigation, searchParams)
@@ -600,7 +617,11 @@ export function SiteHeader({
   const venuesHref = buildScopedHref("/venues", activeScope)
   const teamVenuesHref = buildScopedHref("/team-venues", activeScope)
   const teamAssessmentsHref = buildScopedHref("/team-assessments", activeScope)
-  const phaseOneMobileHeaderEligible = shouldUsePhaseOneMobileHeader(pathname)
+  const pathnameUsesPhaseOneMobileHeader = shouldUsePhaseOneMobileHeader(pathname)
+  // Keep the initial SSR/client hydration tree identical before switching to
+  // the route-specific mobile header.
+  const phaseOneMobileHeaderEligible =
+    hasHydrated && pathnameUsesPhaseOneMobileHeader
   const mobileBackFallbackHref = buildScopedHref(
     resolveMobileBackFallbackPath(pathname),
     activeScope,

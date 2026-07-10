@@ -21,6 +21,7 @@ import {
   type VenueDetailTab,
 } from "@/features/venues/navigation"
 import { resolveVenueDetailRouteRequest } from "@/features/venues/detail-route-state.mjs"
+import { RouteCacheInvalidationOnSuccess } from "@/features/shared/route-cache-invalidation-on-success"
 import { VenuesFeedback } from "@/features/venues/venues-feedback"
 import { EditVenueDialog } from "@/features/venues/venue-form-dialogs"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
@@ -265,6 +266,10 @@ export default async function VenueDetailPage({
 
   const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
+  const cacheSessionId = getSingleSearchParamValue(resolvedSearchParams.cacheSession)
+  const cacheCampId = getSingleSearchParamValue(resolvedSearchParams.cacheCamp)
+  const cacheTeamVenueId =
+    getSingleSearchParamValue(resolvedSearchParams.cacheTeamVenue) ?? resolvedParams.id
   const requestedCampId = getSingleSearchParamValue(resolvedSearchParams.camp)
   const {
     requestedHighlight,
@@ -413,6 +418,40 @@ export default async function VenueDetailPage({
   return (
     <div>
       <VenuesFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
+      {chromeData.teamVenue ? (
+        <>
+          <RouteCacheInvalidationOnSuccess
+            mutation="venue"
+            scope={scope}
+            teamVenueId={cacheTeamVenueId}
+            successStatuses={selectedTab === "camps" ? [] : ["updated"]}
+          />
+          <RouteCacheInvalidationOnSuccess
+            mutation="camp"
+            scope={scope}
+            campId={cacheCampId}
+            teamVenueId={cacheTeamVenueId}
+            successStatuses={
+              selectedTab === "camps" ? ["created", "updated", "deleted"] : []
+            }
+          />
+          <RouteCacheInvalidationOnSuccess
+            mutation="session"
+            scope={scope}
+            sessionId={cacheSessionId}
+            campId={cacheCampId ?? requestedCampId}
+            teamVenueId={cacheTeamVenueId}
+            successStatuses={
+              selectedTab === "sessions" ? ["created", "updated", "deleted"] : []
+            }
+          />
+          <RouteCacheInvalidationOnSuccess
+            mutation="venue-detail"
+            scope={scope}
+            teamVenueId={cacheTeamVenueId}
+          />
+        </>
+      ) : null}
 
       {noTeamSelected ? (
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">

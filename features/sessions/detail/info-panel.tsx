@@ -53,6 +53,7 @@ import {
   saveSessionInfoAction,
   updateSessionInfoAction,
 } from "@/features/sessions/detail-actions"
+import { invalidateSessionDetailRouteCache } from "@/features/shared/scoped-route-cache-invalidation"
 import type {
   SessionDetailCatalogPage,
   SessionDetailStandardMove,
@@ -233,6 +234,10 @@ function resolveCachedOptionsByIds<T extends { id: string }>(
   return ids
     .map((id) => optionById.get(id) ?? null)
     .filter((option): option is T => option !== null)
+}
+
+function isDeferredCatalogPage(page: SessionDetailCatalogPage): boolean {
+  return page.offset === 0 && page.nextOffset === 0 && page.totalCount === 0
 }
 
 function buildSessionInfoCatalogUrl(input: {
@@ -1012,6 +1017,38 @@ function InfoEditDialog(input: {
     },
     [input, windPatternIds],
   )
+
+  React.useEffect(() => {
+    if (
+      !isOpen ||
+      input.section !== "standardMoves" ||
+      !isDeferredCatalogPage(standardMoveCatalogPage)
+    ) {
+      return
+    }
+
+    void loadStandardMoveCatalog({
+      mode: "replace",
+      offset: 0,
+      search: "",
+    })
+  }, [input.section, isOpen, loadStandardMoveCatalog, standardMoveCatalogPage])
+
+  React.useEffect(() => {
+    if (
+      !isOpen ||
+      input.section !== "windPatterns" ||
+      !isDeferredCatalogPage(windPatternCatalogPage)
+    ) {
+      return
+    }
+
+    void loadWindPatternCatalog({
+      mode: "replace",
+      offset: 0,
+      search: "",
+    })
+  }, [input.section, isOpen, loadWindPatternCatalog, windPatternCatalogPage])
 
   React.useEffect(() => {
     if (!isOpen || input.section !== "standardMoves") {
@@ -1988,6 +2025,11 @@ export function SessionInfoPanel(input: SessionInfoPanelProps) {
         setAvailableWindPatterns(result.availableWindPatterns)
         setLinkedWindPatternIds(result.linkedWindPatternIds)
         setWindPatternCatalogPage(result.windPatternCatalogPage)
+        invalidateSessionDetailRouteCache({
+          scope: input.scope,
+          sessionId: input.sessionId,
+          tabs: ["info"],
+        })
         toast.success("Session info saved.", { id: toastId })
         router.refresh()
         return true

@@ -42,10 +42,16 @@ export function SessionsFeedback({
     const nextParams = new URLSearchParams(searchParams.toString())
     if (shouldDeleteStatus) {
       nextParams.delete("status")
+      nextParams.delete("cacheSession")
+      nextParams.delete("cacheCamp")
+      nextParams.delete("cacheTeamVenue")
     }
 
     if (shouldDeleteError) {
       nextParams.delete("error")
+      nextParams.delete("cacheSession")
+      nextParams.delete("cacheCamp")
+      nextParams.delete("cacheTeamVenue")
     }
 
     const nextSearch = nextParams.toString()

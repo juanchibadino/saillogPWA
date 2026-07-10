@@ -1,4 +1,4 @@
-const SHELL_CACHE_NAME = "sailog-shell-v2";
+const SHELL_CACHE_NAME = "sailog-shell-v3";
 const APP_SHELL_ASSETS = [
   "/manifest.webmanifest",
   "/favicon.ico",
@@ -70,7 +70,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (requestUrl.pathname.startsWith("/_next/static/") || requestUrl.pathname.startsWith("/icons/")) {
+  if (requestUrl.pathname.startsWith("/_next/")) {
+    return;
+  }
+
+  if (requestUrl.pathname.startsWith("/icons/")) {
     event.respondWith(
       caches.match(request).then((cachedResponse) => {
         if (cachedResponse) {

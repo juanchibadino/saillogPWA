@@ -6,7 +6,9 @@ import {
 } from "@/features/camps/detail-data"
 import { CAMP_DETAIL_TABS } from "@/features/camps/navigation"
 import type { CampDetailTab } from "@/features/camps/detail-types"
+import { buildCampDetailTabCacheMetadata } from "@/features/camps/camp-detail-tab-cache"
 import { resolveTeamSessionsListRequest } from "@/features/sessions/list-route-state.mjs"
+import { buildApiSliceErrorPayload } from "@/features/shared/api-slice-contracts"
 import {
   getCurrentAccessContext,
   type AuthenticatedAccessContext,
@@ -46,14 +48,20 @@ export async function GET(request: Request, context: RouteContext) {
   const campId = resolvedParams.id?.trim()
 
   if (!campId) {
-    return NextResponse.json({ error: "invalid_camp_id" }, { status: 400 })
+    return NextResponse.json(
+      buildApiSliceErrorPayload({ error: "invalid_camp_id" }),
+      { status: 400 },
+    )
   }
 
   const requestUrl = new URL(request.url)
   const tab = resolveTab(requestUrl.searchParams.get("tab"))
 
   if (!tab) {
-    return NextResponse.json({ error: "invalid_tab" }, { status: 400 })
+    return NextResponse.json(
+      buildApiSliceErrorPayload({ error: "invalid_tab" }),
+      { status: 400 },
+    )
   }
 
   const parsedNotesOffset = Number.parseInt(
@@ -67,7 +75,10 @@ export async function GET(request: Request, context: RouteContext) {
   const accessContext = await getCurrentAccessContext()
 
   if (!accessContext.user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 })
+    return NextResponse.json(
+      buildApiSliceErrorPayload({ error: "unauthorized" }),
+      { status: 401 },
+    )
   }
 
   const authenticatedContext = accessContext as AuthenticatedAccessContext
@@ -77,7 +88,10 @@ export async function GET(request: Request, context: RouteContext) {
   })
 
   if (!navigation.scope || navigation.scope.activeTeamId === null) {
-    return NextResponse.json({ error: "scope_required" }, { status: 403 })
+    return NextResponse.json(
+      buildApiSliceErrorPayload({ error: "scope_required" }),
+      { status: 403 },
+    )
   }
 
   const shellData = await getCampDetailShellData({
@@ -87,7 +101,10 @@ export async function GET(request: Request, context: RouteContext) {
   })
 
   if (!shellData) {
-    return NextResponse.json({ error: "camp_not_found" }, { status: 404 })
+    return NextResponse.json(
+      buildApiSliceErrorPayload({ error: "camp_not_found" }),
+      { status: 404 },
+    )
   }
 
   const {
@@ -117,10 +134,33 @@ export async function GET(request: Request, context: RouteContext) {
       tab,
       teamVenue: shellData.teamVenue,
     })
+    const tabPage = tab === "sessions" ? requestedPage : 1
+    const tabHighlight = tab === "sessions" ? requestedHighlight : undefined
+    const tabLoadMore = tab === "sessions" && requestedLoadMoreMode
+    const tabNotesOffset = tab === "notes" ? notesSessionOffset : 0
+    const cache = buildCampDetailTabCacheMetadata({
+      scope: {
+        orgId: navigation.scope.activeOrgId,
+        teamId: navigation.scope.activeTeamId,
+      },
+      campId: shellData.camp.id,
+      tab,
+      highlight: tabHighlight,
+      loadMore: tabLoadMore,
+      notesOffset: tabNotesOffset,
+      page: tabPage,
+    })
 
-    return NextResponse.json({ data, tab })
+    return NextResponse.json({ cache, data, tab })
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Unknown tab data error"
-    return NextResponse.json({ detail, error: "tab_data_failed" }, { status: 500 })
+    return NextResponse.json(
+      buildApiSliceErrorPayload({
+        detail,
+        error: "tab_data_failed",
+        retryable: true,
+      }),
+      { status: 500 },
+    )
   }
 }

@@ -172,6 +172,69 @@ async function resolveTeamOrganizationId(teamId: string): Promise<string | null>
   return teamRow?.organization_id ?? null
 }
 
+async function resolveCampRouteCacheContext(input: {
+  campId: string
+  scopeTeamId: string
+}): Promise<{ campId: string; teamVenueId: string } | null> {
+  const supabase = await createServerSupabaseClient()
+  const { data: campRow, error: campError } = await supabase
+    .from("camps")
+    .select("id,team_venue_id")
+    .eq("id", input.campId)
+    .maybeSingle()
+
+  if (campError || !campRow) {
+    return null
+  }
+
+  const { data: teamVenueRow, error: teamVenueError } = await supabase
+    .from("team_venues")
+    .select("id")
+    .eq("id", campRow.team_venue_id)
+    .eq("team_id", input.scopeTeamId)
+    .maybeSingle()
+
+  if (teamVenueError || !teamVenueRow) {
+    return null
+  }
+
+  return {
+    campId: campRow.id,
+    teamVenueId: teamVenueRow.id,
+  }
+}
+
+async function resolveSessionRouteCacheContext(input: {
+  scopeTeamId: string
+  sessionId: string
+}): Promise<{ campId: string; sessionId: string; teamVenueId: string } | null> {
+  const supabase = await createServerSupabaseClient()
+  const { data: sessionRow, error: sessionError } = await supabase
+    .from("sessions")
+    .select("id,camp_id")
+    .eq("id", input.sessionId)
+    .maybeSingle()
+
+  if (sessionError || !sessionRow) {
+    return null
+  }
+
+  const campContext = await resolveCampRouteCacheContext({
+    campId: sessionRow.camp_id,
+    scopeTeamId: input.scopeTeamId,
+  })
+
+  if (!campContext) {
+    return null
+  }
+
+  return {
+    sessionId: sessionRow.id,
+    campId: campContext.campId,
+    teamVenueId: campContext.teamVenueId,
+  }
+}
+
 async function ensureSessionBelongsToScope(input: {
   sessionId: string
   scopeOrgId: string
@@ -375,9 +438,16 @@ export async function createSessionAction(formData: FormData): Promise<void> {
   }
   revalidatePath("/team-home")
 
+  const cacheContext = await resolveCampRouteCacheContext({
+    campId: parsedInput.data.campId,
+    scopeTeamId: scope.scopeTeamId,
+  })
+
   redirect(
     buildTeamSessionsRedirectPath({
       status: "created",
+      cacheCampId: cacheContext?.campId ?? parsedInput.data.campId,
+      cacheTeamVenueId: cacheContext?.teamVenueId,
       ...scope,
     }),
   )
@@ -451,6 +521,10 @@ export async function updateSessionAction(formData: FormData): Promise<void> {
   }
 
   const supabase = await createServerSupabaseClient()
+  const previousCacheContext = await resolveSessionRouteCacheContext({
+    sessionId: parsedInput.data.id,
+    scopeTeamId: scope.scopeTeamId,
+  })
   const { error: updateError } = await supabase
     .from("sessions")
     .update({
@@ -478,9 +552,17 @@ export async function updateSessionAction(formData: FormData): Promise<void> {
   }
   revalidatePath("/team-home")
 
+  const cacheContext = await resolveCampRouteCacheContext({
+    campId: parsedInput.data.campId,
+    scopeTeamId: scope.scopeTeamId,
+  })
+
   redirect(
     buildTeamSessionsRedirectPath({
       status: "updated",
+      cacheSessionId: parsedInput.data.id,
+      cacheCampId: cacheContext?.campId ?? previousCacheContext?.campId ?? parsedInput.data.campId,
+      cacheTeamVenueId: cacheContext?.teamVenueId ?? previousCacheContext?.teamVenueId,
       ...scope,
     }),
   )
@@ -534,6 +616,10 @@ export async function deleteSessionAction(formData: FormData): Promise<void> {
   }
 
   const supabase = await createServerSupabaseClient()
+  const cacheContext = await resolveSessionRouteCacheContext({
+    sessionId: parsedInput.data.id,
+    scopeTeamId: scope.scopeTeamId,
+  })
   const { data: assetRows, error: assetRowsError } = await supabase
     .from("session_assets")
     .select("bucket,storage_path,thumbnail_bucket,thumbnail_storage_path")
@@ -575,6 +661,9 @@ export async function deleteSessionAction(formData: FormData): Promise<void> {
   redirect(
     buildTeamSessionsRedirectPath({
       status: "deleted",
+      cacheSessionId: parsedInput.data.id,
+      cacheCampId: cacheContext?.campId,
+      cacheTeamVenueId: cacheContext?.teamVenueId,
       ...scope,
     }),
   )

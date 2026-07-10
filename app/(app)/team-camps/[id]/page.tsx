@@ -2,6 +2,7 @@ import { Suspense } from "react"
 
 import { CampDetailTabsClient } from "@/features/camps/camp-detail-tabs-client"
 import { CampsFeedback } from "@/features/camps/camps-feedback"
+import { RouteCacheInvalidationOnSuccess } from "@/features/shared/route-cache-invalidation-on-success"
 import { Badge } from "@/components/ui/badge"
 import { CampDetailDeferredContentSkeleton } from "@/components/shared/page-skeletons"
 import {
@@ -93,6 +94,7 @@ async function CampDetailDeferredContent(input: {
   canManageGoals: boolean
   canManageSessions: boolean
   camp: CampDetailCamp
+  initialNotesOffset: number
   initialSessionHighlight?: TeamSessionHighlightFilter
   initialSessionLoadMore?: boolean
   initialSessionPage: number
@@ -110,6 +112,7 @@ async function CampDetailDeferredContent(input: {
     <CampDetailTabsClient
       initialTab={input.selectedTab}
       initialTabData={initialTabData}
+      initialNotesOffset={input.initialNotesOffset}
       initialSessionHighlight={input.initialSessionHighlight}
       initialSessionLoadMore={input.initialSessionLoadMore}
       initialSessionPage={input.initialSessionPage}
@@ -252,6 +255,20 @@ export default async function CampDetailPage({
       </header>
 
       <CampsFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
+      <RouteCacheInvalidationOnSuccess
+        mutation="camp-detail"
+        scope={scope}
+        campId={camp.id}
+        tabs={["goals"]}
+        successStatuses={["goals_updated"]}
+      />
+      <RouteCacheInvalidationOnSuccess
+        mutation="session"
+        scope={scope}
+        campId={camp.id}
+        teamVenueId={camp.teamVenueId}
+        successStatuses={["created", "updated", "deleted"]}
+      />
 
       <Suspense fallback={<CampDetailDeferredContentSkeleton selectedTab={selectedTab} />}>
         <CampDetailDeferredContent
@@ -261,6 +278,7 @@ export default async function CampDetailPage({
           initialSessionHighlight={requestedHighlight}
           initialSessionLoadMore={requestedLoadMoreMode}
           initialSessionPage={requestedPage}
+          initialNotesOffset={requestedNotesOffset}
           initialTabDataPromise={initialTabDataPromise}
           kpisPromise={kpisPromise}
           scope={scope}

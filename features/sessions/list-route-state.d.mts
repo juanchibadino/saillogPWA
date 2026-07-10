@@ -34,6 +34,9 @@ export type TeamSessionsPageHrefInput = {
 }
 
 export type TeamSessionsRedirectInput = {
+  cacheCampId?: string | null
+  cacheSessionId?: string | null
+  cacheTeamVenueId?: string | null
   returnPath?: string
   status?: "created" | "updated" | "deleted"
   error?:

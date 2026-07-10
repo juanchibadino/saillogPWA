@@ -446,6 +446,16 @@ function buildCatalogPage(input: {
   }
 }
 
+function buildDeferredCatalogPage(limit: number): SessionDetailCatalogPage {
+  return {
+    limit,
+    nextOffset: 0,
+    offset: 0,
+    search: "",
+    totalCount: 0,
+  }
+}
+
 function sortCatalogRowsByName<T extends { name: string }>(rows: T[]): T[] {
   return [...rows].sort((left, right) => left.name.localeCompare(right.name))
 }
@@ -479,6 +489,54 @@ function mapWindPattern(row: TeamVenueWindPatternRow): SessionDetailWindPattern 
     description: row.description,
     isActive: row.is_active,
   }
+}
+
+async function queryLinkedStandardMoves(input: {
+  activeTeamId: string
+  linkedStandardMoveIds: string[]
+  supabase: ServerSupabaseClient
+}): Promise<SessionDetailStandardMove[]> {
+  const linkedStandardMoveIds = normalizeCatalogLinkedIds(input.linkedStandardMoveIds)
+
+  if (linkedStandardMoveIds.length === 0) {
+    return []
+  }
+
+  const { data, error } = await input.supabase
+    .from("team_standard_moves")
+    .select(TEAM_STANDARD_MOVES_SELECT_COLUMNS)
+    .eq("team_id", input.activeTeamId)
+    .in("id", linkedStandardMoveIds)
+
+  if (error) {
+    throw new Error(`Could not load linked standard moves: ${error.message}`)
+  }
+
+  return sortCatalogRowsByName(((data ?? []) as TeamStandardMoveRow[]).map(mapStandardMove))
+}
+
+async function queryLinkedWindPatterns(input: {
+  linkedWindPatternIds: string[]
+  supabase: ServerSupabaseClient
+  teamVenueId: string
+}): Promise<SessionDetailWindPattern[]> {
+  const linkedWindPatternIds = normalizeCatalogLinkedIds(input.linkedWindPatternIds)
+
+  if (linkedWindPatternIds.length === 0) {
+    return []
+  }
+
+  const { data, error } = await input.supabase
+    .from("team_venue_wind_patterns")
+    .select(TEAM_VENUE_WIND_PATTERNS_SELECT_COLUMNS)
+    .eq("team_venue_id", input.teamVenueId)
+    .in("id", linkedWindPatternIds)
+
+  if (error) {
+    throw new Error(`Could not load linked wind patterns: ${error.message}`)
+  }
+
+  return sortCatalogRowsByName(((data ?? []) as TeamVenueWindPatternRow[]).map(mapWindPattern))
 }
 
 function formatJsonNote(value: Json | null | undefined): string | null {
@@ -1158,17 +1216,17 @@ export async function getSessionDetailInfoTabData(
   const rawLinkedWindPatternIds = [
     ...new Set(sessionWindPatterns.map((row) => row.team_venue_wind_pattern_id)),
   ]
-  let standardMovesCatalog: SessionDetailStandardMovesCatalogData
-  let windPatternsCatalog: SessionDetailWindPatternsCatalogData
+  let linkedStandardMoves: SessionDetailStandardMove[]
+  let linkedWindPatterns: SessionDetailWindPattern[]
 
   try {
-    ;[standardMovesCatalog, windPatternsCatalog] = await Promise.all([
-      querySessionDetailStandardMovesCatalog({
+    ;[linkedStandardMoves, linkedWindPatterns] = await Promise.all([
+      queryLinkedStandardMoves({
         activeTeamId: input.activeTeamId,
         linkedStandardMoveIds: rawLinkedStandardMoveIds,
         supabase,
       }),
-      querySessionDetailWindPatternsCatalog({
+      queryLinkedWindPatterns({
         linkedWindPatternIds: rawLinkedWindPatternIds,
         supabase,
         teamVenueId: input.teamVenueId,
@@ -1183,7 +1241,7 @@ export async function getSessionDetailInfoTabData(
   }
 
   const standardMoveById = new Map(
-    standardMovesCatalog.availableStandardMoves.map((standardMove) => [
+    linkedStandardMoves.map((standardMove) => [
       standardMove.id,
       standardMove,
     ]),
@@ -1196,7 +1254,7 @@ export async function getSessionDetailInfoTabData(
     .filter((standardMoveName): standardMoveName is string => standardMoveName !== null)
     .sort((left, right) => left.localeCompare(right))
   const windPatternById = new Map(
-    windPatternsCatalog.availableWindPatterns.map((windPattern) => [
+    linkedWindPatterns.map((windPattern) => [
       windPattern.id,
       windPattern,
     ]),
@@ -1216,12 +1274,16 @@ export async function getSessionDetailInfoTabData(
       standardMoveNames: linkedStandardMoveNames,
       windPatternNames: linkedWindPatternNames,
     }),
-    availableStandardMoves: standardMovesCatalog.availableStandardMoves,
+    availableStandardMoves: linkedStandardMoves,
     linkedStandardMoveIds,
-    standardMoveCatalogPage: standardMovesCatalog.standardMoveCatalogPage,
-    availableWindPatterns: windPatternsCatalog.availableWindPatterns,
+    standardMoveCatalogPage: buildDeferredCatalogPage(
+      SESSION_DETAIL_INFO_CATALOG_PAGE_SIZE,
+    ),
+    availableWindPatterns: linkedWindPatterns,
     linkedWindPatternIds,
-    windPatternCatalogPage: windPatternsCatalog.windPatternCatalogPage,
+    windPatternCatalogPage: buildDeferredCatalogPage(
+      SESSION_DETAIL_INFO_CATALOG_PAGE_SIZE,
+    ),
   }
 
   logTabTiming("success", "loaded", undefined, {

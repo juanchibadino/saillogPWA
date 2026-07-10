@@ -42,10 +42,12 @@ export function TeamVenuesFeedback({
 
     if (shouldDeleteResult) {
       nextParams.delete("result")
+      nextParams.delete("cacheTeamVenue")
     }
 
     if (shouldDeleteError) {
       nextParams.delete("error")
+      nextParams.delete("cacheTeamVenue")
     }
 
     const nextSearch = nextParams.toString()

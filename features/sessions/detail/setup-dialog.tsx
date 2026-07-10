@@ -49,6 +49,7 @@ import {
   updateSessionSetupAction,
   updateTeamSetupMetricAction,
 } from "@/features/sessions/detail-actions"
+import { invalidateSessionDetailRouteCache } from "@/features/shared/scoped-route-cache-invalidation"
 import type { TeamSetupMetricActionItem } from "@/features/sessions/detail-actions"
 import type { SessionSetupDialogItem } from "@/features/sessions/detail-types"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -1123,6 +1124,11 @@ export function SetupDialog(input: {
         return
       }
 
+      invalidateSessionDetailRouteCache({
+        scope: input.scope,
+        sessionId: input.sessionId,
+        tabs: ["info"],
+      })
       toast.success("Session setup updated successfully.", { id: toastId })
       router.refresh()
     } catch {
@@ -1333,6 +1339,11 @@ export function SetupDialog(input: {
       closeMetricEditor()
       setSetupSurfaceView("boatMetrics")
       input.onRetry?.()
+      invalidateSessionDetailRouteCache({
+        scope: input.scope,
+        sessionId: input.sessionId,
+        tabs: ["info"],
+      })
       router.refresh()
       toast.success("Setup metric updated.", { id: toastId })
     } catch {
@@ -1376,6 +1387,11 @@ export function SetupDialog(input: {
       closeMetricEditor()
       setSetupSurfaceView("boatMetrics")
       input.onRetry?.()
+      invalidateSessionDetailRouteCache({
+        scope: input.scope,
+        sessionId: input.sessionId,
+        tabs: ["info"],
+      })
       router.refresh()
       toast.success("Setup metric deleted.", { id: toastId })
     } catch {

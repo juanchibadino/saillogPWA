@@ -11,6 +11,8 @@ import {
   type VenueDetailTab,
 } from "@/features/venues/navigation"
 import { resolveVenueDetailRouteRequest } from "@/features/venues/detail-route-state.mjs"
+import { buildApiSliceErrorPayload } from "@/features/shared/api-slice-contracts"
+import { buildVenueDetailTabCacheMetadata } from "@/features/venues/venue-detail-tab-cache"
 import {
   getCurrentAccessContext,
   type AuthenticatedAccessContext,
@@ -51,20 +53,29 @@ export async function GET(request: Request, context: RouteContext) {
   const teamVenueId = resolvedParams.id?.trim()
 
   if (!teamVenueId) {
-    return NextResponse.json({ error: "invalid_team_venue_id" }, { status: 400 })
+    return NextResponse.json(
+      buildApiSliceErrorPayload({ error: "invalid_team_venue_id" }),
+      { status: 400 },
+    )
   }
 
   const requestUrl = new URL(request.url)
   const tab = resolveTab(requestUrl.searchParams.get("tab"))
 
   if (!tab) {
-    return NextResponse.json({ error: "invalid_tab" }, { status: 400 })
+    return NextResponse.json(
+      buildApiSliceErrorPayload({ error: "invalid_tab" }),
+      { status: 400 },
+    )
   }
 
   const accessContext = await getCurrentAccessContext()
 
   if (!accessContext.user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 })
+    return NextResponse.json(
+      buildApiSliceErrorPayload({ error: "unauthorized" }),
+      { status: 401 },
+    )
   }
 
   const authenticatedContext = accessContext as AuthenticatedAccessContext
@@ -74,7 +85,10 @@ export async function GET(request: Request, context: RouteContext) {
   })
 
   if (!navigation.scope || navigation.scope.activeTeamId === null) {
-    return NextResponse.json({ error: "scope_required" }, { status: 403 })
+    return NextResponse.json(
+      buildApiSliceErrorPayload({ error: "scope_required" }),
+      { status: 403 },
+    )
   }
 
   const chromeData = await getTeamVenueDetailChromeData({
@@ -84,7 +98,10 @@ export async function GET(request: Request, context: RouteContext) {
   })
 
   if (!chromeData.venue || !chromeData.teamVenue) {
-    return NextResponse.json({ error: "team_venue_not_found" }, { status: 404 })
+    return NextResponse.json(
+      buildApiSliceErrorPayload({ error: "team_venue_not_found" }),
+      { status: 404 },
+    )
   }
 
   const {
@@ -134,10 +151,34 @@ export async function GET(request: Request, context: RouteContext) {
         yearContextPromise,
       }),
     ])
+    const tabPage = tab === "sessions" ? requestedPage : 1
+    const tabLoadMore = tab === "sessions" && requestedLoadMoreMode
+    const tabCampId = tab === "sessions" ? requestedCampId : undefined
+    const tabHighlight = tab === "sessions" ? requestedHighlight : undefined
+    const cache = buildVenueDetailTabCacheMetadata({
+      scope: {
+        orgId: navigation.scope.activeOrgId,
+        teamId: navigation.scope.activeTeamId,
+      },
+      teamVenueId: chromeData.teamVenue.id,
+      tab,
+      year: kpis.selectedYear,
+      campId: tabCampId,
+      highlight: tabHighlight,
+      loadMore: tabLoadMore,
+      page: tabPage,
+    })
 
-    return NextResponse.json({ data, kpis, tab })
+    return NextResponse.json({ cache, data, kpis, tab })
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Unknown tab data error"
-    return NextResponse.json({ detail, error: "tab_data_failed" }, { status: 500 })
+    return NextResponse.json(
+      buildApiSliceErrorPayload({
+        detail,
+        error: "tab_data_failed",
+        retryable: true,
+      }),
+      { status: 500 },
+    )
   }
 }

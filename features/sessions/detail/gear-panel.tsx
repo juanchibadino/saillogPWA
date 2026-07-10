@@ -42,6 +42,7 @@ import {
   saveSessionGearUsageAction,
   updateSessionGearUsageAction,
 } from "@/features/sessions/detail-actions"
+import { invalidateSessionDetailRouteCache } from "@/features/shared/scoped-route-cache-invalidation"
 import type {
   SessionDetailCatalogPage,
   SessionDetailGearCatalogData,
@@ -838,6 +839,11 @@ function SessionGearLinkDialog(input: {
 
       input.onSaved(submittedGearItemIds)
       setIsOpen(false)
+      invalidateSessionDetailRouteCache({
+        scope: input.scope,
+        sessionId: input.sessionId,
+        tabs: ["gear"],
+      })
       toast.success("Session gear updated successfully.", { id: toastId })
       router.refresh()
     } catch {

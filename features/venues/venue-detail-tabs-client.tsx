@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckIcon, ChevronDownIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon, Loader2Icon } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   type ReactNode,
@@ -18,6 +18,14 @@ import type {
   VenueDetailTabPayload,
 } from "@/features/venues/detail-types";
 import type { TeamSessionHighlightFilter } from "@/features/sessions/data";
+import type { ApiSliceCacheMetadata } from "@/features/shared/api-slice-contracts";
+import {
+  readScopedRouteCache,
+  SCOPED_ROUTE_DETAIL_TAB_STALE_MS,
+  writeScopedRouteCache,
+  type ScopedRouteCacheScope,
+} from "@/features/shared/scoped-route-cache";
+import { useStaleRouteData } from "@/features/shared/use-stale-route-data";
 import { CreateSessionDialog } from "@/features/sessions/session-form-dialogs";
 import { TeamSessionsTable } from "@/features/sessions/sessions-table";
 import { TeamSessionsToolbar } from "@/features/sessions/team-sessions-toolbar";
@@ -39,9 +47,11 @@ import {
   resolveVenueDetailRouteRequest,
 } from "@/features/venues/detail-route-state.mjs";
 import {
-  NAVIGATION_SCOPE_ORG_QUERY_KEY,
-  NAVIGATION_SCOPE_TEAM_QUERY_KEY,
-} from "@/lib/navigation/constants";
+  buildVenueDetailTabApiUrl,
+  buildVenueDetailTabCacheMetadata,
+  VENUE_DETAIL_TAB_CACHE_ROUTE,
+  type VenueDetailTabRequestInput,
+} from "@/features/venues/venue-detail-tab-cache";
 import type { NavigationScope } from "@/lib/navigation/types";
 import { GradientCard } from "@/components/shared/gradient-card";
 import { cn } from "@/lib/utils";
@@ -67,7 +77,6 @@ const EMPTY_KPIS: VenueDetailKpi[] = [
 ];
 
 type WindPatternStatusFilter = VenueWindPatternStatusFilter;
-type VenueDetailTabDataState = Record<number, Partial<VenueDetailTabDataByTab>>;
 type VenueDetailTabLoadError = {
   message: string;
   tab: VenueDetailTab;
@@ -77,10 +86,12 @@ type VenueDetailTabErrorPayload = {
   error?: string;
 };
 type VenueDetailTabDataResponse = {
+  cache: ApiSliceCacheMetadata;
   data: VenueDetailTabPayload;
   kpis: VenueDetailKpisData;
   tab: VenueDetailTab;
 };
+type VenueDetailWarmTab = "camps" | "sessions" | "wind-patterns";
 type VenueDetailRouteRequest = {
   requestedHighlight?: TeamSessionHighlightFilter;
   requestedLoadMoreMode: boolean;
@@ -430,211 +441,228 @@ function MobileVenueDetailTabsList(input: {
   );
 }
 
-function buildVenueDetailTabDataState(input: {
-  initialTab: VenueDetailTab;
-  initialTabData: VenueDetailTabPayload;
-  initialYear: number;
-}): VenueDetailTabDataState {
+const VENUE_DETAIL_WARM_TABS: readonly VenueDetailWarmTab[] = [
+  "camps",
+  "sessions",
+  "wind-patterns",
+];
+
+function resolveCacheScope(scope: NavigationScope): ScopedRouteCacheScope {
   return {
-    [input.initialYear]: {
-      [input.initialTab]: input.initialTabData,
-    },
+    orgId: scope.activeOrgId,
+    teamId: scope.activeTeamId,
   };
 }
 
-function getVenueDetailTabData(input: {
-  state: VenueDetailTabDataState;
-  tab: VenueDetailTab;
-  year: number;
-}): VenueDetailTabPayload | undefined {
-  return input.state[input.year]?.[input.tab];
-}
-
-function hasVenueDetailTabData(input: {
-  state: VenueDetailTabDataState;
-  tab: VenueDetailTab;
-  year: number;
-}): boolean {
-  return typeof getVenueDetailTabData(input) !== "undefined";
-}
-
-function applyVenueDetailTabData(input: {
-  data: VenueDetailTabPayload;
-  state: VenueDetailTabDataState;
-  tab: VenueDetailTab;
-  year: number;
-}): VenueDetailTabDataState {
-  return {
-    ...input.state,
-    [input.year]: {
-      ...(input.state[input.year] ?? {}),
-      [input.tab]: input.data,
-    },
-  };
-}
-
-type VenueDetailStatusInvalidation = {
-  invalidateKpis: boolean;
-  invalidateYear: boolean;
-  tabs: Set<VenueDetailTab>;
-};
-
-function getVenueDetailStatusInvalidation(
-  status: string | null,
-  selectedTab: VenueDetailTab,
-): VenueDetailStatusInvalidation {
-  const emptyInvalidation = {
-    invalidateKpis: false,
-    invalidateYear: false,
-    tabs: new Set<VenueDetailTab>(),
-  };
-
-  if (!status) {
-    return emptyInvalidation;
-  }
-
-  if (status === "report_created") {
-    return {
-      ...emptyInvalidation,
-      tabs: new Set(["reports"]),
-    };
-  }
-
-  if (
-    status === "wind_pattern_created" ||
-    status === "wind_pattern_updated" ||
-    status === "wind_pattern_archived" ||
-    status === "wind_pattern_restored"
-  ) {
-    return {
-      ...emptyInvalidation,
-      tabs: new Set(["wind-patterns"]),
-    };
-  }
-
-  if (
-    status === "template_saved" ||
-    status === "run_saved" ||
-    status === "run_published" ||
-    status === "run_closed" ||
-    status === "run_deleted" ||
-    status === "answers_saved"
-  ) {
-    return {
-      ...emptyInvalidation,
-      tabs: new Set(["assessments"]),
-    };
-  }
-
-  if (status === "created" || status === "updated" || status === "deleted") {
-    if (selectedTab === "camps" || selectedTab === "sessions") {
-      return {
-        invalidateKpis: true,
-        invalidateYear: false,
-        tabs: new Set([selectedTab]),
-      };
-    }
-
-    return {
-      invalidateKpis: true,
-      invalidateYear: true,
-      tabs: new Set(),
-    };
-  }
-
-  return {
-    invalidateKpis: true,
-    invalidateYear: true,
-    tabs: new Set(),
-  };
-}
-
-function invalidateVenueDetailTabDataState(input: {
-  invalidation: VenueDetailStatusInvalidation;
-  state: VenueDetailTabDataState;
-  year: number;
-}): VenueDetailTabDataState {
-  if (input.invalidation.invalidateYear) {
-    const nextState = { ...input.state };
-    delete nextState[input.year];
-    return nextState;
-  }
-
-  if (input.invalidation.tabs.size === 0) {
-    return input.state;
-  }
-
-  const currentYearState = input.state[input.year];
-
-  if (!currentYearState) {
-    return input.state;
-  }
-
-  const nextYearState = { ...currentYearState };
-
-  for (const tab of input.invalidation.tabs) {
-    delete nextYearState[tab];
-  }
-
-  return {
-    ...input.state,
-    [input.year]: nextYearState,
-  };
-}
-
-function invalidateVenueDetailKpisByYear(input: {
-  invalidation: VenueDetailStatusInvalidation;
-  kpisByYear: Record<number, VenueDetailKpi[]>;
-  year: number;
-}): Record<number, VenueDetailKpi[]> {
-  if (!input.invalidation.invalidateKpis && !input.invalidation.invalidateYear) {
-    return input.kpisByYear;
-  }
-
-  const nextKpisByYear = { ...input.kpisByYear };
-  delete nextKpisByYear[input.year];
-  return nextKpisByYear;
-}
-
-function buildVenueDetailTabDataUrl(input: {
+function buildVenueDetailTabRequest(input: {
   campId?: string;
   highlight?: TeamSessionHighlightFilter;
-  loadMore?: boolean;
-  page?: number;
+  loadMore: boolean;
+  page: number;
   scope: NavigationScope;
   teamVenueId: string;
   tab: VenueDetailTab;
   year: number;
-}): string {
-  const params = new URLSearchParams();
-  params.set("tab", input.tab);
-  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.scope.activeOrgId);
-
-  if (input.scope.activeTeamId) {
-    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scope.activeTeamId);
+}): VenueDetailTabRequestInput {
+  if (input.tab !== "sessions") {
+    return {
+      scope: input.scope,
+      teamVenueId: input.teamVenueId,
+      tab: input.tab,
+      year: input.year,
+      page: 1,
+      loadMore: false,
+    };
   }
 
-  if (Number.isFinite(input.year)) {
-    params.set("year", String(input.year));
+  return {
+    scope: input.scope,
+    teamVenueId: input.teamVenueId,
+    tab: input.tab,
+    year: input.year,
+    campId: input.campId,
+    highlight: input.highlight,
+    loadMore: input.loadMore,
+    page: input.page,
+  };
+}
+
+function buildVenueDetailTabCacheFromRequest(input: {
+  cacheScope: ScopedRouteCacheScope;
+  request: VenueDetailTabRequestInput;
+}): ApiSliceCacheMetadata {
+  return buildVenueDetailTabCacheMetadata({
+    scope: input.cacheScope,
+    teamVenueId: input.request.teamVenueId,
+    tab: input.request.tab,
+    year: input.request.year,
+    campId: input.request.campId,
+    highlight: input.request.highlight,
+    loadMore: input.request.loadMore,
+    page: input.request.page,
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isVenueDetailKpi(value: unknown): value is VenueDetailKpi {
+  if (!isRecord(value)) {
+    return false;
   }
 
-  if (input.campId) {
-    params.set("camp", input.campId);
+  return typeof value.label === "string" && typeof value.value === "string";
+}
+
+function isVenueDetailKpisData(value: unknown): value is VenueDetailKpisData {
+  if (!isRecord(value)) {
+    return false;
   }
 
-  if (input.highlight) {
-    params.set("highlight", input.highlight);
+  return (
+    Array.isArray(value.availableYears) &&
+    value.availableYears.every((year) => typeof year === "number") &&
+    typeof value.selectedYear === "number" &&
+    Array.isArray(value.kpis) &&
+    value.kpis.every(isVenueDetailKpi)
+  );
+}
+
+function isVenueDetailTabPayload(
+  value: unknown,
+  tab: VenueDetailTab,
+): value is VenueDetailTabPayload {
+  if (!isRecord(value)) {
+    return false;
   }
 
-  if (typeof input.page === "number" && Number.isFinite(input.page) && input.page > 1) {
-    params.set("page", String(Math.floor(input.page)));
+  if (tab === "camps") {
+    return Array.isArray(value.camps);
   }
 
-  if (input.loadMore) {
-    params.set("loadMore", "1");
+  if (tab === "sessions") {
+    return (
+      Array.isArray(value.sessions) &&
+      Array.isArray(value.campOptions) &&
+      typeof value.currentPage === "number" &&
+      typeof value.hasNextPage === "boolean" &&
+      typeof value.hasPreviousPage === "boolean" &&
+      typeof value.pageCount === "number"
+    );
   }
 
-  return `/api/venues/${encodeURIComponent(input.teamVenueId)}/tab-data?${params.toString()}`;
+  if (tab === "wind-patterns") {
+    const windPatterns = value.windPatterns;
+
+    return (
+      isRecord(windPatterns) &&
+      Array.isArray(windPatterns.patterns) &&
+      typeof windPatterns.activeCount === "number" &&
+      typeof windPatterns.archivedCount === "number"
+    );
+  }
+
+  if (tab === "assessments") {
+    const assessments = value.assessments;
+
+    return (
+      Array.isArray(value.camps) &&
+      isRecord(assessments) &&
+      Array.isArray(assessments.templates) &&
+      Array.isArray(assessments.runs)
+    );
+  }
+
+  return Array.isArray(value.camps) && Array.isArray(value.reports);
+}
+
+function isVenueDetailTabDataResponse(
+  value: unknown,
+  tab: VenueDetailTab,
+): value is VenueDetailTabDataResponse {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    isRecord(value.cache) &&
+    value.tab === tab &&
+    isVenueDetailKpisData(value.kpis) &&
+    isVenueDetailTabPayload(value.data, tab)
+  );
+}
+
+function doesVenueDetailCacheMetadataMatch(input: {
+  cache: ApiSliceCacheMetadata;
+  expectedCache: ApiSliceCacheMetadata;
+  expectedTab: VenueDetailTab;
+}): boolean {
+  return (
+    input.cache.key === input.expectedCache.key &&
+    input.cache.scopeKey === input.expectedCache.scopeKey &&
+    input.cache.route === VENUE_DETAIL_TAB_CACHE_ROUTE &&
+    String(input.cache.entityId) === String(input.expectedCache.entityId) &&
+    input.cache.tab === input.expectedTab &&
+    String(input.cache.year) === String(input.expectedCache.year) &&
+    input.cache.filters === input.expectedCache.filters &&
+    String(input.cache.page) === String(input.expectedCache.page)
+  );
+}
+
+function isValidVenueDetailTabResponse(input: {
+  expectedCache: ApiSliceCacheMetadata;
+  expectedTab: VenueDetailTab;
+  payload: VenueDetailTabDataResponse;
+}): boolean {
+  return (
+    doesVenueDetailCacheMetadataMatch({
+      cache: input.payload.cache,
+      expectedCache: input.expectedCache,
+      expectedTab: input.expectedTab,
+    }) &&
+    input.payload.kpis.selectedYear === Number(input.expectedCache.year) &&
+    isVenueDetailTabPayload(input.payload.data, input.expectedTab)
+  );
+}
+
+function buildInitialVenueDetailTabResponse(input: {
+  availableYears: number[];
+  cache: ApiSliceCacheMetadata;
+  initialKpis: VenueDetailKpi[];
+  initialTab: VenueDetailTab;
+  initialTabData: VenueDetailTabPayload;
+  initialYear: number;
+  selectedTab: VenueDetailTab;
+  selectedYear: number;
+}): VenueDetailTabDataResponse | null {
+  if (
+    input.selectedTab !== input.initialTab ||
+    input.selectedYear !== input.initialYear ||
+    input.cache.tab !== input.initialTab ||
+    Number(input.cache.year) !== input.initialYear
+  ) {
+    return null;
+  }
+
+  return {
+    cache: input.cache,
+    data: input.initialTabData,
+    kpis: {
+      availableYears: input.availableYears,
+      selectedYear: input.initialYear,
+      kpis: input.initialKpis,
+    },
+    tab: input.initialTab,
+  };
+}
+
+function resolveVenueDetailWarmYear(input: {
+  availableYears: readonly number[];
+  selectedYear: number;
+}): number {
+  const currentYear = new Date().getUTCFullYear();
+  return input.availableYears.includes(currentYear) ? currentYear : input.selectedYear;
 }
 
 async function resolveVenueDetailTabErrorMessage(response: Response): Promise<string> {
@@ -668,29 +696,43 @@ async function resolveVenueDetailTabErrorMessage(response: Response): Promise<st
 }
 
 async function fetchVenueDetailTabData(input: {
-  campId?: string;
-  highlight?: TeamSessionHighlightFilter;
+  campId?: string | null;
+  highlight?: TeamSessionHighlightFilter | null;
   loadMore?: boolean;
   page?: number;
   scope: NavigationScope;
+  signal?: AbortSignal;
   teamVenueId: string;
   tab: VenueDetailTab;
   year: number;
 }): Promise<VenueDetailTabDataResponse> {
-  const response = await fetch(buildVenueDetailTabDataUrl(input), {
-    cache: "no-store",
-    headers: {
-      Accept: "application/json",
+  const response = await fetch(
+    buildVenueDetailTabApiUrl({
+      campId: input.campId,
+      highlight: input.highlight,
+      loadMore: input.loadMore === true,
+      page: input.page ?? 1,
+      scope: input.scope,
+      teamVenueId: input.teamVenueId,
+      tab: input.tab,
+      year: input.year,
+    }),
+    {
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+      },
+      signal: input.signal,
     },
-  });
+  );
 
   if (!response.ok) {
     throw new Error(await resolveVenueDetailTabErrorMessage(response));
   }
 
-  const payload = (await response.json()) as VenueDetailTabDataResponse;
+  const payload = (await response.json()) as unknown;
 
-  if (payload.tab !== input.tab) {
+  if (!isVenueDetailTabDataResponse(payload, input.tab)) {
     throw new Error("The loaded tab data did not match the selected tab.");
   }
 
@@ -1054,27 +1096,13 @@ export function VenueDetailTabsClient(input: {
   const searchParams = useSearchParams();
   const currentSearch = searchParams.toString();
   const requestedCampId = searchParams.get("camp") ?? undefined;
-  const status = searchParams.get("status");
-  const scopeKey = `${input.scope.activeOrgId}:${input.scope.activeTeamId ?? ""}`;
-  const [selectedYear, setSelectedYear] = useState(input.initialYear);
+  const [selectedYearState, setSelectedYear] = useState(input.initialYear);
   const [selectedTab, setSelectedTab] = useState<VenueDetailTab>(input.initialTab);
-  const [kpisByYear, setKpisByYear] = useState<Record<number, VenueDetailKpi[]>>(
-    () => ({
-      [input.initialYear]: input.kpis,
-    }),
-  );
-  const [tabDataByYear, setTabDataByYear] = useState<VenueDetailTabDataState>(() =>
-    buildVenueDetailTabDataState({
-      initialTab: input.initialTab,
-      initialTabData: input.initialTabData,
-      initialYear: input.initialYear,
-    }),
-  );
-  const [loadError, setLoadError] = useState<VenueDetailTabLoadError | null>(null);
-  const inFlightTabsRef = useRef<Set<string>>(new Set());
-  const requestVersionRef = useRef(0);
-  const teamVenueIdRef = useRef(input.teamVenueId);
-  const scopeKeyRef = useRef(scopeKey);
+  const selectedYear = input.availableYears.includes(selectedYearState)
+    ? selectedYearState
+    : input.initialYear;
+  const cacheScope = useMemo(() => resolveCacheScope(input.scope), [input.scope]);
+  const warmInFlightTabsRef = useRef<Set<string>>(new Set());
   const routeRequest = useMemo(
     () =>
       resolveVenueDetailRouteRequest({
@@ -1124,169 +1152,192 @@ export function VenueDetailTabsClient(input: {
     [currentSearch, pathname, replaceVenueDetailHref, selectedTab],
   );
 
-  const loadTabData = useCallback(
-    async (tab: VenueDetailTab, year: number, options?: { force?: boolean }) => {
-      const hasTabData = hasVenueDetailTabData({
-        state: tabDataByYear,
-        tab,
-        year,
-      });
-      const hasKpis = typeof kpisByYear[year] !== "undefined";
-
-      if (!options?.force && hasTabData && hasKpis) {
-        return;
-      }
-
-      const requestPage = tab === "sessions" ? routeRequest.requestedPage : undefined;
-      const requestLoadMore =
-        tab === "sessions" ? routeRequest.requestedLoadMoreMode : undefined;
-      const requestHighlight =
-        tab === "sessions" ? routeRequest.requestedHighlight : undefined;
-      const requestCampId = tab === "sessions" ? requestedCampId : undefined;
-      const requestKey = [
-        year,
-        tab,
-        requestPage ?? 1,
-        requestLoadMore ? "load-more" : "page",
-        requestHighlight ?? "all",
-        requestCampId ?? "all-camps",
-      ].join(":");
-
-      if (inFlightTabsRef.current.has(requestKey)) {
-        return;
-      }
-
-      const requestVersion = requestVersionRef.current + 1;
-      requestVersionRef.current = requestVersion;
-      inFlightTabsRef.current.add(requestKey);
-      setLoadError((currentError) => (currentError?.tab === tab ? null : currentError));
-
-      try {
-        const payload = await fetchVenueDetailTabData({
-          campId: requestCampId,
-          highlight: requestHighlight,
-          loadMore: requestLoadMore,
-          page: requestPage,
-          scope: input.scope,
-          teamVenueId: input.teamVenueId,
-          tab,
-          year,
-        });
-
-        if (requestVersionRef.current !== requestVersion) {
-          return;
-        }
-
-        setKpisByYear((currentValue) => ({
-          ...currentValue,
-          [payload.kpis.selectedYear]: payload.kpis.kpis,
-        }));
-        setTabDataByYear((currentValue) =>
-          applyVenueDetailTabData({
-            data: payload.data,
-            state: currentValue,
-            tab,
-            year: payload.kpis.selectedYear,
-          }),
-        );
-      } catch (error) {
-        if (requestVersionRef.current !== requestVersion) {
-          return;
-        }
-
-        const message = error instanceof Error ? error.message : "Could not load this tab.";
-        setLoadError({ message, tab });
-      } finally {
-        inFlightTabsRef.current.delete(requestKey);
-      }
-    },
+  const selectedTabRequest = useMemo(
+    () =>
+      buildVenueDetailTabRequest({
+        campId: requestedCampId,
+        highlight: routeRequest.requestedHighlight,
+        loadMore: routeRequest.requestedLoadMoreMode,
+        page: routeRequest.requestedPage,
+        scope: input.scope,
+        teamVenueId: input.teamVenueId,
+        tab: selectedTab,
+        year: selectedYear,
+      }),
     [
       input.scope,
       input.teamVenueId,
-      kpisByYear,
       requestedCampId,
       routeRequest.requestedHighlight,
       routeRequest.requestedLoadMoreMode,
       routeRequest.requestedPage,
-      tabDataByYear,
+      selectedTab,
+      selectedYear,
     ],
   );
-
-  useEffect(() => {
-    const didTeamVenueChange = teamVenueIdRef.current !== input.teamVenueId;
-    const didScopeChange = scopeKeyRef.current !== scopeKey;
-    teamVenueIdRef.current = input.teamVenueId;
-    scopeKeyRef.current = scopeKey;
-
-    requestVersionRef.current += 1;
-    inFlightTabsRef.current.clear();
-
-    if (didTeamVenueChange || didScopeChange) {
-      setSelectedYear(input.initialYear);
-      setSelectedTab(input.initialTab);
-    }
-
-    const invalidation =
-      didTeamVenueChange || didScopeChange
-        ? getVenueDetailStatusInvalidation(null, input.initialTab)
-        : getVenueDetailStatusInvalidation(status, input.initialTab);
-
-    setKpisByYear((currentValue) => ({
-      ...(didTeamVenueChange || didScopeChange
-        ? {}
-        : invalidateVenueDetailKpisByYear({
-            invalidation,
-            kpisByYear: currentValue,
-            year: input.initialYear,
-          })),
-      [input.initialYear]: input.kpis,
-    }));
-    setTabDataByYear((currentValue) =>
-      applyVenueDetailTabData({
-        data: input.initialTabData,
-        state:
-          didTeamVenueChange || didScopeChange
-            ? {}
-            : invalidateVenueDetailTabDataState({
-                invalidation,
-                state: currentValue,
-                year: input.initialYear,
-              }),
-        tab: input.initialTab,
-        year: input.initialYear,
+  const selectedTabCache = useMemo(
+    () =>
+      buildVenueDetailTabCacheFromRequest({
+        cacheScope,
+        request: selectedTabRequest,
       }),
-    );
-    setLoadError((currentError) =>
-      currentError?.tab === input.initialTab ? null : currentError,
-    );
-  }, [
-    input.initialTab,
-    input.initialTabData,
-    input.initialYear,
-    input.kpis,
-    input.teamVenueId,
-    scopeKey,
-    status,
-  ]);
-
-  useEffect(() => {
-    void loadTabData(selectedTab, selectedYear);
-  }, [loadTabData, selectedTab, selectedYear]);
-
-  const retrySelectedTab = useCallback(() => {
-    void loadTabData(selectedTab, selectedYear, { force: true });
-  }, [loadTabData, selectedTab, selectedYear]);
-
-  const currentKpis = kpisByYear[selectedYear] ?? EMPTY_KPIS;
-  const selectedTabData = getVenueDetailTabData({
-    state: tabDataByYear,
-    tab: selectedTab,
-    year: selectedYear,
+    [cacheScope, selectedTabRequest],
+  );
+  const selectedInitialPayload = useMemo(
+    () =>
+      buildInitialVenueDetailTabResponse({
+        availableYears: input.availableYears,
+        cache: selectedTabCache,
+        initialKpis: input.kpis,
+        initialTab: input.initialTab,
+        initialTabData: input.initialTabData,
+        initialYear: input.initialYear,
+        selectedTab,
+        selectedYear,
+      }),
+    [
+      input.availableYears,
+      input.initialTab,
+      input.initialTabData,
+      input.initialYear,
+      input.kpis,
+      selectedTab,
+      selectedTabCache,
+      selectedYear,
+    ],
+  );
+  const fetchFreshTabData = useCallback(
+    async ({ signal }: { signal: AbortSignal }) =>
+      fetchVenueDetailTabData({
+        ...selectedTabRequest,
+        signal,
+      }),
+    [selectedTabRequest],
+  );
+  const validateFreshPayload = useCallback(
+    (payload: VenueDetailTabDataResponse) =>
+      isValidVenueDetailTabResponse({
+        expectedCache: selectedTabCache,
+        expectedTab: selectedTab,
+        payload,
+      }),
+    [selectedTab, selectedTabCache],
+  );
+  const routeData = useStaleRouteData<VenueDetailTabDataResponse>({
+    cacheKey: selectedTabCache.key,
+    scope: cacheScope,
+    staleMs: SCOPED_ROUTE_DETAIL_TAB_STALE_MS,
+    initialData: selectedInitialPayload,
+    enabled: input.scope.activeTeamId !== null,
+    fetchFreshData: fetchFreshTabData,
+    validateFreshPayload,
   });
 
+  useEffect(() => {
+    if (input.scope.activeTeamId === null) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const warmYear = resolveVenueDetailWarmYear({
+      availableYears: input.availableYears,
+      selectedYear,
+    });
+
+    for (const tab of VENUE_DETAIL_WARM_TABS) {
+      const warmRequest = buildVenueDetailTabRequest({
+        loadMore: false,
+        page: 1,
+        scope: input.scope,
+        teamVenueId: input.teamVenueId,
+        tab,
+        year: warmYear,
+      });
+      const warmCache = buildVenueDetailTabCacheFromRequest({
+        cacheScope,
+        request: warmRequest,
+      });
+
+      if (
+        warmCache.key === selectedTabCache.key ||
+        warmInFlightTabsRef.current.has(warmCache.key)
+      ) {
+        continue;
+      }
+
+      const cachedWarmPayload = readScopedRouteCache<VenueDetailTabDataResponse>({
+        key: warmCache.key,
+        scope: cacheScope,
+      });
+
+      if (cachedWarmPayload.status === "hit" && !cachedWarmPayload.isStale) {
+        continue;
+      }
+
+      warmInFlightTabsRef.current.add(warmCache.key);
+
+      void fetchVenueDetailTabData({
+        ...warmRequest,
+        signal: controller.signal,
+      })
+        .then((payload) => {
+          if (
+            controller.signal.aborted ||
+            !isValidVenueDetailTabResponse({
+              expectedCache: warmCache,
+              expectedTab: tab,
+              payload,
+            })
+          ) {
+            return;
+          }
+
+          writeScopedRouteCache({
+            key: warmCache.key,
+            scope: cacheScope,
+            payload,
+            staleMs: SCOPED_ROUTE_DETAIL_TAB_STALE_MS,
+          });
+        })
+        .catch(() => {
+          // Warm failures should never interrupt the visible tab.
+        })
+        .finally(() => {
+          warmInFlightTabsRef.current.delete(warmCache.key);
+        });
+    }
+
+    return () => {
+      controller.abort();
+    };
+  }, [
+    cacheScope,
+    input.availableYears,
+    input.scope,
+    input.teamVenueId,
+    selectedTabCache.key,
+    selectedYear,
+  ]);
+
+  const retrySelectedTab = routeData.retry;
+
+  const currentKpis =
+    routeData.data?.kpis.kpis ?? selectedInitialPayload?.kpis.kpis ?? EMPTY_KPIS;
+  const selectedTabData = routeData.data?.data ?? null;
+  const showInlineError = routeData.status === "error" && routeData.hasData;
+  const isSelectedTabRevalidating = routeData.isRevalidating && routeData.hasData;
+
   function renderPendingTab(tab: VenueDetailTab) {
-    if (loadError?.tab === tab) {
-      return <VenueTabDataError error={loadError} onRetry={retrySelectedTab} />;
+    if (routeData.status === "error" && !routeData.hasData) {
+      return (
+        <VenueTabDataError
+          error={{
+            message: routeData.error?.message ?? "Could not load this tab.",
+            tab,
+          }}
+          onRetry={retrySelectedTab}
+        />
+      );
     }
 
     return <VenueDetailPanelSkeleton selectedTab={tab} selectedYear={selectedYear} />;
@@ -1376,7 +1427,44 @@ export function VenueDetailTabsClient(input: {
           <TabsContent key={tab} value={tab}>
             {tab === selectedTab ? (
               selectedTabData ? (
-                renderLoadedTab(tab, selectedTabData)
+                <div className="relative">
+                  {showInlineError ? (
+                    <div
+                      role="alert"
+                      className="mb-3 flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 md:flex-row md:items-center md:justify-between"
+                    >
+                      <span>
+                        {routeData.error?.message ?? "Could not refresh this tab."}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={retrySelectedTab}
+                      >
+                        Retry
+                      </Button>
+                    </div>
+                  ) : null}
+
+                  <div
+                    className={cn(
+                      "transition-opacity",
+                      isSelectedTabRevalidating && "opacity-75",
+                    )}
+                  >
+                    {renderLoadedTab(tab, selectedTabData)}
+                  </div>
+
+                  {isSelectedTabRevalidating ? (
+                    <div className="pointer-events-none absolute right-3 top-3 z-20 rounded-full border bg-background/90 p-2 text-muted-foreground shadow-sm">
+                      <Loader2Icon className="size-4 animate-spin" />
+                      <span className="sr-only">
+                        Refreshing {formatVenueDetailTabLabel(tab)}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
               ) : (
                 renderPendingTab(tab)
               )

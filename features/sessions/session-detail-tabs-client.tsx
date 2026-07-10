@@ -7,6 +7,7 @@ import { Loader2Icon, MinusIcon, PlusIcon, Settings2Icon } from "lucide-react"
 import { useFormStatus } from "react-dom"
 import { toast } from "sonner"
 
+import { SessionDetailPanelSkeleton } from "@/components/shared/page-skeletons"
 import { Button } from "@/components/ui/button"
 import {
   Drawer,
@@ -27,7 +28,22 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import type { ApiSliceCacheMetadata } from "@/features/shared/api-slice-contracts"
+import {
+  readScopedRouteCache,
+  SCOPED_ROUTE_DETAIL_TAB_STALE_MS,
+  writeScopedRouteCache,
+  type ScopedRouteCacheScope,
+} from "@/features/shared/scoped-route-cache"
 import { updateSessionDetailAction } from "@/features/sessions/detail-actions"
+import {
+  invalidateSessionAssetRouteCache,
+  invalidateSessionDetailRouteCache,
+  invalidateSessionMutationRouteCache,
+  type SessionAssetCacheTab,
+  type SessionDetailCacheTab,
+} from "@/features/shared/scoped-route-cache-invalidation"
+import { useStaleRouteData } from "@/features/shared/use-stale-route-data"
 import type { SessionAssetsPanelProps } from "@/features/sessions/detail/assets-panel"
 import type { SessionGearTabPanelProps } from "@/features/sessions/detail/gear-panel"
 import type { GoalsPanelProps } from "@/features/sessions/detail/goals-panel"
@@ -47,13 +63,21 @@ import type {
   SessionDetailInfoTabData,
   SessionDetailResultsTabData,
   SessionDetailSetupData,
-  SessionDetailTabDataByTab,
   SessionDetailTabPayload,
 } from "@/features/sessions/detail-types"
 import {
   SESSION_DETAIL_TABS,
   type SessionDetailTab,
 } from "@/features/sessions/navigation"
+import {
+  buildSessionDetailTabApiUrl,
+  buildSessionDetailTabCacheMetadata,
+  isSessionAssetTab,
+  SESSION_DETAIL_ASSET_TAB_MAX_AGE_MS,
+  SESSION_DETAIL_ASSET_TAB_STALE_MS,
+  SESSION_DETAIL_TAB_CACHE_ROUTE,
+  type SessionDetailTabRequestInput,
+} from "@/features/sessions/session-detail-tab-cache"
 import { useIsMobile } from "@/hooks/use-mobile"
 import {
   NAVIGATION_SCOPE_ORG_QUERY_KEY,
@@ -167,36 +191,35 @@ const SetupDialog = dynamic<SetupDialogProps>(
 
 const SessionInfoPanel = dynamic<SessionInfoPanelProps>(
   () => import("@/features/sessions/detail/info-panel").then((module) => module.SessionInfoPanel),
-  { loading: () => <SessionDynamicPanelFallback /> },
+  { loading: () => <SessionDynamicPanelFallback selectedTab="info" /> },
 )
 
 const GoalsPanel = dynamic<GoalsPanelProps>(
   () => import("@/features/sessions/detail/goals-panel").then((module) => module.GoalsPanel),
-  { loading: () => <SessionDynamicPanelFallback /> },
+  { loading: () => <SessionDynamicPanelFallback selectedTab="goals" /> },
 )
 
 const ResultsPanel = dynamic<ResultsPanelProps>(
   () => import("@/features/sessions/detail/results-panel").then((module) => module.ResultsPanel),
-  { loading: () => <SessionDynamicPanelFallback /> },
+  { loading: () => <SessionDynamicPanelFallback selectedTab="results" /> },
 )
 
 const SessionAssetsPanel = dynamic<SessionAssetsPanelProps>(
   () => import("@/features/sessions/detail/assets-panel").then((module) => module.SessionAssetsPanel),
-  { loading: () => <SessionDynamicPanelFallback /> },
+  { loading: () => <SessionDynamicPanelFallback selectedTab="images" /> },
 )
 
 const SessionGearTabPanel = dynamic<SessionGearTabPanelProps>(
   () => import("@/features/sessions/detail/gear-panel").then((module) => module.SessionGearTabPanel),
-  { loading: () => <SessionDynamicPanelFallback /> },
+  { loading: () => <SessionDynamicPanelFallback selectedTab="gear" /> },
 )
 
-function SessionDynamicPanelFallback() {
-  return (
-    <div className="flex min-h-32 items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
-      <Loader2Icon className="mr-2 size-4 animate-spin" />
-      Loading...
-    </div>
-  )
+function SessionDynamicPanelFallback({
+  selectedTab,
+}: {
+  selectedTab: SessionDetailTab
+}) {
+  return <SessionDetailPanelSkeleton selectedTab={selectedTab} />
 }
 
 
@@ -506,11 +529,10 @@ type SessionDetailTabDataState = {
 }
 
 type SessionDetailTabDataResponse = {
-  [Tab in SessionDetailTab]: {
-    data: SessionDetailTabDataByTab[Tab]
-    tab: Tab
-  }
-}[SessionDetailTab]
+  cache: ApiSliceCacheMetadata
+  data: SessionDetailTabPayload
+  tab: SessionDetailTab
+}
 
 type SessionDetailTabLoadError = {
   message: string
@@ -640,33 +662,6 @@ function buildSessionDetailTabDataState(input: {
   })
 }
 
-function hasSessionDetailTabData(
-  state: SessionDetailTabDataState,
-  tab: SessionDetailTab,
-): boolean {
-  if (tab === "info") {
-    return typeof state.info !== "undefined"
-  }
-
-  if (tab === "goals") {
-    return true
-  }
-
-  if (tab === "results") {
-    return typeof state.results !== "undefined"
-  }
-
-  if (tab === "images") {
-    return typeof state.images !== "undefined"
-  }
-
-  if (tab === "analytics") {
-    return typeof state.analytics !== "undefined"
-  }
-
-  return typeof state.gear !== "undefined"
-}
-
 function getAffectedSessionTabsForStatus(
   status: string | null,
   selectedTab: SessionDetailTab,
@@ -726,25 +721,192 @@ function invalidateSessionDetailTabDataState(input: {
   }
 }
 
-function buildSessionDetailTabDataUrl(input: {
+function resolveCacheScope(scope: NavigationScope): ScopedRouteCacheScope {
+  return {
+    orgId: scope.activeOrgId,
+    teamId: scope.activeTeamId,
+  }
+}
+
+function buildSessionDetailTabRequest(input: {
   assetOffset?: number
+  catalogOffset?: number
   scope: NavigationScope
   sessionId: string
   tab: SessionDetailTab
-}): string {
-  const params = new URLSearchParams()
-  params.set("tab", input.tab)
-  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.scope.activeOrgId)
+}): SessionDetailTabRequestInput {
+  return {
+    assetOffset: isSessionAssetTab(input.tab) ? Math.max(0, input.assetOffset ?? 0) : 0,
+    catalogOffset: isSessionAssetTab(input.tab)
+      ? 0
+      : Math.max(0, input.catalogOffset ?? 0),
+    scope: input.scope,
+    sessionId: input.sessionId,
+    tab: input.tab,
+  }
+}
 
-  if (input.scope.activeTeamId) {
-    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scope.activeTeamId)
+function buildSessionDetailTabCacheFromRequest(input: {
+  cacheScope: ScopedRouteCacheScope
+  request: SessionDetailTabRequestInput
+}): ApiSliceCacheMetadata {
+  return buildSessionDetailTabCacheMetadata({
+    assetOffset: input.request.assetOffset,
+    catalogOffset: input.request.catalogOffset,
+    scope: input.cacheScope,
+    sessionId: input.request.sessionId,
+    tab: input.request.tab,
+  })
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+function isApiSliceCacheMetadata(value: unknown): value is ApiSliceCacheMetadata {
+  if (!isRecord(value)) {
+    return false
   }
 
-  if (typeof input.assetOffset === "number" && input.assetOffset > 0) {
-    params.set("assetOffset", String(input.assetOffset))
+  return (
+    typeof value.key === "string" &&
+    typeof value.scopeKey === "string" &&
+    typeof value.route === "string" &&
+    typeof value.filters === "string" &&
+    "entityId" in value &&
+    "tab" in value
+  )
+}
+
+function isSessionDetailTabPayload(
+  value: unknown,
+  tab: SessionDetailTab,
+): value is SessionDetailTabPayload {
+  if (!isRecord(value)) {
+    return false
   }
 
-  return `/api/team-sessions/${encodeURIComponent(input.sessionId)}/tab-data?${params.toString()}`
+  if (tab === "info") {
+    return (
+      isRecord(value.info) &&
+      Array.isArray(value.availableStandardMoves) &&
+      Array.isArray(value.linkedStandardMoveIds) &&
+      isRecord(value.standardMoveCatalogPage) &&
+      Array.isArray(value.availableWindPatterns) &&
+      Array.isArray(value.linkedWindPatternIds) &&
+      isRecord(value.windPatternCatalogPage)
+    )
+  }
+
+  if (tab === "goals") {
+    return typeof value.goals === "string" || value.goals === null
+  }
+
+  if (tab === "results") {
+    return isRecord(value.results)
+  }
+
+  if (tab === "images") {
+    return (
+      Array.isArray(value.images) &&
+      typeof value.assetLimit === "number" &&
+      typeof value.assetOffset === "number" &&
+      typeof value.assetTotalCount === "number"
+    )
+  }
+
+  if (tab === "analytics") {
+    return (
+      Array.isArray(value.analyticsFiles) &&
+      typeof value.assetLimit === "number" &&
+      typeof value.assetOffset === "number" &&
+      typeof value.assetTotalCount === "number"
+    )
+  }
+
+  return (
+    Array.isArray(value.gearItems) &&
+    Array.isArray(value.linkedGearItemIds) &&
+    isRecord(value.gearCatalogPage) &&
+    typeof value.gearType === "string"
+  )
+}
+
+function isSessionDetailTabDataResponse(
+  value: unknown,
+  tab: SessionDetailTab,
+): value is SessionDetailTabDataResponse {
+  if (!isRecord(value)) {
+    return false
+  }
+
+  return (
+    isApiSliceCacheMetadata(value.cache) &&
+    value.tab === tab &&
+    isSessionDetailTabPayload(value.data, tab)
+  )
+}
+
+function doesSessionDetailCacheMetadataMatch(input: {
+  cache: ApiSliceCacheMetadata
+  expectedCache: ApiSliceCacheMetadata
+  expectedTab: SessionDetailTab
+}): boolean {
+  return (
+    input.cache.key === input.expectedCache.key &&
+    input.cache.scopeKey === input.expectedCache.scopeKey &&
+    input.cache.route === SESSION_DETAIL_TAB_CACHE_ROUTE &&
+    String(input.cache.entityId) === String(input.expectedCache.entityId) &&
+    input.cache.tab === input.expectedTab &&
+    input.cache.filters === input.expectedCache.filters
+  )
+}
+
+function isValidSessionDetailTabResponse(input: {
+  expectedCache: ApiSliceCacheMetadata
+  expectedTab: SessionDetailTab
+  payload: SessionDetailTabDataResponse
+}): boolean {
+  return (
+    doesSessionDetailCacheMetadataMatch({
+      cache: input.payload.cache,
+      expectedCache: input.expectedCache,
+      expectedTab: input.expectedTab,
+    }) && isSessionDetailTabPayload(input.payload.data, input.expectedTab)
+  )
+}
+
+function buildInitialSessionDetailTabResponse(input: {
+  cache: ApiSliceCacheMetadata
+  initialTab: SessionDetailTab
+  initialTabData: SessionDetailTabPayload
+  selectedTab: SessionDetailTab
+}): SessionDetailTabDataResponse | null {
+  if (input.selectedTab !== input.initialTab || input.cache.tab !== input.initialTab) {
+    return null
+  }
+
+  return {
+    cache: input.cache,
+    data: input.initialTabData,
+    tab: input.initialTab,
+  }
+}
+
+function getSessionDetailTabCachePolicy(tab: SessionDetailTab): {
+  maxAgeMs?: number
+  staleMs: number
+} {
+  if (isSessionAssetTab(tab)) {
+    return {
+      maxAgeMs: SESSION_DETAIL_ASSET_TAB_MAX_AGE_MS,
+      staleMs: SESSION_DETAIL_ASSET_TAB_STALE_MS,
+    }
+  }
+
+  return {
+    staleMs: SCOPED_ROUTE_DETAIL_TAB_STALE_MS,
+  }
 }
 
 function buildSessionDetailSetupDataUrl(input: {
@@ -763,28 +925,39 @@ function buildSessionDetailSetupDataUrl(input: {
 
 async function fetchSessionDetailTabData(input: {
   assetOffset?: number
+  catalogOffset?: number
   scope: NavigationScope
   sessionId: string
+  signal?: AbortSignal
   tab: SessionDetailTab
-}): Promise<SessionDetailTabPayload> {
-  const response = await fetch(buildSessionDetailTabDataUrl(input), {
+}): Promise<SessionDetailTabDataResponse> {
+  const response = await fetch(buildSessionDetailTabApiUrl(
+    buildSessionDetailTabRequest({
+      assetOffset: input.assetOffset,
+      catalogOffset: input.catalogOffset,
+      scope: input.scope,
+      sessionId: input.sessionId,
+      tab: input.tab,
+    }),
+  ), {
     cache: "no-store",
     headers: {
       Accept: "application/json",
     },
+    signal: input.signal,
   })
 
   if (!response.ok) {
     throw new Error(await resolveSessionDetailTabErrorMessage(response))
   }
 
-  const payload = (await response.json()) as SessionDetailTabDataResponse
+  const payload = (await response.json()) as unknown
 
-  if (payload.tab !== input.tab) {
+  if (!isSessionDetailTabDataResponse(payload, input.tab)) {
     throw new Error("The loaded tab data did not match the selected tab.")
   }
 
-  return payload.data
+  return payload
 }
 
 async function fetchSessionDetailSetupData(input: {
@@ -889,11 +1062,13 @@ function SessionTabDataError(input: {
 }
 
 export function SessionDetailTabsClient(input: {
+  campId: string
   initialTab: SessionDetailTab
   initialTabData: SessionDetailTabPayload
   scope: NavigationScope
   sessionId: string
   sessionType: "training" | "regatta"
+  teamVenueId: string
   goals: string | null
   canManageSession: boolean
 }) {
@@ -901,6 +1076,7 @@ export function SessionDetailTabsClient(input: {
   const searchParams = useSearchParams()
   const status = searchParams.get("status")
   const scopeKey = `${input.scope.activeOrgId}:${input.scope.activeTeamId ?? ""}`
+  const cacheScope = React.useMemo(() => resolveCacheScope(input.scope), [input.scope])
   const [selectedTab, setSelectedTab] = React.useState<SessionDetailTab>(input.initialTab)
   const [tabData, setTabData] = React.useState<SessionDetailTabDataState>(() =>
     buildSessionDetailTabDataState({
@@ -909,11 +1085,10 @@ export function SessionDetailTabsClient(input: {
       initialTabData: input.initialTabData,
     }),
   )
-  const [loadError, setLoadError] = React.useState<SessionDetailTabLoadError | null>(null)
   const [loadingMoreAssetTab, setLoadingMoreAssetTab] = React.useState<SessionAssetTab | null>(
     null,
   )
-  const inFlightTabsRef = React.useRef<Set<SessionDetailTab>>(new Set())
+  const warmInFlightTabsRef = React.useRef<Set<string>>(new Set())
   const requestVersionRef = React.useRef(0)
   const sessionIdRef = React.useRef(input.sessionId)
   const scopeKeyRef = React.useRef(scopeKey)
@@ -942,7 +1117,7 @@ export function SessionDetailTabsClient(input: {
     scopeKeyRef.current = scopeKey
 
     requestVersionRef.current += 1
-    inFlightTabsRef.current.clear()
+    warmInFlightTabsRef.current.clear()
     if (didSessionChange || didScopeChange) {
       setSelectedTab(input.initialTab)
     }
@@ -969,9 +1144,6 @@ export function SessionDetailTabsClient(input: {
         tab: input.initialTab,
       }),
     )
-    setLoadError((currentError) =>
-      currentError?.tab === input.initialTab ? null : currentError,
-    )
     setLoadingMoreAssetTab(null)
   }, [
     input.goals,
@@ -982,61 +1154,202 @@ export function SessionDetailTabsClient(input: {
     status,
   ])
 
-  const loadTabData = React.useCallback(
-    async (tab: SessionDetailTab, options?: { force?: boolean }) => {
-      if (!options?.force && hasSessionDetailTabData(tabData, tab)) {
-        return
-      }
+  React.useEffect(() => {
+    const affectedTabs = [...getAffectedSessionTabsForStatus(status, input.initialTab)]
 
-      if (inFlightTabsRef.current.has(tab)) {
-        return
-      }
+    if (affectedTabs.length === 0) {
+      return
+    }
 
-      const requestVersion = requestVersionRef.current
-      inFlightTabsRef.current.add(tab)
-      setLoadError((currentError) => (currentError?.tab === tab ? null : currentError))
+    invalidateSessionDetailRouteCache({
+      scope: input.scope,
+      sessionId: input.sessionId,
+      tabs: affectedTabs as SessionDetailCacheTab[],
+    })
 
-      try {
-        const nextTabData = await fetchSessionDetailTabData({
-          scope: input.scope,
-          sessionId: input.sessionId,
-          tab,
-        })
+    if (status === "updated") {
+      invalidateSessionMutationRouteCache({
+        scope: input.scope,
+        sessionId: input.sessionId,
+        campId: input.campId,
+        teamVenueId: input.teamVenueId,
+      })
+    }
+  }, [
+    input.campId,
+    input.initialTab,
+    input.scope,
+    input.sessionId,
+    input.teamVenueId,
+    status,
+  ])
 
-        if (requestVersion !== requestVersionRef.current) {
-          return
-        }
-
-        setTabData((currentState) =>
-          applySessionDetailTabData({
-            data: nextTabData,
-            state: currentState,
-            tab,
-          }),
-        )
-      } catch (error) {
-        if (requestVersion !== requestVersionRef.current) {
-          return
-        }
-
-        const message = error instanceof Error ? error.message : "Could not load this tab."
-        setLoadError({ message, tab })
-      } finally {
-        if (requestVersion === requestVersionRef.current) {
-          inFlightTabsRef.current.delete(tab)
-        }
-      }
-    },
-    [input.scope, input.sessionId, tabData],
+  const selectedTabRequest = React.useMemo(
+    () =>
+      buildSessionDetailTabRequest({
+        scope: input.scope,
+        sessionId: input.sessionId,
+        tab: selectedTab,
+      }),
+    [input.scope, input.sessionId, selectedTab],
   )
+  const selectedTabCache = React.useMemo(
+    () =>
+      buildSessionDetailTabCacheFromRequest({
+        cacheScope,
+        request: selectedTabRequest,
+      }),
+    [cacheScope, selectedTabRequest],
+  )
+  const selectedInitialPayload = React.useMemo(
+    () =>
+      buildInitialSessionDetailTabResponse({
+        cache: selectedTabCache,
+        initialTab: input.initialTab,
+        initialTabData: input.initialTabData,
+        selectedTab,
+      }),
+    [input.initialTab, input.initialTabData, selectedTab, selectedTabCache],
+  )
+  const selectedCachePolicy = React.useMemo(
+    () => getSessionDetailTabCachePolicy(selectedTab),
+    [selectedTab],
+  )
+  const fetchFreshTabData = React.useCallback(
+    async ({ signal }: { signal: AbortSignal }) =>
+      fetchSessionDetailTabData({
+        assetOffset: selectedTabRequest.assetOffset,
+        catalogOffset: selectedTabRequest.catalogOffset,
+        scope: selectedTabRequest.scope,
+        sessionId: selectedTabRequest.sessionId,
+        signal,
+        tab: selectedTabRequest.tab,
+      }),
+    [selectedTabRequest],
+  )
+  const validateFreshPayload = React.useCallback(
+    (payload: SessionDetailTabDataResponse) =>
+      isValidSessionDetailTabResponse({
+        expectedCache: selectedTabCache,
+        expectedTab: selectedTab,
+        payload,
+      }),
+    [selectedTab, selectedTabCache],
+  )
+  const routeData = useStaleRouteData<SessionDetailTabDataResponse>({
+    cacheKey: selectedTabCache.key,
+    scope: cacheScope,
+    staleMs: selectedCachePolicy.staleMs,
+    maxAgeMs: selectedCachePolicy.maxAgeMs,
+    initialData: selectedInitialPayload,
+    enabled: input.scope.activeTeamId !== null,
+    fetchFreshData: fetchFreshTabData,
+    validateFreshPayload,
+  })
 
   React.useEffect(() => {
-    void loadTabData(selectedTab)
-  }, [loadTabData, selectedTab])
+    const payload = routeData.data
 
-  const retrySelectedTab = React.useCallback(() => {
-    void loadTabData(selectedTab, { force: true })
-  }, [loadTabData, selectedTab])
+    if (!payload) {
+      return
+    }
+
+    setTabData((currentState) =>
+      applySessionDetailTabData({
+        data: payload.data,
+        state: currentState,
+        tab: payload.tab,
+      }),
+    )
+  }, [routeData.data])
+
+  React.useEffect(() => {
+    if (input.scope.activeTeamId === null) {
+      return
+    }
+
+    const infoRequest = buildSessionDetailTabRequest({
+      scope: input.scope,
+      sessionId: input.sessionId,
+      tab: "info",
+    })
+    const infoCache = buildSessionDetailTabCacheFromRequest({
+      cacheScope,
+      request: infoRequest,
+    })
+
+    if (
+      infoCache.key === selectedTabCache.key ||
+      warmInFlightTabsRef.current.has(infoCache.key)
+    ) {
+      return
+    }
+
+    const cachedInfo = readScopedRouteCache<SessionDetailTabDataResponse>({
+      key: infoCache.key,
+      scope: cacheScope,
+    })
+
+    if (cachedInfo.status === "hit" && !cachedInfo.isStale) {
+      return
+    }
+
+    const controller = new AbortController()
+    warmInFlightTabsRef.current.add(infoCache.key)
+
+    void fetchSessionDetailTabData({
+      scope: infoRequest.scope,
+      sessionId: infoRequest.sessionId,
+      signal: controller.signal,
+      tab: infoRequest.tab,
+    })
+      .then((payload) => {
+        if (
+          controller.signal.aborted ||
+          !isValidSessionDetailTabResponse({
+            expectedCache: infoCache,
+            expectedTab: "info",
+            payload,
+          })
+        ) {
+          return
+        }
+
+        writeScopedRouteCache({
+          key: infoCache.key,
+          scope: cacheScope,
+          payload,
+          staleMs: SCOPED_ROUTE_DETAIL_TAB_STALE_MS,
+        })
+      })
+      .catch(() => {
+        // Warm failures should never interrupt the visible tab.
+      })
+      .finally(() => {
+        warmInFlightTabsRef.current.delete(infoCache.key)
+      })
+
+    return () => {
+      controller.abort()
+    }
+  }, [cacheScope, input.scope, input.sessionId, selectedTabCache.key])
+
+  const retrySelectedTab = routeData.retry
+  const refreshSelectedTab = routeData.refresh
+  const hasSelectedTabData =
+    selectedTab === "info"
+      ? typeof tabData.info !== "undefined"
+      : selectedTab === "goals"
+        ? typeof tabData.goals !== "undefined"
+        : selectedTab === "results"
+          ? typeof tabData.results !== "undefined"
+          : selectedTab === "images"
+            ? typeof tabData.images !== "undefined"
+            : selectedTab === "analytics"
+              ? typeof tabData.analytics !== "undefined"
+              : typeof tabData.gear !== "undefined"
+  const showInlineError = routeData.status === "error" && hasSelectedTabData
+  const isSelectedTabRevalidating = routeData.isRevalidating && hasSelectedTabData
 
   const loadMoreAssets = React.useCallback(
     async (tab: SessionAssetTab) => {
@@ -1071,7 +1384,7 @@ export function SessionDetailTabsClient(input: {
 
         setTabData((currentState) =>
           appendSessionAssetTabData({
-            data: nextTabData,
+            data: nextTabData.data,
             state: currentState,
             tab,
           }),
@@ -1089,12 +1402,76 @@ export function SessionDetailTabsClient(input: {
     [input.scope, input.sessionId, loadingMoreAssetTab, tabData.analytics, tabData.images],
   )
 
+  const handleAssetsChanged = React.useCallback(
+    async (tab: SessionAssetTab) => {
+      invalidateSessionAssetRouteCache({
+        scope: input.scope,
+        sessionId: input.sessionId,
+        tabs: [tab as SessionAssetCacheTab],
+      })
+
+      if (selectedTab !== tab) {
+        refreshSelectedTab()
+        return
+      }
+
+      const requestVersion = requestVersionRef.current
+      const nextTabData = await fetchSessionDetailTabData({
+        scope: input.scope,
+        sessionId: input.sessionId,
+        tab,
+      })
+
+      if (
+        requestVersion !== requestVersionRef.current ||
+        !isValidSessionDetailTabResponse({
+          expectedCache: selectedTabCache,
+          expectedTab: tab,
+          payload: nextTabData,
+        })
+      ) {
+        return
+      }
+
+      setTabData((currentState) =>
+        applySessionDetailTabData({
+          data: nextTabData.data,
+          state: currentState,
+          tab,
+        }),
+      )
+      writeScopedRouteCache({
+        key: selectedTabCache.key,
+        scope: cacheScope,
+        payload: nextTabData,
+        staleMs: SESSION_DETAIL_ASSET_TAB_STALE_MS,
+        maxAgeMs: SESSION_DETAIL_ASSET_TAB_MAX_AGE_MS,
+      })
+    },
+    [
+      cacheScope,
+      input.scope,
+      input.sessionId,
+      refreshSelectedTab,
+      selectedTab,
+      selectedTabCache,
+    ],
+  )
+
   function renderPendingTab(tab: SessionDetailTab) {
-    if (loadError?.tab === tab) {
-      return <SessionTabDataError error={loadError} onRetry={retrySelectedTab} />
+    if (routeData.status === "error" && !routeData.hasData) {
+      return (
+        <SessionTabDataError
+          error={{
+            message: routeData.error?.message ?? "Could not load this tab.",
+            tab,
+          }}
+          onRetry={retrySelectedTab}
+        />
+      )
     }
 
-    return <SessionDynamicPanelFallback />
+    return <SessionDetailPanelSkeleton selectedTab={tab} />
   }
 
   return (
@@ -1115,126 +1492,152 @@ export function SessionDetailTabsClient(input: {
         ))}
       </TabsList>
 
-      <section className="rounded-xl border bg-card p-4 sm:p-6">
-        {selectedTab === "info" ? (
-          <TabsContent value="info" className="space-y-4">
-            {tabData.info ? (
-              <SessionInfoPanel
-                sessionId={input.sessionId}
-                scope={input.scope}
-                info={tabData.info.info}
-                availableStandardMoves={tabData.info.availableStandardMoves}
-                linkedStandardMoveIds={tabData.info.linkedStandardMoveIds}
-                standardMoveCatalogPage={tabData.info.standardMoveCatalogPage}
-                availableWindPatterns={tabData.info.availableWindPatterns}
-                linkedWindPatternIds={tabData.info.linkedWindPatternIds}
-                windPatternCatalogPage={tabData.info.windPatternCatalogPage}
-                canManageSession={input.canManageSession}
-              />
-            ) : (
-              renderPendingTab("info")
-            )}
-          </TabsContent>
+      <section className="relative rounded-xl border bg-card p-4 sm:p-6">
+        {showInlineError ? (
+          <div
+            role="alert"
+            className="mb-3 flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 md:flex-row md:items-center md:justify-between"
+          >
+            <span>{routeData.error?.message ?? "Could not refresh this tab."}</span>
+            <Button type="button" variant="outline" size="sm" onClick={retrySelectedTab}>
+              Retry
+            </Button>
+          </div>
         ) : null}
 
-        {selectedTab === "goals" ? (
-          <TabsContent value="goals" className="space-y-4">
-            {tabData.goals ? (
-              <GoalsPanel
-                sessionId={input.sessionId}
-                scope={input.scope}
-                goals={tabData.goals.goals}
-                canManageSession={input.canManageSession}
-              />
-            ) : (
-              renderPendingTab("goals")
-            )}
-          </TabsContent>
-        ) : null}
+        <div
+          className={cn(
+            "transition-opacity",
+            isSelectedTabRevalidating && "opacity-75",
+          )}
+        >
+          {selectedTab === "info" ? (
+            <TabsContent value="info" className="space-y-4">
+              {tabData.info ? (
+                <SessionInfoPanel
+                  sessionId={input.sessionId}
+                  scope={input.scope}
+                  info={tabData.info.info}
+                  availableStandardMoves={tabData.info.availableStandardMoves}
+                  linkedStandardMoveIds={tabData.info.linkedStandardMoveIds}
+                  standardMoveCatalogPage={tabData.info.standardMoveCatalogPage}
+                  availableWindPatterns={tabData.info.availableWindPatterns}
+                  linkedWindPatternIds={tabData.info.linkedWindPatternIds}
+                  windPatternCatalogPage={tabData.info.windPatternCatalogPage}
+                  canManageSession={input.canManageSession}
+                />
+              ) : (
+                renderPendingTab("info")
+              )}
+            </TabsContent>
+          ) : null}
 
-        {selectedTab === "results" ? (
-          <TabsContent value="results" className="space-y-4">
-            {tabData.results ? (
-              <ResultsPanel
-                sessionId={input.sessionId}
-                scope={input.scope}
-                resultNotes={tabData.results.results.resultNotes}
-                canManageSession={input.canManageSession}
-              />
-            ) : (
-              renderPendingTab("results")
-            )}
-          </TabsContent>
-        ) : null}
+          {selectedTab === "goals" ? (
+            <TabsContent value="goals" className="space-y-4">
+              {tabData.goals ? (
+                <GoalsPanel
+                  sessionId={input.sessionId}
+                  scope={input.scope}
+                  goals={tabData.goals.goals}
+                  canManageSession={input.canManageSession}
+                />
+              ) : (
+                renderPendingTab("goals")
+              )}
+            </TabsContent>
+          ) : null}
 
-        {selectedTab === "images" ? (
-          <TabsContent value="images" className="space-y-4">
-            {tabData.images ? (
-              <SessionAssetsPanel
-                title="Images"
-                sessionId={input.sessionId}
-                scope={input.scope}
-                assetType="photo"
-                tab="images"
-                accept="image/*"
-                buttonLabel="Upload image"
-                assets={tabData.images.images}
-                assetLimit={tabData.images.assetLimit}
-                assetTotalCount={tabData.images.assetTotalCount}
-                emptyMessage="No images uploaded for this session yet."
-                isLoadingMore={loadingMoreAssetTab === "images"}
-                onLoadMore={() => void loadMoreAssets("images")}
-                onAssetsChanged={() => loadTabData("images", { force: true })}
-                canManageSession={input.canManageSession}
-              />
-            ) : (
-              renderPendingTab("images")
-            )}
-          </TabsContent>
-        ) : null}
+          {selectedTab === "results" ? (
+            <TabsContent value="results" className="space-y-4">
+              {tabData.results ? (
+                <ResultsPanel
+                  sessionId={input.sessionId}
+                  scope={input.scope}
+                  resultNotes={tabData.results.results.resultNotes}
+                  canManageSession={input.canManageSession}
+                />
+              ) : (
+                renderPendingTab("results")
+              )}
+            </TabsContent>
+          ) : null}
 
-        {selectedTab === "analytics" ? (
-          <TabsContent value="analytics" className="space-y-4">
-            {tabData.analytics ? (
-              <SessionAssetsPanel
-                title="Analytics"
-                sessionId={input.sessionId}
-                scope={input.scope}
-                assetType="analytics_file"
-                tab="analytics"
-                accept="application/pdf,.pdf"
-                buttonLabel="Upload PDF"
-                assets={tabData.analytics.analyticsFiles}
-                assetLimit={tabData.analytics.assetLimit}
-                assetTotalCount={tabData.analytics.assetTotalCount}
-                emptyMessage="No analytics PDFs uploaded for this session yet."
-                isLoadingMore={loadingMoreAssetTab === "analytics"}
-                onLoadMore={() => void loadMoreAssets("analytics")}
-                onAssetsChanged={() => loadTabData("analytics", { force: true })}
-                canManageSession={input.canManageSession}
-              />
-            ) : (
-              renderPendingTab("analytics")
-            )}
-          </TabsContent>
-        ) : null}
+          {selectedTab === "images" ? (
+            <TabsContent value="images" className="space-y-4">
+              {tabData.images ? (
+                <SessionAssetsPanel
+                  title="Images"
+                  sessionId={input.sessionId}
+                  scope={input.scope}
+                  assetType="photo"
+                  tab="images"
+                  accept="image/*"
+                  buttonLabel="Upload image"
+                  assets={tabData.images.images}
+                  assetLimit={tabData.images.assetLimit}
+                  assetTotalCount={tabData.images.assetTotalCount}
+                  emptyMessage="No images uploaded for this session yet."
+                  isLoadingMore={loadingMoreAssetTab === "images"}
+                  onLoadMore={() => void loadMoreAssets("images")}
+                  onAssetsChanged={() => handleAssetsChanged("images")}
+                  canManageSession={input.canManageSession}
+                />
+              ) : (
+                renderPendingTab("images")
+              )}
+            </TabsContent>
+          ) : null}
 
-        {selectedTab === "gear" ? (
-          <TabsContent value="gear" className="space-y-4">
-            {tabData.gear ? (
-              <SessionGearTabPanel
-                sessionId={input.sessionId}
-                scope={input.scope}
-                gearCatalogPage={tabData.gear.gearCatalogPage}
-                gearItems={tabData.gear.gearItems}
-                gearType={tabData.gear.gearType}
-                linkedGearItemIds={tabData.gear.linkedGearItemIds}
-                canManageSession={input.canManageSession}
-              />
-            ) : (
-              renderPendingTab("gear")
-            )}
-          </TabsContent>
+          {selectedTab === "analytics" ? (
+            <TabsContent value="analytics" className="space-y-4">
+              {tabData.analytics ? (
+                <SessionAssetsPanel
+                  title="Analytics"
+                  sessionId={input.sessionId}
+                  scope={input.scope}
+                  assetType="analytics_file"
+                  tab="analytics"
+                  accept="application/pdf,.pdf"
+                  buttonLabel="Upload PDF"
+                  assets={tabData.analytics.analyticsFiles}
+                  assetLimit={tabData.analytics.assetLimit}
+                  assetTotalCount={tabData.analytics.assetTotalCount}
+                  emptyMessage="No analytics PDFs uploaded for this session yet."
+                  isLoadingMore={loadingMoreAssetTab === "analytics"}
+                  onLoadMore={() => void loadMoreAssets("analytics")}
+                  onAssetsChanged={() => handleAssetsChanged("analytics")}
+                  canManageSession={input.canManageSession}
+                />
+              ) : (
+                renderPendingTab("analytics")
+              )}
+            </TabsContent>
+          ) : null}
+
+          {selectedTab === "gear" ? (
+            <TabsContent value="gear" className="space-y-4">
+              {tabData.gear ? (
+                <SessionGearTabPanel
+                  sessionId={input.sessionId}
+                  scope={input.scope}
+                  gearCatalogPage={tabData.gear.gearCatalogPage}
+                  gearItems={tabData.gear.gearItems}
+                  gearType={tabData.gear.gearType}
+                  linkedGearItemIds={tabData.gear.linkedGearItemIds}
+                  canManageSession={input.canManageSession}
+                />
+              ) : (
+                renderPendingTab("gear")
+              )}
+            </TabsContent>
+          ) : null}
+        </div>
+
+        {isSelectedTabRevalidating ? (
+          <div className="pointer-events-none absolute right-3 top-3 z-20 rounded-full border bg-background/90 p-2 text-muted-foreground shadow-sm">
+            <Loader2Icon className="size-4 animate-spin" />
+            <span className="sr-only">Refreshing {formatSessionDetailTabLabel(selectedTab)}</span>
+          </div>
         ) : null}
       </section>
     </Tabs>

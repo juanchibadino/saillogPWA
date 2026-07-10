@@ -97,6 +97,27 @@ function formatCampTypeLabel(value: TeamCampListItem["campType"]): string {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
+function SessionCountValue({
+  value,
+}: {
+  value: TeamCampListItem["sessionCount"]
+}) {
+  if (typeof value === "number") {
+    return <>{value}</>
+  }
+
+  return (
+    <span
+      aria-live="polite"
+      className="inline-flex items-center gap-1 text-muted-foreground"
+    >
+      <Loader2Icon className="size-3 animate-spin" />
+      <span className="sr-only">Loading session count</span>
+      <span aria-hidden="true">...</span>
+    </span>
+  )
+}
+
 function resolveEmptyMessage(input: {
   noTeamSelected: boolean
   selectedCampStatus?: TeamCampStatusFilter
@@ -291,7 +312,7 @@ export function TeamCampsTable({
                       <p className="mt-1 text-xs text-muted-foreground">
                         Sessions:{" "}
                         <span className="font-semibold text-foreground">
-                          {camp.sessionCount}
+                          <SessionCountValue value={camp.sessionCount} />
                         </span>
                         {" · "}
                         <span className={camp.isActive ? "text-emerald-700" : "text-muted-foreground"}>
@@ -445,7 +466,9 @@ export function TeamCampsTable({
                       <TableCell>{camp.venueName}</TableCell>
                       <TableCell>{formatCampTypeLabel(camp.campType)}</TableCell>
                       <TableCell>{formatDateRange(camp.startDate, camp.endDate)}</TableCell>
-                      <TableCell>{camp.sessionCount}</TableCell>
+                      <TableCell>
+                        <SessionCountValue value={camp.sessionCount} />
+                      </TableCell>
                       <TableCell>
                         <span
                           className={

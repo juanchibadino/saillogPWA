@@ -79,6 +79,14 @@ export function buildTeamCampsRedirectPath(input) {
     params.set("page", String(Math.floor(input.scopePage)))
   }
 
+  if (input.cacheCampId) {
+    params.set("cacheCamp", input.cacheCampId)
+  }
+
+  if (input.cacheTeamVenueId) {
+    params.set("cacheTeamVenue", input.cacheTeamVenueId)
+  }
+
   const query = params.toString()
   return query.length > 0 ? `/team-camps?${query}` : "/team-camps"
 }
@@ -108,6 +116,14 @@ export function buildCampDetailRedirectPath(input) {
 
   if (input.scopePage && input.scopePage > 1) {
     params.set("page", String(Math.floor(input.scopePage)))
+  }
+
+  if (input.cacheCampId) {
+    params.set("cacheCamp", input.cacheCampId)
+  }
+
+  if (input.cacheTeamVenueId) {
+    params.set("cacheTeamVenue", input.cacheTeamVenueId)
   }
 
   const query = params.toString()
@@ -167,6 +183,7 @@ export function resolveCampGoalsActionRedirect(input) {
   return buildCampDetailRedirectPath({
     campId: input.campId,
     status: "goals_updated",
+    cacheCampId: input.campId,
     scopeOrgId: input.scopeOrgId,
     scopeTeamId: input.scopeTeamId,
     scopeTab: input.scopeTab,

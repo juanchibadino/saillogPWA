@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import { useSearchParams } from "next/navigation"
 import { Loader2Icon } from "lucide-react"
 
 import { CampDetailPanelSkeleton } from "@/components/shared/page-skeletons"
@@ -13,6 +12,12 @@ import {
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  buildCampDetailTabApiUrl,
+  buildCampDetailTabCacheMetadata,
+  CAMP_DETAIL_TAB_CACHE_ROUTE,
+  type CampDetailTabRequestInput,
+} from "@/features/camps/camp-detail-tab-cache"
 import { CampGoalsEditSurface } from "@/features/camps/detail/camp-goals-edit-surface"
 import type {
   CampDetailGoalsTabData,
@@ -23,24 +28,23 @@ import type {
   CampDetailTabPayload,
 } from "@/features/camps/detail-types"
 import { buildCampDetailHref, CAMP_DETAIL_TABS } from "@/features/camps/navigation"
+import type { ApiSliceCacheMetadata } from "@/features/shared/api-slice-contracts"
+import {
+  readScopedRouteCache,
+  SCOPED_ROUTE_DETAIL_TAB_STALE_MS,
+  writeScopedRouteCache,
+  type ScopedRouteCacheScope,
+} from "@/features/shared/scoped-route-cache"
+import { useStaleRouteData } from "@/features/shared/use-stale-route-data"
 import type { TeamSessionHighlightFilter } from "@/features/sessions/data"
 import { CreateSessionDialog } from "@/features/sessions/session-form-dialogs"
 import { TeamSessionsTable } from "@/features/sessions/sessions-table"
 import { TeamSessionsToolbar } from "@/features/sessions/team-sessions-toolbar"
-import {
-  NAVIGATION_SCOPE_ORG_QUERY_KEY,
-  NAVIGATION_SCOPE_TEAM_QUERY_KEY,
-} from "@/lib/navigation/constants"
 import { cn } from "@/lib/utils"
 import type { NavigationScope } from "@/lib/navigation/types"
 
-type CampDetailTabDataState = {
-  goals?: CampDetailGoalsTabData
-  notes?: CampDetailNotesTabData
-  sessions?: CampDetailSessionsTabData
-}
-
 type CampDetailTabDataResponse = {
+  cache: ApiSliceCacheMetadata
   data: CampDetailTabPayload
   tab: CampDetailTab
 }
@@ -55,6 +59,11 @@ type CampDetailTabLoadError = {
   tab: CampDetailTab
 }
 
+type NotesAppendState = {
+  cacheKey: string
+  data: CampDetailNotesTabData
+}
+
 function resolveTab(value: string): CampDetailTab {
   return CAMP_DETAIL_TABS.includes(value as CampDetailTab)
     ? (value as CampDetailTab)
@@ -67,31 +76,6 @@ function renderNoteValue(value: string | null): string {
   }
 
   return value
-}
-
-function applyCampDetailTabData(input: {
-  data: CampDetailTabPayload
-  state: CampDetailTabDataState
-  tab: CampDetailTab
-}): CampDetailTabDataState {
-  if (input.tab === "sessions") {
-    return {
-      ...input.state,
-      sessions: input.data as CampDetailSessionsTabData,
-    }
-  }
-
-  if (input.tab === "goals") {
-    return {
-      ...input.state,
-      goals: input.data as CampDetailGoalsTabData,
-    }
-  }
-
-  return {
-    ...input.state,
-    notes: input.data as CampDetailNotesTabData,
-  }
 }
 
 function appendUniqueNotesCards(input: {
@@ -112,128 +96,197 @@ function appendUniqueNotesCards(input: {
 }
 
 function appendCampDetailNotesTabData(input: {
-  data: CampDetailTabPayload
-  state: CampDetailTabDataState
-}): CampDetailTabDataState {
-  const nextData = input.data as CampDetailNotesTabData
-  const currentNotes = input.state.notes
+  currentNotes: CampDetailNotesTabData
+  nextData: CampDetailTabPayload
+}): CampDetailNotesTabData {
+  const nextData = input.nextData as CampDetailNotesTabData
 
-  if (!currentNotes) {
+  return {
+    ...nextData,
+    notesCards: appendUniqueNotesCards({
+      currentCards: input.currentNotes.notesCards,
+      nextCards: nextData.notesCards,
+    }),
+    sessionOffset: input.currentNotes.sessionOffset,
+  }
+}
+
+function resolveCacheScope(scope: NavigationScope): ScopedRouteCacheScope {
+  return {
+    orgId: scope.activeOrgId,
+    teamId: scope.activeTeamId,
+  }
+}
+
+function buildCampDetailTabRequest(input: {
+  campId: string
+  highlight?: TeamSessionHighlightFilter
+  loadMore: boolean
+  notesOffset: number
+  page: number
+  scope: NavigationScope
+  tab: CampDetailTab
+}): CampDetailTabRequestInput {
+  if (input.tab === "sessions") {
     return {
-      ...input.state,
-      notes: nextData,
+      campId: input.campId,
+      highlight: input.highlight,
+      loadMore: input.loadMore,
+      notesOffset: 0,
+      page: input.page,
+      scope: input.scope,
+      tab: input.tab,
+    }
+  }
+
+  if (input.tab === "notes") {
+    return {
+      campId: input.campId,
+      loadMore: false,
+      notesOffset: input.notesOffset,
+      page: 1,
+      scope: input.scope,
+      tab: input.tab,
     }
   }
 
   return {
-    ...input.state,
-    notes: {
-      ...nextData,
-      notesCards: appendUniqueNotesCards({
-        currentCards: currentNotes.notesCards,
-        nextCards: nextData.notesCards,
-      }),
-      sessionOffset: currentNotes.sessionOffset,
-    },
+    campId: input.campId,
+    loadMore: false,
+    notesOffset: 0,
+    page: 1,
+    scope: input.scope,
+    tab: input.tab,
   }
 }
 
-function buildCampDetailTabDataState(input: {
-  initialTab: CampDetailTab
-  initialTabData: CampDetailTabPayload
-}): CampDetailTabDataState {
-  return applyCampDetailTabData({
-    data: input.initialTabData,
-    state: {},
-    tab: input.initialTab,
+function buildCampDetailTabCacheFromRequest(input: {
+  cacheScope: ScopedRouteCacheScope
+  request: CampDetailTabRequestInput
+}): ApiSliceCacheMetadata {
+  return buildCampDetailTabCacheMetadata({
+    campId: input.request.campId,
+    highlight: input.request.highlight,
+    loadMore: input.request.loadMore,
+    notesOffset: input.request.notesOffset,
+    page: input.request.page,
+    scope: input.cacheScope,
+    tab: input.request.tab,
   })
 }
 
-function hasCampDetailTabData(
-  state: CampDetailTabDataState,
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+function isApiSliceCacheMetadata(value: unknown): value is ApiSliceCacheMetadata {
+  if (!isRecord(value)) {
+    return false
+  }
+
+  return (
+    typeof value.key === "string" &&
+    typeof value.scopeKey === "string" &&
+    typeof value.route === "string" &&
+    typeof value.filters === "string" &&
+    "entityId" in value &&
+    "tab" in value &&
+    "page" in value
+  )
+}
+
+function isCampDetailTabPayload(
+  value: unknown,
   tab: CampDetailTab,
-): boolean {
+): value is CampDetailTabPayload {
+  if (!isRecord(value)) {
+    return false
+  }
+
   if (tab === "sessions") {
-    return typeof state.sessions !== "undefined"
+    return (
+      Array.isArray(value.sessions) &&
+      Array.isArray(value.campOptions) &&
+      typeof value.currentPage === "number" &&
+      typeof value.pageCount === "number" &&
+      typeof value.hasPreviousPage === "boolean" &&
+      typeof value.hasNextPage === "boolean"
+    )
   }
 
   if (tab === "goals") {
-    return typeof state.goals !== "undefined"
+    return typeof value.goals === "string" || value.goals === null
   }
 
-  return typeof state.notes !== "undefined"
+  return (
+    Array.isArray(value.notesCards) &&
+    typeof value.sessionLimit === "number" &&
+    typeof value.sessionOffset === "number" &&
+    typeof value.sessionTotalCount === "number" &&
+    (typeof value.nextSessionOffset === "number" || value.nextSessionOffset === null)
+  )
 }
 
-function getAffectedCampTabsForStatus(status: string | null): Set<CampDetailTab> {
-  if (status === "goals_updated") {
-    return new Set(["goals"])
+function isCampDetailTabDataResponse(
+  value: unknown,
+  tab: CampDetailTab,
+): value is CampDetailTabDataResponse {
+  if (!isRecord(value)) {
+    return false
   }
 
-  if (status === "created" || status === "updated" || status === "deleted") {
-    return new Set(["sessions", "notes"])
-  }
-
-  return new Set()
+  return (
+    isApiSliceCacheMetadata(value.cache) &&
+    value.tab === tab &&
+    isCampDetailTabPayload(value.data, tab)
+  )
 }
 
-function invalidateCampDetailTabDataState(input: {
-  affectedTabs: Set<CampDetailTab>
-  state: CampDetailTabDataState
-}): CampDetailTabDataState {
-  if (input.affectedTabs.size === 0) {
-    return input.state
+function doesCampDetailCacheMetadataMatch(input: {
+  cache: ApiSliceCacheMetadata
+  expectedCache: ApiSliceCacheMetadata
+  expectedTab: CampDetailTab
+}): boolean {
+  return (
+    input.cache.key === input.expectedCache.key &&
+    input.cache.scopeKey === input.expectedCache.scopeKey &&
+    input.cache.route === CAMP_DETAIL_TAB_CACHE_ROUTE &&
+    String(input.cache.entityId) === String(input.expectedCache.entityId) &&
+    input.cache.tab === input.expectedTab &&
+    input.cache.filters === input.expectedCache.filters &&
+    String(input.cache.page) === String(input.expectedCache.page)
+  )
+}
+
+function isValidCampDetailTabResponse(input: {
+  expectedCache: ApiSliceCacheMetadata
+  expectedTab: CampDetailTab
+  payload: CampDetailTabDataResponse
+}): boolean {
+  return (
+    doesCampDetailCacheMetadataMatch({
+      cache: input.payload.cache,
+      expectedCache: input.expectedCache,
+      expectedTab: input.expectedTab,
+    }) && isCampDetailTabPayload(input.payload.data, input.expectedTab)
+  )
+}
+
+function buildInitialCampDetailTabResponse(input: {
+  cache: ApiSliceCacheMetadata
+  initialTab: CampDetailTab
+  initialTabData: CampDetailTabPayload
+  selectedTab: CampDetailTab
+}): CampDetailTabDataResponse | null {
+  if (input.selectedTab !== input.initialTab || input.cache.tab !== input.initialTab) {
+    return null
   }
 
   return {
-    goals: input.affectedTabs.has("goals") ? undefined : input.state.goals,
-    notes: input.affectedTabs.has("notes") ? undefined : input.state.notes,
-    sessions: input.affectedTabs.has("sessions") ? undefined : input.state.sessions,
+    cache: input.cache,
+    data: input.initialTabData,
+    tab: input.initialTab,
   }
-}
-
-function buildCampDetailTabDataUrl(input: {
-  campId: string
-  loadMore?: boolean
-  notesOffset?: number
-  page?: number
-  scope: NavigationScope
-  selectedHighlight?: TeamSessionHighlightFilter
-  tab: CampDetailTab
-}): string {
-  const params = new URLSearchParams()
-  params.set("tab", input.tab)
-  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.scope.activeOrgId)
-
-  if (input.scope.activeTeamId) {
-    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scope.activeTeamId)
-  }
-
-  if (input.selectedHighlight) {
-    params.set("highlight", input.selectedHighlight)
-  }
-
-  if (
-    typeof input.page === "number" &&
-    Number.isFinite(input.page) &&
-    input.page > 1
-  ) {
-    params.set("page", String(Math.floor(input.page)))
-  }
-
-  if (input.loadMore) {
-    params.set("loadMore", "1")
-  }
-
-  if (
-    input.tab === "notes" &&
-    typeof input.notesOffset === "number" &&
-    Number.isFinite(input.notesOffset) &&
-    input.notesOffset > 0
-  ) {
-    params.set("notesOffset", String(Math.floor(input.notesOffset)))
-  }
-
-  return `/api/team-camps/${encodeURIComponent(input.campId)}/tab-data?${params.toString()}`
 }
 
 async function resolveCampDetailTabErrorMessage(response: Response): Promise<string> {
@@ -273,26 +326,36 @@ async function fetchCampDetailTabData(input: {
   page?: number
   scope: NavigationScope
   selectedHighlight?: TeamSessionHighlightFilter
+  signal?: AbortSignal
   tab: CampDetailTab
-}): Promise<CampDetailTabPayload> {
-  const response = await fetch(buildCampDetailTabDataUrl(input), {
+}): Promise<CampDetailTabDataResponse> {
+  const response = await fetch(buildCampDetailTabApiUrl({
+    campId: input.campId,
+    highlight: input.selectedHighlight,
+    loadMore: input.loadMore === true,
+    notesOffset: input.notesOffset ?? 0,
+    page: input.page ?? 1,
+    scope: input.scope,
+    tab: input.tab,
+  }), {
     cache: "no-store",
     headers: {
       Accept: "application/json",
     },
+    signal: input.signal,
   })
 
   if (!response.ok) {
     throw new Error(await resolveCampDetailTabErrorMessage(response))
   }
 
-  const payload = (await response.json()) as CampDetailTabDataResponse
+  const payload = (await response.json()) as unknown
 
-  if (payload.tab !== input.tab) {
+  if (!isCampDetailTabDataResponse(payload, input.tab)) {
     throw new Error("The loaded tab data did not match the selected tab.")
   }
 
-  return payload.data
+  return payload
 }
 
 function CampTabDataError(input: {
@@ -367,6 +430,7 @@ function CampDetailSummaryCards({ kpis }: { kpis: CampDetailKpi[] }) {
 export function CampDetailTabsClient({
   initialTab,
   initialTabData,
+  initialNotesOffset,
   initialSessionHighlight,
   initialSessionLoadMore,
   initialSessionPage,
@@ -382,6 +446,7 @@ export function CampDetailTabsClient({
 }: {
   initialTab: CampDetailTab
   initialTabData: CampDetailTabPayload
+  initialNotesOffset: number
   initialSessionHighlight?: TeamSessionHighlightFilter
   initialSessionLoadMore?: boolean
   initialSessionPage: number
@@ -395,27 +460,23 @@ export function CampDetailTabsClient({
   scope: NavigationScope
   campId: string
 }) {
-  const searchParams = useSearchParams()
-  const status = searchParams.get("status")
-  const scopeKey = `${scope.activeOrgId}:${scope.activeTeamId ?? ""}`
-  const [selectedTab, setSelectedTab] = React.useState<CampDetailTab>(initialTab)
-  const [tabData, setTabData] = React.useState<CampDetailTabDataState>(() =>
-    buildCampDetailTabDataState({
-      initialTab,
-      initialTabData,
-    }),
-  )
-  const [loadError, setLoadError] = React.useState<CampDetailTabLoadError | null>(null)
+  const identityKey = `${scope.activeOrgId}:${scope.activeTeamId ?? ""}:${campId}`
+  const [tabState, setTabState] = React.useState<{
+    identityKey: string
+    selectedTab: CampDetailTab
+  }>(() => ({
+    identityKey,
+    selectedTab: initialTab,
+  }))
+  const selectedTab =
+    tabState.identityKey === identityKey ? tabState.selectedTab : initialTab
+  const cacheScope = React.useMemo(() => resolveCacheScope(scope), [scope])
+  const warmInFlightTabsRef = React.useRef<Set<string>>(new Set())
   const [loadingMoreNotes, setLoadingMoreNotes] = React.useState(false)
-  const campIdRef = React.useRef(campId)
-  const scopeKeyRef = React.useRef(scopeKey)
-  const inFlightTabsRef = React.useRef<Set<CampDetailTab>>(new Set())
-  const requestVersionRef = React.useRef(0)
-  const latestTabRequestVersionRef = React.useRef<Record<CampDetailTab, number>>({
-    goals: 0,
-    notes: 0,
-    sessions: 0,
-  })
+  const [notesLoadError, setNotesLoadError] = React.useState<string | null>(null)
+  const [notesAppendState, setNotesAppendState] =
+    React.useState<NotesAppendState | null>(null)
+  const notesLoadMoreRequestVersionRef = React.useRef(0)
 
   function buildCampSessionsHref(input: {
     highlight?: TeamSessionHighlightFilter
@@ -434,176 +495,266 @@ export function CampDetailTabsClient({
 
   const updateSelectedTab = React.useCallback(
     (tab: CampDetailTab) => {
-      setSelectedTab(tab)
+      setTabState({
+        identityKey,
+        selectedTab: tab,
+      })
 
       const nextUrl = buildCampDetailHref({
         scope,
         campId,
         tab,
+        highlight: tab === "sessions" ? initialSessionHighlight : undefined,
+        page: tab === "sessions" ? initialSessionPage : undefined,
+        loadMore: tab === "sessions" ? initialSessionLoadMore : undefined,
       })
 
       window.history.replaceState(null, "", `${nextUrl}${window.location.hash}`)
     },
-    [campId, scope],
-  )
-
-  const loadTabData = React.useCallback(
-    async (tab: CampDetailTab, options?: { force?: boolean }) => {
-      if (!options?.force && hasCampDetailTabData(tabData, tab)) {
-        return
-      }
-
-      if (inFlightTabsRef.current.has(tab)) {
-        return
-      }
-
-      const requestVersion = requestVersionRef.current + 1
-      requestVersionRef.current = requestVersion
-      latestTabRequestVersionRef.current[tab] = requestVersion
-      inFlightTabsRef.current.add(tab)
-      setLoadError((currentError) => (currentError?.tab === tab ? null : currentError))
-
-      try {
-        const nextTabData = await fetchCampDetailTabData({
-          campId,
-          loadMore: initialSessionLoadMore,
-          page: initialSessionPage,
-          scope,
-          selectedHighlight: initialSessionHighlight,
-          tab,
-        })
-
-        if (latestTabRequestVersionRef.current[tab] !== requestVersion) {
-          return
-        }
-
-        setTabData((currentState) =>
-          applyCampDetailTabData({
-            data: nextTabData,
-            state: currentState,
-            tab,
-          }),
-        )
-      } catch (error) {
-        if (latestTabRequestVersionRef.current[tab] !== requestVersion) {
-          return
-        }
-
-        const message = error instanceof Error ? error.message : "Could not load this tab."
-        setLoadError({ message, tab })
-      } finally {
-        inFlightTabsRef.current.delete(tab)
-      }
-    },
     [
       campId,
+      identityKey,
       initialSessionHighlight,
       initialSessionLoadMore,
       initialSessionPage,
       scope,
-      tabData,
     ],
   )
 
-  React.useEffect(() => {
-    const didCampChange = campIdRef.current !== campId
-    const didScopeChange = scopeKeyRef.current !== scopeKey
-    campIdRef.current = campId
-    scopeKeyRef.current = scopeKey
-
-    requestVersionRef.current += 1
-    latestTabRequestVersionRef.current = {
-      goals: 0,
-      notes: 0,
-      sessions: 0,
-    }
-    inFlightTabsRef.current.clear()
-
-    if (didCampChange || didScopeChange) {
-      setSelectedTab(initialTab)
-    }
-
-    setTabData((currentState) =>
-      applyCampDetailTabData({
-        data: initialTabData,
-        state:
-          didCampChange || didScopeChange
-            ? {}
-            : invalidateCampDetailTabDataState({
-                affectedTabs: getAffectedCampTabsForStatus(status),
-                state: currentState,
-              }),
-        tab: initialTab,
+  const selectedTabRequest = React.useMemo(
+    () =>
+      buildCampDetailTabRequest({
+        campId,
+        highlight: initialSessionHighlight,
+        loadMore: initialSessionLoadMore === true,
+        notesOffset: selectedTab === "notes" ? initialNotesOffset : 0,
+        page: initialSessionPage,
+        scope,
+        tab: selectedTab,
       }),
-    )
-    setLoadError((currentError) => (currentError?.tab === initialTab ? null : currentError))
-    setLoadingMoreNotes(false)
-  }, [campId, initialTab, initialTabData, scopeKey, status])
+    [
+      campId,
+      initialNotesOffset,
+      initialSessionHighlight,
+      initialSessionLoadMore,
+      initialSessionPage,
+      scope,
+      selectedTab,
+    ],
+  )
+  const selectedTabCache = React.useMemo(
+    () =>
+      buildCampDetailTabCacheFromRequest({
+        cacheScope,
+        request: selectedTabRequest,
+      }),
+    [cacheScope, selectedTabRequest],
+  )
+  const selectedInitialPayload = React.useMemo(
+    () =>
+      buildInitialCampDetailTabResponse({
+        cache: selectedTabCache,
+        initialTab,
+        initialTabData,
+        selectedTab,
+      }),
+    [initialTab, initialTabData, selectedTab, selectedTabCache],
+  )
+  const fetchFreshTabData = React.useCallback(
+    async ({ signal }: { signal: AbortSignal }) =>
+      fetchCampDetailTabData({
+        campId: selectedTabRequest.campId,
+        loadMore: selectedTabRequest.loadMore,
+        notesOffset: selectedTabRequest.notesOffset,
+        page: selectedTabRequest.page,
+        scope: selectedTabRequest.scope,
+        selectedHighlight: selectedTabRequest.highlight ?? undefined,
+        signal,
+        tab: selectedTabRequest.tab,
+      }),
+    [selectedTabRequest],
+  )
+  const validateFreshPayload = React.useCallback(
+    (payload: CampDetailTabDataResponse) =>
+      isValidCampDetailTabResponse({
+        expectedCache: selectedTabCache,
+        expectedTab: selectedTab,
+        payload,
+      }),
+    [selectedTab, selectedTabCache],
+  )
+  const routeData = useStaleRouteData<CampDetailTabDataResponse>({
+    cacheKey: selectedTabCache.key,
+    scope: cacheScope,
+    staleMs: SCOPED_ROUTE_DETAIL_TAB_STALE_MS,
+    initialData: selectedInitialPayload,
+    enabled: scope.activeTeamId !== null,
+    fetchFreshData: fetchFreshTabData,
+    validateFreshPayload,
+  })
 
   React.useEffect(() => {
-    void loadTabData(selectedTab)
-  }, [loadTabData, selectedTab])
-
-  const retrySelectedTab = React.useCallback(() => {
-    void loadTabData(selectedTab, { force: true })
-  }, [loadTabData, selectedTab])
-
-  const loadMoreNotes = React.useCallback(async () => {
-    const notesData = tabData.notes
-
-    if (!notesData || notesData.nextSessionOffset === null || loadingMoreNotes) {
+    if (scope.activeTeamId === null) {
       return
     }
 
-    const requestVersion = requestVersionRef.current + 1
-    requestVersionRef.current = requestVersion
-    latestTabRequestVersionRef.current.notes = requestVersion
+    const sessionsRequest = buildCampDetailTabRequest({
+      campId,
+      loadMore: false,
+      notesOffset: 0,
+      page: 1,
+      scope,
+      tab: "sessions",
+    })
+    const sessionsCache = buildCampDetailTabCacheFromRequest({
+      cacheScope,
+      request: sessionsRequest,
+    })
+
+    if (
+      sessionsCache.key === selectedTabCache.key ||
+      warmInFlightTabsRef.current.has(sessionsCache.key)
+    ) {
+      return
+    }
+
+    const cachedSessions = readScopedRouteCache<CampDetailTabDataResponse>({
+      key: sessionsCache.key,
+      scope: cacheScope,
+    })
+
+    if (cachedSessions.status === "hit" && !cachedSessions.isStale) {
+      return
+    }
+
+    const controller = new AbortController()
+    warmInFlightTabsRef.current.add(sessionsCache.key)
+
+    void fetchCampDetailTabData({
+      campId: sessionsRequest.campId,
+      loadMore: sessionsRequest.loadMore,
+      notesOffset: sessionsRequest.notesOffset,
+      page: sessionsRequest.page,
+      scope: sessionsRequest.scope,
+      selectedHighlight: sessionsRequest.highlight ?? undefined,
+      signal: controller.signal,
+      tab: sessionsRequest.tab,
+    })
+      .then((payload) => {
+        if (
+          controller.signal.aborted ||
+          !isValidCampDetailTabResponse({
+            expectedCache: sessionsCache,
+            expectedTab: "sessions",
+            payload,
+          })
+        ) {
+          return
+        }
+
+        writeScopedRouteCache({
+          key: sessionsCache.key,
+          scope: cacheScope,
+          payload,
+          staleMs: SCOPED_ROUTE_DETAIL_TAB_STALE_MS,
+        })
+      })
+      .catch(() => {
+        // Warm failures should never interrupt the visible tab.
+      })
+      .finally(() => {
+        warmInFlightTabsRef.current.delete(sessionsCache.key)
+      })
+
+    return () => {
+      controller.abort()
+    }
+  }, [cacheScope, campId, scope, selectedTabCache.key])
+
+  const retrySelectedTab = routeData.retry
+
+  const selectedPayload = routeData.data ?? selectedInitialPayload
+  const selectedTabData = selectedPayload?.data ?? null
+  const notesDataFromRoute =
+    selectedTab === "notes" && selectedTabData
+      ? (selectedTabData as CampDetailNotesTabData)
+      : null
+  const displayedNotesData =
+    notesAppendState?.cacheKey === selectedTabCache.key
+      ? notesAppendState.data
+      : notesDataFromRoute
+  const showInlineError = routeData.status === "error" && routeData.hasData
+  const isSelectedTabRevalidating = routeData.isRevalidating && routeData.hasData
+
+  const loadMoreNotes = React.useCallback(async () => {
+    if (
+      !displayedNotesData ||
+      displayedNotesData.nextSessionOffset === null ||
+      loadingMoreNotes
+    ) {
+      return
+    }
+
+    const requestVersion = notesLoadMoreRequestVersionRef.current + 1
+    notesLoadMoreRequestVersionRef.current = requestVersion
     setLoadingMoreNotes(true)
-    setLoadError((currentError) => (currentError?.tab === "notes" ? null : currentError))
+    setNotesLoadError(null)
 
     try {
       const nextTabData = await fetchCampDetailTabData({
         campId,
-        notesOffset: notesData.nextSessionOffset,
+        notesOffset: displayedNotesData.nextSessionOffset,
         scope,
         tab: "notes",
       })
 
-      if (latestTabRequestVersionRef.current.notes !== requestVersion) {
+      if (notesLoadMoreRequestVersionRef.current !== requestVersion) {
         return
       }
 
-      setTabData((currentState) =>
-        appendCampDetailNotesTabData({
-          data: nextTabData,
-          state: currentState,
+      setNotesAppendState({
+        cacheKey: selectedTabCache.key,
+        data: appendCampDetailNotesTabData({
+          currentNotes: displayedNotesData,
+          nextData: nextTabData.data,
         }),
-      )
-      setLoadError((currentError) => (currentError?.tab === "notes" ? null : currentError))
+      })
+      setNotesLoadError(null)
     } catch (error) {
-      if (latestTabRequestVersionRef.current.notes !== requestVersion) {
+      if (notesLoadMoreRequestVersionRef.current !== requestVersion) {
         return
       }
 
       const message = error instanceof Error ? error.message : "Could not load more notes."
-      setLoadError({ message, tab: "notes" })
+      setNotesLoadError(message)
     } finally {
-      if (latestTabRequestVersionRef.current.notes === requestVersion) {
+      if (notesLoadMoreRequestVersionRef.current === requestVersion) {
         setLoadingMoreNotes(false)
       }
     }
-  }, [campId, loadingMoreNotes, scope, tabData.notes])
+  }, [campId, displayedNotesData, loadingMoreNotes, scope, selectedTabCache.key])
 
   function renderPendingTab(tab: CampDetailTab) {
-    if (loadError?.tab === tab) {
-      return <CampTabDataError error={loadError} onRetry={retrySelectedTab} />
+    if (routeData.status === "error" && !routeData.hasData) {
+      return (
+        <CampTabDataError
+          error={{
+            message: routeData.error?.message ?? "Could not load this tab.",
+            tab,
+          }}
+          onRetry={retrySelectedTab}
+        />
+      )
     }
 
     return <CampDetailPanelSkeleton selectedTab={tab} />
   }
 
   function renderSessionsTab() {
-    const sessionsData = tabData.sessions
+    const sessionsData =
+      selectedTab === "sessions" && selectedTabData
+        ? (selectedTabData as CampDetailSessionsTabData)
+        : null
 
     if (!sessionsData) {
       return renderPendingTab("sessions")
@@ -702,7 +853,10 @@ export function CampDetailTabsClient({
   }
 
   function renderGoalsTab() {
-    const goalsData = tabData.goals
+    const goalsData =
+      selectedTab === "goals" && selectedTabData
+        ? (selectedTabData as CampDetailGoalsTabData)
+        : null
 
     if (!goalsData) {
       return renderPendingTab("goals")
@@ -736,7 +890,7 @@ export function CampDetailTabsClient({
   }
 
   function renderNotesTab() {
-    const notesData = tabData.notes
+    const notesData = displayedNotesData
 
     if (!notesData) {
       return renderPendingTab("notes")
@@ -822,9 +976,9 @@ export function CampDetailTabsClient({
                 </ul>
               )}
 
-              {loadError?.tab === "notes" ? (
+              {notesLoadError ? (
                 <p role="alert" className="text-sm text-destructive">
-                  {loadError.message}
+                  {notesLoadError}
                 </p>
               ) : null}
 
@@ -850,6 +1004,53 @@ export function CampDetailTabsClient({
           )}
         </div>
       </section>
+    )
+  }
+
+  function renderSelectedTabPanel() {
+    const hasLoadedTabData =
+      selectedTab === "notes" ? displayedNotesData !== null : selectedTabData !== null
+    const content =
+      selectedTab === "sessions"
+        ? renderSessionsTab()
+        : selectedTab === "goals"
+          ? renderGoalsTab()
+          : renderNotesTab()
+
+    if (!hasLoadedTabData) {
+      return content
+    }
+
+    return (
+      <div className="relative">
+        {showInlineError ? (
+          <div
+            role="alert"
+            className="mb-3 flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 md:flex-row md:items-center md:justify-between"
+          >
+            <span>{routeData.error?.message ?? "Could not refresh this tab."}</span>
+            <Button type="button" variant="outline" size="sm" onClick={retrySelectedTab}>
+              Retry
+            </Button>
+          </div>
+        ) : null}
+
+        <div
+          className={cn(
+            "transition-opacity",
+            isSelectedTabRevalidating && "opacity-75",
+          )}
+        >
+          {content}
+        </div>
+
+        {isSelectedTabRevalidating ? (
+          <div className="pointer-events-none absolute right-3 top-3 z-20 rounded-full border bg-background/90 p-2 text-muted-foreground shadow-sm">
+            <Loader2Icon className="size-4 animate-spin" />
+            <span className="sr-only">Refreshing {selectedTab}</span>
+          </div>
+        ) : null}
+      </div>
     )
   }
 
@@ -880,17 +1081,7 @@ export function CampDetailTabsClient({
           ))}
         </TabsList>
 
-        {selectedTab === "sessions" ? (
-          <TabsContent value="sessions">{renderSessionsTab()}</TabsContent>
-        ) : null}
-
-        {selectedTab === "goals" ? (
-          <TabsContent value="goals">{renderGoalsTab()}</TabsContent>
-        ) : null}
-
-        {selectedTab === "notes" ? (
-          <TabsContent value="notes">{renderNotesTab()}</TabsContent>
-        ) : null}
+        <TabsContent value={selectedTab}>{renderSelectedTabPanel()}</TabsContent>
       </Tabs>
     </div>
   )

@@ -52,6 +52,8 @@ export function CampsFeedback({
 
     const nextParams = new URLSearchParams(searchParams.toString())
     nextParams.delete("status")
+    nextParams.delete("cacheCamp")
+    nextParams.delete("cacheTeamVenue")
     const nextSearch = nextParams.toString()
     const nextUrl = nextSearch.length > 0 ? `${pathname}?${nextSearch}` : pathname
 

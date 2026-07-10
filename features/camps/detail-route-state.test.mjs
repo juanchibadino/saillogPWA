@@ -146,7 +146,7 @@ test("builds successful Goals save redirect with preserved Camp detail state", (
       scopeTab: "goals",
       scopePage: 2,
     }),
-    "/team-camps/camp-1?status=goals_updated&org=org-1&team=team-1&tab=goals&page=2",
+    "/team-camps/camp-1?status=goals_updated&org=org-1&team=team-1&tab=goals&page=2&cacheCamp=camp-1",
   )
 })
 

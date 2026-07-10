@@ -4,8 +4,9 @@ import {
   TeamCampsPageSkeleton,
   TeamCampsResultsSkeleton,
 } from "@/components/shared/page-skeletons"
+import { RouteCacheInvalidationOnSuccess } from "@/features/shared/route-cache-invalidation-on-success"
 import { CampsFeedback } from "@/features/camps/camps-feedback"
-import { TeamCampsTable } from "@/features/camps/camps-table"
+import { TeamCampsResultsClient } from "@/features/camps/team-camps-results-client"
 import {
   logTeamCampsListTiming,
   startTeamCampsListTiming,
@@ -145,6 +146,7 @@ async function TeamCampsResultsContent(input: {
     ? await getTeamCampsResultsData({
         activeTeamId: input.activeTeamId,
         chromeData: input.chromeData,
+        includeSessionCounts: false,
         page: input.requestedPage,
         accumulatePages: input.requestedLoadMoreMode,
       })
@@ -154,24 +156,19 @@ async function TeamCampsResultsContent(input: {
         pageCount: 1,
         hasPreviousPage: input.requestedPage > 1,
         hasNextPage: false,
+        sessionCountsStatus: "fresh" as const,
       }
 
   return (
-    <TeamCampsTable
-      camps={resultsData.camps}
-      teamVenueOptions={input.chromeData.teamVenueOptions}
+    <TeamCampsResultsClient
+      initialResultsData={resultsData}
+      chromeData={input.chromeData}
       canManageCamps={input.canManageCamps}
-      canDeleteCamps={input.canDeleteCampRows}
+      canDeleteCampRows={input.canDeleteCampRows}
       noTeamSelected={noTeamSelected}
       scope={input.scope}
-      selectedVenueId={input.chromeData.selectedVenueId}
-      selectedCampType={input.chromeData.selectedCampType}
-      selectedCampStatus={input.chromeData.selectedCampStatus}
-      currentPage={resultsData.currentPage}
-      pageCount={resultsData.pageCount}
-      hasPreviousPage={resultsData.hasPreviousPage}
-      hasNextPage={resultsData.hasNextPage}
-      hideChrome
+      requestedLoadMoreMode={input.requestedLoadMoreMode}
+      requestedPage={input.requestedPage}
     />
   )
 }
@@ -187,6 +184,8 @@ export default async function TeamCampsPage({
 
   const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
+  const cacheCampId = getSingleSearchParamValue(resolvedSearchParams.cacheCamp)
+  const cacheTeamVenueId = getSingleSearchParamValue(resolvedSearchParams.cacheTeamVenue)
   const requestedVenueId = getSingleSearchParamValue(resolvedSearchParams.venue)
   const {
     requestedCampStatus,
@@ -267,6 +266,14 @@ export default async function TeamCampsPage({
   return (
     <div className="space-y-6">
       <CampsFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
+      {activeTeamId ? (
+        <RouteCacheInvalidationOnSuccess
+          mutation="camp"
+          scope={scope}
+          campId={cacheCampId}
+          teamVenueId={cacheTeamVenueId ?? requestedVenueId}
+        />
+      ) : null}
 
       {noTeamSelected ? (
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">

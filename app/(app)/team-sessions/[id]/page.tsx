@@ -5,6 +5,7 @@ import {
   SessionDetailHeaderActionsSkeleton,
   SessionDetailTabsSkeleton,
 } from "@/components/shared/page-skeletons"
+import { RouteCacheInvalidationOnSuccess } from "@/features/shared/route-cache-invalidation-on-success"
 import {
   getSessionDetailShellData,
   getSessionDetailTabData,
@@ -191,11 +192,13 @@ function SessionDetailTabsFallback({
 }
 
 async function SessionDetailTabsSlot(input: {
+  campId: string
   initialTab: SessionDetailTab
   initialTabDataPromise: Promise<SessionDetailTabPayload>
   scope: NonNullable<Awaited<ReturnType<typeof resolveNavigationScope>>["scope"]>
   sessionId: string
   sessionType: "training" | "regatta"
+  teamVenueId: string
   goals: string | null
   canManageSession: boolean
 }) {
@@ -206,6 +209,8 @@ async function SessionDetailTabsSlot(input: {
       initialTab={input.initialTab}
       initialTabData={initialTabData}
       scope={input.scope}
+      campId={input.campId}
+      teamVenueId={input.teamVenueId}
       sessionId={input.sessionId}
       sessionType={input.sessionType}
       goals={input.goals}
@@ -286,6 +291,14 @@ async function SessionDetailResolvedContent(input: {
 
   return (
     <>
+      <RouteCacheInvalidationOnSuccess
+        mutation="camp-detail"
+        scope={input.scope}
+        campId={detailData.camp.id}
+        tabs={["notes"]}
+        successStatuses={["info_updated", "setup_updated"]}
+      />
+
       {!input.canManageSession ? (
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-4">
           <p className="text-sm text-amber-800">
@@ -306,6 +319,8 @@ async function SessionDetailResolvedContent(input: {
           initialTab={input.selectedTab}
           initialTabDataPromise={selectedTabDataPromise}
           scope={input.scope}
+          campId={detailData.camp.id}
+          teamVenueId={detailData.camp.team_venue_id}
           sessionId={detailData.session.id}
           sessionType={detailData.session.session_type}
           goals={detailData.session.goals}

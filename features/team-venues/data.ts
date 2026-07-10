@@ -39,8 +39,8 @@ export type TeamVenueListItem = {
   city: string;
   country: string;
   isActive: boolean;
-  campCountCurrentYear: number;
-  totalCampCount: number;
+  campCountCurrentYear: number | null;
+  totalCampCount: number | null;
 };
 
 export type TeamVenueChromeItem = Omit<
@@ -77,6 +77,7 @@ export type TeamVenuesResultsData = {
   pageCount: number;
   hasPreviousPage: boolean;
   hasNextPage: boolean;
+  metricsStatus: "fresh" | "pending";
 };
 
 export type TeamVenuesPageData = TeamVenuesChromeData & TeamVenuesResultsData;
@@ -131,6 +132,7 @@ function sortTeamVenueChromeItems(
 export async function getTeamVenuesChromeData(input: {
   activeOrganizationId: string;
   activeTeamId: string;
+  includeAvailableVenueOptions?: boolean;
   statusFilter: TeamVenueStatusFilter;
   page?: number;
   accumulatePages?: boolean;
@@ -151,20 +153,39 @@ export async function getTeamVenuesChromeData(input: {
     }
 
     const allTeamVenueRows: TeamVenueRow[] = teamVenueRows ?? [];
+    const linkedVenueIdsSet = new Set(allTeamVenueRows.map((row) => row.venue_id));
+    const shouldLoadAvailableVenueOptions =
+      input.includeAvailableVenueOptions !== false;
+    let organizationVenues: VenueRow[] = [];
 
-    const { data: venueRows, error: venueError } = await supabase
-      .from("venues")
-      .select(VENUE_SELECT_COLUMNS)
-      .eq("organization_id", input.activeOrganizationId)
-      .order("name", { ascending: true });
+    if (shouldLoadAvailableVenueOptions) {
+      const { data: venueRows, error: venueError } = await supabase
+        .from("venues")
+        .select(VENUE_SELECT_COLUMNS)
+        .eq("organization_id", input.activeOrganizationId)
+        .order("name", { ascending: true });
 
-    if (venueError) {
-      throw new Error(`Could not load organization venues: ${venueError.message}`);
+      if (venueError) {
+        throw new Error(`Could not load organization venues: ${venueError.message}`);
+      }
+
+      organizationVenues = venueRows ?? [];
+    } else if (linkedVenueIdsSet.size > 0) {
+      const { data: venueRows, error: venueError } = await supabase
+        .from("venues")
+        .select(VENUE_SELECT_COLUMNS)
+        .eq("organization_id", input.activeOrganizationId)
+        .in("id", [...linkedVenueIdsSet])
+        .order("name", { ascending: true });
+
+      if (venueError) {
+        throw new Error(`Could not load linked venues: ${venueError.message}`);
+      }
+
+      organizationVenues = venueRows ?? [];
     }
 
-    const organizationVenues: VenueRow[] = venueRows ?? [];
     const venueById = new Map(organizationVenues.map((venue) => [venue.id, venue]));
-    const linkedVenueIdsSet = new Set(allTeamVenueRows.map((row) => row.venue_id));
 
     const linkedVenueOptions = sortTeamVenueChromeItems(
       allTeamVenueRows
@@ -188,16 +209,19 @@ export async function getTeamVenuesChromeData(input: {
         .filter((row): row is TeamVenueChromeItem => row !== null),
     );
 
-    const availableVenueOptions: TeamVenueCreateOption[] = organizationVenues
-      .filter((venue) => !linkedVenueIdsSet.has(venue.id))
-      .map((venue) => ({
-        venueId: venue.id,
-        name: venue.name,
-        city: venue.city,
-        country: venue.country,
-        isActive: venue.is_active,
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    const availableVenueOptions: TeamVenueCreateOption[] =
+      shouldLoadAvailableVenueOptions
+        ? organizationVenues
+            .filter((venue) => !linkedVenueIdsSet.has(venue.id))
+            .map((venue) => ({
+              venueId: venue.id,
+              name: venue.name,
+              city: venue.city,
+              country: venue.country,
+              isActive: venue.is_active,
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name))
+        : [];
 
     logTeamVenuesListTiming({
       phase: "chrome/catalog",
@@ -208,6 +232,7 @@ export async function getTeamVenuesChromeData(input: {
         activeOrganizationId: input.activeOrganizationId,
         accumulatePages: input.accumulatePages === true,
         availableVenueCount: availableVenueOptions.length,
+        includeAvailableVenueOptions: shouldLoadAvailableVenueOptions,
         linkedVenueCount: linkedVenueOptions.length,
         organizationVenueCount: organizationVenues.length,
         requestedPage: input.page ?? 1,
@@ -231,6 +256,7 @@ export async function getTeamVenuesChromeData(input: {
       metadata: {
         activeOrganizationId: input.activeOrganizationId,
         accumulatePages: input.accumulatePages === true,
+        includeAvailableVenueOptions: input.includeAvailableVenueOptions !== false,
         requestedPage: input.page ?? 1,
         statusFilter: input.statusFilter,
       },
@@ -243,6 +269,7 @@ export async function getTeamVenuesResultsData(input: {
   activeTeamId?: string | null;
   chromeData: TeamVenuesChromeData;
   currentYear: number;
+  includeMetrics?: boolean;
   page: number;
   accumulatePages?: boolean;
   statusFilter?: TeamVenueStatusFilter;
@@ -271,6 +298,7 @@ export async function getTeamVenuesResultsData(input: {
   const rangeEnd = rangeStart + visibleCount;
   const visibleTeamVenues = filteredTeamVenues.slice(rangeStart, rangeEnd);
   const visibleTeamVenueIds = visibleTeamVenues.map((row) => row.id);
+  const includeMetrics = input.includeMetrics !== false;
 
   logTeamVenuesListTiming({
     phase: "results",
@@ -290,73 +318,80 @@ export async function getTeamVenuesResultsData(input: {
 
   let campCountRows: CampCountRow[] = [];
   let allCampCountRows: CampCountRow[] = [];
-  const campCountsStartedAt = startTeamVenuesListTiming();
 
-  try {
-    const supabase = await createServerSupabaseClient();
+  if (includeMetrics) {
+    const campCountsStartedAt = startTeamVenuesListTiming();
 
-    if (visibleTeamVenueIds.length > 0) {
-      const startOfYear = `${input.currentYear}-01-01`;
-      const startOfNextYear = `${input.currentYear + 1}-01-01`;
+    try {
+      const supabase = await createServerSupabaseClient();
 
-      const { data, error: campsError } = await supabase
-        .from("camps")
-        .select(CAMP_COUNT_SELECT_COLUMNS)
-        .in("team_venue_id", visibleTeamVenueIds)
-        .gte("start_date", startOfYear)
-        .lt("start_date", startOfNextYear);
+      if (visibleTeamVenueIds.length > 0) {
+        const startOfYear = `${input.currentYear}-01-01`;
+        const startOfNextYear = `${input.currentYear + 1}-01-01`;
 
-      if (campsError) {
-        throw new Error(`Could not load camps for metrics: ${campsError.message}`);
+        const { data, error: campsError } = await supabase
+          .from("camps")
+          .select(CAMP_COUNT_SELECT_COLUMNS)
+          .in("team_venue_id", visibleTeamVenueIds)
+          .gte("start_date", startOfYear)
+          .lt("start_date", startOfNextYear);
+
+        if (campsError) {
+          throw new Error(`Could not load camps for metrics: ${campsError.message}`);
+        }
+
+        campCountRows = data ?? [];
+
+        const { data: allCampData, error: allCampsError } = await supabase
+          .from("camps")
+          .select(CAMP_COUNT_SELECT_COLUMNS)
+          .in("team_venue_id", visibleTeamVenueIds);
+
+        if (allCampsError) {
+          throw new Error(`Could not load total camps for delete rules: ${allCampsError.message}`);
+        }
+
+        allCampCountRows = allCampData ?? [];
       }
 
-      campCountRows = data ?? [];
-
-      const { data: allCampData, error: allCampsError } = await supabase
-        .from("camps")
-        .select(CAMP_COUNT_SELECT_COLUMNS)
-        .in("team_venue_id", visibleTeamVenueIds);
-
-      if (allCampsError) {
-        throw new Error(`Could not load total camps for delete rules: ${allCampsError.message}`);
-      }
-
-      allCampCountRows = allCampData ?? [];
+      logTeamVenuesListTiming({
+        phase: "camp counts",
+        startedAt: campCountsStartedAt,
+        activeTeamId: input.activeTeamId,
+        status: "success",
+        metadata: {
+          currentYear: input.currentYear,
+          currentYearCampRowCount: campCountRows.length,
+          totalCampRowCount: allCampCountRows.length,
+          visibleTeamVenueCount: visibleTeamVenueIds.length,
+        },
+      });
+    } catch (error) {
+      logTeamVenuesListTiming({
+        phase: "camp counts",
+        startedAt: campCountsStartedAt,
+        activeTeamId: input.activeTeamId,
+        status: "error",
+        error: formatTeamVenuesListTimingError(error),
+        metadata: {
+          currentYear: input.currentYear,
+          visibleTeamVenueCount: visibleTeamVenueIds.length,
+        },
+      });
+      throw error;
     }
-
-    logTeamVenuesListTiming({
-      phase: "camp counts",
-      startedAt: campCountsStartedAt,
-      activeTeamId: input.activeTeamId,
-      status: "success",
-      metadata: {
-        currentYear: input.currentYear,
-        currentYearCampRowCount: campCountRows.length,
-        totalCampRowCount: allCampCountRows.length,
-        visibleTeamVenueCount: visibleTeamVenueIds.length,
-      },
-    });
-  } catch (error) {
-    logTeamVenuesListTiming({
-      phase: "camp counts",
-      startedAt: campCountsStartedAt,
-      activeTeamId: input.activeTeamId,
-      status: "error",
-      error: formatTeamVenuesListTimingError(error),
-      metadata: {
-        currentYear: input.currentYear,
-        visibleTeamVenueCount: visibleTeamVenueIds.length,
-      },
-    });
-    throw error;
   }
 
   const campCountByTeamVenueId = buildCampCountMap(campCountRows);
   const totalCampCountByTeamVenueId = buildCampCountMap(allCampCountRows);
   const linkedVenues: TeamVenueListItem[] = visibleTeamVenues.map((row) => ({
     ...row,
-    campCountCurrentYear: campCountByTeamVenueId.get(row.id) ?? 0,
-    totalCampCount: totalCampCountByTeamVenueId.get(row.id) ?? 0,
+    campCountCurrentYear: includeMetrics
+      ? campCountByTeamVenueId.get(row.id) ?? 0
+      : null,
+    totalCampCount: includeMetrics
+      ? totalCampCountByTeamVenueId.get(row.id) ?? 0
+      : null,
   }));
 
   return {
@@ -366,6 +401,7 @@ export async function getTeamVenuesResultsData(input: {
     pageCount,
     hasPreviousPage,
     hasNextPage,
+    metricsStatus: includeMetrics ? "fresh" : "pending",
   };
 }
 

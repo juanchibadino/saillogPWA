@@ -174,7 +174,12 @@ function normalizeCampActionReturnPath(value: string | undefined): string | null
 }
 
 function buildCampActionRedirectPath(
-  input: CampActionScope & { error?: string; status?: string },
+  input: CampActionScope & {
+    cacheCampId?: string | null
+    cacheTeamVenueId?: string | null
+    error?: string
+    status?: string
+  },
 ): string {
   const returnPath = normalizeCampActionReturnPath(input.returnPath)
 
@@ -187,6 +192,8 @@ function buildCampActionRedirectPath(
 
   params.delete("status")
   params.delete("error")
+  params.delete("cacheCamp")
+  params.delete("cacheTeamVenue")
 
   if (input.status) {
     params.set("status", input.status)
@@ -202,6 +209,14 @@ function buildCampActionRedirectPath(
 
   if (input.scopeTeamId) {
     params.set("team", input.scopeTeamId)
+  }
+
+  if (input.cacheCampId) {
+    params.set("cacheCamp", input.cacheCampId)
+  }
+
+  if (input.cacheTeamVenueId) {
+    params.set("cacheTeamVenue", input.cacheTeamVenueId)
   }
 
   const query = params.toString()
@@ -359,14 +374,18 @@ export async function createCampAction(formData: FormData): Promise<void> {
   }
 
   const supabase = await createServerSupabaseClient()
-  const { error: insertError } = await supabase.from("camps").insert({
-    team_venue_id: parsedInput.data.teamVenueId,
-    name: parsedInput.data.name,
-    camp_type: parsedInput.data.campType,
-    start_date: parsedInput.data.startDate,
-    end_date: parsedInput.data.endDate,
-    is_active: true,
-  })
+  const { data: createdCamp, error: insertError } = await supabase
+    .from("camps")
+    .insert({
+      team_venue_id: parsedInput.data.teamVenueId,
+      name: parsedInput.data.name,
+      camp_type: parsedInput.data.campType,
+      start_date: parsedInput.data.startDate,
+      end_date: parsedInput.data.endDate,
+      is_active: true,
+    })
+    .select("id")
+    .single()
 
   if (insertError) {
     redirect(
@@ -384,6 +403,8 @@ export async function createCampAction(formData: FormData): Promise<void> {
   redirect(
     buildCampActionRedirectPath({
       status: "created",
+      cacheCampId: createdCamp?.id ?? null,
+      cacheTeamVenueId: parsedInput.data.teamVenueId,
       ...scope,
     }),
   )
@@ -471,6 +492,8 @@ export async function updateCampAction(formData: FormData): Promise<void> {
   redirect(
     buildCampActionRedirectPath({
       status: "updated",
+      cacheCampId: parsedInput.data.id,
+      cacheTeamVenueId: parsedInput.data.teamVenueId,
       ...scope,
     }),
   )
@@ -523,6 +546,11 @@ export async function deleteCampAction(formData: FormData): Promise<void> {
   }
 
   const supabase = await createServerSupabaseClient()
+  const { data: cacheCampRow } = await supabase
+    .from("camps")
+    .select("team_venue_id")
+    .eq("id", parsedInput.data.id)
+    .maybeSingle()
   const { error: deleteError } = await supabase
     .from("camps")
     .delete()
@@ -545,6 +573,8 @@ export async function deleteCampAction(formData: FormData): Promise<void> {
   redirect(
     buildCampActionRedirectPath({
       status: "deleted",
+      cacheCampId: parsedInput.data.id,
+      cacheTeamVenueId: cacheCampRow?.team_venue_id ?? null,
       ...scope,
     }),
   )

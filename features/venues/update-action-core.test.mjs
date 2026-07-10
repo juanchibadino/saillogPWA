@@ -107,7 +107,7 @@ test("updates Venue and redirects back to selected tab and year", async () => {
 
   assert.deepEqual(result, {
     type: "redirect",
-    path: `${REDIRECT_TO}&status=updated&org=${ORG_1}&team=${TEAM_1}`,
+    path: `${REDIRECT_TO}&status=updated&org=${ORG_1}&team=${TEAM_1}&cacheTeamVenue=${TEAM_VENUE_1}`,
     revalidatedPaths: ["/venues", `/venues/${TEAM_VENUE_1}`],
   })
   assert.deepEqual(supabase.rowsByTable.venues[0], {
@@ -213,7 +213,7 @@ test("harness captures supplied dependencies and Next-style redirects", async ()
 
   assert.deepEqual(result, {
     type: "redirect",
-    path: `${REDIRECT_TO}&status=updated&org=${ORG_1}&team=${TEAM_1}`,
+    path: `${REDIRECT_TO}&status=updated&org=${ORG_1}&team=${TEAM_1}&cacheTeamVenue=${TEAM_VENUE_1}`,
     revalidatedPaths: ["/venues", `/venues/${TEAM_VENUE_1}`],
   })
   assert.deepEqual(calledRevalidations, ["/venues", `/venues/${TEAM_VENUE_1}`])

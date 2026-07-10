@@ -37,6 +37,10 @@ export function buildVenueRedirectPath(input) {
     params.set("team", input.scopeTeamId)
   }
 
+  if (input.cacheTeamVenueId) {
+    params.set("cacheTeamVenue", input.cacheTeamVenueId)
+  }
+
   const query = params.toString()
   return query.length > 0 ? `${pathname}?${query}` : pathname
 }

@@ -50,7 +50,7 @@ export type TeamCampListItem = {
   startDate: string
   endDate: string
   isActive: boolean
-  sessionCount: number
+  sessionCount: number | null
 }
 
 export type TeamCampVenueOption = {
@@ -83,6 +83,7 @@ export type TeamCampsResultsData = {
   pageCount: number
   hasPreviousPage: boolean
   hasNextPage: boolean
+  sessionCountsStatus: "fresh" | "pending"
 }
 
 export type TeamCampsPageData = TeamCampsChromeData & TeamCampsResultsData
@@ -234,6 +235,7 @@ export async function getTeamCampsChromeData(input: {
 export async function getTeamCampsResultsData(input: {
   activeTeamId: string
   chromeData: TeamCampsChromeData
+  includeSessionCounts?: boolean
   page: number
   accumulatePages?: boolean
 }): Promise<TeamCampsResultsData> {
@@ -291,6 +293,7 @@ export async function getTeamCampsResultsData(input: {
       pageCount: pagination.pageCount,
       hasPreviousPage: pagination.hasPreviousPage,
       hasNextPage: false,
+      sessionCountsStatus: "fresh",
     }
   }
 
@@ -367,6 +370,7 @@ export async function getTeamCampsResultsData(input: {
       pageCount,
       hasPreviousPage,
       hasNextPage,
+      sessionCountsStatus: "fresh",
     }
   }
 
@@ -380,6 +384,7 @@ export async function getTeamCampsResultsData(input: {
     .from("camps")
     .select(CAMP_SELECT_COLUMNS)
     .in("team_venue_id", filteredTeamVenueIds)
+    .order("is_active", { ascending: false })
     .order("start_date", { ascending: false })
     .order("created_at", { ascending: false })
 
@@ -425,10 +430,11 @@ export async function getTeamCampsResultsData(input: {
 
   const visibleCampRows: CampRow[] = campData ?? []
   const visibleCampIds = visibleCampRows.map((row) => row.id)
+  const includeSessionCounts = input.includeSessionCounts !== false
 
   let sessionCountRows: SessionCampCountRow[] = []
 
-  if (visibleCampIds.length > 0) {
+  if (includeSessionCounts && visibleCampIds.length > 0) {
     const sessionCountsStartedAt = startTeamCampsListTiming()
     const { data, error: sessionCountError } = await supabase
       .from("sessions")
@@ -483,7 +489,9 @@ export async function getTeamCampsResultsData(input: {
         startDate: camp.start_date,
         endDate: camp.end_date,
         isActive: camp.is_active,
-        sessionCount: sessionCountByCampId.get(camp.id) ?? 0,
+        sessionCount: includeSessionCounts
+          ? sessionCountByCampId.get(camp.id) ?? 0
+          : null,
       }
     })
     .filter((row): row is TeamCampListItem => row !== null)
@@ -516,6 +524,7 @@ export async function getTeamCampsResultsData(input: {
     pageCount,
     hasPreviousPage,
     hasNextPage,
+    sessionCountsStatus: includeSessionCounts ? "fresh" : "pending",
   }
 }
 

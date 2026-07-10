@@ -1087,7 +1087,7 @@ function SessionDetailListPanelSkeleton() {
   )
 }
 
-function SessionDetailPanelSkeleton({
+export function SessionDetailPanelSkeleton({
   selectedTab,
 }: {
   selectedTab: SessionDetailSkeletonTab

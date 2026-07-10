@@ -14,11 +14,12 @@ import {
   logTeamVenuesListTiming,
   startTeamVenuesListTiming,
 } from "@/features/team-venues/list-timing"
+import { RouteCacheInvalidationOnSuccess } from "@/features/shared/route-cache-invalidation-on-success"
 import { resolveTeamVenuesListRequest } from "@/features/team-venues/list-route-state.mjs"
 import { TeamVenuesFeedback } from "@/features/team-venues/team-venues-feedback"
 import { TeamVenuesResultsRetry } from "@/features/team-venues/team-venues-results-retry"
+import { TeamVenuesResultsClient } from "@/features/team-venues/team-venues-results-client"
 import { TeamVenuesRouteShell } from "@/features/team-venues/team-venues-route-shell"
-import { TeamVenuesTable } from "@/features/team-venues/team-venues-table"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageTeamVenues } from "@/lib/auth/capabilities"
 import {
@@ -175,6 +176,7 @@ async function TeamVenuesResultsContent(input: {
           activeTeamId: input.activeTeamId,
           chromeData: input.chromeData,
           currentYear: input.currentYear,
+          includeMetrics: false,
           page: input.requestedPage,
           accumulatePages: input.requestedLoadMoreMode,
         })
@@ -185,25 +187,22 @@ async function TeamVenuesResultsContent(input: {
           pageCount: 1,
           hasPreviousPage: input.requestedPage > 1,
           hasNextPage: false,
+          metricsStatus: "fresh" as const,
         }
   } catch {
     return <TeamVenuesResultsRetry />
   }
 
   return (
-    <TeamVenuesTable
-      linkedVenues={resultsData.linkedVenues}
+    <TeamVenuesResultsClient
+      initialResultsData={resultsData}
+      chromeData={input.chromeData}
       noTeamSelected={noTeamSelected}
       canManageVenueRows={input.canManageVenueRows}
-      selectedStatusFilter={input.chromeData.selectedStatusFilter}
       scope={input.scope}
       currentYear={input.currentYear}
-      currentPage={resultsData.currentPage}
-      pageCount={resultsData.pageCount}
-      hasPreviousPage={resultsData.hasPreviousPage}
-      hasNextPage={resultsData.hasNextPage}
-      loadMoreMode={input.requestedLoadMoreMode}
-      hideChrome
+      requestedLoadMoreMode={input.requestedLoadMoreMode}
+      requestedPage={input.requestedPage}
     />
   )
 }
@@ -219,6 +218,7 @@ export default async function TeamVenuesPage({
 
   const result = getSingleSearchParamValue(resolvedSearchParams.result)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
+  const cacheTeamVenueId = getSingleSearchParamValue(resolvedSearchParams.cacheTeamVenue)
   const {
     requestedLoadMoreMode,
     requestedPage,
@@ -286,6 +286,14 @@ export default async function TeamVenuesPage({
   return (
     <div className="space-y-6">
       <TeamVenuesFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
+      {activeTeamId ? (
+        <RouteCacheInvalidationOnSuccess
+          mutation="venue"
+          scope={scope}
+          searchParamName="result"
+          teamVenueId={cacheTeamVenueId}
+        />
+      ) : null}
 
       {noTeamSelected ? (
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">

@@ -9,6 +9,13 @@ import {
   type SessionDetailTab,
 } from "@/features/sessions/navigation"
 import {
+  buildSessionDetailTabCacheMetadata,
+  isSessionAssetTab,
+} from "@/features/sessions/session-detail-tab-cache"
+import {
+  buildApiSliceErrorPayload,
+} from "@/features/shared/api-slice-contracts"
+import {
   getCurrentAccessContext,
   type AuthenticatedAccessContext,
 } from "@/lib/auth/access"
@@ -44,7 +51,10 @@ export async function GET(request: Request, context: RouteContext) {
   const sessionId = resolvedParams.id?.trim()
 
   if (!sessionId) {
-    return NextResponse.json({ error: "invalid_session_id" }, { status: 400 })
+    return NextResponse.json(
+      buildApiSliceErrorPayload({ error: "invalid_session_id" }),
+      { status: 400 },
+    )
   }
 
   const requestUrl = new URL(request.url)
@@ -55,13 +65,19 @@ export async function GET(request: Request, context: RouteContext) {
     : 0
 
   if (!tab) {
-    return NextResponse.json({ error: "invalid_tab" }, { status: 400 })
+    return NextResponse.json(
+      buildApiSliceErrorPayload({ error: "invalid_tab" }),
+      { status: 400 },
+    )
   }
 
   const accessContext = await getCurrentAccessContext()
 
   if (!accessContext.user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 })
+    return NextResponse.json(
+      buildApiSliceErrorPayload({ error: "unauthorized" }),
+      { status: 401 },
+    )
   }
 
   const authenticatedContext = accessContext as AuthenticatedAccessContext
@@ -71,7 +87,10 @@ export async function GET(request: Request, context: RouteContext) {
   })
 
   if (!navigation.scope || navigation.scope.activeTeamId === null) {
-    return NextResponse.json({ error: "scope_required" }, { status: 403 })
+    return NextResponse.json(
+      buildApiSliceErrorPayload({ error: "scope_required" }),
+      { status: 403 },
+    )
   }
 
   const shellData = await getSessionDetailShellData({
@@ -81,7 +100,10 @@ export async function GET(request: Request, context: RouteContext) {
   })
 
   if (!shellData) {
-    return NextResponse.json({ error: "session_not_found" }, { status: 404 })
+    return NextResponse.json(
+      buildApiSliceErrorPayload({ error: "session_not_found" }),
+      { status: 404 },
+    )
   }
 
   try {
@@ -94,10 +116,27 @@ export async function GET(request: Request, context: RouteContext) {
       tab,
       teamVenueId: shellData.camp.team_venue_id,
     })
+    const cache = buildSessionDetailTabCacheMetadata({
+      scope: {
+        orgId: navigation.scope.activeOrgId,
+        teamId: navigation.scope.activeTeamId,
+      },
+      sessionId: shellData.session.id,
+      tab,
+      assetOffset: isSessionAssetTab(tab) ? assetOffset : 0,
+      catalogOffset: 0,
+    })
 
-    return NextResponse.json({ data, tab })
+    return NextResponse.json({ cache, data, tab })
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Unknown tab data error"
-    return NextResponse.json({ detail, error: "tab_data_failed" }, { status: 500 })
+    return NextResponse.json(
+      buildApiSliceErrorPayload({
+        detail,
+        error: "tab_data_failed",
+        retryable: true,
+      }),
+      { status: 500 },
+    )
   }
 }

@@ -104,6 +104,9 @@ export function buildTeamSessionsRedirectPath(input) {
   params.delete("status")
   params.delete("error")
   params.delete("loadMore")
+  params.delete("cacheSession")
+  params.delete("cacheCamp")
+  params.delete("cacheTeamVenue")
 
   if (input.status) {
     params.set("status", input.status)
@@ -137,6 +140,18 @@ export function buildTeamSessionsRedirectPath(input) {
     params.set("page", String(input.scopePage))
   } else {
     params.delete("page")
+  }
+
+  if (input.cacheSessionId) {
+    params.set("cacheSession", input.cacheSessionId)
+  }
+
+  if (input.cacheCampId) {
+    params.set("cacheCamp", input.cacheCampId)
+  }
+
+  if (input.cacheTeamVenueId) {
+    params.set("cacheTeamVenue", input.cacheTeamVenueId)
   }
 
   const query = params.toString()

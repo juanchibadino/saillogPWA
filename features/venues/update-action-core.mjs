@@ -196,6 +196,7 @@ export async function runUpdateVenueAction(formData, dependencies) {
 
   const successPath = buildVenueRedirectPath({
     status: "updated",
+    cacheTeamVenueId: parsedInput.data.teamVenueId,
     ...scope,
     redirectTo,
   })

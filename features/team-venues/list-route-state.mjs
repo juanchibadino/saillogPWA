@@ -97,6 +97,10 @@ export function buildTeamVenuesRedirectPath(input) {
     }
   }
 
+  if (input.cacheTeamVenueId) {
+    params.set("cacheTeamVenue", input.cacheTeamVenueId)
+  }
+
   const query = params.toString()
   return query.length > 0 ? `/team-venues?${query}` : "/team-venues"
 }
