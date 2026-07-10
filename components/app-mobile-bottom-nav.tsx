@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import * as React from "react"
-import { usePathname, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import {
   HomeIcon,
   MapPinIcon,
@@ -16,6 +16,7 @@ import {
   NAVIGATION_SCOPE_TEAM_QUERY_KEY,
 } from "@/lib/navigation/constants"
 import type { ResolvedNavigationScope } from "@/lib/navigation/types"
+import { useAppNavigationState } from "@/components/app-navigation-state"
 
 type ActiveScope = {
   activeOrgId: string | null
@@ -122,8 +123,8 @@ export function AppMobileBottomNav({
   canAccessApp: boolean
   navigation: ResolvedNavigationScope | null
 }) {
-  const pathname = usePathname()
   const searchParams = useSearchParams()
+  const { displayPathname, markNavigationIntent } = useAppNavigationState()
 
   if (!canAccessApp) {
     return null
@@ -143,7 +144,8 @@ export function AppMobileBottomNav({
       <div className="mobile-bottom-nav-grid mx-auto flex max-w-md items-center justify-between gap-2 px-4 py-2">
         {mobileNavItems.map((item) => {
           const Icon = item.icon
-          const active = isItemActive(pathname, item.url)
+          const active = isItemActive(displayPathname, item.url)
+          const href = buildScopedHref(item.url, scope)
           const linkClassName = [
             "inline-flex h-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl transition-[width,padding,gap,background-color,color] duration-300 ease-out motion-reduce:transition-none",
             "hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
@@ -155,10 +157,11 @@ export function AppMobileBottomNav({
           return (
             <Link
               key={item.url}
-              href={buildScopedHref(item.url, scope)}
+              href={href}
               aria-current={active ? "page" : undefined}
               aria-label={item.title}
               className={linkClassName}
+              onClick={(event) => markNavigationIntent(href, event)}
             >
               <Icon className="size-5 shrink-0" aria-hidden="true" />
               <span

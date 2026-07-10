@@ -150,6 +150,22 @@ loading a new payload.
 - Keep current loaded data cached per tab when the route already supports it,
   and show an in-panel retry state for deferred tab failures.
 
+## Immediate Navigation Chrome Pattern
+
+Use this for persistent app navigation where the selected menu item should
+react immediately even if the destination route is cold.
+
+- Keep route content bound to the committed URL, App Router `loading.tsx`,
+  Suspense, and route data caches.
+- Shared chrome may keep a short-lived local navigation intent and derive its
+  active item from `pendingPathname ?? committedPathname`.
+- Record the intent only for normal same-origin left-click navigations. Ignore
+  modifier/new-tab clicks and query-only same-path transitions.
+- Clear the local intent when `usePathname()` commits, and include a short
+  safety reset so cancelled or failed navigations return to the committed route.
+- Do not move route-specific headers, breadcrumbs, or data panels ahead of the
+  committed route unless that route owns a separate immediate-switch contract.
+
 ## Skeleton Fidelity
 
 - Desktop summary cards: keep the four-card grid and fixed labels.

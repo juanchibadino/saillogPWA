@@ -5,6 +5,7 @@ import {
 import { redirect } from "next/navigation";
 import { resolveNavigationScope } from "@/lib/navigation/scope";
 import type { ResolvedNavigationScope } from "@/lib/navigation/types";
+import { AppNavigationStateProvider } from "@/components/app-navigation-state";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppMobileBottomNavClient } from "@/components/app-mobile-bottom-nav-client";
 import { SiteHeader } from "@/components/site-header";
@@ -78,39 +79,41 @@ export default async function AppLayout({
 
   return (
     <SidebarProvider className="fixed inset-0 min-h-0 overflow-hidden">
-      <AppSidebar
-        variant="inset"
-        canAccessApp={canAccessApp}
-        navigation={navigation}
-        user={{
-          name: userName,
-          email: userEmail,
-          role: userRole,
-          avatarUrl: context.profile?.photo_url ?? null,
-        }}
-      />
-      <SidebarInset className="h-full min-h-0 overflow-hidden">
-        <SiteHeader navigation={navigation} />
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          <div className="@container/main mobile-shell-content flex min-h-full flex-col gap-4 p-4 md:gap-6 md:p-6">
-            {canAccessApp ? (
-              children
-            ) : (
-              <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
-                <h1 className="text-xl font-semibold text-amber-900">Access pending</h1>
-                <p className="mt-2 text-sm text-amber-800">
-                  Your account is authenticated but has no active organization or team
-                  membership yet.
-                </p>
-                <p className="mt-2 text-sm text-amber-800">
-                  Ask a team admin to add your membership before continuing.
-                </p>
-              </section>
-            )}
+      <AppNavigationStateProvider>
+        <AppSidebar
+          variant="inset"
+          canAccessApp={canAccessApp}
+          navigation={navigation}
+          user={{
+            name: userName,
+            email: userEmail,
+            role: userRole,
+            avatarUrl: context.profile?.photo_url ?? null,
+          }}
+        />
+        <SidebarInset className="h-full min-h-0 overflow-hidden">
+          <SiteHeader navigation={navigation} />
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            <div className="@container/main mobile-shell-content flex min-h-full flex-col gap-4 p-4 md:gap-6 md:p-6">
+              {canAccessApp ? (
+                children
+              ) : (
+                <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
+                  <h1 className="text-xl font-semibold text-amber-900">Access pending</h1>
+                  <p className="mt-2 text-sm text-amber-800">
+                    Your account is authenticated but has no active organization or team
+                    membership yet.
+                  </p>
+                  <p className="mt-2 text-sm text-amber-800">
+                    Ask a team admin to add your membership before continuing.
+                  </p>
+                </section>
+              )}
+            </div>
           </div>
-        </div>
-        <AppMobileBottomNavClient canAccessApp={canAccessApp} navigation={navigation} />
-      </SidebarInset>
+          <AppMobileBottomNavClient canAccessApp={canAccessApp} navigation={navigation} />
+        </SidebarInset>
+      </AppNavigationStateProvider>
     </SidebarProvider>
   );
 }

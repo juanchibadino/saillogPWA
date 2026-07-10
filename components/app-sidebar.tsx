@@ -71,6 +71,7 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar"
+import { useAppNavigationState } from "@/components/app-navigation-state"
 
 type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
   canAccessApp: boolean
@@ -363,6 +364,7 @@ export function AppSidebar({
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { displayPathname, markNavigationIntent } = useAppNavigationState()
   const { isMobile, setOpenMobile } = useSidebar()
   const [pendingScopeSwitch, setPendingScopeSwitch] =
     React.useState<PendingScopeSwitch | null>(null)
@@ -503,14 +505,18 @@ export function AppSidebar({
         ? "Olympic Plan"
         : "Free Plan"
 
-  const handleSidebarNavigationClick = React.useCallback(() => {
-    setIsScopeMenuOpen(false)
-    setIsUserMenuOpen(false)
+  const handleSidebarNavigationClick = React.useCallback(
+    (href: string, event: React.MouseEvent<HTMLElement>) => {
+      markNavigationIntent(href, event)
+      setIsScopeMenuOpen(false)
+      setIsUserMenuOpen(false)
 
-    if (isMobile) {
-      setOpenMobile(false)
-    }
-  }, [isMobile, setOpenMobile])
+      if (isMobile) {
+        setOpenMobile(false)
+      }
+    },
+    [isMobile, markNavigationIntent, setOpenMobile],
+  )
 
   function handleMobileMenuPointerDown(
     event: React.PointerEvent<HTMLElement>,
@@ -771,7 +777,9 @@ export function AppSidebar({
                 render={
                   <Link
                     href={scopedDefaultHomeHref}
-                    onClick={handleSidebarNavigationClick}
+                    onClick={(event) =>
+                      handleSidebarNavigationClick(scopedDefaultHomeHref, event)
+                    }
                   />
                 }
               >
@@ -805,17 +813,25 @@ export function AppSidebar({
                   <SidebarMenu>
                     <SidebarMenuItem key={homeNavItem.title}>
                       <SidebarMenuButton
-                        isActive={isItemActive(pathname, homeNavItem.url)}
+                        isActive={isItemActive(displayPathname, homeNavItem.url)}
                         tooltip={homeNavItem.title}
                         render={
-                          <Link
-                            href={buildScopedHref(
+                          (() => {
+                            const href = buildScopedHref(
                               homeNavItem.url,
                               activeOrgId,
                               activeTeamId,
-                            )}
-                            onClick={handleSidebarNavigationClick}
-                          />
+                            )
+
+                            return (
+                              <Link
+                                href={href}
+                                onClick={(event) =>
+                                  handleSidebarNavigationClick(href, event)
+                                }
+                              />
+                            )
+                          })()
                         }
                       >
                         <homeNavItem.icon />
@@ -826,17 +842,28 @@ export function AppSidebar({
                     {canAccessOrganizationsPage ? (
                       <SidebarMenuItem key={organizationsNavItem.title}>
                         <SidebarMenuButton
-                          isActive={isItemActive(pathname, organizationsNavItem.url)}
+                          isActive={isItemActive(
+                            displayPathname,
+                            organizationsNavItem.url,
+                          )}
                           tooltip={organizationsNavItem.title}
                           render={
-                            <Link
-                              href={buildScopedHref(
+                            (() => {
+                              const href = buildScopedHref(
                                 organizationsNavItem.url,
                                 activeOrgId,
                                 activeTeamId,
-                              )}
-                              onClick={handleSidebarNavigationClick}
-                            />
+                              )
+
+                              return (
+                                <Link
+                                  href={href}
+                                  onClick={(event) =>
+                                    handleSidebarNavigationClick(href, event)
+                                  }
+                                />
+                              )
+                            })()
                           }
                         >
                           <organizationsNavItem.icon />
@@ -847,23 +874,31 @@ export function AppSidebar({
                     {organizationNavItems.map((item) => (
                       <SidebarMenuItem key={item.title}>
                         <SidebarMenuButton
-                          isActive={item.url ? isItemActive(pathname, item.url) : false}
+                          isActive={
+                            item.url ? isItemActive(displayPathname, item.url) : false
+                          }
                           tooltip={
                             item.comingSoon ? `${item.title} (NIY)` : item.title
                           }
                           disabled={item.comingSoon}
                           render={
                             item.url
-                              ? (
-                                  <Link
-                                    href={buildScopedHref(
-                                      item.url,
-                                      activeOrgId,
-                                      activeTeamId,
-                                    )}
-                                    onClick={handleSidebarNavigationClick}
-                                  />
-                                )
+                              ? (() => {
+                                  const href = buildScopedHref(
+                                    item.url,
+                                    activeOrgId,
+                                    activeTeamId,
+                                  )
+
+                                  return (
+                                    <Link
+                                      href={href}
+                                      onClick={(event) =>
+                                        handleSidebarNavigationClick(href, event)
+                                      }
+                                    />
+                                  )
+                                })()
                               : undefined
                           }
                         >
@@ -896,21 +931,29 @@ export function AppSidebar({
                       return (
                         <SidebarMenuItem key={item.title}>
                           <SidebarMenuButton
-                            isActive={item.url ? isItemActive(pathname, item.url) : false}
+                            isActive={
+                              item.url ? isItemActive(displayPathname, item.url) : false
+                            }
                             tooltip={tooltip}
                             disabled={disabled}
                             render={
                               item.url && !disabled
-                                ? (
-                                    <Link
-                                      href={buildScopedHref(
-                                        item.url,
-                                        activeOrgId,
-                                        activeTeamId,
-                                      )}
-                                      onClick={handleSidebarNavigationClick}
-                                    />
-                                  )
+                                ? (() => {
+                                    const href = buildScopedHref(
+                                      item.url,
+                                      activeOrgId,
+                                      activeTeamId,
+                                    )
+
+                                    return (
+                                      <Link
+                                        href={href}
+                                        onClick={(event) =>
+                                          handleSidebarNavigationClick(href, event)
+                                        }
+                                      />
+                                    )
+                                  })()
                                 : undefined
                             }
                           >
