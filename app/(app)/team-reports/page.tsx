@@ -1,11 +1,19 @@
+import { Suspense } from "react"
+
 import {
-  CreateTeamReportDialog,
-} from "@/features/reports/report-form-dialogs"
-import { ReportsTable } from "@/features/reports/reports-table"
+  TeamReportsPageSkeleton,
+  TeamReportsResultsSkeleton,
+} from "@/components/shared/page-skeletons"
 import {
   formatCampDateRange,
-  getTeamReportsPageData,
+  getTeamReportsChromeData,
+  getTeamReportsResultsData,
+  type TeamReportsChromeData,
 } from "@/features/reports/data"
+import { ReportsFeedback } from "@/features/reports/reports-feedback"
+import { ReportsTable } from "@/features/reports/reports-table"
+import { TeamReportsRouteShell } from "@/features/reports/reports-route-shell"
+import { resolveReportsListRequest } from "@/features/reports/list-route-state.mjs"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageTeamStructure } from "@/lib/auth/capabilities"
 import {
@@ -20,6 +28,10 @@ import {
 type TeamReportsSearchParams = Promise<
   Record<string, string | string[] | undefined>
 >
+type ResolvedTeamReportsScope = NonNullable<
+  Awaited<ReturnType<typeof resolveNavigationScope>>["scope"]
+>
+type TeamReportsChromeDataPromise = Promise<TeamReportsChromeData>
 
 function buildTeamReportsHref(input: {
   scope: {
@@ -61,6 +73,73 @@ function getErrorMessage(error: string | undefined): string | null {
   return null
 }
 
+async function TeamReportsShellSlot(input: {
+  activeTeamId: string
+  canManageReports: boolean
+  chromeDataPromise: TeamReportsChromeDataPromise
+  requestedLoadMoreMode: boolean
+  requestedPage: number
+  scope: ResolvedTeamReportsScope
+}) {
+  const chromeData = await input.chromeDataPromise
+  const redirectTo = buildTeamReportsHref({
+    scope: input.scope,
+  })
+  const dialogCampOptions = chromeData.createCampOptions.map((camp) => ({
+    campId: camp.campId,
+    teamVenueId: camp.teamVenueId,
+    year: camp.year,
+    name: camp.name,
+    dateRangeLabel: formatCampDateRange({
+      startDate: camp.startDate,
+      endDate: camp.endDate,
+    }),
+  }))
+
+  return (
+    <TeamReportsRouteShell
+      canManageReports={input.canManageReports}
+      currentPage={input.requestedPage}
+      dialogCampOptions={dialogCampOptions}
+      redirectTo={redirectTo}
+      scope={input.scope}
+      venueOptions={chromeData.venueOptions}
+    >
+      <Suspense fallback={<TeamReportsResultsSkeleton />}>
+        <TeamReportsResultsContent
+          activeTeamId={input.activeTeamId}
+          requestedLoadMoreMode={input.requestedLoadMoreMode}
+          requestedPage={input.requestedPage}
+        />
+      </Suspense>
+    </TeamReportsRouteShell>
+  )
+}
+
+async function TeamReportsResultsContent(input: {
+  activeTeamId: string
+  requestedLoadMoreMode: boolean
+  requestedPage: number
+}) {
+  const resultsData = await getTeamReportsResultsData({
+    activeTeamId: input.activeTeamId,
+    page: input.requestedPage,
+    accumulatePages: input.requestedLoadMoreMode,
+  })
+
+  return (
+    <ReportsTable
+      reports={resultsData.reports}
+      mode="team"
+      emptyMessage="No reports created yet for this team."
+      currentPage={resultsData.currentPage}
+      pageCount={resultsData.pageCount}
+      hasPreviousPage={resultsData.hasPreviousPage}
+      hasNextPage={resultsData.hasNextPage}
+    />
+  )
+}
+
 export default async function TeamReportsPage({
   searchParams,
 }: {
@@ -71,6 +150,13 @@ export default async function TeamReportsPage({
 
   const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
+  const {
+    requestedLoadMoreMode,
+    requestedPage,
+  } = resolveReportsListRequest({
+    loadMoreParam: getSingleSearchParamValue(resolvedSearchParams.loadMore),
+    pageParam: getSingleSearchParamValue(resolvedSearchParams.page),
+  })
 
   const statusMessage = getStatusMessage(status)
   const errorMessage = getErrorMessage(error)
@@ -104,72 +190,33 @@ export default async function TeamReportsPage({
     )
   }
 
+  const activeTeamId = scope.activeTeamId
   const canManageReports = canManageTeamStructure({
     context,
     organizationId: scope.activeOrgId,
-    teamId: scope.activeTeamId,
+    teamId: activeTeamId,
   })
-
-  const pageData = await getTeamReportsPageData({
-    activeTeamId: scope.activeTeamId,
+  const chromeDataPromise = getTeamReportsChromeData({
+    activeTeamId,
   })
-
-  const redirectTo = buildTeamReportsHref({
-    scope,
-  })
-
-  const dialogCampOptions = pageData.createCampOptions.map((camp) => ({
-    campId: camp.campId,
-    teamVenueId: camp.teamVenueId,
-    year: camp.year,
-    name: camp.name,
-    dateRangeLabel: formatCampDateRange({
-      startDate: camp.startDate,
-      endDate: camp.endDate,
-    }),
-  }))
 
   return (
     <div className="space-y-6">
-      {statusMessage ? (
-        <section className="rounded-xl border border-emerald-300 bg-emerald-50 p-4">
-          <p className="text-sm text-emerald-800">{statusMessage}</p>
-        </section>
-      ) : null}
+      <ReportsFeedback
+        statusMessage={statusMessage}
+        errorMessage={errorMessage}
+      />
 
-      {errorMessage ? (
-        <section className="rounded-xl border border-rose-300 bg-rose-50 p-4">
-          <p className="text-sm text-rose-800">{errorMessage}</p>
-        </section>
-      ) : null}
-
-      {!canManageReports ? (
-        <section className="rounded-xl border border-amber-300 bg-amber-50 p-4">
-          <p className="text-sm text-amber-800">
-            You have read-only access in this scope. Report creation is limited to team admins and coaches.
-          </p>
-        </section>
-      ) : null}
-
-      <section className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">Reports</h2>
-          {canManageReports ? (
-            <CreateTeamReportDialog
-              scope={scope}
-              redirectTo={redirectTo}
-              venueOptions={pageData.venueOptions}
-              campOptions={dialogCampOptions}
-            />
-          ) : null}
-        </div>
-
-        <ReportsTable
-          reports={pageData.reports}
-          mode="team"
-          emptyMessage="No reports created yet for this team."
+      <Suspense fallback={<TeamReportsPageSkeleton />}>
+        <TeamReportsShellSlot
+          activeTeamId={activeTeamId}
+          canManageReports={canManageReports}
+          chromeDataPromise={chromeDataPromise}
+          requestedLoadMoreMode={requestedLoadMoreMode}
+          requestedPage={requestedPage}
+          scope={scope}
         />
-      </section>
+      </Suspense>
     </div>
   )
 }

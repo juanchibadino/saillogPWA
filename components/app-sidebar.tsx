@@ -11,6 +11,7 @@ import {
   CircleIcon,
   CreditCardIcon,
   ChevronsUpDownIcon,
+  ImagesIcon,
   NotebookTextIcon,
   HomeIcon,
   KeyIcon,
@@ -185,6 +186,7 @@ const teamNavSections: SidebarNavSection[] = [
       },
       {
         title: "Wind Patterns",
+        url: "/team-wind-patterns",
         icon: WindIcon,
       },
       {
@@ -201,6 +203,11 @@ const teamNavSections: SidebarNavSection[] = [
         title: "Reports",
         url: "/team-reports",
         icon: BarChart3Icon,
+      },
+      {
+        title: "Assets",
+        url: "/team-assets",
+        icon: ImagesIcon,
       },
       {
         title: "Assessments",

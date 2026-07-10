@@ -40,6 +40,8 @@ const TEAM_VENUE_SELECT_COLUMNS = "id,team_id,venue_id"
 const TEAM_SELECT_COLUMNS = "id,name"
 const VENUE_SELECT_COLUMNS = "id,name"
 
+export const REPORTS_PAGE_SIZE = 10
+
 export type ReportListItem = {
   id: string
   teamVenueId: string
@@ -86,22 +88,57 @@ export type TeamReportCreateCampOption = ReportCampOption & {
   year: number
 }
 
-export type TeamReportsPageData = {
+export type ReportsResultsData = {
   reports: ReportListItem[]
+  currentPage: number
+  pageCount: number
+  hasPreviousPage: boolean
+  hasNextPage: boolean
+}
+
+export type TeamReportsChromeData = {
   venueOptions: TeamReportVenueOption[]
   createCampOptions: TeamReportCreateCampOption[]
 }
 
-export type OrganizationReportsPageData = {
-  reports: ReportListItem[]
+export type TeamReportsPageData = TeamReportsChromeData & ReportsResultsData
+
+export type OrganizationReportsChromeData = {
   teamOptions: OrganizationReportTeamOption[]
   selectedTeamId: string | null
   venueOptions: OrganizationReportVenueOption[]
   selectedVenueId: string | null
 }
 
+export type OrganizationReportsPageData =
+  OrganizationReportsChromeData & ReportsResultsData
+
 function parseYearFromDate(value: string): number {
   return Number.parseInt(value.slice(0, 4), 10)
+}
+
+function normalizeReportsPage(value: number): number {
+  if (!Number.isFinite(value) || value < 1) {
+    return 1
+  }
+
+  return Math.floor(value)
+}
+
+function resolveReportsPagination(input: {
+  requestedPage: number
+  totalItems: number
+  accumulatePages: boolean
+}): Omit<ReportsResultsData, "reports"> {
+  const pageCount = Math.max(1, Math.ceil(input.totalItems / REPORTS_PAGE_SIZE))
+  const currentPage = Math.min(normalizeReportsPage(input.requestedPage), pageCount)
+
+  return {
+    currentPage,
+    pageCount,
+    hasPreviousPage: input.accumulatePages ? false : currentPage > 1,
+    hasNextPage: currentPage < pageCount,
+  }
 }
 
 function buildYearDateRange(year: number): { start: string; endExclusive: string } {
@@ -209,6 +246,91 @@ async function loadReportListItems(input: {
       createdAt: report.created_at,
     }
   })
+}
+
+async function loadReportResultsForTeamVenues(input: {
+  teamVenueIds: string[]
+  teamVenueById: Map<string, TeamVenueRow>
+  teamNameById: Map<string, string>
+  venueNameById: Map<string, string>
+  year?: number
+  page: number
+  accumulatePages: boolean
+}): Promise<ReportsResultsData> {
+  const requestedPage = normalizeReportsPage(input.page)
+
+  if (input.teamVenueIds.length === 0) {
+    return {
+      reports: [],
+      currentPage: 1,
+      pageCount: 1,
+      hasPreviousPage: false,
+      hasNextPage: false,
+    }
+  }
+
+  const supabase = await createServerSupabaseClient()
+  const countQuery =
+    typeof input.year === "number"
+      ? supabase
+          .from("team_venue_reports")
+          .select("id", { count: "exact", head: true })
+          .in("team_venue_id", input.teamVenueIds)
+          .eq("year", input.year)
+      : supabase
+          .from("team_venue_reports")
+          .select("id", { count: "exact", head: true })
+          .in("team_venue_id", input.teamVenueIds)
+
+  const { count, error: countError } = await countQuery
+
+  if (countError) {
+    throw new Error(`Could not count reports: ${countError.message}`)
+  }
+
+  const pagination = resolveReportsPagination({
+    requestedPage,
+    totalItems: count ?? 0,
+    accumulatePages: input.accumulatePages,
+  })
+  const rangeStart = input.accumulatePages
+    ? 0
+    : (pagination.currentPage - 1) * REPORTS_PAGE_SIZE
+  const visibleCount = input.accumulatePages
+    ? pagination.currentPage * REPORTS_PAGE_SIZE
+    : REPORTS_PAGE_SIZE
+  const rangeEnd = rangeStart + visibleCount - 1
+  const reportsQuery =
+    typeof input.year === "number"
+      ? supabase
+          .from("team_venue_reports")
+          .select(TEAM_VENUE_REPORT_SELECT_COLUMNS)
+          .in("team_venue_id", input.teamVenueIds)
+          .eq("year", input.year)
+          .order("created_at", { ascending: false })
+          .range(rangeStart, rangeEnd)
+      : supabase
+          .from("team_venue_reports")
+          .select(TEAM_VENUE_REPORT_SELECT_COLUMNS)
+          .in("team_venue_id", input.teamVenueIds)
+          .order("created_at", { ascending: false })
+          .range(rangeStart, rangeEnd)
+
+  const { data: reportRows, error: reportsError } = await reportsQuery
+
+  if (reportsError) {
+    throw new Error(`Could not load reports: ${reportsError.message}`)
+  }
+
+  return {
+    ...pagination,
+    reports: await loadReportListItems({
+      reportRows: (reportRows ?? []) as TeamVenueReportRow[],
+      teamVenueById: input.teamVenueById,
+      teamNameById: input.teamNameById,
+      venueNameById: input.venueNameById,
+    }),
+  }
 }
 
 async function loadCampOptions(input: {
@@ -319,9 +441,9 @@ export async function getTeamVenueReportsTabData(input: {
   }
 }
 
-export async function getTeamReportsPageData(input: {
+export async function getTeamReportsChromeData(input: {
   activeTeamId: string
-}): Promise<TeamReportsPageData> {
+}): Promise<TeamReportsChromeData> {
   const supabase = await createServerSupabaseClient()
 
   const { data: teamVenueRows, error: teamVenuesError } = await supabase
@@ -337,7 +459,6 @@ export async function getTeamReportsPageData(input: {
 
   if (teamVenues.length === 0) {
     return {
-      reports: [],
       venueOptions: [],
       createCampOptions: [],
     }
@@ -345,49 +466,23 @@ export async function getTeamReportsPageData(input: {
 
   const venueIds = [...new Set(teamVenues.map((row) => row.venue_id))]
 
-  const [{ data: venueRows, error: venuesError }, { data: teamRow, error: teamError }] =
-    await Promise.all([
-      supabase
-        .from("venues")
-        .select(VENUE_SELECT_COLUMNS)
-        .in("id", venueIds),
-      supabase
-        .from("teams")
-        .select(TEAM_SELECT_COLUMNS)
-        .eq("id", input.activeTeamId)
-        .maybeSingle(),
-    ])
+  const { data: venueRows, error: venuesError } = await supabase
+    .from("venues")
+    .select(VENUE_SELECT_COLUMNS)
+    .in("id", venueIds)
 
   if (venuesError) {
     throw new Error(`Could not load venues for team reports: ${venuesError.message}`)
   }
 
-  if (teamError) {
-    throw new Error(`Could not load team for reports: ${teamError.message}`)
-  }
-
   const venues: VenueRow[] = (venueRows ?? []) as VenueRow[]
   const venueNameById = new Map(venues.map((venue) => [venue.id, venue.name]))
-  const teamVenueById = new Map(teamVenues.map((row) => [row.id, row]))
-
   const venueOptions: TeamReportVenueOption[] = teamVenues
     .map((teamVenue) => ({
       teamVenueId: teamVenue.id,
       venueName: venueNameById.get(teamVenue.venue_id) ?? "Unknown venue",
     }))
     .sort((left, right) => left.venueName.localeCompare(right.venueName))
-
-  const reportsQuery = supabase
-    .from("team_venue_reports")
-    .select(TEAM_VENUE_REPORT_SELECT_COLUMNS)
-    .in("team_venue_id", teamVenues.map((row) => row.id))
-    .order("created_at", { ascending: false })
-
-  const { data: reportRows, error: reportsError } = await reportsQuery
-
-  if (reportsError) {
-    throw new Error(`Could not load team reports: ${reportsError.message}`)
-  }
 
   const { data: createCampRows, error: createCampsError } = await supabase
     .from("camps")
@@ -400,7 +495,6 @@ export async function getTeamReportsPageData(input: {
     throw new Error(`Could not load camps for report creation: ${createCampsError.message}`)
   }
 
-  const reports = (reportRows ?? []) as TeamVenueReportRow[]
   const createCampOptions: TeamReportCreateCampOption[] = ((createCampRows ?? []) as CampRow[])
     .map((camp) => ({
       campId: camp.id,
@@ -427,25 +521,100 @@ export async function getTeamReportsPageData(input: {
     })
 
   return {
-    reports: await loadReportListItems({
-      reportRows: reports,
-      teamVenueById,
-      teamNameById: new Map<string, string>(
-        teamRow ? [[input.activeTeamId, teamRow.name]] : [],
-      ),
-      venueNameById,
-    }),
     venueOptions,
     createCampOptions,
   }
 }
 
-export async function getOrganizationReportsPageData(input: {
+export async function getTeamReportsResultsData(input: {
+  activeTeamId: string
+  page: number
+  accumulatePages: boolean
+}): Promise<ReportsResultsData> {
+  const supabase = await createServerSupabaseClient()
+
+  const { data: teamVenueRows, error: teamVenuesError } = await supabase
+    .from("team_venues")
+    .select(TEAM_VENUE_SELECT_COLUMNS)
+    .eq("team_id", input.activeTeamId)
+
+  if (teamVenuesError) {
+    throw new Error(`Could not load team venues for reports: ${teamVenuesError.message}`)
+  }
+
+  const teamVenues: TeamVenueRow[] = (teamVenueRows ?? []) as TeamVenueRow[]
+
+  if (teamVenues.length === 0) {
+    return {
+      reports: [],
+      currentPage: 1,
+      pageCount: 1,
+      hasPreviousPage: false,
+      hasNextPage: false,
+    }
+  }
+
+  const venueIds = [...new Set(teamVenues.map((row) => row.venue_id))]
+  const [{ data: venueRows, error: venuesError }, { data: teamRow, error: teamError }] =
+    await Promise.all([
+      supabase
+        .from("venues")
+        .select(VENUE_SELECT_COLUMNS)
+        .in("id", venueIds),
+      supabase
+        .from("teams")
+        .select(TEAM_SELECT_COLUMNS)
+        .eq("id", input.activeTeamId)
+        .maybeSingle(),
+    ])
+
+  if (venuesError) {
+    throw new Error(`Could not load venues for team reports: ${venuesError.message}`)
+  }
+
+  if (teamError) {
+    throw new Error(`Could not load team for reports: ${teamError.message}`)
+  }
+
+  const venues: VenueRow[] = (venueRows ?? []) as VenueRow[]
+
+  return loadReportResultsForTeamVenues({
+    teamVenueIds: teamVenues.map((row) => row.id),
+    teamVenueById: new Map(teamVenues.map((row) => [row.id, row])),
+    teamNameById: new Map<string, string>(
+      teamRow ? [[input.activeTeamId, teamRow.name]] : [],
+    ),
+    venueNameById: new Map(venues.map((venue) => [venue.id, venue.name])),
+    page: input.page,
+    accumulatePages: input.accumulatePages,
+  })
+}
+
+export async function getTeamReportsPageData(input: {
+  activeTeamId: string
+}): Promise<TeamReportsPageData> {
+  const [chromeData, resultsData] = await Promise.all([
+    getTeamReportsChromeData({
+      activeTeamId: input.activeTeamId,
+    }),
+    getTeamReportsResultsData({
+      activeTeamId: input.activeTeamId,
+      page: 1,
+      accumulatePages: false,
+    }),
+  ])
+
+  return {
+    ...chromeData,
+    ...resultsData,
+  }
+}
+
+export async function getOrganizationReportsChromeData(input: {
   activeOrganizationId: string
-  year: number
   selectedTeamId?: string
   selectedVenueId?: string
-}): Promise<OrganizationReportsPageData> {
+}): Promise<OrganizationReportsChromeData> {
   const supabase = await createServerSupabaseClient()
 
   const { data: teamRows, error: teamsError } = await supabase
@@ -461,7 +630,6 @@ export async function getOrganizationReportsPageData(input: {
 
   if (teams.length === 0) {
     return {
-      reports: [],
       teamOptions: [],
       selectedTeamId: null,
       venueOptions: [],
@@ -502,7 +670,6 @@ export async function getOrganizationReportsPageData(input: {
 
   if (teamVenues.length === 0) {
     return {
-      reports: [],
       teamOptions,
       selectedTeamId,
       venueOptions: [],
@@ -548,33 +715,137 @@ export async function getOrganizationReportsPageData(input: {
       ? input.selectedVenueId
       : null
 
+  return {
+    teamOptions,
+    selectedTeamId,
+    venueOptions,
+    selectedVenueId,
+  }
+}
+
+export async function getOrganizationReportsResultsData(input: {
+  activeOrganizationId: string
+  year: number
+  selectedTeamId?: string | null
+  selectedVenueId?: string | null
+  page: number
+  accumulatePages: boolean
+}): Promise<ReportsResultsData> {
+  const supabase = await createServerSupabaseClient()
+
+  const { data: teamRows, error: teamsError } = await supabase
+    .from("teams")
+    .select("id,name,organization_id")
+    .eq("organization_id", input.activeOrganizationId)
+
+  if (teamsError) {
+    throw new Error(`Could not load teams for organization reports: ${teamsError.message}`)
+  }
+
+  const teams: TeamRow[] = (teamRows ?? []) as TeamRow[]
+
+  if (teams.length === 0) {
+    return {
+      reports: [],
+      currentPage: 1,
+      pageCount: 1,
+      hasPreviousPage: false,
+      hasNextPage: false,
+    }
+  }
+
+  const selectedTeamId =
+    input.selectedTeamId && teams.some((team) => team.id === input.selectedTeamId)
+      ? input.selectedTeamId
+      : null
+
+  let teamVenuesQuery = supabase
+    .from("team_venues")
+    .select(TEAM_VENUE_SELECT_COLUMNS)
+    .in("team_id", teams.map((team) => team.id))
+
+  if (selectedTeamId) {
+    teamVenuesQuery = teamVenuesQuery.eq("team_id", selectedTeamId)
+  }
+
+  const { data: teamVenueRows, error: teamVenuesError } = await teamVenuesQuery
+
+  if (teamVenuesError) {
+    throw new Error(
+      `Could not load team venues for organization reports: ${teamVenuesError.message}`,
+    )
+  }
+
+  const teamVenues: TeamVenueRow[] = (teamVenueRows ?? []) as TeamVenueRow[]
+
+  if (teamVenues.length === 0) {
+    return {
+      reports: [],
+      currentPage: 1,
+      pageCount: 1,
+      hasPreviousPage: false,
+      hasNextPage: false,
+    }
+  }
+
+  const venueIds = [...new Set(teamVenues.map((row) => row.venue_id))]
+  const { data: venueRows, error: venuesError } = await supabase
+    .from("venues")
+    .select(VENUE_SELECT_COLUMNS)
+    .in("id", venueIds)
+
+  if (venuesError) {
+    throw new Error(
+      `Could not load venues for organization reports: ${venuesError.message}`,
+    )
+  }
+
+  const venues: VenueRow[] = (venueRows ?? []) as VenueRow[]
+  const teamNameById = new Map(teams.map((team) => [team.id, team.name]))
+  const venueNameById = new Map(venues.map((venue) => [venue.id, venue.name]))
+  const selectedVenueId =
+    input.selectedVenueId && teamVenues.some((row) => row.id === input.selectedVenueId)
+      ? input.selectedVenueId
+      : null
   const filteredTeamVenueIds =
     selectedVenueId === null
       ? teamVenues.map((teamVenue) => teamVenue.id)
       : [selectedVenueId]
 
-  const { data: reportRows, error: reportsError } = await supabase
-    .from("team_venue_reports")
-    .select(TEAM_VENUE_REPORT_SELECT_COLUMNS)
-    .in("team_venue_id", filteredTeamVenueIds)
-    .eq("year", input.year)
-    .order("created_at", { ascending: false })
+  return loadReportResultsForTeamVenues({
+    teamVenueIds: filteredTeamVenueIds,
+    teamVenueById: new Map(teamVenues.map((row) => [row.id, row])),
+    teamNameById,
+    venueNameById,
+    year: input.year,
+    page: input.page,
+    accumulatePages: input.accumulatePages,
+  })
+}
 
-  if (reportsError) {
-    throw new Error(`Could not load organization reports: ${reportsError.message}`)
-  }
+export async function getOrganizationReportsPageData(input: {
+  activeOrganizationId: string
+  year: number
+  selectedTeamId?: string
+  selectedVenueId?: string
+}): Promise<OrganizationReportsPageData> {
+  const chromeData = await getOrganizationReportsChromeData({
+    activeOrganizationId: input.activeOrganizationId,
+    selectedTeamId: input.selectedTeamId,
+    selectedVenueId: input.selectedVenueId,
+  })
+  const resultsData = await getOrganizationReportsResultsData({
+    activeOrganizationId: input.activeOrganizationId,
+    year: input.year,
+    selectedTeamId: chromeData.selectedTeamId,
+    selectedVenueId: chromeData.selectedVenueId,
+    page: 1,
+    accumulatePages: false,
+  })
 
   return {
-    reports: await loadReportListItems({
-      reportRows: (reportRows ?? []) as TeamVenueReportRow[],
-      teamVenueById: new Map(teamVenues.map((row) => [row.id, row])),
-      teamNameById,
-      venueNameById,
-    }),
-    teamOptions,
-    selectedTeamId,
-    venueOptions,
-    selectedVenueId,
+    ...chromeData,
+    ...resultsData,
   }
 }
 

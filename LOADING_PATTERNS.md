@@ -4,7 +4,8 @@ Source of truth for Sailog route loading, deferred content, skeletons, and
 secondary pending states.
 
 Current references: `/team-sessions`, `/team-sessions/[id]`,
-`/team-camps/[id]`, `/team-standard-moves`, and `/team-assessments/[id]`,
+`/team-camps/[id]`, `/team-standard-moves`, `/team-reports`, `/reports`,
+and `/team-assessments/[id]`,
 implemented by:
 
 - `app/(app)/team-sessions/page.tsx`
@@ -15,6 +16,10 @@ implemented by:
 - `app/(app)/team-camps/[id]/loading.tsx`
 - `app/(app)/team-standard-moves/page.tsx`
 - `app/(app)/team-standard-moves/loading.tsx`
+- `app/(app)/team-reports/page.tsx`
+- `app/(app)/team-reports/loading.tsx`
+- `app/(app)/reports/page.tsx`
+- `app/(app)/reports/loading.tsx`
 - `app/(app)/team-assessments/[id]/page.tsx`
 - `app/(app)/team-assessments/[id]/loading.tsx`
 - `components/shared/page-skeletons.tsx`
@@ -24,6 +29,9 @@ implemented by:
 - `features/standard-moves/team-standard-moves-route-shell.tsx`
 - `features/standard-moves/data.ts`
 - `features/standard-moves/standard-moves-table.tsx`
+- `features/reports/reports-route-shell.tsx`
+- `features/reports/data.ts`
+- `features/reports/reports-table.tsx`
 - `features/sessions/session-detail-tabs-client.tsx`
 - `features/camps/camp-detail-tabs-client.tsx`
 
@@ -57,7 +65,11 @@ while rows/cards load.
   `getTeamSessionsResultsData()` for rows, `pageCount`, and pagination flags.
   In Team Standard Moves, the same split is
   `getTeamStandardMovesChromeData()` for status counts and
-  `getTeamStandardMovesResultsData()` for bounded rows and usage counts.
+  `getTeamStandardMovesResultsData()` for bounded rows and usage counts. In
+  Reports, `/team-reports` uses `getTeamReportsChromeData()` for create
+  options and `getTeamReportsResultsData()` for bounded report rows; `/reports`
+  uses `getOrganizationReportsChromeData()` for filters and
+  `getOrganizationReportsResultsData()` for bounded rows.
 - Render a client route shell for stable controls. In Team Sessions this is
   `TeamSessionsRouteShell`, which owns title, filters, desktop `New`, mobile
   FAB, and filter-pending overlays.
@@ -70,6 +82,9 @@ while rows/cards load.
 - During filter/page transitions, keep current rows/cards visible, disabled,
   and dimmed with one centered spinner. Keep load-more spinners inside the
   button and keep previous mobile cards mounted.
+- Reports follows this with desktop table pagination, mobile accumulated
+  `Load more reports`, organization filter overlay loading, and mirrored
+  `TeamReportsResultsSkeleton` / `OrganizationReportsResultsSkeleton` fallbacks.
 
 ## Team Session Detail Pattern
 

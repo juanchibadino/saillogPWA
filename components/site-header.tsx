@@ -115,6 +115,14 @@ function getSectionTitle(pathname: string): string {
     return "Standard Moves"
   }
 
+  if (pathname.startsWith("/team-wind-patterns")) {
+    return "Wind Patterns"
+  }
+
+  if (pathname.startsWith("/team-assets")) {
+    return "Assets"
+  }
+
   if (pathname.startsWith("/team-reports")) {
     return "Team Reports"
   }
@@ -360,6 +368,56 @@ function getTeamStandardMovesTitle(
   return `${activeTeamLabel} > Standard Moves`
 }
 
+function getTeamWindPatternsTitle(
+  navigation: ResolvedNavigationScope | null,
+  searchParams: ReadonlyURLSearchParams,
+): string {
+  if (!navigation?.scope) {
+    return "Wind Patterns"
+  }
+
+  const activeOrgId =
+    searchParams.get(NAVIGATION_SCOPE_ORG_QUERY_KEY) ?? navigation.scope.activeOrgId
+  const queryTeamId = searchParams.get(NAVIGATION_SCOPE_TEAM_QUERY_KEY)
+
+  const teamsForOrganization =
+    navigation.catalog.teamsByOrganizationId[activeOrgId] ?? []
+  const activeTeamId =
+    queryTeamId && teamsForOrganization.some((team) => team.id === queryTeamId)
+      ? queryTeamId
+      : navigation.scope.activeTeamId
+  const activeTeamLabel =
+    teamsForOrganization.find((team) => team.id === activeTeamId)?.name ??
+    "No team selected"
+
+  return `${activeTeamLabel} > Wind Patterns`
+}
+
+function getTeamAssetsTitle(
+  navigation: ResolvedNavigationScope | null,
+  searchParams: ReadonlyURLSearchParams,
+): string {
+  if (!navigation?.scope) {
+    return "Assets"
+  }
+
+  const activeOrgId =
+    searchParams.get(NAVIGATION_SCOPE_ORG_QUERY_KEY) ?? navigation.scope.activeOrgId
+  const queryTeamId = searchParams.get(NAVIGATION_SCOPE_TEAM_QUERY_KEY)
+
+  const teamsForOrganization =
+    navigation.catalog.teamsByOrganizationId[activeOrgId] ?? []
+  const activeTeamId =
+    queryTeamId && teamsForOrganization.some((team) => team.id === queryTeamId)
+      ? queryTeamId
+      : navigation.scope.activeTeamId
+  const activeTeamLabel =
+    teamsForOrganization.find((team) => team.id === activeTeamId)?.name ??
+    "No team selected"
+
+  return `${activeTeamLabel} > Assets`
+}
+
 function getTeamGearTitle(
   navigation: ResolvedNavigationScope | null,
   searchParams: ReadonlyURLSearchParams,
@@ -488,6 +546,14 @@ function shouldUsePhaseOneMobileHeader(pathname: string): boolean {
     return true
   }
 
+  if (pathname.startsWith("/team-wind-patterns")) {
+    return true
+  }
+
+  if (pathname.startsWith("/team-assets")) {
+    return true
+  }
+
   return false
 }
 
@@ -525,6 +591,14 @@ function resolveMobileBackFallbackPath(pathname: string): string {
   }
 
   if (pathname.startsWith("/team-standard-moves")) {
+    return "/team-home"
+  }
+
+  if (pathname.startsWith("/team-wind-patterns")) {
+    return "/team-home"
+  }
+
+  if (pathname.startsWith("/team-assets")) {
     return "/team-home"
   }
 
@@ -573,6 +647,10 @@ export function SiteHeader({
           ? getTeamNotesTitle(navigation, searchParams)
         : pathname.startsWith("/team-standard-moves")
           ? getTeamStandardMovesTitle(navigation, searchParams)
+        : pathname.startsWith("/team-wind-patterns")
+          ? getTeamWindPatternsTitle(navigation, searchParams)
+        : pathname.startsWith("/team-assets")
+          ? getTeamAssetsTitle(navigation, searchParams)
         : pathname.startsWith("/team-reports")
           ? "Team Reports"
         : getSectionTitle(pathname)
@@ -581,6 +659,8 @@ export function SiteHeader({
   const isTeamSessionsHeader = pathname.startsWith("/team-sessions")
   const isTeamAssessmentsHeader = pathname.startsWith("/team-assessments")
   const isTeamStandardMovesHeader = pathname.startsWith("/team-standard-moves")
+  const isTeamWindPatternsHeader = pathname.startsWith("/team-wind-patterns")
+  const isTeamAssetsHeader = pathname.startsWith("/team-assets")
   const teamScopeSectionLabel = pathname.startsWith("/team-venues")
     ? "Venues"
     : pathname.startsWith("/team-camps")
@@ -595,6 +675,10 @@ export function SiteHeader({
           ? "Notes"
         : pathname.startsWith("/team-standard-moves")
           ? "Standard Moves"
+        : pathname.startsWith("/team-wind-patterns")
+          ? "Wind Patterns"
+        : pathname.startsWith("/team-assets")
+          ? "Assets"
         : pathname.startsWith("/team-reports")
           ? "Reports"
         : null
@@ -980,7 +1064,9 @@ export function SiteHeader({
       isTeamCampsListHeader ||
       isTeamSessionsHeader ||
       isTeamAssessmentsHeader ||
-      isTeamStandardMovesHeader
+      isTeamStandardMovesHeader ||
+      isTeamWindPatternsHeader ||
+      isTeamAssetsHeader
     ) {
       router.push(teamHomeHref)
       return
@@ -1120,7 +1206,9 @@ export function SiteHeader({
             : isTeamCampsListHeader ||
                 isTeamSessionsHeader ||
                 isTeamAssessmentsHeader ||
-                isTeamStandardMovesHeader
+                isTeamStandardMovesHeader ||
+                isTeamWindPatternsHeader ||
+                isTeamAssetsHeader
               ? "Go to Team Home"
               : "Go back"
 

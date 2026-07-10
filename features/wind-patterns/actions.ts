@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
+import { buildTeamWindPatternsRedirectPath } from "@/features/wind-patterns/list-route-state.mjs"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageTeamSessions } from "@/lib/auth/capabilities"
 import {
@@ -21,6 +22,8 @@ type WindPatternsActionScope = {
   scopeOrgId?: string
   scopeTeamId?: string
   scopeStatus?: string
+  scopePage?: string
+  scopeLoadMore?: string
   scopeYear?: string
 }
 
@@ -55,17 +58,39 @@ function getScopeFromFormData(formData: FormData): WindPatternsActionScope {
     scopeTeamId: getFormString(formData, "scopeTeamId"),
   })
   const scopeStatus = getFormString(formData, "scopeStatus")
+  const scopePage = getFormString(formData, "scopePage")
+  const scopeLoadMore = getFormString(formData, "scopeLoadMore")
   const scopeYear = getFormString(formData, "scopeYear")
 
   if (!parsedScope.success) {
-    return { scopeStatus, scopeYear }
+    return { scopeStatus, scopePage, scopeLoadMore, scopeYear }
   }
 
   return {
     ...parsedScope.data,
     scopeStatus,
+    scopePage,
+    scopeLoadMore,
     scopeYear,
   }
+}
+
+function parseScopePage(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined
+  }
+
+  const parsed = Number.parseInt(value, 10)
+
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return undefined
+  }
+
+  return Math.floor(parsed)
+}
+
+function shouldRedirectToTeamWindPatterns(formData: FormData): boolean {
+  return getFormString(formData, "redirectTarget") === "team-page"
 }
 
 function buildVenueWindPatternsRedirectPath(input: {
@@ -112,6 +137,37 @@ function buildVenueWindPatternsRedirectPath(input: {
   const query = params.toString()
   const basePath = input.teamVenueId ? `/venues/${input.teamVenueId}` : "/venues"
   return query.length > 0 ? `${basePath}?${query}` : basePath
+}
+
+function buildWindPatternsRedirectPath(input: {
+  formData: FormData
+  teamVenueId?: string
+  status?: "wind_pattern_created" | "wind_pattern_updated" | "wind_pattern_archived" | "wind_pattern_restored"
+  error?:
+    | "invalid_input"
+    | "forbidden"
+    | "wind_pattern_create_failed"
+    | "wind_pattern_update_failed"
+  scope: WindPatternsActionScope
+}): string {
+  if (shouldRedirectToTeamWindPatterns(input.formData)) {
+    return buildTeamWindPatternsRedirectPath({
+      status: input.status,
+      error: input.error,
+      scopeOrgId: input.scope.scopeOrgId,
+      scopeTeamId: input.scope.scopeTeamId,
+      scopeStatus: input.scope.scopeStatus,
+      scopePage: parseScopePage(input.scope.scopePage),
+      scopeLoadMore: input.scope.scopeLoadMore === "1",
+    })
+  }
+
+  return buildVenueWindPatternsRedirectPath({
+    teamVenueId: input.teamVenueId,
+    status: input.status,
+    error: input.error,
+    ...input.scope,
+  })
 }
 
 async function resolveScopedTeamVenue(input: {
@@ -177,6 +233,7 @@ async function resolveScopedWindPattern(input: {
 
 function revalidateWindPatternSlices(teamVenueId: string): void {
   revalidatePath(`/venues/${teamVenueId}`)
+  revalidatePath("/team-wind-patterns")
   revalidatePath("/team-sessions")
   revalidatePath("/team-camps")
   revalidatePath("/team-notes")
@@ -193,10 +250,11 @@ export async function createTeamVenueWindPatternAction(formData: FormData): Prom
 
   if (!parsedInput.success || !teamVenueId || !scope.scopeOrgId || !scope.scopeTeamId) {
     redirect(
-      buildVenueWindPatternsRedirectPath({
+      buildWindPatternsRedirectPath({
+        formData,
         teamVenueId,
         error: "invalid_input",
-        ...scope,
+        scope,
       }),
     )
   }
@@ -209,10 +267,11 @@ export async function createTeamVenueWindPatternAction(formData: FormData): Prom
     })
   ) {
     redirect(
-      buildVenueWindPatternsRedirectPath({
+      buildWindPatternsRedirectPath({
+        formData,
         teamVenueId,
         error: "forbidden",
-        ...scope,
+        scope,
       }),
     )
   }
@@ -225,10 +284,11 @@ export async function createTeamVenueWindPatternAction(formData: FormData): Prom
 
   if (!scopedTeamVenue) {
     redirect(
-      buildVenueWindPatternsRedirectPath({
+      buildWindPatternsRedirectPath({
+        formData,
         teamVenueId,
         error: "invalid_input",
-        ...scope,
+        scope,
       }),
     )
   }
@@ -244,10 +304,11 @@ export async function createTeamVenueWindPatternAction(formData: FormData): Prom
 
   if (existingPatternError) {
     redirect(
-      buildVenueWindPatternsRedirectPath({
+      buildWindPatternsRedirectPath({
+        formData,
         teamVenueId,
         error: "wind_pattern_create_failed",
-        ...scope,
+        scope,
       }),
     )
   }
@@ -266,10 +327,11 @@ export async function createTeamVenueWindPatternAction(formData: FormData): Prom
 
     if (updateExistingPatternError) {
       redirect(
-        buildVenueWindPatternsRedirectPath({
+        buildWindPatternsRedirectPath({
+          formData,
           teamVenueId,
           error: "wind_pattern_create_failed",
-          ...scope,
+          scope,
         }),
       )
     }
@@ -283,10 +345,11 @@ export async function createTeamVenueWindPatternAction(formData: FormData): Prom
 
     if (insertPatternError) {
       redirect(
-        buildVenueWindPatternsRedirectPath({
+        buildWindPatternsRedirectPath({
+          formData,
           teamVenueId,
           error: "wind_pattern_create_failed",
-          ...scope,
+          scope,
         }),
       )
     }
@@ -295,10 +358,11 @@ export async function createTeamVenueWindPatternAction(formData: FormData): Prom
   revalidateWindPatternSlices(teamVenueId)
 
   redirect(
-    buildVenueWindPatternsRedirectPath({
+    buildWindPatternsRedirectPath({
+      formData,
       teamVenueId,
       status: "wind_pattern_created",
-      ...scope,
+      scope,
     }),
   )
 }
@@ -315,10 +379,11 @@ export async function updateTeamVenueWindPatternAction(formData: FormData): Prom
 
   if (!parsedInput.success || !teamVenueId || !scope.scopeOrgId || !scope.scopeTeamId) {
     redirect(
-      buildVenueWindPatternsRedirectPath({
+      buildWindPatternsRedirectPath({
+        formData,
         teamVenueId,
         error: "invalid_input",
-        ...scope,
+        scope,
       }),
     )
   }
@@ -331,10 +396,11 @@ export async function updateTeamVenueWindPatternAction(formData: FormData): Prom
     })
   ) {
     redirect(
-      buildVenueWindPatternsRedirectPath({
+      buildWindPatternsRedirectPath({
+        formData,
         teamVenueId,
         error: "forbidden",
-        ...scope,
+        scope,
       }),
     )
   }
@@ -353,10 +419,11 @@ export async function updateTeamVenueWindPatternAction(formData: FormData): Prom
 
   if (!scopedTeamVenue || !scopedPattern) {
     redirect(
-      buildVenueWindPatternsRedirectPath({
+      buildWindPatternsRedirectPath({
+        formData,
         teamVenueId,
         error: "forbidden",
-        ...scope,
+        scope,
       }),
     )
   }
@@ -372,10 +439,11 @@ export async function updateTeamVenueWindPatternAction(formData: FormData): Prom
 
   if (updatePatternError) {
     redirect(
-      buildVenueWindPatternsRedirectPath({
+      buildWindPatternsRedirectPath({
+        formData,
         teamVenueId,
         error: "wind_pattern_update_failed",
-        ...scope,
+        scope,
       }),
     )
   }
@@ -383,10 +451,11 @@ export async function updateTeamVenueWindPatternAction(formData: FormData): Prom
   revalidateWindPatternSlices(teamVenueId)
 
   redirect(
-    buildVenueWindPatternsRedirectPath({
+    buildWindPatternsRedirectPath({
+      formData,
       teamVenueId,
       status: "wind_pattern_updated",
-      ...scope,
+      scope,
     }),
   )
 }
@@ -421,10 +490,11 @@ async function setTeamVenueWindPatternStatus(input: {
 
   if (!parsedInput.success || !teamVenueId || !scope.scopeOrgId || !scope.scopeTeamId) {
     redirect(
-      buildVenueWindPatternsRedirectPath({
+      buildWindPatternsRedirectPath({
+        formData: input.formData,
         teamVenueId,
         error: "invalid_input",
-        ...scope,
+        scope,
       }),
     )
   }
@@ -437,10 +507,11 @@ async function setTeamVenueWindPatternStatus(input: {
     })
   ) {
     redirect(
-      buildVenueWindPatternsRedirectPath({
+      buildWindPatternsRedirectPath({
+        formData: input.formData,
         teamVenueId,
         error: "forbidden",
-        ...scope,
+        scope,
       }),
     )
   }
@@ -459,10 +530,11 @@ async function setTeamVenueWindPatternStatus(input: {
 
   if (!scopedTeamVenue || !scopedPattern) {
     redirect(
-      buildVenueWindPatternsRedirectPath({
+      buildWindPatternsRedirectPath({
+        formData: input.formData,
         teamVenueId,
         error: "forbidden",
-        ...scope,
+        scope,
       }),
     )
   }
@@ -475,10 +547,11 @@ async function setTeamVenueWindPatternStatus(input: {
 
   if (updatePatternError) {
     redirect(
-      buildVenueWindPatternsRedirectPath({
+      buildWindPatternsRedirectPath({
+        formData: input.formData,
         teamVenueId,
         error: "wind_pattern_update_failed",
-        ...scope,
+        scope,
       }),
     )
   }
@@ -486,10 +559,11 @@ async function setTeamVenueWindPatternStatus(input: {
   revalidateWindPatternSlices(teamVenueId)
 
   redirect(
-    buildVenueWindPatternsRedirectPath({
+    buildWindPatternsRedirectPath({
+      formData: input.formData,
       teamVenueId,
       status: input.status,
-      ...scope,
+      scope,
     }),
   )
 }

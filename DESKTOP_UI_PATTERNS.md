@@ -11,6 +11,14 @@ Primary table reference: `/team-sessions`, implemented by:
 - `features/sessions/sessions-table.tsx`
 - `features/sessions/team-sessions-toolbar.tsx`
 
+Reports table reference: `/team-reports` and `/reports`, implemented by:
+
+- `app/(app)/team-reports/page.tsx`
+- `app/(app)/reports/page.tsx`
+- `features/reports/data.ts`
+- `features/reports/reports-route-shell.tsx`
+- `features/reports/reports-table.tsx`
+
 Use this with `MOBILE_UI_PATTERNS.md`: desktop uses tables, mobile uses cards.
 
 ## Header And Breadcrumbs
@@ -166,3 +174,16 @@ Use this with `MOBILE_UI_PATTERNS.md`: desktop uses tables, mobile uses cards.
 - Filters are Venue, Camp, and Highlight, all preserving navigation scope and
   exposing a right-side clear `X` when active.
 - Mobile keeps a separate accumulated `Load more sessions` behavior.
+
+## Current Reports Notes
+
+- `/team-reports` and `/reports` use `REPORTS_PAGE_SIZE = 10`.
+- Desktop renders a table in a `GradientCard` with a stable download action
+  column.
+- Desktop pagination uses Previous, page numbers, ellipses, and Next.
+- Organization Reports keep Year, Team, and Venue filters inline on desktop;
+  filter changes reset pagination and keep the current table visible behind a
+  single overlay spinner.
+- Mobile uses Reports cards plus accumulated `Load more reports`.
+- Team Reports create stays in the desktop toolbar and uses the mobile FAB plus
+  Drawer path on mobile.

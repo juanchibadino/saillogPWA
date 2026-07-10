@@ -1,14 +1,30 @@
+import { Suspense } from "react"
+
+import {
+  OrganizationReportsPageSkeleton,
+  OrganizationReportsResultsSkeleton,
+} from "@/components/shared/page-skeletons"
+import {
+  getCurrentUtcYear,
+  getOrganizationReportsChromeData,
+  getOrganizationReportsResultsData,
+  type OrganizationReportsChromeData,
+} from "@/features/reports/data"
 import { ReportsTable } from "@/features/reports/reports-table"
-import { getCurrentUtcYear, getOrganizationReportsPageData } from "@/features/reports/data"
+import { OrganizationReportsRouteShell } from "@/features/reports/reports-route-shell"
+import { resolveReportsListRequest } from "@/features/reports/list-route-state.mjs"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageOrganizationOperations } from "@/lib/auth/capabilities"
 import { requireOrganizationRouteAccess } from "@/lib/auth/organization-route-guard"
-import { NAVIGATION_SCOPE_ORG_QUERY_KEY } from "@/lib/navigation/constants"
 import {
   getSingleSearchParamValue,
 } from "@/lib/navigation/scope"
 
 type ReportsSearchParams = Promise<Record<string, string | string[] | undefined>>
+type ResolvedReportsScope = NonNullable<
+  Awaited<ReturnType<typeof requireOrganizationRouteAccess>>["scope"]
+>
+type OrganizationReportsChromeDataPromise = Promise<OrganizationReportsChromeData>
 
 function parseRequestedYear(value: string | undefined): number {
   if (!value) {
@@ -24,6 +40,65 @@ function parseRequestedYear(value: string | undefined): number {
   return parsed
 }
 
+async function OrganizationReportsShellSlot(input: {
+  chromeDataPromise: OrganizationReportsChromeDataPromise
+  currentYear: number
+  requestedLoadMoreMode: boolean
+  requestedPage: number
+  requestedYear: number
+  scope: ResolvedReportsScope
+}) {
+  const chromeData = await input.chromeDataPromise
+
+  return (
+    <OrganizationReportsRouteShell
+      chromeData={chromeData}
+      currentYear={input.currentYear}
+      requestedYear={input.requestedYear}
+      scope={input.scope}
+    >
+      <Suspense fallback={<OrganizationReportsResultsSkeleton />}>
+        <OrganizationReportsResultsContent
+          activeOrganizationId={input.scope.activeOrgId}
+          chromeData={chromeData}
+          requestedLoadMoreMode={input.requestedLoadMoreMode}
+          requestedPage={input.requestedPage}
+          requestedYear={input.requestedYear}
+        />
+      </Suspense>
+    </OrganizationReportsRouteShell>
+  )
+}
+
+async function OrganizationReportsResultsContent(input: {
+  activeOrganizationId: string
+  chromeData: OrganizationReportsChromeData
+  requestedLoadMoreMode: boolean
+  requestedPage: number
+  requestedYear: number
+}) {
+  const resultsData = await getOrganizationReportsResultsData({
+    activeOrganizationId: input.activeOrganizationId,
+    year: input.requestedYear,
+    selectedTeamId: input.chromeData.selectedTeamId,
+    selectedVenueId: input.chromeData.selectedVenueId,
+    page: input.requestedPage,
+    accumulatePages: input.requestedLoadMoreMode,
+  })
+
+  return (
+    <ReportsTable
+      reports={resultsData.reports}
+      mode="organization"
+      emptyMessage="No reports found for this filter."
+      currentPage={resultsData.currentPage}
+      pageCount={resultsData.pageCount}
+      hasPreviousPage={resultsData.hasPreviousPage}
+      hasNextPage={resultsData.hasNextPage}
+    />
+  )
+}
+
 export default async function ReportsPage({
   searchParams,
 }: {
@@ -31,12 +106,20 @@ export default async function ReportsPage({
 }) {
   const context = await requireAuthenticatedAccessContext()
   const resolvedSearchParams = await searchParams
+  const currentYear = getCurrentUtcYear()
 
   const requestedYear = parseRequestedYear(
     getSingleSearchParamValue(resolvedSearchParams.year),
   )
   const requestedTeamId = getSingleSearchParamValue(resolvedSearchParams.team)
   const requestedVenueId = getSingleSearchParamValue(resolvedSearchParams.venue)
+  const {
+    requestedLoadMoreMode,
+    requestedPage,
+  } = resolveReportsListRequest({
+    loadMoreParam: getSingleSearchParamValue(resolvedSearchParams.loadMore),
+    pageParam: getSingleSearchParamValue(resolvedSearchParams.page),
+  })
 
   const navigation = await requireOrganizationRouteAccess({
     context,
@@ -67,89 +150,22 @@ export default async function ReportsPage({
     )
   }
 
-  const pageData = await getOrganizationReportsPageData({
+  const chromeDataPromise = getOrganizationReportsChromeData({
     activeOrganizationId: scope.activeOrgId,
-    year: requestedYear,
     selectedTeamId: requestedTeamId ?? undefined,
     selectedVenueId: requestedVenueId ?? undefined,
   })
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-xl border bg-card p-4">
-        <form method="get" className="flex flex-wrap items-end gap-3">
-          <input type="hidden" name={NAVIGATION_SCOPE_ORG_QUERY_KEY} value={scope.activeOrgId} />
-
-          <div className="space-y-1">
-            <label htmlFor="org-reports-year" className="text-sm font-medium">
-              Year
-            </label>
-            <input
-              id="org-reports-year"
-              name="year"
-              type="number"
-              min={2000}
-              max={2100}
-              defaultValue={requestedYear}
-              className="flex h-9 w-32 rounded-md border border-input bg-background px-3 py-1 text-sm"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label htmlFor="org-reports-team" className="text-sm font-medium">
-              Team
-            </label>
-            <select
-              id="org-reports-team"
-              name="team"
-              defaultValue={pageData.selectedTeamId ?? ""}
-              className="flex h-9 w-72 rounded-md border border-input bg-background px-3 py-1 text-sm"
-            >
-              <option value="">All teams</option>
-              {pageData.teamOptions.map((option) => (
-                <option key={option.teamId} value={option.teamId}>
-                  {option.teamName}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-1">
-            <label htmlFor="org-reports-venue" className="text-sm font-medium">
-              Venue
-            </label>
-            <select
-              id="org-reports-venue"
-              name="venue"
-              defaultValue={pageData.selectedVenueId ?? ""}
-              className="flex h-9 w-80 rounded-md border border-input bg-background px-3 py-1 text-sm"
-            >
-              <option value="">All venues</option>
-              {pageData.venueOptions.map((option) => (
-                <option key={option.teamVenueId} value={option.teamVenueId}>
-                  {option.teamName} — {option.venueName}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <button
-            type="submit"
-            className="inline-flex h-9 items-center rounded-md border border-input bg-background px-4 text-sm font-medium"
-          >
-            Apply
-          </button>
-        </form>
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Reports</h2>
-        <ReportsTable
-          reports={pageData.reports}
-          mode="organization"
-          emptyMessage="No reports found for this filter."
-        />
-      </section>
-    </div>
+    <Suspense fallback={<OrganizationReportsPageSkeleton />}>
+      <OrganizationReportsShellSlot
+        chromeDataPromise={chromeDataPromise}
+        currentYear={currentYear}
+        requestedLoadMoreMode={requestedLoadMoreMode}
+        requestedPage={requestedPage}
+        requestedYear={requestedYear}
+        scope={scope}
+      />
+    </Suspense>
   )
 }

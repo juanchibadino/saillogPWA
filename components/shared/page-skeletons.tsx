@@ -2,6 +2,7 @@ import { ChevronDownIcon, PlusIcon, Settings2Icon } from "lucide-react"
 
 import { GradientCard } from "@/components/shared/gradient-card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { cn } from "@/lib/utils"
 
 function SkeletonCard() {
   return (
@@ -713,42 +714,337 @@ export function TeamStandardMovesPageSkeleton() {
   )
 }
 
+const TEAM_WIND_PATTERNS_TABLE_HEADERS = [
+  "Name",
+  "Description",
+  "Venue",
+  "Updated",
+  "Status",
+]
+const TEAM_WIND_PATTERNS_TABLE_GRID_CLASS =
+  "grid grid-cols-[minmax(0,15fr)_minmax(0,47fr)_minmax(0,18fr)_minmax(0,10fr)_minmax(0,6fr)_3rem] items-center gap-4"
+
+export function TeamWindPatternsChromeSkeleton() {
+  return (
+    <section className="space-y-4" aria-busy="true">
+      <header className="flex items-center justify-between gap-3">
+        <h1 className="min-w-0 text-2xl font-semibold tracking-tight md:hidden">
+          Wind Patterns
+        </h1>
+        <h2 className="hidden text-lg font-semibold md:block">Wind Patterns</h2>
+
+        <div className="flex shrink-0 items-center justify-end gap-2 md:w-auto">
+          <button
+            type="button"
+            disabled
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground opacity-70 md:hidden"
+            aria-label="Loading status filters"
+          >
+            <Skeleton className="size-4" />
+          </button>
+
+          <div className="hidden items-center justify-end gap-2 md:flex">
+            <Skeleton className="h-8 w-28" />
+            <button
+              type="button"
+              disabled
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium text-muted-foreground opacity-70"
+            >
+              <PlusIcon className="size-4" />
+              New
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <button
+        type="button"
+        disabled
+        className="mobile-floating-action inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground opacity-70 shadow-lg shadow-black/20 md:hidden"
+        aria-label="Loading new wind pattern action"
+      >
+        <PlusIcon className="size-6" />
+      </button>
+    </section>
+  )
+}
+
+export function TeamWindPatternsResultsSkeleton() {
+  return (
+    <section className="space-y-4" aria-busy="true">
+      <div className="space-y-2 md:hidden">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <GradientCard key={`team-wind-patterns-mobile-row-${index}`} className="px-3 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-4 w-40 max-w-full" />
+                <Skeleton className="h-3 w-52 max-w-full" />
+                <Skeleton className="h-3 w-44 max-w-full" />
+                <Skeleton className="h-5 w-16" />
+              </div>
+              <Skeleton className="h-11 w-11 shrink-0" />
+            </div>
+          </GradientCard>
+        ))}
+        <div className="pb-4 pt-3">
+          <Skeleton className="h-11 w-full" />
+        </div>
+      </div>
+
+      <GradientCard className="hidden overflow-hidden p-0 md:block">
+        <div
+          className={`${TEAM_WIND_PATTERNS_TABLE_GRID_CLASS} bg-muted/40 px-4 py-3 text-sm font-medium text-muted-foreground`}
+        >
+          {TEAM_WIND_PATTERNS_TABLE_HEADERS.map((header) => (
+            <span key={`team-wind-patterns-header-${header}`} className="truncate">
+              {header}
+            </span>
+          ))}
+          <span aria-hidden="true" />
+        </div>
+        <div className="divide-y divide-border">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div
+              key={`team-wind-patterns-desktop-row-${index}`}
+              className={`${TEAM_WIND_PATTERNS_TABLE_GRID_CLASS} min-h-12 px-4 py-3`}
+            >
+              <Skeleton className="h-4 w-full max-w-32" />
+              <Skeleton className="h-4 w-full max-w-48" />
+              <Skeleton className="h-6 w-full max-w-32" />
+              <Skeleton className="h-4 w-full max-w-24" />
+              <Skeleton className="h-5 w-full max-w-16" />
+              <Skeleton className="ml-auto h-8 w-8" />
+            </div>
+          ))}
+        </div>
+      </GradientCard>
+
+      <div className="hidden items-center gap-1 md:flex">
+        <Skeleton className="h-9 w-24" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-16" />
+      </div>
+    </section>
+  )
+}
+
+export function TeamWindPatternsPageSkeleton() {
+  return (
+    <div className="space-y-6">
+      <TeamWindPatternsChromeSkeleton />
+      <TeamWindPatternsResultsSkeleton />
+    </div>
+  )
+}
+
+function TeamAssetCardSkeleton() {
+  return (
+    <div className="overflow-hidden rounded-lg border bg-card">
+      <Skeleton className="aspect-[4/3] w-full rounded-none" />
+      <div className="space-y-2 p-3">
+        <Skeleton className="h-4 w-full max-w-36" />
+        <div className="flex items-center justify-between gap-3">
+          <Skeleton className="h-3 w-14" />
+          <Skeleton className="h-3 w-20" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function TeamAssetsChromeSkeleton() {
+  return (
+    <section className="space-y-4" aria-busy="true">
+      <div className="flex items-center justify-between gap-3">
+        <div className="grid h-10 min-w-0 flex-1 grid-cols-2 rounded-lg bg-muted p-1 md:max-w-56 md:flex-none">
+          <Skeleton className="h-8 rounded-md" />
+          <Skeleton className="h-8 rounded-md" />
+        </div>
+
+        <button
+          type="button"
+          disabled
+          className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground opacity-70 md:hidden"
+          aria-label="Loading asset filters"
+        >
+          <Skeleton className="size-4" />
+        </button>
+
+        <div className="hidden flex-wrap items-center justify-end gap-2 md:flex">
+          {["Venue", "Year", "Camp", "Session"].map((filterLabel) => (
+            <button
+              key={`team-assets-filter-${filterLabel}`}
+              type="button"
+              disabled
+              className="inline-flex h-8 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm text-muted-foreground opacity-70"
+            >
+              <Skeleton className="h-3 w-14" />
+              <ChevronDownIcon className="size-4" />
+            </button>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+export function TeamAssetsResultsSkeleton() {
+  return (
+    <section className="space-y-8" aria-busy="true">
+      {Array.from({ length: 2 }).map((_, venueIndex) => (
+        <div key={`team-assets-venue-${venueIndex}`} className="space-y-4">
+          <header className="border-b pb-3">
+            <Skeleton className="h-5 w-40" />
+          </header>
+
+          <div className="space-y-6">
+            {Array.from({ length: 2 }).map((__, sessionIndex) => (
+              <section
+                key={`team-assets-session-${venueIndex}-${sessionIndex}`}
+                className="space-y-3"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-4 w-32" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
+                  {Array.from({ length: 4 }).map((___, assetIndex) => (
+                    <TeamAssetCardSkeleton
+                      key={`team-assets-card-${venueIndex}-${sessionIndex}-${assetIndex}`}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        </div>
+      ))}
+    </section>
+  )
+}
+
+export function TeamAssetsPageSkeleton() {
+  return (
+    <div className="space-y-6">
+      <TeamAssetsChromeSkeleton />
+      <TeamAssetsResultsSkeleton />
+    </div>
+  )
+}
+
+const TEAM_REPORTS_TABLE_HEADERS = ["Report", "Venue", "Camps", "Created"]
+const TEAM_REPORTS_TABLE_GRID_CLASS =
+  "grid grid-cols-[1.3fr_1fr_1fr_0.9fr_7rem] items-center gap-4"
+const ORGANIZATION_REPORTS_TABLE_HEADERS = ["Report", "Team", "Venue", "Camps", "Created"]
+const ORGANIZATION_REPORTS_TABLE_GRID_CLASS =
+  "grid grid-cols-[1.3fr_1fr_1fr_1fr_0.9fr_7rem] items-center gap-4"
+
+export function TeamReportsResultsSkeleton() {
+  return (
+    <ReportsResultsSkeleton
+      headers={TEAM_REPORTS_TABLE_HEADERS}
+      tableGridClassName={TEAM_REPORTS_TABLE_GRID_CLASS}
+      rowKeyPrefix="team-reports"
+    />
+  )
+}
+
+export function OrganizationReportsResultsSkeleton() {
+  return (
+    <ReportsResultsSkeleton
+      headers={ORGANIZATION_REPORTS_TABLE_HEADERS}
+      tableGridClassName={ORGANIZATION_REPORTS_TABLE_GRID_CLASS}
+      rowKeyPrefix="org-reports"
+    />
+  )
+}
+
+function ReportsResultsSkeleton({
+  headers,
+  rowKeyPrefix,
+  tableGridClassName,
+}: {
+  headers: string[]
+  rowKeyPrefix: string
+  tableGridClassName: string
+}) {
+  return (
+    <section className="space-y-4">
+      <div className="space-y-2 md:hidden">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <GradientCard key={`${rowKeyPrefix}-mobile-row-${index}`} className="p-3">
+            <div className="flex items-end justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-4 w-40 max-w-full" />
+                <Skeleton className="h-3 w-28 max-w-full" />
+                <Skeleton className="h-3 w-36 max-w-full" />
+                <Skeleton className="h-3 w-52 max-w-full" />
+              </div>
+              <Skeleton className="h-11 w-11 rounded-lg" />
+            </div>
+          </GradientCard>
+        ))}
+      </div>
+
+      <GradientCard className="hidden overflow-hidden p-0 md:block">
+        <div
+          className={`${tableGridClassName} bg-muted/40 px-4 py-3 text-sm font-medium text-muted-foreground`}
+        >
+          {headers.map((header) => (
+            <span key={`${rowKeyPrefix}-header-${header}`} className="truncate">
+              {header}
+            </span>
+          ))}
+          <span aria-hidden="true" />
+        </div>
+        <div className="divide-y divide-border">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div
+              key={`${rowKeyPrefix}-desktop-row-${index}`}
+              className={`${tableGridClassName} min-h-12 px-4 py-3`}
+            >
+              {headers.map((header, headerIndex) => (
+                <Skeleton
+                  key={`${rowKeyPrefix}-desktop-row-${index}-${header}`}
+                  className={cn(
+                    "h-4 w-full",
+                    headerIndex === 0 ? "max-w-36" : "max-w-24",
+                  )}
+                />
+              ))}
+              <Skeleton className="ml-auto h-7 w-16" />
+            </div>
+          ))}
+        </div>
+      </GradientCard>
+
+      <div className="hidden items-center gap-1 md:flex">
+        <Skeleton className="h-9 w-24" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-16" />
+      </div>
+    </section>
+  )
+}
+
 export function TeamReportsPageSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border bg-card p-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="space-y-1">
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-9 w-32" />
-          </div>
-          <div className="space-y-1">
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-9 w-64" />
-          </div>
-          <Skeleton className="h-9 w-20" />
-        </div>
-      </div>
+      <header className="flex items-center justify-between gap-3">
+        <h1 className="min-w-0 text-2xl font-semibold tracking-tight md:hidden">
+          Reports
+        </h1>
+        <h2 className="hidden text-lg font-semibold md:block">Reports</h2>
+        <Skeleton className="hidden h-7 w-20 md:block" />
+        <Skeleton className="size-14 rounded-full md:hidden" />
+      </header>
 
-      <div className="rounded-xl border bg-card p-4">
-        <div className="space-y-3">
-          <Skeleton className="h-6 w-40" />
-          <Skeleton className="h-4 w-80" />
-          {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={`team-reports-create-row-${index}`} className="h-12 w-full" />
-          ))}
-          <Skeleton className="h-9 w-28" />
-        </div>
-      </div>
-
-      <div className="rounded-xl border bg-card p-4">
-        <div className="space-y-3">
-          <Skeleton className="h-6 w-24" />
-          {Array.from({ length: 5 }).map((_, index) => (
-            <Skeleton key={`team-reports-list-row-${index}`} className="h-16 w-full" />
-          ))}
-        </div>
-      </div>
+      <TeamReportsResultsSkeleton />
     </div>
   )
 }
@@ -756,32 +1052,32 @@ export function TeamReportsPageSkeleton() {
 export function OrganizationReportsPageSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border bg-card p-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="space-y-1">
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-9 w-32" />
+      <header className="flex items-center justify-between gap-3">
+        <h1 className="min-w-0 text-2xl font-semibold tracking-tight md:hidden">
+          Reports
+        </h1>
+        <h2 className="hidden text-lg font-semibold md:block">Reports</h2>
+        <Skeleton className="h-11 w-24 md:hidden" />
+        <div className="hidden md:block">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-9 w-32" />
+            </div>
+            <div className="space-y-1">
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-9 w-64" />
+            </div>
+            <div className="space-y-1">
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-9 w-72" />
+            </div>
+            <Skeleton className="h-7 w-16" />
           </div>
-          <div className="space-y-1">
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-9 w-64" />
-          </div>
-          <div className="space-y-1">
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-9 w-72" />
-          </div>
-          <Skeleton className="h-9 w-20" />
         </div>
-      </div>
+      </header>
 
-      <div className="rounded-xl border bg-card p-4">
-        <div className="space-y-3">
-          <Skeleton className="h-6 w-24" />
-          {Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton key={`org-reports-row-${index}`} className="h-16 w-full" />
-          ))}
-        </div>
-      </div>
+      <OrganizationReportsResultsSkeleton />
     </div>
   )
 }

@@ -380,7 +380,7 @@ function EditSessionMetadataDialog(input: {
 
       {isMobile ? (
         <DrawerFooter className="shrink-0 border-t">
-          <EditSessionDialogSubmitButton className="w-full" />
+          <EditSessionDialogSubmitButton className="h-11 w-full" />
         </DrawerFooter>
       ) : (
         <SheetFooter className="shrink-0 border-t">

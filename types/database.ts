@@ -1415,6 +1415,43 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      get_team_asset_page: {
+        Args: {
+          p_asset_type: Database["public"]["Enums"]["asset_type"];
+          p_camp_id?: string | null;
+          p_limit?: number | null;
+          p_offset?: number | null;
+          p_session_id?: string | null;
+          p_team_id: string;
+          p_venue_id?: string | null;
+          p_year?: number | null;
+        };
+        Returns: {
+          asset_id: string;
+          session_id: string;
+          asset_type: Database["public"]["Enums"]["asset_type"];
+          bucket: string;
+          storage_path: string;
+          file_name: string;
+          mime_type: string | null;
+          size_bytes: number | null;
+          thumbnail_bucket: string | null;
+          thumbnail_storage_path: string | null;
+          thumbnail_mime_type: string | null;
+          thumbnail_size_bytes: number | null;
+          asset_created_at: string;
+          team_venue_id: string;
+          venue_id: string;
+          venue_name: string;
+          venue_city: string;
+          venue_country: string;
+          camp_id: string;
+          camp_name: string;
+          session_type: Database["public"]["Enums"]["session_type"];
+          session_date: string;
+          total_count: number;
+        }[];
+      };
       replace_session_gear_usage_atomic: {
         Args: {
           p_gear_item_ids: string[];

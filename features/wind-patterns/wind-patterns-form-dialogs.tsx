@@ -15,9 +15,12 @@ import {
   restoreTeamVenueWindPatternAction,
   updateTeamVenueWindPatternAction,
 } from "@/features/wind-patterns/actions"
-import type { TeamVenueWindPatternListItem } from "@/features/wind-patterns/data"
+import type {
+  TeamVenueWindPatternListItem,
+  TeamWindPatternVenueOption,
+} from "@/features/wind-patterns/data"
 import type { NavigationScope } from "@/lib/navigation/types"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
@@ -34,7 +37,6 @@ import {
   DrawerFooter,
   DrawerHeader,
   DrawerTitle,
-  DrawerTrigger,
 } from "@/components/ui/drawer"
 import {
   DropdownMenu,
@@ -44,6 +46,14 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
@@ -59,27 +69,42 @@ type WindPatternFormInitialValues = {
   description: string
 }
 
-type WindPatternFormSurface = "dialog" | "drawer"
+type WindPatternFormSurface = "dialog" | "drawer" | "sheet"
 
 function ScopeHiddenInputs({
+  currentPage,
+  loadMoreMode,
   scope,
   teamVenueId,
+  redirectTarget,
   statusFilter,
   year,
 }: {
+  currentPage?: number
+  loadMoreMode?: boolean
   scope: NavigationScope
-  teamVenueId: string
+  teamVenueId?: string
+  redirectTarget?: "venue-detail" | "team-page"
   statusFilter?: string
   year?: number
 }) {
   return (
     <>
-      <input type="hidden" name="teamVenueId" value={teamVenueId} />
+      {teamVenueId ? <input type="hidden" name="teamVenueId" value={teamVenueId} /> : null}
       <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
       {scope.activeTeamId ? (
         <input type="hidden" name="scopeTeamId" value={scope.activeTeamId} />
       ) : null}
+      {redirectTarget ? (
+        <input type="hidden" name="redirectTarget" value={redirectTarget} />
+      ) : null}
       {statusFilter ? <input type="hidden" name="scopeStatus" value={statusFilter} /> : null}
+      {typeof currentPage === "number" && currentPage > 1 ? (
+        <input type="hidden" name="scopePage" value={String(currentPage)} />
+      ) : null}
+      {loadMoreMode === true && typeof currentPage === "number" && currentPage > 1 ? (
+        <input type="hidden" name="scopeLoadMore" value="1" />
+      ) : null}
       {typeof year === "number" ? <input type="hidden" name="scopeYear" value={year} /> : null}
     </>
   )
@@ -140,56 +165,100 @@ function WindPatternDialogSubmitButton({
 }
 
 function WindPatternDialogForm({
+  currentPage,
   initialValues,
   idPrefix,
+  loadMoreMode,
   submitLabel,
   pendingLabel,
+  redirectTarget,
   scope,
   teamVenueId,
+  venueOptions = [],
   statusFilter,
   year,
   action,
-  formId,
   surface = "dialog",
 }: {
+  currentPage?: number
   initialValues: WindPatternFormInitialValues
   idPrefix: string
+  loadMoreMode?: boolean
   submitLabel: string
   pendingLabel: string
+  redirectTarget?: "venue-detail" | "team-page"
   scope: NavigationScope
-  teamVenueId: string
+  teamVenueId?: string
+  venueOptions?: TeamWindPatternVenueOption[]
   statusFilter?: string
   year?: number
   action: (formData: FormData) => void | Promise<void>
-  formId?: string
   surface?: WindPatternFormSurface
 }) {
   const [name, setName] = React.useState(initialValues.name)
   const [description, setDescription] = React.useState(initialValues.description)
-  const canSubmit = name.trim().length > 0
+  const [selectedTeamVenueId, setSelectedTeamVenueId] = React.useState(
+    teamVenueId ?? venueOptions[0]?.teamVenueId ?? "",
+  )
+  const shouldRenderVenueSelect = !teamVenueId && venueOptions.length > 0
+  const canSubmit = name.trim().length > 0 && selectedTeamVenueId.length > 0
   const isDrawerSurface = surface === "drawer"
+  const isSheetSurface = surface === "sheet"
+  const inputClassName =
+    isDrawerSurface || isSheetSurface ? "h-11 px-3 text-base md:text-sm" : undefined
+  const textareaClassName =
+    isDrawerSurface || isSheetSurface
+      ? "min-h-28 px-3 text-base md:text-sm"
+      : undefined
 
   return (
     <form
-      id={formId}
       action={action}
       className={cn(
-        isDrawerSurface
+        isDrawerSurface || isSheetSurface
           ? "flex min-h-0 flex-1 flex-col overflow-hidden"
           : "space-y-4",
       )}
     >
       {initialValues.id ? <input type="hidden" name="id" value={initialValues.id} /> : null}
       <ScopeHiddenInputs
+        currentPage={currentPage}
+        loadMoreMode={loadMoreMode}
         scope={scope}
-        teamVenueId={teamVenueId}
+        teamVenueId={teamVenueId ?? selectedTeamVenueId}
+        redirectTarget={redirectTarget}
         statusFilter={statusFilter}
         year={year}
       />
 
       <WindPatternDialogFieldset
-        className={isDrawerSurface ? "min-h-0 flex-1 overflow-y-auto px-4 py-4" : undefined}
+        className={
+          isDrawerSurface || isSheetSurface
+            ? "min-h-0 flex-1 overflow-y-auto px-4 py-4"
+            : undefined
+        }
       >
+        {shouldRenderVenueSelect ? (
+          <div className="space-y-2">
+            <Label htmlFor={`${idPrefix}-team-venue`}>Venue</Label>
+            <select
+              id={`${idPrefix}-team-venue`}
+              required
+              value={selectedTeamVenueId}
+              onChange={(event) => setSelectedTeamVenueId(event.target.value)}
+              className={cn(
+                "h-11 w-full rounded-lg border border-border bg-background px-3 text-base outline-none ring-ring/50 transition-colors focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-60 md:text-sm",
+              )}
+            >
+              {venueOptions.map((venueOption) => (
+                <option key={venueOption.teamVenueId} value={venueOption.teamVenueId}>
+                  {venueOption.venueName}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+
         <div className="space-y-2">
           <Label htmlFor={`${idPrefix}-name`}>Name</Label>
           <Input
@@ -200,7 +269,7 @@ function WindPatternDialogForm({
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="e.g. Thermal Left Shift"
-            className={isDrawerSurface ? "h-11 px-3 text-base md:text-sm" : undefined}
+            className={inputClassName}
           />
         </div>
 
@@ -214,11 +283,7 @@ function WindPatternDialogForm({
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             placeholder="Optional venue-specific pattern details."
-            className={
-              isDrawerSurface
-                ? "min-h-24 px-3 py-2 text-base md:text-sm"
-                : undefined
-            }
+            className={textareaClassName}
           />
         </div>
       </WindPatternDialogFieldset>
@@ -232,6 +297,14 @@ function WindPatternDialogForm({
             className="h-11 w-full"
           />
         </DrawerFooter>
+      ) : isSheetSurface ? (
+        <SheetFooter className="shrink-0 border-t sm:justify-end">
+          <WindPatternDialogSubmitButton
+            submitLabel={submitLabel}
+            pendingLabel={pendingLabel}
+            canSubmit={canSubmit}
+          />
+        </SheetFooter>
       ) : (
         <DialogFooter>
           <WindPatternDialogSubmitButton
@@ -246,39 +319,79 @@ function WindPatternDialogForm({
 }
 
 export function CreateWindPatternDialog({
+  currentPage,
+  loadMoreMode,
   scope,
   teamVenueId,
+  venueOptions,
+  redirectTarget = "venue-detail",
   statusFilter,
   year,
   disabled,
+  surface,
+  triggerVariant = "default",
 }: {
+  currentPage?: number
+  loadMoreMode?: boolean
   scope: NavigationScope
-  teamVenueId: string
+  teamVenueId?: string
+  venueOptions?: TeamWindPatternVenueOption[]
+  redirectTarget?: "venue-detail" | "team-page"
   statusFilter?: string
   year?: number
   disabled: boolean
+  surface?: WindPatternFormSurface
+  triggerVariant?: "default" | "fab"
 }) {
   const isMobile = useIsMobile()
-  const [isOpen, setIsOpen] = React.useState(false)
-  const createFormId = `create-wind-pattern-${isMobile ? "drawer" : "dialog"}-form`
+  const resolvedSurface = surface ?? (isMobile ? "drawer" : "dialog")
+  const [isCreateOpen, setIsCreateOpen] = React.useState(false)
+  const isFabTrigger = triggerVariant === "fab"
+  const createForm = (
+    <WindPatternDialogForm
+      initialValues={{
+        name: "",
+        description: "",
+      }}
+      idPrefix={`create-wind-pattern-${resolvedSurface}`}
+      submitLabel="Create pattern"
+      pendingLabel="Creating pattern..."
+      scope={scope}
+      teamVenueId={teamVenueId}
+      venueOptions={venueOptions}
+      redirectTarget={redirectTarget}
+      statusFilter={statusFilter}
+      year={year}
+      action={createTeamVenueWindPatternAction}
+      currentPage={currentPage}
+      loadMoreMode={loadMoreMode}
+      surface={resolvedSurface}
+    />
+  )
 
-  if (isMobile) {
+  if (resolvedSurface === "drawer") {
     return (
-      <Drawer open={isOpen} onOpenChange={setIsOpen}>
-        <DrawerTrigger asChild>
-          <Button
-            type="button"
-            variant="default"
-            size="icon"
-            disabled={disabled}
-            aria-label="New wind pattern"
-            aria-haspopup="dialog"
-            aria-expanded={isOpen}
-            className="mobile-floating-action size-14 rounded-full shadow-lg shadow-black/20 md:hidden"
-          >
-            <PlusIcon className="size-6" />
-          </Button>
-        </DrawerTrigger>
+      <Drawer open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label={isFabTrigger ? "New wind pattern" : undefined}
+          aria-haspopup="dialog"
+          aria-expanded={isCreateOpen}
+          className={cn(
+            buttonVariants({
+              variant: isFabTrigger ? "default" : "outline",
+              size: isFabTrigger ? "icon" : "default",
+            }),
+            isFabTrigger
+              ? "mobile-floating-action size-14 rounded-full shadow-lg shadow-black/20 md:hidden"
+              : "h-11 px-3",
+          )}
+          onClick={() => setIsCreateOpen(true)}
+        >
+          <PlusIcon className={isFabTrigger ? "size-6" : "size-4"} />
+          {isFabTrigger ? <span className="sr-only">New wind pattern</span> : "New"}
+        </button>
         <DrawerContent className="flex h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
           <DrawerHeader className="shrink-0 border-b text-left">
             <DrawerTitle>Create Wind Pattern</DrawerTitle>
@@ -286,30 +399,41 @@ export function CreateWindPatternDialog({
               Add a reusable wind pattern for this venue and team.
             </DrawerDescription>
           </DrawerHeader>
-
-          <WindPatternDialogForm
-            initialValues={{
-              name: "",
-              description: "",
-            }}
-            idPrefix="create-wind-pattern"
-            submitLabel="Create pattern"
-            pendingLabel="Creating..."
-            scope={scope}
-            teamVenueId={teamVenueId}
-            statusFilter={statusFilter}
-            year={year}
-            action={createTeamVenueWindPatternAction}
-            formId={createFormId}
-            surface="drawer"
-          />
+          {createForm}
         </DrawerContent>
       </Drawer>
     )
   }
 
+  if (resolvedSurface === "sheet") {
+    return (
+      <Sheet open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <button
+          type="button"
+          disabled={disabled}
+          aria-haspopup="dialog"
+          aria-expanded={isCreateOpen}
+          className={buttonVariants({ variant: "outline", size: "sm" })}
+          onClick={() => setIsCreateOpen(true)}
+        >
+          <PlusIcon className="size-4" />
+          New
+        </button>
+        <SheetContent side="right" className="flex h-full flex-col gap-0 overflow-hidden sm:max-w-xl">
+          <SheetHeader className="shrink-0 border-b">
+            <SheetTitle>Create Wind Pattern</SheetTitle>
+            <SheetDescription>
+              Add a reusable wind pattern for this team.
+            </SheetDescription>
+          </SheetHeader>
+          {createForm}
+        </SheetContent>
+      </Sheet>
+    )
+  }
+
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
       <DialogTrigger
         render={<Button type="button" variant="outline" size="sm" disabled={disabled} />}
       >
@@ -334,10 +458,11 @@ export function CreateWindPatternDialog({
           pendingLabel="Creating pattern..."
           scope={scope}
           teamVenueId={teamVenueId}
+          venueOptions={venueOptions}
+          redirectTarget={redirectTarget}
           statusFilter={statusFilter}
           year={year}
           action={createTeamVenueWindPatternAction}
-          formId={createFormId}
           surface="dialog"
         />
       </DialogContent>
@@ -349,73 +474,109 @@ export function EditWindPatternDialog({
   windPattern,
   scope,
   teamVenueId,
+  redirectTarget = "venue-detail",
   statusFilter,
+  currentPage,
+  loadMoreMode,
   year,
   open,
   onOpenChange,
   hideTrigger = false,
+  surface,
 }: {
   windPattern: EditableWindPattern
   scope: NavigationScope
   teamVenueId: string
+  redirectTarget?: "venue-detail" | "team-page"
   statusFilter?: string
+  currentPage?: number
+  loadMoreMode?: boolean
   year?: number
   open?: boolean
   onOpenChange?: (open: boolean) => void
   hideTrigger?: boolean
+  surface?: WindPatternFormSurface
 }) {
   const isMobile = useIsMobile()
   const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false)
   const isOpenControlled = typeof open === "boolean" && typeof onOpenChange === "function"
   const isEditOpen = isOpenControlled ? open : uncontrolledOpen
   const setIsEditOpen = isOpenControlled ? onOpenChange : setUncontrolledOpen
-  const editFormId = `edit-wind-pattern-${windPattern.id}-${
-    isMobile ? "drawer" : "dialog"
-  }-form`
+  const resolvedSurface = surface ?? (isMobile ? "drawer" : "dialog")
+  const editForm = (
+    <WindPatternDialogForm
+      initialValues={{
+        id: windPattern.id,
+        name: windPattern.name,
+        description: windPattern.description ?? "",
+      }}
+      idPrefix={`edit-wind-pattern-${windPattern.id}-${resolvedSurface}`}
+      submitLabel="Save changes"
+      pendingLabel="Saving changes..."
+      scope={scope}
+      teamVenueId={teamVenueId}
+      redirectTarget={redirectTarget}
+      statusFilter={statusFilter}
+      year={year}
+      action={updateTeamVenueWindPatternAction}
+      currentPage={currentPage}
+      loadMoreMode={loadMoreMode}
+      surface={resolvedSurface}
+    />
+  )
 
-  if (isMobile) {
+  if (resolvedSurface === "drawer") {
     return (
       <Drawer open={isEditOpen} onOpenChange={setIsEditOpen}>
-        {!hideTrigger ? (
-          <DrawerTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="default"
-              aria-haspopup="dialog"
-              aria-expanded={isEditOpen}
-              className="h-11 px-3"
-            >
-              <PencilIcon className="size-4" />
-              Edit
-            </Button>
-          </DrawerTrigger>
+        {!hideTrigger && !isOpenControlled ? (
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            aria-expanded={isEditOpen}
+            className={cn(
+              buttonVariants({ variant: "outline" }),
+              "h-11 px-3",
+            )}
+            onClick={() => setIsEditOpen(true)}
+          >
+            <PencilIcon className="size-4" />
+            Edit
+          </button>
         ) : null}
         <DrawerContent className="flex h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
           <DrawerHeader className="shrink-0 border-b text-left">
             <DrawerTitle>Edit Wind Pattern</DrawerTitle>
             <DrawerDescription>{windPattern.name}</DrawerDescription>
           </DrawerHeader>
-
-          <WindPatternDialogForm
-            initialValues={{
-              id: windPattern.id,
-              name: windPattern.name,
-              description: windPattern.description ?? "",
-            }}
-            idPrefix={`edit-wind-pattern-${windPattern.id}`}
-            submitLabel="Save"
-            pendingLabel="Saving..."
-            scope={scope}
-            teamVenueId={teamVenueId}
-            statusFilter={statusFilter}
-            year={year}
-            action={updateTeamVenueWindPatternAction}
-            formId={editFormId}
-            surface="drawer"
-          />
+          {editForm}
         </DrawerContent>
       </Drawer>
+    )
+  }
+
+  if (resolvedSurface === "sheet") {
+    return (
+      <Sheet open={isEditOpen} onOpenChange={setIsEditOpen}>
+        {!hideTrigger && !isOpenControlled ? (
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            aria-expanded={isEditOpen}
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+            onClick={() => setIsEditOpen(true)}
+          >
+            <PencilIcon className="size-4" />
+            Edit
+          </button>
+        ) : null}
+        <SheetContent side="right" className="flex h-full flex-col gap-0 overflow-hidden sm:max-w-xl">
+          <SheetHeader className="shrink-0 border-b">
+            <SheetTitle>Edit Wind Pattern</SheetTitle>
+            <SheetDescription>{windPattern.name}</SheetDescription>
+          </SheetHeader>
+          {editForm}
+        </SheetContent>
+      </Sheet>
     )
   }
 
@@ -433,23 +594,7 @@ export function EditWindPatternDialog({
           <DialogDescription>{windPattern.name}</DialogDescription>
         </DialogHeader>
 
-        <WindPatternDialogForm
-          initialValues={{
-            id: windPattern.id,
-            name: windPattern.name,
-            description: windPattern.description ?? "",
-          }}
-          idPrefix={`edit-wind-pattern-${windPattern.id}`}
-          submitLabel="Save changes"
-          pendingLabel="Saving changes..."
-          scope={scope}
-          teamVenueId={teamVenueId}
-          statusFilter={statusFilter}
-          year={year}
-          action={updateTeamVenueWindPatternAction}
-          formId={editFormId}
-          surface="dialog"
-        />
+        {editForm}
       </DialogContent>
     </Dialog>
   )
@@ -459,22 +604,37 @@ export function WindPatternActionsMenu({
   windPattern,
   scope,
   teamVenueId,
+  redirectTarget = "venue-detail",
   statusFilter,
+  currentPage,
+  loadMoreMode,
   year,
   canManageWindPatterns,
+  surface,
+  triggerClassName,
 }: {
   windPattern: EditableWindPattern
   scope: NavigationScope
   teamVenueId: string
+  redirectTarget?: "venue-detail" | "team-page"
   statusFilter?: string
+  currentPage?: number
+  loadMoreMode?: boolean
   year?: number
   canManageWindPatterns: boolean
+  surface?: WindPatternFormSurface
+  triggerClassName?: string
 }) {
+  const isMobile = useIsMobile()
   const [isEditOpen, setIsEditOpen] = React.useState(false)
+  const [isTogglingStatus, setIsTogglingStatus] = React.useState(false)
   const toggleStatusFormRef = React.useRef<HTMLFormElement | null>(null)
   const toggleAction = windPattern.isActive
     ? archiveTeamVenueWindPatternAction
     : restoreTeamVenueWindPatternAction
+  const toggleLabel = windPattern.isActive ? "Archive" : "Restore"
+  const togglePendingLabel = windPattern.isActive ? "Archiving..." : "Restoring..."
+  const resolvedSurface = surface ?? (isMobile ? "drawer" : "dialog")
 
   if (!canManageWindPatterns) {
     return (
@@ -483,7 +643,7 @@ export function WindPatternActionsMenu({
         size="icon"
         disabled
         aria-label="More actions unavailable"
-        className="h-11 w-11 md:size-8"
+        className={triggerClassName ?? "h-11 w-11 md:size-8"}
       >
         <MoreHorizontalIcon className="size-4" />
       </Button>
@@ -499,12 +659,18 @@ export function WindPatternActionsMenu({
               type="button"
               variant="ghost"
               size="icon"
-              className="h-11 w-11 md:size-8"
+              disabled={isTogglingStatus}
+              aria-busy={isTogglingStatus}
+              className={triggerClassName ?? "h-11 w-11 md:size-8"}
             />
           }
           aria-label={`Open actions for ${windPattern.name}`}
         >
-          <MoreHorizontalIcon className="size-4" />
+          {isTogglingStatus ? (
+            <Loader2Icon className="size-4 animate-spin" />
+          ) : (
+            <MoreHorizontalIcon className="size-4" />
+          )}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem
@@ -515,11 +681,15 @@ export function WindPatternActionsMenu({
             Edit
           </DropdownMenuItem>
           <DropdownMenuItem
+            disabled={isTogglingStatus}
             onClick={() => {
+              setIsTogglingStatus(true)
               toggleStatusFormRef.current?.requestSubmit()
             }}
+            className="gap-2"
           >
-            {windPattern.isActive ? "Archive" : "Restore"}
+            {isTogglingStatus ? <Loader2Icon className="size-4 animate-spin" /> : null}
+            {isTogglingStatus ? togglePendingLabel : toggleLabel}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -529,7 +699,10 @@ export function WindPatternActionsMenu({
         <ScopeHiddenInputs
           scope={scope}
           teamVenueId={teamVenueId}
+          redirectTarget={redirectTarget}
           statusFilter={statusFilter}
+          currentPage={currentPage}
+          loadMoreMode={loadMoreMode}
           year={year}
         />
       </form>
@@ -538,10 +711,14 @@ export function WindPatternActionsMenu({
         windPattern={windPattern}
         scope={scope}
         teamVenueId={teamVenueId}
+        redirectTarget={redirectTarget}
         statusFilter={statusFilter}
+        currentPage={currentPage}
+        loadMoreMode={loadMoreMode}
         year={year}
         open={isEditOpen}
         onOpenChange={setIsEditOpen}
+        surface={resolvedSurface}
         hideTrigger
       />
     </>

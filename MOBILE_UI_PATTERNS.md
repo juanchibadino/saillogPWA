@@ -78,6 +78,8 @@ Rules:
 Current implementation references:
 - `features/sessions/detail/setup-dialog.tsx`
 - `features/sessions/session-detail-tabs-client.tsx`
+- `features/reports/reports-route-shell.tsx`
+- `features/reports/report-form-dialogs.tsx`
 - `app/globals.css` (`.mobile-floating-action`)
 
 ## 3. Save CTA Standard
@@ -328,6 +330,7 @@ Rules:
 Current implementation references:
 - Sessions: `features/sessions/team-sessions-toolbar.tsx`
 - Team Venues: `features/team-venues/team-venues-toolbar.tsx`
+- Reports: `features/reports/reports-route-shell.tsx`
 
 Legacy note:
 - Some current mobile list toolbars still render `New` on the right. Treat that as legacy until the next mobile pass for that screen.
@@ -394,6 +397,7 @@ Goal:
 Current implementation:
 - Sessions: `features/sessions/sessions-table.tsx`
 - Team Venues: `features/team-venues/team-venues-table.tsx`
+- Reports: `features/reports/reports-table.tsx`
 
 Structure:
 - Mobile cards container: `md:hidden`.
@@ -517,6 +521,8 @@ Current implementation:
   - `features/sessions/detail/setup-dialog.tsx`
 - Team Venues:
   - `features/team-venues/team-venues-table.tsx`
+- Reports:
+  - `features/reports/report-form-dialogs.tsx`
 
 Reuse steps:
 1. Build the form/content once in a shared JSX block.

@@ -109,14 +109,6 @@ export function VenueReportsPanel({
         ) : null}
       </header>
 
-      {!canManageReports ? (
-        <section className="rounded-lg border border-amber-300 bg-amber-50 p-4">
-          <p className="text-sm text-amber-800">
-            You have read-only access in this scope. Report creation is limited to team admins and coaches.
-          </p>
-        </section>
-      ) : null}
-
       {data.reports.length === 0 ? (
         <>
           <GradientCard className="px-4 py-6 text-sm text-muted-foreground md:hidden">
