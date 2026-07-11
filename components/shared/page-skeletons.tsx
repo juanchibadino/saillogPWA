@@ -258,6 +258,84 @@ export function TeamCampsPageSkeleton() {
   )
 }
 
+export function TeamCalendarChromeSkeleton() {
+  return (
+    <section className="flex items-center justify-between gap-3">
+      <h1 className="min-w-0 text-2xl font-semibold tracking-tight md:hidden">
+        Calendar
+      </h1>
+      <h2 className="hidden text-lg font-semibold md:block">Calendar</h2>
+
+      <div className="flex items-center justify-end gap-2">
+        <button
+          type="button"
+          disabled
+          className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-secondary text-secondary-foreground opacity-70 md:hidden"
+          aria-label="Loading filters"
+        >
+          <Skeleton className="size-4" />
+        </button>
+
+        <div className="hidden items-center justify-end gap-2 md:flex">
+          <Skeleton className="h-8 w-28" />
+          <Skeleton className="h-8 w-28" />
+          <Skeleton className="h-8 w-24" />
+          <button
+            type="button"
+            disabled
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium text-muted-foreground opacity-70"
+          >
+            <PlusIcon className="size-4" />
+            New
+          </button>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        disabled
+        className="mobile-floating-action inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground opacity-70 shadow-lg shadow-black/20 md:hidden"
+        aria-label="Loading new event action"
+      >
+        <PlusIcon className="size-6" />
+      </button>
+    </section>
+  )
+}
+
+export function TeamCalendarResultsSkeleton() {
+  return (
+    <section className="max-h-[calc(100dvh-13rem)] space-y-2 overflow-y-auto pr-1">
+      {Array.from({ length: 6 }).map((_, index) => (
+        <GradientCard key={`team-calendar-row-${index}`} className="p-3 md:p-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <Skeleton className="h-12 w-12 shrink-0" />
+            <Skeleton className="h-5 min-w-0 flex-1" />
+            <div className="flex shrink-0 -space-x-2">
+              <Skeleton className="size-10 rounded-full" />
+              <Skeleton className="size-10 rounded-full" />
+              <Skeleton className="size-10 rounded-full" />
+            </div>
+            <div className="ml-auto flex shrink-0 items-center gap-1">
+              <Skeleton className="h-8 w-20" />
+              <Skeleton className="h-8 w-20" />
+            </div>
+          </div>
+        </GradientCard>
+      ))}
+    </section>
+  )
+}
+
+export function TeamCalendarPageSkeleton() {
+  return (
+    <div className="space-y-6">
+      <TeamCalendarChromeSkeleton />
+      <TeamCalendarResultsSkeleton />
+    </div>
+  )
+}
+
 const TEAM_SESSIONS_TABLE_HEADERS = [
   "Date",
   "Type",

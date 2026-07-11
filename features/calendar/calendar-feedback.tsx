@@ -4,12 +4,12 @@ import * as React from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 
-export function CampsFeedback({
-  statusMessage,
+export function CalendarFeedback({
   errorMessage,
+  statusMessage,
 }: {
-  statusMessage: string | null
   errorMessage: string | null
+  statusMessage: string | null
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -21,13 +21,13 @@ export function CampsFeedback({
 
     if (statusMessage && status) {
       toast.success(statusMessage, {
-        id: `camps-feedback:${pathname}:status:${status}`,
+        id: `team-calendar-feedback:${pathname}:status:${status}`,
       })
     }
 
     if (errorMessage && error) {
       toast.error(errorMessage, {
-        id: `camps-feedback:${pathname}:error:${error}`,
+        id: `team-calendar-feedback:${pathname}:error:${error}`,
       })
     }
 
@@ -42,21 +42,17 @@ export function CampsFeedback({
 
     if (shouldDeleteStatus) {
       nextParams.delete("status")
-      nextParams.delete("cacheCamp")
-      nextParams.delete("cacheTeamVenue")
     }
 
     if (shouldDeleteError) {
       nextParams.delete("error")
-      nextParams.delete("cacheCamp")
-      nextParams.delete("cacheTeamVenue")
     }
 
     const nextSearch = nextParams.toString()
     const nextUrl = nextSearch.length > 0 ? `${pathname}?${nextSearch}` : pathname
 
     router.replace(nextUrl, { scroll: false })
-  }, [errorMessage, statusMessage, searchParams, pathname, router])
+  }, [errorMessage, pathname, router, searchParams, statusMessage])
 
   return null
 }

@@ -95,6 +95,10 @@ function getSectionTitle(pathname: string): string {
     return "Team Camps"
   }
 
+  if (pathname.startsWith("/team-calendar")) {
+    return "Team Calendar"
+  }
+
   if (pathname.startsWith("/team-sessions")) {
     return "Team Sessions"
   }
@@ -198,6 +202,31 @@ function getTeamCampsTitle(
     "No team selected"
 
   return `${activeTeamLabel} > Camps`
+}
+
+function getTeamCalendarTitle(
+  navigation: ResolvedNavigationScope | null,
+  searchParams: ReadonlyURLSearchParams,
+): string {
+  if (!navigation?.scope) {
+    return "Team Calendar"
+  }
+
+  const activeOrgId =
+    searchParams.get(NAVIGATION_SCOPE_ORG_QUERY_KEY) ?? navigation.scope.activeOrgId
+  const queryTeamId = searchParams.get(NAVIGATION_SCOPE_TEAM_QUERY_KEY)
+
+  const teamsForOrganization =
+    navigation.catalog.teamsByOrganizationId[activeOrgId] ?? []
+  const activeTeamId =
+    queryTeamId && teamsForOrganization.some((team) => team.id === queryTeamId)
+      ? queryTeamId
+      : navigation.scope.activeTeamId
+  const activeTeamLabel =
+    teamsForOrganization.find((team) => team.id === activeTeamId)?.name ??
+    "No team selected"
+
+  return `${activeTeamLabel} > Calendar`
 }
 
 function getTeamSessionsTitle(
@@ -534,6 +563,10 @@ function shouldUsePhaseOneMobileHeader(pathname: string): boolean {
     return true
   }
 
+  if (pathname.startsWith("/team-calendar")) {
+    return true
+  }
+
   if (pathname.startsWith("/team-sessions")) {
     return true
   }
@@ -583,6 +616,10 @@ function resolveMobileBackFallbackPath(pathname: string): string {
   }
 
   if (pathname.startsWith("/team-camps")) {
+    return "/team-home"
+  }
+
+  if (pathname.startsWith("/team-calendar")) {
     return "/team-home"
   }
 
@@ -645,12 +682,14 @@ export function SiteHeader({
     ? getTeamVenuesTitle(navigation, searchParams)
     : pathname.startsWith("/team-camps")
       ? getTeamCampsTitle(navigation, searchParams)
-      : pathname.startsWith("/team-sessions")
-        ? getTeamSessionsTitle(navigation, searchParams)
-        : pathname.startsWith("/team-assessments")
-          ? getTeamAssessmentsTitle(navigation, searchParams)
-          : pathname.startsWith("/team-gear")
-            ? getTeamGearTitle(navigation, searchParams)
+      : pathname.startsWith("/team-calendar")
+        ? getTeamCalendarTitle(navigation, searchParams)
+        : pathname.startsWith("/team-sessions")
+          ? getTeamSessionsTitle(navigation, searchParams)
+          : pathname.startsWith("/team-assessments")
+            ? getTeamAssessmentsTitle(navigation, searchParams)
+            : pathname.startsWith("/team-gear")
+              ? getTeamGearTitle(navigation, searchParams)
         : pathname.startsWith("/team-notes")
           ? getTeamNotesTitle(navigation, searchParams)
         : pathname.startsWith("/team-standard-moves")
@@ -664,6 +703,7 @@ export function SiteHeader({
         : getSectionTitle(pathname)
   const isTeamHomeHeader = pathname.startsWith("/team-home")
   const isTeamCampsListHeader = pathname === "/team-camps"
+  const isTeamCalendarHeader = pathname.startsWith("/team-calendar")
   const isTeamSessionsHeader = pathname.startsWith("/team-sessions")
   const isTeamAssessmentsHeader = pathname.startsWith("/team-assessments")
   const isTeamGearHeader = pathname.startsWith("/team-gear")
@@ -674,12 +714,14 @@ export function SiteHeader({
     ? "Venues"
     : pathname.startsWith("/team-camps")
       ? "Camps"
-      : pathname.startsWith("/team-sessions")
-        ? "Sessions"
-        : pathname.startsWith("/team-assessments")
-          ? "Assessments"
-          : pathname.startsWith("/team-gear")
-            ? "Gear"
+      : pathname.startsWith("/team-calendar")
+        ? "Calendar"
+        : pathname.startsWith("/team-sessions")
+          ? "Sessions"
+          : pathname.startsWith("/team-assessments")
+            ? "Assessments"
+            : pathname.startsWith("/team-gear")
+              ? "Gear"
         : pathname.startsWith("/team-notes")
           ? "Notes"
         : pathname.startsWith("/team-standard-moves")
@@ -1071,6 +1113,7 @@ export function SiteHeader({
 
     if (
       isTeamCampsListHeader ||
+      isTeamCalendarHeader ||
       isTeamSessionsHeader ||
       isTeamAssessmentsHeader ||
       isTeamGearHeader ||
@@ -1214,6 +1257,7 @@ export function SiteHeader({
           : isTeamCampDetailHeader
             ? "Go to Venue"
             : isTeamCampsListHeader ||
+                isTeamCalendarHeader ||
                 isTeamSessionsHeader ||
                 isTeamAssessmentsHeader ||
                 isTeamGearHeader ||

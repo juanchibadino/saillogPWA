@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   BarChart3Icon,
   Building2Icon,
+  CalendarDaysIcon,
   CheckIcon,
   ClipboardCheckIcon,
   CircleIcon,
@@ -169,6 +170,11 @@ const teamNavSections: SidebarNavSection[] = [
         title: "Camps",
         url: "/team-camps",
         icon: CircleIcon,
+      },
+      {
+        title: "Calendar",
+        url: "/team-calendar",
+        icon: CalendarDaysIcon,
       },
       {
         title: "Session",
