@@ -66,6 +66,7 @@ class MockSupabaseQuery {
     this.filters = []
     this.limitValue = null
     this.operation = input.operation ?? "select"
+    this.deleteErrors = input.deleteErrors
     this.insertErrors = input.insertErrors
     this.insertValues = input.insertValues ?? null
     this.rowsByTable = input.rowsByTable
@@ -79,9 +80,22 @@ class MockSupabaseQuery {
     return this
   }
 
+  delete() {
+    return new MockSupabaseQuery({
+      operation: "delete",
+      deleteErrors: this.deleteErrors,
+      insertErrors: this.insertErrors,
+      rowsByTable: this.rowsByTable,
+      selectErrors: this.selectErrors,
+      tableName: this.tableName,
+      updateErrors: this.updateErrors,
+    })
+  }
+
   update(values) {
     return new MockSupabaseQuery({
       operation: "update",
+      deleteErrors: this.deleteErrors,
       insertErrors: this.insertErrors,
       rowsByTable: this.rowsByTable,
       selectErrors: this.selectErrors,
@@ -94,6 +108,7 @@ class MockSupabaseQuery {
   insert(values) {
     return new MockSupabaseQuery({
       operation: "insert",
+      deleteErrors: this.deleteErrors,
       insertErrors: this.insertErrors,
       insertValues: values,
       rowsByTable: this.rowsByTable,
@@ -133,6 +148,17 @@ class MockSupabaseQuery {
     return Promise.resolve({ data: cloneRow(rows[0] ?? null), error: null })
   }
 
+  single() {
+    const result = this.execute({ generateInsertedIds: true })
+
+    if (result.error) {
+      return Promise.resolve({ data: null, error: result.error })
+    }
+
+    const row = Array.isArray(result.data) ? result.data[0] : result.data
+    return Promise.resolve({ data: cloneRow(row ?? null), error: null })
+  }
+
   then(resolve, reject) {
     try {
       Promise.resolve(this.execute()).then(resolve, reject)
@@ -152,7 +178,7 @@ class MockSupabaseQuery {
     return matchingRows
   }
 
-  execute() {
+  execute(options = {}) {
     if (this.operation === "select") {
       return { data: this.getMatchingRows().map(cloneRow), error: null }
     }
@@ -172,9 +198,33 @@ class MockSupabaseQuery {
         this.rowsByTable[this.tableName] = []
       }
 
+      const insertedRows = []
+
       for (const row of values) {
-        this.rowsByTable[this.tableName].push(cloneRow(row))
+        const insertedRow = cloneRow(row)
+
+        if (options.generateInsertedIds && !insertedRow.id) {
+          insertedRow.id = `${this.tableName}-${this.rowsByTable[this.tableName].length + 1}`
+        }
+
+        this.rowsByTable[this.tableName].push(insertedRow)
+        insertedRows.push(cloneRow(insertedRow))
       }
+
+      return { data: insertedRows, error: null }
+    }
+
+    if (this.operation === "delete") {
+      const error = this.deleteErrors[this.tableName]
+
+      if (error) {
+        return { data: null, error }
+      }
+
+      const rows = this.rowsByTable[this.tableName] ?? []
+      this.rowsByTable[this.tableName] = rows.filter(
+        (row) => !rowMatchesFilters(row, this.filters),
+      )
 
       return { data: null, error: null }
     }
@@ -195,6 +245,7 @@ class MockSupabaseQuery {
 
 export function createMockSupabaseClient(input) {
   const rowsByTable = normalizeTableRows(input.tables ?? {})
+  const deleteErrors = input.deleteErrors ?? {}
   const insertErrors = input.insertErrors ?? {}
   const selectErrors = input.selectErrors ?? {}
   const updateErrors = input.updateErrors ?? {}
@@ -203,6 +254,7 @@ export function createMockSupabaseClient(input) {
     rowsByTable,
     from(tableName) {
       return new MockSupabaseQuery({
+        deleteErrors,
         insertErrors,
         rowsByTable,
         selectErrors,

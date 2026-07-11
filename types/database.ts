@@ -245,6 +245,85 @@ export type Database = {
         };
         Relationships: [];
       };
+      calendar_events: {
+        Row: {
+          id: string;
+          team_id: string;
+          title: string;
+          event_type: Database["public"]["Enums"]["calendar_event_type"];
+          start_date: string;
+          end_date: string;
+          notes: string | null;
+          is_active: boolean;
+          created_by_profile_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          team_id: string;
+          title: string;
+          event_type?: Database["public"]["Enums"]["calendar_event_type"];
+          start_date: string;
+          end_date: string;
+          notes?: string | null;
+          is_active?: boolean;
+          created_by_profile_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          team_id?: string;
+          title?: string;
+          event_type?: Database["public"]["Enums"]["calendar_event_type"];
+          start_date?: string;
+          end_date?: string;
+          notes?: string | null;
+          is_active?: boolean;
+          created_by_profile_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      calendar_presence: {
+        Row: {
+          id: string;
+          source_type: Database["public"]["Enums"]["calendar_presence_source_type"];
+          camp_id: string | null;
+          calendar_event_id: string | null;
+          profile_id: string;
+          presence_date: string;
+          created_by_profile_id: string | null;
+          updated_by_profile_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          source_type: Database["public"]["Enums"]["calendar_presence_source_type"];
+          camp_id?: string | null;
+          calendar_event_id?: string | null;
+          profile_id: string;
+          presence_date: string;
+          created_by_profile_id?: string | null;
+          updated_by_profile_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          source_type?: Database["public"]["Enums"]["calendar_presence_source_type"];
+          camp_id?: string | null;
+          calendar_event_id?: string | null;
+          profile_id?: string;
+          presence_date?: string;
+          created_by_profile_id?: string | null;
+          updated_by_profile_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       team_venue_reports: {
         Row: {
           id: string;
@@ -1452,6 +1531,33 @@ export type Database = {
           total_count: number;
         }[];
       };
+      get_team_gear_list_rows: {
+        Args: {
+          p_alert?: Database["public"]["Enums"]["gear_alert_state"] | null;
+          p_condition?: Database["public"]["Enums"]["gear_condition"] | null;
+          p_limit?: number | null;
+          p_offset?: number | null;
+          p_status?: Database["public"]["Enums"]["gear_status"] | null;
+          p_team_id: string;
+          p_type?: Database["public"]["Enums"]["gear_type"] | null;
+        };
+        Returns: {
+          gear_item_id: string;
+          team_id: string;
+          name: string;
+          gear_type: Database["public"]["Enums"]["gear_type"];
+          serial_number: string | null;
+          barcode: string | null;
+          status: Database["public"]["Enums"]["gear_status"];
+          condition: Database["public"]["Enums"]["gear_condition"];
+          usage_count: number;
+          usage_minutes: number;
+          alert_state: Database["public"]["Enums"]["gear_alert_state"];
+          triggered_alert_count: number;
+          created_at: string;
+          total_count: number;
+        }[];
+      };
       replace_session_gear_usage_atomic: {
         Args: {
           p_gear_item_ids: string[];
@@ -1477,8 +1583,11 @@ export type Database = {
       asset_type: "photo" | "analytics_file" | "document";
       billing_cycle: "monthly" | "yearly" | "none";
       camp_type: "training" | "regatta" | "mixed";
+      calendar_event_type: "meeting" | "travel" | "logistics" | "other";
+      calendar_presence_source_type: "camp" | "event";
       gear_alert_metric: "usage_count" | "usage_minutes";
       gear_alert_severity: "warning" | "critical";
+      gear_alert_state: "critical" | "warning" | "none";
       gear_condition: "new" | "used" | "refurbished";
       gear_status:
         | "active_regatta"

@@ -18,16 +18,24 @@ import {
 } from "@/features/gear/actions"
 import type { TeamGearAlertRuleItem, TeamGearListItem } from "@/features/gear/shared"
 import type { NavigationScope } from "@/lib/navigation/types"
-import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,12 +44,22 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 
 type GearTypeOption = { value: string; label: string }
 type GearStatusOption = { value: string; label: string }
 type GearConditionOption = { value: string; label: string }
+type GearFormSurface = "drawer" | "sheet"
 
 type GearRuleDraft = {
+  draftKey: string
   metric: "usage_count" | "usage_minutes"
   severity: "warning" | "critical"
   thresholdValue: number
@@ -112,9 +130,11 @@ function normalizeBarcodeValue(value: string): string {
 
 function BarcodeScannerDialog({
   onDetected,
+  buttonClassName,
   disabled = false,
 }: {
   onDetected: (value: string) => void
+  buttonClassName?: string
   disabled?: boolean
 }) {
   const [isOpen, setIsOpen] = React.useState(false)
@@ -269,7 +289,14 @@ function BarcodeScannerDialog({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger
-        render={<Button type="button" variant="outline" disabled={disabled} />}
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            disabled={disabled}
+            className={buttonClassName}
+          />
+        }
       >
         <CameraIcon className="size-4" />
         Scan
@@ -315,6 +342,7 @@ function BarcodeScannerDialog({
 
 function mapRulesForDraft(rules: TeamGearAlertRuleItem[]): GearRuleDraft[] {
   return rules.map((rule) => ({
+    draftKey: rule.id,
     metric: rule.metric,
     severity: rule.severity,
     thresholdValue: rule.thresholdValue,
@@ -322,8 +350,17 @@ function mapRulesForDraft(rules: TeamGearAlertRuleItem[]): GearRuleDraft[] {
   }))
 }
 
+let nextRuleDraftId = 0
+
+function createRuleDraftKey(): string {
+  nextRuleDraftId += 1
+
+  return `new-rule-${nextRuleDraftId}`
+}
+
 function createDefaultRule(): GearRuleDraft {
   return {
+    draftKey: createRuleDraftKey(),
     metric: "usage_minutes",
     severity: "warning",
     thresholdValue: 60,
@@ -335,11 +372,23 @@ function hasInvalidRule(rule: GearRuleDraft): boolean {
   return !Number.isInteger(rule.thresholdValue) || rule.thresholdValue <= 0
 }
 
-function GearDialogFields({ children }: { children: React.ReactNode }) {
+function GearDialogFields({
+  children,
+  className,
+}: {
+  children: React.ReactNode
+  className?: string
+}) {
   const { pending } = useFormStatus()
 
   return (
-    <fieldset disabled={pending} className="space-y-5">
+    <fieldset
+      disabled={pending}
+      className={cn(
+        "space-y-5 disabled:pointer-events-none disabled:opacity-70",
+        className,
+      )}
+    >
       {children}
     </fieldset>
   )
@@ -349,15 +398,22 @@ function GearDialogSubmitButton({
   submitLabel,
   pendingLabel,
   canSubmit,
+  className,
 }: {
   submitLabel: string
   pendingLabel: string
   canSubmit: boolean
+  className?: string
 }) {
   const { pending } = useFormStatus()
 
   return (
-    <Button type="submit" disabled={!canSubmit || pending}>
+    <Button
+      type="submit"
+      disabled={!canSubmit || pending}
+      aria-busy={pending}
+      className={className}
+    >
       {pending ? (
         <>
           <Loader2Icon className="size-4 animate-spin" />
@@ -367,6 +423,37 @@ function GearDialogSubmitButton({
         submitLabel
       )}
     </Button>
+  )
+}
+
+function GearDialogFooter({
+  submitLabel,
+  pendingLabel,
+  canSubmit,
+  surface,
+}: {
+  submitLabel: string
+  pendingLabel: string
+  canSubmit: boolean
+  surface: GearFormSurface
+}) {
+  const button = (
+    <GearDialogSubmitButton
+      submitLabel={submitLabel}
+      pendingLabel={pendingLabel}
+      canSubmit={canSubmit}
+      className={surface === "drawer" ? "h-11 w-full" : undefined}
+    />
+  )
+
+  if (surface === "drawer") {
+    return <DrawerFooter className="shrink-0 border-t">{button}</DrawerFooter>
+  }
+
+  return (
+    <SheetFooter className="shrink-0 border-t sm:justify-end">
+      {button}
+    </SheetFooter>
   )
 }
 
@@ -381,10 +468,12 @@ function GearDialogForm({
   selectedCondition,
   selectedAlert,
   currentPage,
+  loadMoreMode,
   gearTypeOptions,
   gearStatusOptions,
   gearConditionOptions,
   action,
+  surface,
 }: {
   initialValues: GearFormInitialValues
   idPrefix: string
@@ -396,10 +485,12 @@ function GearDialogForm({
   selectedCondition?: string
   selectedAlert?: string
   currentPage: number
+  loadMoreMode: boolean
   gearTypeOptions: GearTypeOption[]
   gearStatusOptions: GearStatusOption[]
   gearConditionOptions: GearConditionOption[]
-  action: (formData: FormData) => Promise<void>
+  action: (formData: FormData) => void | Promise<void>
+  surface: GearFormSurface
 }) {
   const [name, setName] = React.useState(initialValues.name)
   const [gearType, setGearType] = React.useState(initialValues.gearType)
@@ -415,9 +506,17 @@ function GearDialogForm({
     status.length > 0 &&
     condition.length > 0 &&
     alertRules.every((rule) => !hasInvalidRule(rule))
+  const isDrawerSurface = surface === "drawer"
+  const inputClassName = isDrawerSurface ? "h-11 px-3 text-base md:text-sm" : undefined
+  const selectClassName = cn(
+    "w-full rounded-lg border border-input bg-background px-3 outline-none ring-ring/50 focus-visible:ring-[3px]",
+    isDrawerSurface ? "h-11 text-base md:text-sm" : "h-9 text-sm",
+  )
+  const compactButtonClassName = isDrawerSurface ? "h-11 px-3" : undefined
+  const iconButtonClassName = isDrawerSurface ? "h-11 w-11" : undefined
 
   return (
-    <form action={action} className="space-y-5">
+    <form action={action} className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {initialValues.id ? <input type="hidden" name="id" value={initialValues.id} /> : null}
       <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
       {scope.activeTeamId ? (
@@ -434,6 +533,9 @@ function GearDialogForm({
       {currentPage > 1 ? (
         <input type="hidden" name="scopePage" value={String(currentPage)} />
       ) : null}
+      {loadMoreMode && currentPage > 1 ? (
+        <input type="hidden" name="scopeLoadMore" value="1" />
+      ) : null}
       <input
         type="hidden"
         name="alertRulesPayload"
@@ -447,250 +549,257 @@ function GearDialogForm({
         )}
       />
 
-      <GearDialogFields>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2 sm:col-span-2">
-          <Label htmlFor={`${idPrefix}-name`}>Name</Label>
-          <Input
-            id={`${idPrefix}-name`}
-            name="name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            required
-            maxLength={120}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}-gearType`}>Type</Label>
-          <select
-            id={`${idPrefix}-gearType`}
-            name="gearType"
-            value={gearType}
-            onChange={(event) => setGearType(event.target.value as TeamGearListItem["gearType"])}
-            required
-            className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none ring-ring/50 focus-visible:ring-[3px]"
-          >
-            {gearTypeOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}-status`}>Status</Label>
-          <select
-            id={`${idPrefix}-status`}
-            name="status"
-            value={status}
-            onChange={(event) => setStatus(event.target.value as TeamGearListItem["status"])}
-            required
-            className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none ring-ring/50 focus-visible:ring-[3px]"
-          >
-            {gearStatusOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}-condition`}>Condition</Label>
-          <select
-            id={`${idPrefix}-condition`}
-            name="condition"
-            value={condition}
-            onChange={(event) =>
-              setCondition(event.target.value as TeamGearListItem["condition"])
-            }
-            required
-            className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none ring-ring/50 focus-visible:ring-[3px]"
-          >
-            {gearConditionOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}-serialNumber`}>Serial Number</Label>
-          <Input
-            id={`${idPrefix}-serialNumber`}
-            name="serialNumber"
-            value={serialNumber}
-            onChange={(event) => setSerialNumber(event.target.value)}
-            maxLength={120}
-          />
-        </div>
-
-        <div className="space-y-2 sm:col-span-2">
-          <Label htmlFor={`${idPrefix}-barcode`}>Barcode</Label>
-          <div className="flex items-center gap-2">
+      <GearDialogFields className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor={`${idPrefix}-name`}>Name</Label>
             <Input
-              id={`${idPrefix}-barcode`}
-              name="barcode"
-              value={barcode}
-              onChange={(event) => setBarcode(event.target.value)}
+              id={`${idPrefix}-name`}
+              name="name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              required
               maxLength={120}
+              className={inputClassName}
             />
-            <BarcodeScannerDialog
-              onDetected={(value) => {
-                setBarcode(value)
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={`${idPrefix}-gearType`}>Type</Label>
+            <select
+              id={`${idPrefix}-gearType`}
+              name="gearType"
+              value={gearType}
+              onChange={(event) =>
+                setGearType(event.target.value as TeamGearListItem["gearType"])
+              }
+              required
+              className={selectClassName}
+            >
+              {gearTypeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={`${idPrefix}-status`}>Status</Label>
+            <select
+              id={`${idPrefix}-status`}
+              name="status"
+              value={status}
+              onChange={(event) => setStatus(event.target.value as TeamGearListItem["status"])}
+              required
+              className={selectClassName}
+            >
+              {gearStatusOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={`${idPrefix}-condition`}>Condition</Label>
+            <select
+              id={`${idPrefix}-condition`}
+              name="condition"
+              value={condition}
+              onChange={(event) =>
+                setCondition(event.target.value as TeamGearListItem["condition"])
+              }
+              required
+              className={selectClassName}
+            >
+              {gearConditionOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor={`${idPrefix}-serialNumber`}>Serial Number</Label>
+            <Input
+              id={`${idPrefix}-serialNumber`}
+              name="serialNumber"
+              value={serialNumber}
+              onChange={(event) => setSerialNumber(event.target.value)}
+              maxLength={120}
+              className={inputClassName}
+            />
+          </div>
+
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor={`${idPrefix}-barcode`}>Barcode</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id={`${idPrefix}-barcode`}
+                name="barcode"
+                value={barcode}
+                onChange={(event) => setBarcode(event.target.value)}
+                maxLength={120}
+                className={inputClassName}
+              />
+              <BarcodeScannerDialog
+                onDetected={(value) => {
+                  setBarcode(value)
+                }}
+                buttonClassName={compactButtonClassName}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3 rounded-lg border p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-semibold">Threshold Rules</h4>
+              <p className="text-xs text-muted-foreground">
+                Create warning and critical thresholds by uses or minutes.
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className={compactButtonClassName}
+              onClick={() => {
+                setAlertRules((existingRules) => [...existingRules, createDefaultRule()])
               }}
-            />
+            >
+              <PlusIcon className="size-4" />
+              Rule
+            </Button>
           </div>
-        </div>
-      </div>
 
-      <div className="space-y-3 rounded-lg border p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h4 className="text-sm font-semibold">Threshold Rules</h4>
-            <p className="text-xs text-muted-foreground">
-              Create warning and critical thresholds by uses or minutes.
+          {alertRules.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No rules configured. This item will never show alerts.
             </p>
-          </div>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setAlertRules((existingRules) => [...existingRules, createDefaultRule()])
-            }}
-          >
-            <PlusIcon className="size-4" />
-            Rule
-          </Button>
-        </div>
-
-        {alertRules.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No rules configured. This item will never show alerts.
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {alertRules.map((rule, index) => (
-              <div
-                key={`rule-${index}`}
-                className="grid gap-3 rounded-md border p-3 md:grid-cols-[1.1fr_1fr_1fr_auto_auto]"
-              >
-                <div className="space-y-1">
-                  <Label className="text-xs">Metric</Label>
-                  <select
-                    value={rule.metric}
-                    onChange={(event) => {
-                      const nextMetric = event.target.value as GearRuleDraft["metric"]
-                      setAlertRules((existingRules) => {
-                        const nextRules = [...existingRules]
-                        nextRules[index] = {
-                          ...nextRules[index],
-                          metric: nextMetric,
-                        }
-                        return nextRules
-                      })
-                    }}
-                    className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none ring-ring/50 focus-visible:ring-[3px]"
-                  >
-                    <option value="usage_minutes">Minutes</option>
-                    <option value="usage_count">Times Used</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <Label className="text-xs">Severity</Label>
-                  <select
-                    value={rule.severity}
-                    onChange={(event) => {
-                      const nextSeverity = event.target.value as GearRuleDraft["severity"]
-                      setAlertRules((existingRules) => {
-                        const nextRules = [...existingRules]
-                        nextRules[index] = {
-                          ...nextRules[index],
-                          severity: nextSeverity,
-                        }
-                        return nextRules
-                      })
-                    }}
-                    className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none ring-ring/50 focus-visible:ring-[3px]"
-                  >
-                    <option value="warning">Warning</option>
-                    <option value="critical">Critical</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <Label className="text-xs">Threshold</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={String(rule.thresholdValue)}
-                    onChange={(event) => {
-                      const nextValue = Number.parseInt(event.target.value, 10)
-
-                      setAlertRules((existingRules) => {
-                        const nextRules = [...existingRules]
-                        nextRules[index] = {
-                          ...nextRules[index],
-                          thresholdValue: Number.isFinite(nextValue) ? nextValue : 0,
-                        }
-                        return nextRules
-                      })
-                    }}
-                  />
-                </div>
-
-                <label className="inline-flex items-center gap-2 pt-6 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={rule.isRefurbishedRule}
-                    onChange={(event) => {
-                      setAlertRules((existingRules) => {
-                        const nextRules = [...existingRules]
-                        nextRules[index] = {
-                          ...nextRules[index],
-                          isRefurbishedRule: event.target.checked,
-                        }
-                        return nextRules
-                      })
-                    }}
-                    className="size-4 rounded border-input"
-                  />
-                  Refurb only
-                </label>
-
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className="mt-5"
-                  aria-label={`Remove rule ${index + 1}`}
-                  onClick={() => {
-                    setAlertRules((existingRules) =>
-                      existingRules.filter((_, ruleIndex) => ruleIndex !== index),
-                    )
-                  }}
+          ) : (
+            <div className="space-y-3">
+              {alertRules.map((rule, index) => (
+                <div
+                  key={rule.draftKey}
+                  className="grid gap-3 rounded-md border p-3 md:grid-cols-[1.1fr_1fr_1fr_auto_auto]"
                 >
-                  <Trash2Icon className="size-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Metric</Label>
+                    <select
+                      value={rule.metric}
+                      onChange={(event) => {
+                        const nextMetric = event.target.value as GearRuleDraft["metric"]
+                        setAlertRules((existingRules) => {
+                          const nextRules = [...existingRules]
+                          nextRules[index] = {
+                            ...nextRules[index],
+                            metric: nextMetric,
+                          }
+                          return nextRules
+                        })
+                      }}
+                      className={selectClassName}
+                    >
+                      <option value="usage_minutes">Minutes</option>
+                      <option value="usage_count">Times Used</option>
+                    </select>
+                  </div>
 
-      <DialogFooter>
-        <GearDialogSubmitButton
-          submitLabel={submitLabel}
-          pendingLabel={pendingLabel}
-          canSubmit={canSubmit}
-        />
-      </DialogFooter>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Severity</Label>
+                    <select
+                      value={rule.severity}
+                      onChange={(event) => {
+                        const nextSeverity = event.target.value as GearRuleDraft["severity"]
+                        setAlertRules((existingRules) => {
+                          const nextRules = [...existingRules]
+                          nextRules[index] = {
+                            ...nextRules[index],
+                            severity: nextSeverity,
+                          }
+                          return nextRules
+                        })
+                      }}
+                      className={selectClassName}
+                    >
+                      <option value="warning">Warning</option>
+                      <option value="critical">Critical</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs">Threshold</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={String(rule.thresholdValue)}
+                      onChange={(event) => {
+                        const nextValue = Number.parseInt(event.target.value, 10)
+
+                        setAlertRules((existingRules) => {
+                          const nextRules = [...existingRules]
+                          nextRules[index] = {
+                            ...nextRules[index],
+                            thresholdValue: Number.isFinite(nextValue) ? nextValue : 0,
+                          }
+                          return nextRules
+                        })
+                      }}
+                      className={inputClassName}
+                    />
+                  </div>
+
+                  <label className="inline-flex min-h-11 items-center gap-2 pt-0 text-sm md:pt-6">
+                    <input
+                      type="checkbox"
+                      checked={rule.isRefurbishedRule}
+                      onChange={(event) => {
+                        setAlertRules((existingRules) => {
+                          const nextRules = [...existingRules]
+                          nextRules[index] = {
+                            ...nextRules[index],
+                            isRefurbishedRule: event.target.checked,
+                          }
+                          return nextRules
+                        })
+                      }}
+                      className="size-4 rounded border-input"
+                    />
+                    Refurb only
+                  </label>
+
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className={cn("md:mt-5", iconButtonClassName)}
+                    aria-label={`Remove rule ${index + 1}`}
+                    onClick={() => {
+                      setAlertRules((existingRules) =>
+                        existingRules.filter((_, ruleIndex) => ruleIndex !== index),
+                      )
+                    }}
+                  >
+                    <Trash2Icon className="size-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </GearDialogFields>
+
+      <GearDialogFooter
+        submitLabel={submitLabel}
+        pendingLabel={pendingLabel}
+        canSubmit={canSubmit}
+        surface={surface}
+      />
     </form>
   )
 }
@@ -702,10 +811,13 @@ export function CreateGearDialog({
   selectedCondition,
   selectedAlert,
   currentPage,
+  loadMoreMode = false,
   gearTypeOptions,
   gearStatusOptions,
   gearConditionOptions,
   disabled,
+  surface = "sheet",
+  triggerVariant = "default",
 }: {
   scope: NavigationScope
   selectedType?: string
@@ -713,59 +825,109 @@ export function CreateGearDialog({
   selectedCondition?: string
   selectedAlert?: string
   currentPage: number
+  loadMoreMode?: boolean
   gearTypeOptions: GearTypeOption[]
   gearStatusOptions: GearStatusOption[]
   gearConditionOptions: GearConditionOption[]
   disabled: boolean
+  surface?: GearFormSurface
+  triggerVariant?: "default" | "fab"
 }) {
+  const [isCreateOpen, setIsCreateOpen] = React.useState(false)
   const defaultGearType = (gearTypeOptions[0]?.value ?? "sails") as TeamGearListItem["gearType"]
   const defaultStatus = (gearStatusOptions[0]?.value ??
     "active_regatta") as TeamGearListItem["status"]
   const defaultCondition = (gearConditionOptions[0]?.value ??
     "used") as TeamGearListItem["condition"]
+  const isFabTrigger = triggerVariant === "fab"
+  const createForm = (
+    <GearDialogForm
+      initialValues={{
+        name: "",
+        gearType: defaultGearType,
+        serialNumber: "",
+        barcode: "",
+        status: defaultStatus,
+        condition: defaultCondition,
+        alertRules: [],
+      }}
+      idPrefix={`create-gear-${surface}-${triggerVariant}`}
+      submitLabel="Create item"
+      pendingLabel="Creating item..."
+      scope={scope}
+      selectedType={selectedType}
+      selectedStatusFilter={selectedStatusFilter}
+      selectedCondition={selectedCondition}
+      selectedAlert={selectedAlert}
+      currentPage={currentPage}
+      loadMoreMode={loadMoreMode}
+      gearTypeOptions={gearTypeOptions}
+      gearStatusOptions={gearStatusOptions}
+      gearConditionOptions={gearConditionOptions}
+      action={createGearItemAction}
+      surface={surface}
+    />
+  )
+
+  if (surface === "drawer") {
+    return (
+      <Drawer open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label={isFabTrigger ? "New gear item" : undefined}
+          aria-haspopup="dialog"
+          aria-expanded={isCreateOpen}
+          className={cn(
+            buttonVariants({
+              variant: isFabTrigger ? "default" : "outline",
+              size: isFabTrigger ? "icon" : "default",
+            }),
+            isFabTrigger
+              ? "mobile-floating-action size-14 rounded-full shadow-lg shadow-black/20 md:hidden"
+              : "h-11 px-3",
+          )}
+          onClick={() => setIsCreateOpen(true)}
+        >
+          <PlusIcon className={isFabTrigger ? "size-6" : "size-4"} />
+          {isFabTrigger ? <span className="sr-only">New gear item</span> : "New"}
+        </button>
+        <DrawerContent className="flex h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+          <DrawerHeader className="shrink-0 border-b text-left">
+            <DrawerTitle>Create gear item</DrawerTitle>
+            <DrawerDescription>
+              Create an item and define optional usage alert thresholds.
+            </DrawerDescription>
+          </DrawerHeader>
+          {createForm}
+        </DrawerContent>
+      </Drawer>
+    )
+  }
 
   return (
-    <Dialog>
-      <DialogTrigger
-        render={<Button type="button" variant="outline" size="sm" disabled={disabled} />}
+    <Sheet open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+      <button
+        type="button"
+        disabled={disabled}
+        aria-haspopup="dialog"
+        aria-expanded={isCreateOpen}
+        className={buttonVariants({ variant: "outline", size: "sm" })}
+        onClick={() => setIsCreateOpen(true)}
       >
         <PlusIcon className="size-4" />
         New
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Create gear item</DialogTitle>
-          <DialogDescription>
+      </button>
+      <SheetContent side="right" className="flex h-full flex-col gap-0 overflow-hidden sm:max-w-xl">
+        <SheetHeader className="shrink-0 border-b">
+          <SheetTitle>Create gear item</SheetTitle>
+          <SheetDescription>
             Create an item and define optional usage alert thresholds.
-          </DialogDescription>
-        </DialogHeader>
-
-        <GearDialogForm
-          initialValues={{
-            name: "",
-            gearType: defaultGearType,
-            serialNumber: "",
-            barcode: "",
-            status: defaultStatus,
-            condition: defaultCondition,
-            alertRules: [],
-          }}
-          idPrefix="create-gear"
-          submitLabel="Create item"
-          pendingLabel="Creating item..."
-          scope={scope}
-          selectedType={selectedType}
-          selectedStatusFilter={selectedStatusFilter}
-          selectedCondition={selectedCondition}
-          selectedAlert={selectedAlert}
-          currentPage={currentPage}
-          gearTypeOptions={gearTypeOptions}
-          gearStatusOptions={gearStatusOptions}
-          gearConditionOptions={gearConditionOptions}
-          action={createGearItemAction}
-        />
-      </DialogContent>
-    </Dialog>
+          </SheetDescription>
+        </SheetHeader>
+        {createForm}
+      </SheetContent>
+    </Sheet>
   )
 }
 
@@ -777,12 +939,14 @@ export function EditGearDialog({
   selectedCondition,
   selectedAlert,
   currentPage,
+  loadMoreMode = false,
   gearTypeOptions,
   gearStatusOptions,
   gearConditionOptions,
   open,
   onOpenChange,
   hideTrigger = false,
+  surface = "sheet",
 }: {
   gearItem: EditableGearItem
   scope: NavigationScope
@@ -791,56 +955,97 @@ export function EditGearDialog({
   selectedCondition?: string
   selectedAlert?: string
   currentPage: number
+  loadMoreMode?: boolean
   gearTypeOptions: GearTypeOption[]
   gearStatusOptions: GearStatusOption[]
   gearConditionOptions: GearConditionOption[]
   open?: boolean
   onOpenChange?: (open: boolean) => void
   hideTrigger?: boolean
+  surface?: GearFormSurface
 }) {
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false)
   const isOpenControlled = typeof open === "boolean" && typeof onOpenChange === "function"
+  const isEditOpen = isOpenControlled ? open : uncontrolledOpen
+  const setIsEditOpen = isOpenControlled ? onOpenChange : setUncontrolledOpen
+  const editForm = (
+    <GearDialogForm
+      initialValues={{
+        id: gearItem.id,
+        name: gearItem.name,
+        gearType: gearItem.gearType,
+        serialNumber: gearItem.serialNumber ?? "",
+        barcode: gearItem.barcode ?? "",
+        status: gearItem.status,
+        condition: gearItem.condition,
+        alertRules: mapRulesForDraft(gearItem.alertRules),
+      }}
+      idPrefix={`edit-gear-${gearItem.id}-${surface}`}
+      submitLabel="Save"
+      pendingLabel="Saving..."
+      scope={scope}
+      selectedType={selectedType}
+      selectedStatusFilter={selectedStatusFilter}
+      selectedCondition={selectedCondition}
+      selectedAlert={selectedAlert}
+      currentPage={currentPage}
+      loadMoreMode={loadMoreMode}
+      gearTypeOptions={gearTypeOptions}
+      gearStatusOptions={gearStatusOptions}
+      gearConditionOptions={gearConditionOptions}
+      action={updateGearItemAction}
+      surface={surface}
+    />
+  )
+
+  if (surface === "drawer") {
+    return (
+      <Drawer open={isEditOpen} onOpenChange={setIsEditOpen}>
+        {!hideTrigger && !isOpenControlled ? (
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            aria-expanded={isEditOpen}
+            className={cn(buttonVariants({ variant: "outline" }), "h-11 px-3")}
+            onClick={() => setIsEditOpen(true)}
+          >
+            <PencilIcon className="size-4" />
+            Edit
+          </button>
+        ) : null}
+        <DrawerContent className="flex h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+          <DrawerHeader className="shrink-0 border-b text-left">
+            <DrawerTitle>Edit gear item</DrawerTitle>
+            <DrawerDescription>{gearItem.name}</DrawerDescription>
+          </DrawerHeader>
+          {editForm}
+        </DrawerContent>
+      </Drawer>
+    )
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Sheet open={isEditOpen} onOpenChange={setIsEditOpen}>
       {!hideTrigger && !isOpenControlled ? (
-        <DialogTrigger render={<Button variant="outline" size="sm" />}>
+        <button
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded={isEditOpen}
+          className={buttonVariants({ variant: "outline", size: "sm" })}
+          onClick={() => setIsEditOpen(true)}
+        >
           <PencilIcon className="size-4" />
           Edit
-        </DialogTrigger>
+        </button>
       ) : null}
-      <DialogContent className="sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Edit gear item</DialogTitle>
-          <DialogDescription>{gearItem.name}</DialogDescription>
-        </DialogHeader>
-
-        <GearDialogForm
-          initialValues={{
-            id: gearItem.id,
-            name: gearItem.name,
-            gearType: gearItem.gearType,
-            serialNumber: gearItem.serialNumber ?? "",
-            barcode: gearItem.barcode ?? "",
-            status: gearItem.status,
-            condition: gearItem.condition,
-            alertRules: mapRulesForDraft(gearItem.alertRules),
-          }}
-          idPrefix={`edit-gear-${gearItem.id}`}
-          submitLabel="Save changes"
-          pendingLabel="Saving changes..."
-          scope={scope}
-          selectedType={selectedType}
-          selectedStatusFilter={selectedStatusFilter}
-          selectedCondition={selectedCondition}
-          selectedAlert={selectedAlert}
-          currentPage={currentPage}
-          gearTypeOptions={gearTypeOptions}
-          gearStatusOptions={gearStatusOptions}
-          gearConditionOptions={gearConditionOptions}
-          action={updateGearItemAction}
-        />
-      </DialogContent>
-    </Dialog>
+      <SheetContent side="right" className="flex h-full flex-col gap-0 overflow-hidden sm:max-w-xl">
+        <SheetHeader className="shrink-0 border-b">
+          <SheetTitle>Edit gear item</SheetTitle>
+          <SheetDescription>{gearItem.name}</SheetDescription>
+        </SheetHeader>
+        {editForm}
+      </SheetContent>
+    </Sheet>
   )
 }
 
@@ -852,10 +1057,13 @@ export function GearActionsMenu({
   selectedCondition,
   selectedAlert,
   currentPage,
+  loadMoreMode = false,
   gearTypeOptions,
   gearStatusOptions,
   gearConditionOptions,
   canManageGear,
+  surface = "sheet",
+  triggerClassName,
 }: {
   gearItem: EditableGearItem
   scope: NavigationScope
@@ -864,17 +1072,27 @@ export function GearActionsMenu({
   selectedCondition?: string
   selectedAlert?: string
   currentPage: number
+  loadMoreMode?: boolean
   gearTypeOptions: GearTypeOption[]
   gearStatusOptions: GearStatusOption[]
   gearConditionOptions: GearConditionOption[]
   canManageGear: boolean
+  surface?: GearFormSurface
+  triggerClassName?: string
 }) {
   const [isEditOpen, setIsEditOpen] = React.useState(false)
+  const [isRetiring, setIsRetiring] = React.useState(false)
   const retireFormRef = React.useRef<HTMLFormElement | null>(null)
 
   if (!canManageGear) {
     return (
-      <Button variant="ghost" size="icon" disabled aria-label="More actions unavailable">
+      <Button
+        variant="ghost"
+        size="icon"
+        disabled
+        aria-label="More actions unavailable"
+        className={triggerClassName}
+      >
         <MoreHorizontalIcon className="size-4" />
       </Button>
     )
@@ -884,10 +1102,23 @@ export function GearActionsMenu({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger
-          render={<Button type="button" variant="ghost" size="icon" />}
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              disabled={isRetiring}
+              aria-busy={isRetiring}
+              className={triggerClassName}
+            />
+          }
           aria-label={`Open actions for ${gearItem.name}`}
         >
-          <MoreHorizontalIcon className="size-4" />
+          {isRetiring ? (
+            <Loader2Icon className="size-4 animate-spin" />
+          ) : (
+            <MoreHorizontalIcon className="size-4" />
+          )}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem
@@ -899,11 +1130,15 @@ export function GearActionsMenu({
           </DropdownMenuItem>
           {gearItem.status !== "retired_spare" ? (
             <DropdownMenuItem
+              disabled={isRetiring}
               onClick={() => {
+                setIsRetiring(true)
                 retireFormRef.current?.requestSubmit()
               }}
+              className="gap-2"
             >
-              Mark Retired/Spare
+              {isRetiring ? <Loader2Icon className="size-4 animate-spin" /> : null}
+              {isRetiring ? "Retiring..." : "Mark Retired/Spare"}
             </DropdownMenuItem>
           ) : null}
         </DropdownMenuContent>
@@ -928,6 +1163,9 @@ export function GearActionsMenu({
           {currentPage > 1 ? (
             <input type="hidden" name="scopePage" value={String(currentPage)} />
           ) : null}
+          {loadMoreMode && currentPage > 1 ? (
+            <input type="hidden" name="scopeLoadMore" value="1" />
+          ) : null}
         </form>
       ) : null}
 
@@ -939,11 +1177,13 @@ export function GearActionsMenu({
         selectedCondition={selectedCondition}
         selectedAlert={selectedAlert}
         currentPage={currentPage}
+        loadMoreMode={loadMoreMode}
         gearTypeOptions={gearTypeOptions}
         gearStatusOptions={gearStatusOptions}
         gearConditionOptions={gearConditionOptions}
         open={isEditOpen}
         onOpenChange={setIsEditOpen}
+        surface={surface}
         hideTrigger
       />
     </>

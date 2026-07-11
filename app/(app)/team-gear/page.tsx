@@ -1,29 +1,28 @@
-import { CreateGearDialog } from "@/features/gear/gear-form-dialogs"
+import { Suspense } from "react"
+
+import { TeamGearResultsSkeleton } from "@/components/shared/page-skeletons"
 import { GearFeedback } from "@/features/gear/gear-feedback"
 import { TeamGearTable } from "@/features/gear/gear-table"
-import { TeamGearToolbar } from "@/features/gear/team-gear-toolbar"
+import { TeamGearResultsRetry } from "@/features/gear/team-gear-results-retry"
+import { TeamGearRouteShell } from "@/features/gear/team-gear-route-shell"
 import {
-  getTeamGearPageData,
+  getTeamGearChromeData,
+  getTeamGearResultsData,
+  type TeamGearChromeData,
+  type TeamGearResultsData,
 } from "@/features/gear/data"
-import {
-  TEAM_GEAR_ALERT_STATE_OPTIONS,
-  TEAM_GEAR_CONDITION_OPTIONS,
-  TEAM_GEAR_STATUS_OPTIONS,
-  TEAM_GEAR_TYPE_OPTIONS,
-  type TeamGearListItem,
-} from "@/features/gear/shared"
+import { resolveTeamGearListRequest } from "@/features/gear/list-route-state.mjs"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageTeamSessions } from "@/lib/auth/capabilities"
-import {
-  NAVIGATION_SCOPE_ORG_QUERY_KEY,
-  NAVIGATION_SCOPE_TEAM_QUERY_KEY,
-} from "@/lib/navigation/constants"
 import {
   getSingleSearchParamValue,
   resolveNavigationScope,
 } from "@/lib/navigation/scope"
 
 type TeamGearSearchParams = Promise<Record<string, string | string[] | undefined>>
+type ResolvedTeamGearScope = NonNullable<
+  Awaited<ReturnType<typeof resolveNavigationScope>>["scope"]
+>
 
 function getStatusMessage(status: string | undefined): string | null {
   if (status === "created") {
@@ -61,54 +60,65 @@ function getErrorMessage(error: string | undefined): string | null {
   return null
 }
 
-function parseRequestedPage(value: string | undefined): number {
-  if (!value) {
-    return 1
+function getEmptyTeamGearResults(input: {
+  requestedLoadMoreMode: boolean
+  requestedPage: number
+}): TeamGearResultsData {
+  return {
+    gearItems: [],
+    currentPage: input.requestedPage,
+    pageCount: 1,
+    hasPreviousPage: input.requestedLoadMoreMode ? false : input.requestedPage > 1,
+    hasNextPage: false,
+    loadMoreMode: input.requestedLoadMoreMode,
   }
-
-  const parsed = Number.parseInt(value, 10)
-
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    return 1
-  }
-
-  return Math.floor(parsed)
 }
 
-function buildTeamGearFiltersHref(input: {
-  scope: {
-    activeOrgId: string
-    activeTeamId: string | null
-  }
-  type?: string
-  statusFilter?: string
-  condition?: string
-  alert?: string
-}): string {
-  const params = new URLSearchParams()
-  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.scope.activeOrgId)
+async function TeamGearResultsContent(input: {
+  activeTeamId: string | null
+  canManageGear: boolean
+  chromeData: TeamGearChromeData
+  noTeamSelected: boolean
+  requestedLoadMoreMode: boolean
+  requestedPage: number
+  scope: ResolvedTeamGearScope
+}) {
+  let resultsData: TeamGearResultsData
 
-  if (input.scope.activeTeamId) {
-    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scope.activeTeamId)
-  }
-
-  if (input.type) {
-    params.set("type", input.type)
-  }
-
-  if (input.statusFilter) {
-    params.set("statusFilter", input.statusFilter)
-  }
-
-  if (input.condition) {
-    params.set("condition", input.condition)
+  try {
+    resultsData = input.activeTeamId
+      ? await getTeamGearResultsData({
+          activeTeamId: input.activeTeamId,
+          chromeData: input.chromeData,
+          page: input.requestedPage,
+          accumulatePages: input.requestedLoadMoreMode,
+        })
+      : getEmptyTeamGearResults({
+          requestedLoadMoreMode: input.requestedLoadMoreMode,
+          requestedPage: input.requestedPage,
+        })
+  } catch {
+    return <TeamGearResultsRetry />
   }
 
-  if (input.alert) {
-    params.set("alert", input.alert)
-  }
-
-  return `/team-gear?${params.toString()}`
+  return (
+    <TeamGearTable
+      gearItems={resultsData.gearItems}
+      canManageGear={input.canManageGear}
+      noTeamSelected={input.noTeamSelected}
+      scope={input.scope}
+      selectedType={input.chromeData.selectedType}
+      selectedStatusFilter={input.chromeData.selectedStatus}
+      selectedCondition={input.chromeData.selectedCondition}
+      selectedAlert={input.chromeData.selectedAlertState}
+      currentPage={resultsData.currentPage}
+      pageCount={resultsData.pageCount}
+      hasPreviousPage={resultsData.hasPreviousPage}
+      hasNextPage={resultsData.hasNextPage}
+      loadMoreMode={resultsData.loadMoreMode}
+      hideChrome
+    />
+  )
 }
 
 export default async function TeamGearPage({
@@ -121,13 +131,28 @@ export default async function TeamGearPage({
 
   const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
-  const requestedType = getSingleSearchParamValue(resolvedSearchParams.type)
-  const requestedStatusFilter = getSingleSearchParamValue(resolvedSearchParams.statusFilter)
-  const requestedCondition = getSingleSearchParamValue(resolvedSearchParams.condition)
-  const requestedAlert = getSingleSearchParamValue(resolvedSearchParams.alert)
-  const requestedPage = parseRequestedPage(
-    getSingleSearchParamValue(resolvedSearchParams.page),
-  )
+  const {
+    requestedAlert,
+    requestedCondition,
+    requestedLoadMoreMode,
+    requestedPage,
+    requestedStatusFilter,
+    requestedType,
+  } = resolveTeamGearListRequest({
+    typeParam: getSingleSearchParamValue(resolvedSearchParams.type),
+    statusFilterParam: getSingleSearchParamValue(resolvedSearchParams.statusFilter),
+    conditionParam: getSingleSearchParamValue(resolvedSearchParams.condition),
+    alertParam: getSingleSearchParamValue(resolvedSearchParams.alert),
+    pageParam: getSingleSearchParamValue(resolvedSearchParams.page),
+    loadMoreParam: getSingleSearchParamValue(resolvedSearchParams.loadMore),
+  }) as {
+    requestedAlert?: string
+    requestedCondition?: string
+    requestedLoadMoreMode: boolean
+    requestedPage: number
+    requestedStatusFilter?: string
+    requestedType?: string
+  }
 
   const statusMessage = getStatusMessage(status)
   const errorMessage = getErrorMessage(error)
@@ -160,36 +185,12 @@ export default async function TeamGearPage({
       teamId: activeTeamId,
     })
 
-  let gearItems: TeamGearListItem[] = []
-  let selectedType: string | undefined = requestedType
-  let selectedStatusFilter: string | undefined = requestedStatusFilter
-  let selectedCondition: string | undefined = requestedCondition
-  let selectedAlert: string | undefined = requestedAlert
-  let currentPage = requestedPage
-  let hasPreviousPage = requestedPage > 1
-  let hasNextPage = false
-
-  if (activeTeamId) {
-    const pageData = await getTeamGearPageData({
-      activeTeamId,
-      selectedType: requestedType,
-      selectedStatus: requestedStatusFilter,
-      selectedCondition: requestedCondition,
-      selectedAlertState: requestedAlert,
-      page: requestedPage,
-    })
-
-    gearItems = pageData.gearItems
-    selectedType = pageData.selectedType
-    selectedStatusFilter = pageData.selectedStatus
-    selectedCondition = pageData.selectedCondition
-    selectedAlert = pageData.selectedAlertState
-    currentPage = pageData.currentPage
-    hasPreviousPage = pageData.hasPreviousPage
-    hasNextPage = pageData.hasNextPage
-  }
-
-  const createDisabled = noTeamSelected || !canManageGear
+  const chromeData = getTeamGearChromeData({
+    selectedType: requestedType,
+    selectedStatus: requestedStatusFilter,
+    selectedCondition: requestedCondition,
+    selectedAlertState: requestedAlert,
+  })
 
   return (
     <div className="space-y-6">
@@ -214,134 +215,26 @@ export default async function TeamGearPage({
         </section>
       ) : null}
 
-      <TeamGearTable
-        gearItems={gearItems}
+      <TeamGearRouteShell
         canManageGear={canManageGear}
+        chromeData={chromeData}
+        currentPage={requestedPage}
+        loadMoreMode={requestedLoadMoreMode}
         noTeamSelected={noTeamSelected}
-        toolbar={
-          <TeamGearToolbar
-            selectedType={selectedType ?? ""}
-            selectedStatus={selectedStatusFilter ?? ""}
-            selectedCondition={selectedCondition ?? ""}
-            selectedAlert={selectedAlert ?? ""}
-            disabled={noTeamSelected}
-            typeOptions={[
-              {
-                value: "",
-                label: "All",
-                href: buildTeamGearFiltersHref({
-                  scope,
-                  statusFilter: selectedStatusFilter,
-                  condition: selectedCondition,
-                  alert: selectedAlert,
-                }),
-              },
-              ...TEAM_GEAR_TYPE_OPTIONS.map((option) => ({
-                value: option.value,
-                label: option.label,
-                href: buildTeamGearFiltersHref({
-                  scope,
-                  type: option.value,
-                  statusFilter: selectedStatusFilter,
-                  condition: selectedCondition,
-                  alert: selectedAlert,
-                }),
-              })),
-            ]}
-            statusOptions={[
-              {
-                value: "",
-                label: "All",
-                href: buildTeamGearFiltersHref({
-                  scope,
-                  type: selectedType,
-                  condition: selectedCondition,
-                  alert: selectedAlert,
-                }),
-              },
-              ...TEAM_GEAR_STATUS_OPTIONS.map((option) => ({
-                value: option.value,
-                label: option.label,
-                href: buildTeamGearFiltersHref({
-                  scope,
-                  type: selectedType,
-                  statusFilter: option.value,
-                  condition: selectedCondition,
-                  alert: selectedAlert,
-                }),
-              })),
-            ]}
-            conditionOptions={[
-              {
-                value: "",
-                label: "All",
-                href: buildTeamGearFiltersHref({
-                  scope,
-                  type: selectedType,
-                  statusFilter: selectedStatusFilter,
-                  alert: selectedAlert,
-                }),
-              },
-              ...TEAM_GEAR_CONDITION_OPTIONS.map((option) => ({
-                value: option.value,
-                label: option.label,
-                href: buildTeamGearFiltersHref({
-                  scope,
-                  type: selectedType,
-                  statusFilter: selectedStatusFilter,
-                  condition: option.value,
-                  alert: selectedAlert,
-                }),
-              })),
-            ]}
-            alertOptions={[
-              {
-                value: "",
-                label: "All",
-                href: buildTeamGearFiltersHref({
-                  scope,
-                  type: selectedType,
-                  statusFilter: selectedStatusFilter,
-                  condition: selectedCondition,
-                }),
-              },
-              ...TEAM_GEAR_ALERT_STATE_OPTIONS.map((option) => ({
-                value: option.value,
-                label: option.label,
-                href: buildTeamGearFiltersHref({
-                  scope,
-                  type: selectedType,
-                  statusFilter: selectedStatusFilter,
-                  condition: selectedCondition,
-                  alert: option.value,
-                }),
-              })),
-            ]}
-            action={
-              <CreateGearDialog
-                scope={scope}
-                selectedType={selectedType}
-                selectedStatusFilter={selectedStatusFilter}
-                selectedCondition={selectedCondition}
-                selectedAlert={selectedAlert}
-                currentPage={currentPage}
-                gearTypeOptions={TEAM_GEAR_TYPE_OPTIONS}
-                gearStatusOptions={TEAM_GEAR_STATUS_OPTIONS}
-                gearConditionOptions={TEAM_GEAR_CONDITION_OPTIONS}
-                disabled={createDisabled}
-              />
-            }
-          />
-        }
         scope={scope}
-        selectedType={selectedType}
-        selectedStatusFilter={selectedStatusFilter}
-        selectedCondition={selectedCondition}
-        selectedAlert={selectedAlert}
-        currentPage={currentPage}
-        hasPreviousPage={hasPreviousPage}
-        hasNextPage={hasNextPage}
-      />
+      >
+        <Suspense fallback={<TeamGearResultsSkeleton />}>
+          <TeamGearResultsContent
+            activeTeamId={activeTeamId}
+            canManageGear={canManageGear}
+            chromeData={chromeData}
+            noTeamSelected={noTeamSelected}
+            requestedLoadMoreMode={requestedLoadMoreMode}
+            requestedPage={requestedPage}
+            scope={scope}
+          />
+        </Suspense>
+      </TeamGearRouteShell>
     </div>
   )
 }

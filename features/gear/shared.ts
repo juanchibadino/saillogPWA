@@ -3,8 +3,8 @@ import type { Database } from "@/types/database"
 export type GearType = Database["public"]["Enums"]["gear_type"]
 export type GearStatus = Database["public"]["Enums"]["gear_status"]
 export type GearCondition = Database["public"]["Enums"]["gear_condition"]
+export type TeamGearAlertState = Database["public"]["Enums"]["gear_alert_state"]
 
-export type TeamGearAlertState = "none" | "warning" | "critical"
 export type TeamGearAlertStateFilter = Exclude<TeamGearAlertState, "none"> | "none"
 
 export type TeamGearAlertRuleItem = {

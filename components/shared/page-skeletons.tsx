@@ -489,46 +489,137 @@ export function TeamVenuesPageSkeleton() {
   )
 }
 
+const TEAM_GEAR_TABLE_HEADERS = [
+  "Name",
+  "Type",
+  "Usage",
+  "Status",
+  "Condition",
+  "Alerts",
+]
+const TEAM_GEAR_TABLE_GRID_CLASS =
+  "grid grid-cols-[1.15fr_0.75fr_1fr_0.75fr_0.8fr_0.9fr_3rem] items-center gap-4"
+
+export function TeamGearChromeSkeleton() {
+  return (
+    <section className="flex items-center justify-between gap-3">
+      <h1 className="min-w-0 text-2xl font-semibold tracking-tight md:hidden">
+        Gear
+      </h1>
+      <h2 className="hidden text-lg font-semibold md:block">Gear</h2>
+
+      <div className="flex shrink-0 items-center justify-end gap-2 md:w-auto">
+        <button
+          type="button"
+          disabled
+          className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-secondary text-secondary-foreground opacity-70 md:hidden"
+          aria-label="Loading gear filters"
+        >
+          <Settings2Icon className="size-5" />
+        </button>
+
+        <div className="hidden items-center justify-end gap-2 md:flex">
+          <Skeleton className="h-8 w-28" />
+          <Skeleton className="h-8 w-28" />
+          <Skeleton className="h-8 w-28" />
+          <Skeleton className="h-8 w-28" />
+          <button
+            type="button"
+            disabled
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium text-muted-foreground opacity-70"
+          >
+            <PlusIcon className="size-4" />
+            New
+          </button>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        disabled
+        className="mobile-floating-action inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground opacity-70 shadow-lg shadow-black/20 md:hidden"
+        aria-label="Loading new gear action"
+      >
+        <PlusIcon className="size-6" />
+      </button>
+    </section>
+  )
+}
+
+export function TeamGearResultsSkeleton() {
+  return (
+    <section className="space-y-4">
+      <div className="space-y-2 md:hidden">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <GradientCard key={`team-gear-mobile-row-${index}`} className="px-3 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="space-y-1">
+                  <Skeleton className="h-4 w-36" />
+                  <Skeleton className="h-3 w-44" />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+                <Skeleton className="h-5 w-24" />
+                <Skeleton className="h-3 w-40" />
+              </div>
+              <Skeleton className="h-11 w-11 shrink-0" />
+            </div>
+          </GradientCard>
+        ))}
+        <div className="pb-4 pt-3">
+          <Skeleton className="h-11 w-full" />
+        </div>
+      </div>
+
+      <GradientCard className="hidden overflow-hidden p-0 md:block">
+        <div
+          className={`${TEAM_GEAR_TABLE_GRID_CLASS} bg-muted/40 px-4 py-3 text-sm font-medium text-muted-foreground`}
+        >
+          {TEAM_GEAR_TABLE_HEADERS.map((header) => (
+            <span key={`team-gear-header-${header}`} className="truncate">
+              {header}
+            </span>
+          ))}
+          <span aria-hidden="true" />
+        </div>
+        <div className="divide-y divide-border">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div
+              key={`team-gear-desktop-row-${index}`}
+              className={`${TEAM_GEAR_TABLE_GRID_CLASS} min-h-12 px-4 py-3`}
+            >
+              <Skeleton className="h-4 w-full max-w-32" />
+              <Skeleton className="h-4 w-full max-w-20" />
+              <Skeleton className="h-4 w-full max-w-24" />
+              <Skeleton className="h-4 w-full max-w-16" />
+              <Skeleton className="h-4 w-full max-w-20" />
+              <Skeleton className="h-5 w-full max-w-24" />
+              <Skeleton className="ml-auto h-8 w-8" />
+            </div>
+          ))}
+        </div>
+      </GradientCard>
+
+      <div className="hidden items-center gap-1 md:flex">
+        <Skeleton className="h-9 w-24" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-16" />
+      </div>
+    </section>
+  )
+}
+
 export function TeamGearPageSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border bg-card p-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="space-y-1">
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-9 w-48" />
-          </div>
-          <div className="space-y-1">
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-9 w-48" />
-          </div>
-          <div className="space-y-1">
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-9 w-48" />
-          </div>
-          <div className="space-y-1">
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-9 w-48" />
-          </div>
-          <Skeleton className="h-8 w-20" />
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <Skeleton className="h-6 w-20" />
-          <Skeleton className="h-8 w-24" />
-        </div>
-
-        <div className="rounded-xl border bg-card p-4">
-          <div className="space-y-3">
-            <Skeleton className="h-10 w-full" />
-            {Array.from({ length: 6 }).map((_, index) => (
-              <Skeleton key={`team-gear-row-${index}`} className="h-10 w-full" />
-            ))}
-          </div>
-        </div>
-      </div>
+      <TeamGearChromeSkeleton />
+      <TeamGearResultsSkeleton />
     </div>
   )
 }
