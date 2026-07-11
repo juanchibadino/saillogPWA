@@ -172,11 +172,6 @@ const teamNavSections: SidebarNavSection[] = [
         icon: CircleIcon,
       },
       {
-        title: "Calendar",
-        url: "/team-calendar",
-        icon: CalendarDaysIcon,
-      },
-      {
         title: "Session",
         url: "/team-sessions",
         icon: SailboatIcon,
@@ -206,6 +201,11 @@ const teamNavSections: SidebarNavSection[] = [
   {
     title: "Others",
     items: [
+      {
+        title: "Calendar",
+        url: "/team-calendar",
+        icon: CalendarDaysIcon,
+      },
       {
         title: "Reports",
         url: "/team-reports",

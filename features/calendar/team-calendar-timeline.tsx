@@ -36,9 +36,31 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Marker, MarkerContent } from "@/components/ui/marker"
 import { useIsMobile } from "@/hooks/use-mobile"
 import type { NavigationScope } from "@/lib/navigation/types"
 import { cn } from "@/lib/utils"
+
+type CalendarTimelineGapItem = Extract<TeamCalendarTimelineItem, { type: "gap" }>
+type CalendarTimelineDisplayGapItem = {
+  endDate: string
+  startDate: string
+  timelineId: string
+}
+type CalendarTimelineDisplayItem =
+  | {
+      type: "month"
+      timelineId: string
+      date: string
+    }
+  | {
+      type: "gap"
+      item: CalendarTimelineDisplayGapItem
+    }
+  | {
+      type: "day"
+      item: TeamCalendarTimelineDayItem
+    }
 
 function formatDateParts(dateKey: string): { day: string; month: string } {
   const date = new Date(`${dateKey}T00:00:00.000Z`)
@@ -75,6 +97,56 @@ function formatGapLabel(startDate: string, endDate: string): string {
   }
 
   return `(${start.day} ${start.month} ... ${end.day} ${end.month})`
+}
+
+function parseDateKey(dateKey: string): Date | null {
+  const date = new Date(`${dateKey}T00:00:00.000Z`)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function formatDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10)
+}
+
+function addCalendarDays(dateKey: string, amount: number): string {
+  const date = parseDateKey(dateKey)
+
+  if (!date) {
+    return dateKey
+  }
+
+  date.setUTCDate(date.getUTCDate() + amount)
+  return formatDateKey(date)
+}
+
+function getMonthKey(dateKey: string): string {
+  return dateKey.slice(0, 7)
+}
+
+function getMonthEndDateKey(dateKey: string): string {
+  const date = parseDateKey(dateKey)
+
+  if (!date) {
+    return dateKey
+  }
+
+  return formatDateKey(
+    new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)),
+  )
+}
+
+function formatMonthTitle(dateKey: string): string {
+  const date = new Date(`${dateKey}T00:00:00.000Z`)
+
+  if (Number.isNaN(date.getTime())) {
+    return getMonthKey(dateKey)
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    timeZone: "UTC",
+    year: "numeric",
+  }).format(date)
 }
 
 function getEventBadgeLabel(item: TeamCalendarTimelineDayItem): string {
@@ -128,11 +200,161 @@ function CalendarDateBadge({ date }: { date: string }) {
 
 function CurrentDayBadge() {
   return (
-    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
+    <span className="hidden shrink-0 items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-foreground md:inline-flex">
       <span className="size-2 rounded-full bg-emerald-500" />
       Current Day
     </span>
   )
+}
+
+function CalendarMonthTitle({ date }: { date: string }) {
+  return (
+    <Marker variant="separator" className="pt-4 text-xs font-semibold uppercase tracking-wide">
+      <MarkerContent>{formatMonthTitle(date)}</MarkerContent>
+    </Marker>
+  )
+}
+
+function splitGapByMonth(item: CalendarTimelineGapItem): CalendarTimelineDisplayGapItem[] {
+  if (item.endDate < item.startDate) {
+    return [
+      {
+        endDate: item.endDate,
+        startDate: item.startDate,
+        timelineId: item.timelineId,
+      },
+    ]
+  }
+
+  const segments: CalendarTimelineDisplayGapItem[] = []
+  let currentStartDate = item.startDate
+
+  while (currentStartDate <= item.endDate) {
+    const monthEndDate = getMonthEndDateKey(currentStartDate)
+    const segmentEndDate =
+      monthEndDate < item.endDate ? monthEndDate : item.endDate
+
+    segments.push({
+      endDate: segmentEndDate,
+      startDate: currentStartDate,
+      timelineId: `gap:${currentStartDate}:${segmentEndDate}`,
+    })
+
+    currentStartDate = addCalendarDays(segmentEndDate, 1)
+  }
+
+  return segments
+}
+
+function getMonthDisplayItems(input: {
+  date: string
+  monthKey: string | null
+}): {
+  monthItems: CalendarTimelineDisplayItem[]
+  monthKey: string
+} {
+  const monthKey = getMonthKey(input.date)
+
+  return {
+    monthKey,
+    monthItems:
+      input.monthKey === monthKey
+        ? []
+        : [
+            {
+              type: "month",
+              timelineId: `month:${monthKey}`,
+              date: input.date,
+            },
+          ],
+  }
+}
+
+function appendDayDisplayItem(input: {
+  item: TeamCalendarTimelineDayItem
+  items: CalendarTimelineDisplayItem[]
+  monthKey: string | null
+}): {
+  items: CalendarTimelineDisplayItem[]
+  monthKey: string | null
+} {
+  const month = getMonthDisplayItems({
+    date: input.item.date,
+    monthKey: input.monthKey,
+  })
+
+  return {
+    monthKey: month.monthKey,
+    items: [
+      ...input.items,
+      ...month.monthItems,
+      {
+        type: "day",
+        item: input.item,
+      },
+    ],
+  }
+}
+
+function appendGapDisplayItem(input: {
+  item: CalendarTimelineDisplayGapItem
+  items: CalendarTimelineDisplayItem[]
+  monthKey: string | null
+}): {
+  items: CalendarTimelineDisplayItem[]
+  monthKey: string | null
+} {
+  const month = getMonthDisplayItems({
+    date: input.item.startDate,
+    monthKey: input.monthKey,
+  })
+
+  return {
+    monthKey: month.monthKey,
+    items: [
+      ...input.items,
+      ...month.monthItems,
+      {
+        type: "gap",
+        item: input.item,
+      },
+    ],
+  }
+}
+
+function buildCalendarTimelineDisplayItems(
+  items: TeamCalendarTimelineItem[],
+): CalendarTimelineDisplayItem[] {
+  const result = items.reduce<{
+    items: CalendarTimelineDisplayItem[]
+    monthKey: string | null
+  }>(
+    (state, item) => {
+      if (item.type === "gap") {
+        return splitGapByMonth(item).reduce(
+          (gapState, gapItem) =>
+            appendGapDisplayItem({
+              item: gapItem,
+              items: gapState.items,
+              monthKey: gapState.monthKey,
+            }),
+          state,
+        )
+      }
+
+      return appendDayDisplayItem({
+        item,
+        items: state.items,
+        monthKey: state.monthKey,
+      })
+    },
+    {
+      items: [],
+      monthKey: null,
+    },
+  )
+
+  return result.items
 }
 
 function PresenceAvatarStack({
@@ -319,18 +541,44 @@ function EventTitle({
     <div className="flex min-w-0 items-center gap-2">
       <Badge
         variant="outline"
-        className={cn("shrink-0 rounded-md", getEventBadgeClassName(item))}
+        className={cn("hidden shrink-0 rounded-md md:inline-flex", getEventBadgeClassName(item))}
       >
         {getEventBadgeLabel(item)}
       </Badge>
-      <span className="min-w-0 truncate text-base font-semibold">
-        {item.title}
+      <div className="min-w-0">
+        <div className="min-w-0 truncate text-base font-semibold">
+          {item.title}
+          {item.venueName ? (
+            <span className="hidden font-normal text-muted-foreground md:inline">
+              , {item.venueName}
+            </span>
+          ) : null}
+        </div>
         {item.venueName ? (
-          <span className="font-normal text-muted-foreground">, {item.venueName}</span>
+          <div className="truncate text-xs font-medium text-muted-foreground md:hidden">
+            {item.venueName}
+          </div>
         ) : null}
-      </span>
+      </div>
       {isCurrentDay ? <CurrentDayBadge /> : null}
     </div>
+  )
+}
+
+function EventTypeBadge({
+  className,
+  item,
+}: {
+  className?: string
+  item: TeamCalendarTimelineDayItem
+}) {
+  return (
+    <Badge
+      variant="outline"
+      className={cn("shrink-0 rounded-md", getEventBadgeClassName(item), className)}
+    >
+      {getEventBadgeLabel(item)}
+    </Badge>
   )
 }
 
@@ -600,40 +848,45 @@ function CalendarDayCard({
           "border-emerald-500/70 ring-2 ring-emerald-500/20 dark:border-emerald-400/70 dark:ring-emerald-400/20",
       )}
     >
-      <div className="flex min-w-0 items-center gap-3">
-        <CalendarDateBadge date={item.date} />
-        <div className="min-w-0 flex-1">
-          <EventTitle isCurrentDay={isCurrentDay} item={item} />
+      <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center">
+        <div className="flex min-w-0 items-start gap-3 md:contents">
+          <CalendarDateBadge date={item.date} />
+          <div className="min-w-0 flex-1">
+            <EventTitle isCurrentDay={isCurrentDay} item={item} />
+          </div>
+          <EventTypeBadge className="mt-0.5 md:hidden" item={item} />
         </div>
 
-        <div className="shrink-0">
-          <TeamPresenceControl
-            canEditTargetPresence={canEditTargetPresence}
-            chromeData={chromeData}
-            isTargetPresent={isTargetPresent}
-            item={item}
-            onOptimisticPresenceChange={(isPresent) =>
-              setPresenceOverride(isPresent ? "present" : "absent")
-            }
-            presentMembers={presentMembers}
-            returnPath={returnPath}
-            scope={scope}
-          />
-        </div>
+        <div className="flex min-w-0 items-center justify-between gap-3 border-t border-border/70 pt-3 md:contents md:border-0 md:pt-0">
+          <div className="shrink-0">
+            <TeamPresenceControl
+              canEditTargetPresence={canEditTargetPresence}
+              chromeData={chromeData}
+              isTargetPresent={isTargetPresent}
+              item={item}
+              onOptimisticPresenceChange={(isPresent) =>
+                setPresenceOverride(isPresent ? "present" : "absent")
+              }
+              presentMembers={presentMembers}
+              returnPath={returnPath}
+              scope={scope}
+            />
+          </div>
 
-        <div className="ml-auto flex shrink-0 items-center justify-end gap-2">
-          <CalendarRowActionsMenu
-            canEditTargetPresence={canEditTargetPresence}
-            canManageCustomEvents={canManageCustomEvents}
-            chromeData={chromeData}
-            item={item}
-            onOptimisticPresenceChange={(isPresent) =>
-              setPresenceOverride(isPresent ? "present" : "absent")
-            }
-            returnPath={returnPath}
-            scope={scope}
-            surface={isMobile ? "drawer" : "sheet"}
-          />
+          <div className="ml-auto flex shrink-0 items-center justify-end gap-2">
+            <CalendarRowActionsMenu
+              canEditTargetPresence={canEditTargetPresence}
+              canManageCustomEvents={canManageCustomEvents}
+              chromeData={chromeData}
+              item={item}
+              onOptimisticPresenceChange={(isPresent) =>
+                setPresenceOverride(isPresent ? "present" : "absent")
+              }
+              returnPath={returnPath}
+              scope={scope}
+              surface={isMobile ? "drawer" : "sheet"}
+            />
+          </div>
         </div>
       </div>
     </GradientCard>
@@ -695,28 +948,43 @@ export function TeamCalendarTimeline({
     )
   }
 
+  const displayItems = buildCalendarTimelineDisplayItems(items)
+
   return (
     <section className="space-y-2">
-      {items.map((item) =>
-        item.type === "gap" ? (
-          <CalendarGapRow
-            key={item.timelineId}
-            startDate={item.startDate}
-            endDate={item.endDate}
-          />
-        ) : (
+      {displayItems.map((displayItem) => {
+        if (displayItem.type === "month") {
+          return (
+            <CalendarMonthTitle
+              key={displayItem.timelineId}
+              date={displayItem.date}
+            />
+          )
+        }
+
+        if (displayItem.type === "gap") {
+          return (
+            <CalendarGapRow
+              key={displayItem.item.timelineId}
+              startDate={displayItem.item.startDate}
+              endDate={displayItem.item.endDate}
+            />
+          )
+        }
+
+        return (
           <CalendarDayCard
-            key={item.timelineId}
+            key={displayItem.item.timelineId}
             canEditTargetPresence={canEditTargetPresence}
             canManageCustomEvents={canManageCustomEvents}
             chromeData={chromeData}
-            item={item}
+            item={displayItem.item}
             returnPath={returnPath}
             scope={scope}
             today={today}
           />
-        ),
-      )}
+        )
+      })}
     </section>
   )
 }
