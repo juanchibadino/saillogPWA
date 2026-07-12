@@ -353,7 +353,7 @@ export function MultiselectContent(
 
   return (
     <DropdownMenuContent
-      className={cn("max-h-72 w-[var(--anchor-width)] overflow-y-auto p-1", className)}
+      className={cn("max-h-72 w-[var(--anchor-width)] overflow-y-auto p-1.5 sm:p-1", className)}
       align="start"
       sideOffset={6}
       {...contentProps}
@@ -436,7 +436,7 @@ export function MultiselectItem(
 
         onCheckedChange?.(nextChecked, eventDetails)
       }}
-      className={cn("pr-2", className)}
+      className={cn("min-h-11 py-2.5 pr-2 text-base sm:min-h-0 sm:py-1 sm:text-sm", className)}
       {...itemProps}
     >
       {children}
