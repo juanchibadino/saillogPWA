@@ -24,21 +24,28 @@ Pattern documents reviewed:
   resolves navigation scope from the active org/team search params.
 - Missing organization scope and missing team scope render inline warning
   panels instead of attempting to load team data.
-- When an active team exists, the route loads the main dashboard payload in one
-  `Promise.all()`:
-  - `getTeamSessionsPageData({ page: 1 })`
-  - `getTeamCampsPageData({ page: 1 })`
+- When an active team exists, the route starts the dashboard data promises after
+  scope resolution, then streams them through nested server `Suspense`
+  boundaries:
+  - `getTeamHomeLatestSessions({ limit: 5 })`
+  - `getTeamHomeLatestCamps({ limit: 5 })`
   - `getTeamHomeLatestVenues({ limit: 5 })`
   - `getTeamHomeTeamMembers()`
   - `getTeamHomeKpis()`
 - The final UI shows four KPI cards, Latest Sessions, Latest Camps, Latest
   Venues, a static sailing-class card, and Team Members.
 - The route-level `loading.tsx` renders `TeamHomePageSkeleton`, which mirrors
-  the current dashboard shape closely enough for cold direct entry.
-- The shared app header owns the visible `Team Home` title, so the route does
-  not duplicate a page-level H1.
-- The route currently has no nested `Suspense` split, no section-level retry,
-  no Team Home timing logs, and no dedicated lightweight latest-items loader.
+  the current dashboard section skeletons for cold direct entry.
+- The shared app header owns the visible page title and shows the active team
+  name on `/team-home`, so the route does not duplicate a page-level H1.
+- The route now emits `team_home_timing` logs for scope and each dashboard data
+  section.
+- KPI totals prefer a database-side aggregate RPC instead of loading every
+  relevant camp/session row in application code. If the Supabase schema cache
+  does not know the RPC yet, Team Home falls back to the previous row-based
+  calculation so the dashboard does not crash while the migration is pending.
+- The route has nested server `Suspense` splits for KPI cards, latest activity,
+  venues, and roster sections. It does not yet have section-level retry.
 
 ### Current speed verdict
 
@@ -46,27 +53,31 @@ The perceived loading is decent today. The dashboard is not doing client-side
 overfetching, and the main server reads are parallelized after scope is known.
 The skeleton also gives a useful cold-load shape.
 
-The main issue is not immediate visual polish. It is that Team Home borrows
-full list-route loaders for a summary dashboard. That means the home page can
-pay for list chrome, exact counts, pagination metadata, session-count reads,
-and larger page sizes even though it only renders five sessions and five camps.
+The main issue is not immediate visual polish. The latest Sessions and Camps
+sections now use dedicated summary loaders instead of full list-route loaders,
+KPI totals now prefer an aggregate RPC with a targeted migration-bridge fallback,
+and the visible dashboard sections now sit behind nested server streaming
+boundaries. The remaining performance pressure is live proof: the Step 3
+migration must be applied to the target database and the `team_home_timing`
+phases should be compared on realistic team data.
 
 ## Scorecard
 
 | Category | Score | Current result |
 | --- | ---: | --- |
-| Performance, RES-style proxy | 3.9/5 | Fast enough for current data because the route runs the dashboard reads in parallel and has a mirrored route skeleton. The weakness is payload shape: Team Home uses full Sessions/Camps page loaders, exact counts, and KPI reads that scale with all team venues, camps, and sessions. The slowest dashboard query blocks the whole page body. |
-| UI consistency | 4.0/5 | The dashboard uses the shared `GradientCard` visual language and the header is owned by app chrome. The card layout is clear on desktop and compact on mobile. Remaining gaps are mostly mobile control sizing on small `View All` actions and the lack of section-level loading states if one area is slow. |
-| Code tidiness | 3.6/5 | The route is understandable, typed, and server-first, but `page.tsx` owns a lot of formatting, link building, UI rendering, and local summary logic. `features/team-home/data.ts` still carries unused mock-data types and fixtures beside live data helpers. |
-| Scalability | 3.2/5 | Latest sessions and camps are bounded only after full list loaders return. Camps load up to 25 rows before slicing to five; Sessions load 10 before slicing to five. KPIs fetch all relevant camp IDs and all session `net_time_minutes` rows to compute totals in application code. This is acceptable for small teams but will become the first Team Home bottleneck. |
-| Best practices | 3.8/5 | Auth, scope, server-first reads, typed helpers, scoped links, and route-level loading are solid. Missing pieces versus mature Sailog routes are split dashboard sections, local retry, instrumentation, and dedicated small query contracts for summary cards. |
-| Modularity | 3.3/5 | Team Home has a small feature data module, but the route reuses unrelated list-page data contracts and keeps most presentation pieces inline. There is no `TeamHomeRouteShell` or section component split yet. That is fine while the screen is simple, but not if more dashboard modules are added. |
+| Performance, RES-style proxy | 4.4/5 | Fast enough for current data because the route runs the dashboard reads in parallel, has a mirrored route skeleton, logs per-section timing, uses bounded Team Home summary loaders for latest Sessions and Camps, computes KPI totals through one aggregate RPC when available, and now streams dashboard sections behind nested boundaries. Remaining pressure is applying the KPI migration in every target database and capturing live timing proof. |
+| UI consistency | 4.4/5 | The dashboard uses the shared `GradientCard` visual language and the header is owned by app chrome. The header now names the active team on Team Home, the card layout is clear on desktop and compact on mobile, route-level and section skeletons mirror the visible KPI, latest activity, venues, and roster areas, mobile `View All` actions now meet the 44px target, and roster roles read as badges instead of disabled buttons. |
+| Code tidiness | 3.8/5 | The route is understandable, typed, and server-first, with section components now separated inside `page.tsx`. `features/team-home/data.ts` still carries unused mock-data types and fixtures beside live data helpers, and the route file remains large enough that a future extraction to `features/team-home/` would be reasonable. |
+| Scalability | 4.0/5 | Latest Sessions and Camps no longer pay for exact counts, page metadata, mutation chrome, or visible-camp session counts. KPIs no longer fetch all relevant camp IDs and session `net_time_minutes` rows into application code once the aggregate RPC exists in the target database. The temporary schema-cache fallback still uses the old row path only to avoid a hard runtime failure while the migration is pending. |
+| Best practices | 4.3/5 | Auth, scope, server-first reads, typed helpers, scoped links, route-level loading, Team Home timing logs, dedicated latest-item query contracts, aggregate-oriented KPI contracts, and nested dashboard streaming are solid. Missing piece versus mature Sailog routes is local section retry. |
+| Modularity | 3.7/5 | Team Home has a small feature data module and route-local section components for KPI cards, latest activity, venues, sailing class, and roster. This is enough for the current screen, but further dashboard growth should move the section components under `features/team-home/`. |
 | Security | 4.4/5 | The route requires authenticated access and resolves scoped org/team state before data reads. Data access remains RLS/server-backed. Remaining security work is indirect: if dedicated Team Home API slices are added later, they must repeat the same auth, org, team, and membership checks instead of trusting client scope. |
 
-Overall: 3.8/5. Team Home feels reasonably fast now, but it is not yet on the
-same loading architecture level as the mature Team Sessions, Team Camps, and
-Team Venues list routes. The next improvement should be narrow data contracts,
-not a visual redesign.
+Overall: 4.3/5. Team Home feels reasonably fast now and has the same basic
+server streaming posture as the mature Team Sessions, Team Camps, and Team
+Venues work. The next improvement should be live timing comparison after
+applying the KPI RPC migration, then local retry only if real failures justify
+it.
 
 ## Current Architecture
 
@@ -75,9 +86,8 @@ Entry points:
 - `app/(app)/team-home/page.tsx`
 - `app/(app)/team-home/loading.tsx`
 - `components/shared/page-skeletons.tsx`
+- `features/team-home/timing.ts`
 - `features/team-home/data.ts`
-- `features/sessions/data.ts`
-- `features/camps/data.ts`
 - `features/venues/navigation.ts`
 - `features/camps/navigation.ts`
 - `features/sessions/navigation.ts`
@@ -90,21 +100,32 @@ Data behavior:
   URL scope params and authenticated context.
 - If `navigation.scope` is missing, the page returns a warning panel.
 - If `scope.activeTeamId` is null, the page returns a team-selection warning.
-- With an active team, the route loads all visible dashboard sections together.
-- Latest Sessions are sourced through `getTeamSessionsPageData()` and then
-  sliced to five rows.
-- Latest Camps are sourced through `getTeamCampsPageData()` and then sliced to
-  five rows.
+- With an active team, the route starts all visible dashboard section promises
+  together, but the page renders them through nested `Suspense` boundaries.
+- Latest Sessions are sourced through `getTeamHomeLatestSessions()`, which
+  reads scoped team venue IDs, camp IDs/names, the latest five sessions, and
+  venue names for only the visible session rows.
+- Latest Camps are sourced through `getTeamHomeLatestCamps()`, which reads
+  scoped team venue IDs, the latest five camps, and venue names for only those
+  visible camps.
 - Latest Venues use a Team Home specific helper and are already limited to
   five team venue links.
 - Team Members load all active team memberships, then fetch matching profiles.
-- KPIs load all team venues, all camps under those team venues, then all session
-  `net_time_minutes` rows for those camps to compute totals and averages.
+- KPIs call `get_team_home_kpi_totals`, which returns total camps, total
+  sessions, summed net time minutes, and average net time minutes from the
+  database. If Supabase returns the known missing-RPC schema-cache error, the
+  helper logs `team_home_kpi_totals_rpc_missing_fallback` and computes the same
+  labels through the previous row-based path.
+- `features/team-home/timing.ts` logs `team_home_timing` for `scope`,
+  `latest_sessions`, `latest_camps`, `latest_venues`, `team_members`, and
+  `kpis`.
 
 UI behavior:
 
-- The shared app header renders `Team Home` for this pathname.
+- On `/team-home`, the shared app header title resolves to the active team name.
 - KPI cards render as a two-column mobile grid and four-column desktop grid.
+- KPI cards, latest activity, latest venues, and roster each have their own
+  section skeleton fallback.
 - Latest Sessions, Camps, and Venues render as dashboard list cards with scoped
   links to their full routes and details.
 - Current Camp and Venue badges are derived from whether today's UTC date falls
@@ -118,19 +139,25 @@ Matches:
 
 - The route has `app/(app)/team-home/loading.tsx`.
 - The loading state uses `TeamHomePageSkeleton`.
-- The skeleton broadly mirrors the KPI, list-card, sailing-card, and roster
-  layout.
+- The route-level skeleton mirrors the streamed KPI, latest activity, venues,
+  sailing-card, and roster skeleton shapes instead of showing a separate old
+  page-title placeholder first.
 - Auth and scope are resolved server-side before scoped data is read.
 - Data reads are parallelized after scope resolution.
+- The route emits per-section timing logs so the next data-contract change can
+  be based on real slow-section evidence.
+- Latest Sessions and Camps now use bounded Team Home summary loaders instead
+  of full list-route loaders.
+- KPI totals now prefer a database-side aggregate RPC, with a targeted fallback
+  only for the missing-RPC schema-cache state.
+- KPI cards, latest activity, venues, and roster now stream through nested
+  server `Suspense` boundaries while the route-level skeleton remains available
+  for direct cold entry.
 
 Gaps:
 
-- The whole route body waits for the slowest dashboard data promise.
-- There is no nested `Suspense` boundary for KPI, latest activity, venues, or
-  roster sections.
 - There is no section-level retry. A failure in one dashboard helper can
   collapse the full page response.
-- There is no Team Home specific timing log to identify the slow section.
 - The route does not use cache-first warm navigation from
   `CORE_USER_PAGES_FEELS_FAST_PLAN.md`, and Team Home is not listed in that
   current plan.
@@ -143,17 +170,16 @@ Matches:
 - Cards are compact and stacked naturally.
 - Row links have enough vertical padding to be tappable in normal data states.
 - Empty states remain inside the relevant card section.
+- Mobile `View All` actions render as `h-11` footer links so they do not crowd
+  card titles.
+- Team Members role labels use compact badge styling instead of button variants.
+- Mobile now gets the same section skeletons as desktop once the route shell is
+  available. A direct cold route entry still uses the full-page skeleton first.
 
 Gaps:
 
-- The `View All` links use small outline button sizing inside card headers.
-  For strict mobile parity, these should become `h-11` touch targets or move to
-  a mobile-friendly card footer/action row.
-- The Team Members role badge is styled with button variants even though it is
-  not interactive. This is visually acceptable but can read like a disabled
-  action.
-- There is no mobile-specific loading split for slow sections. A cold load uses
-  the full-page skeleton until all dashboard data is ready.
+- The route-level full-page skeleton is intentionally broad and does not mirror
+  every mobile footer action detail.
 
 ## Desktop UI Standards Comparison
 
@@ -167,44 +193,44 @@ Matches:
 
 Gaps:
 
-- The card sections are all rendered by one large server component, so there is
-  no mounted shell plus deferred result area like the mature list routes.
+- The card sections now render as route-local server components behind nested
+  `Suspense` boundaries.
 - There is no hover/focus prefetch on dashboard detail links. This is not
   critical, but the list routes already use prefetch for common detail
   navigation.
 
 ## Data And Performance Risks
 
-1. Reused Sessions loader overfetches for Team Home.
-   `getTeamSessionsPageData()` loads Sessions chrome, counts matching sessions,
-   resolves pagination, loads up to `TEAM_SESSIONS_PAGE_SIZE` rows, and returns
-   metadata. Team Home only uses the first five session rows.
+1. Live before/after timing comparison is still operational.
+   The `team_home_timing` phases are in place, and the KPI aggregate RPC is now
+   implemented. The before/after comparison must be captured against realistic
+   team data after the migration is applied to the target database. Until that
+   migration exists in the running Supabase project, the route uses the
+   row-based fallback to avoid crashing.
 
-2. Reused Camps loader overfetches for Team Home.
-   `getTeamCampsPageData()` loads Camps chrome, exact counts, up to
-   `TEAM_CAMPS_PAGE_SIZE` rows, and session counts for visible camps. Team Home
-   only renders the first five camp rows and does not display session counts.
+2. Latest Sessions still needs all camp IDs for the team.
+   This is much lighter than the previous full list-loader path, but a very
+   large team could still benefit from a database-side scoped latest-sessions
+   query or RPC.
 
-3. KPI aggregation is row-based.
-   `getTeamHomeKpis()` loads all team venue IDs, all matching camp IDs, and all
-   session net-time values. This is simple and correct, but it is the likely
-   long-term scale bottleneck.
-
-4. Roster is unbounded.
+3. Roster is unbounded.
    Loading all active memberships is probably fine for normal sailing teams.
    If organizations later support large support staffs, the roster card should
    limit visible members and link to Members.
 
-5. Failure isolation is coarse.
-   Because the dashboard payload is assembled before render, a single failed
-   helper can prevent otherwise healthy cards from rendering.
+4. Failure isolation is still coarse.
+   The route now streams section loading independently, but there is no local
+   section retry/error boundary yet. A thrown dashboard helper can still bubble
+   to the route-level error surface.
 
 ## Recommended Change Order
 
 ### Step 1 - Add Team Home timing logs
 
-Add a small `features/team-home/list-timing.ts` or `features/team-home/timing.ts`
-with phases for:
+Status: implemented on 2026-07-12 through
+`features/team-home/timing.ts` and wrappers in `app/(app)/team-home/page.tsx`.
+
+The route now logs these phases:
 
 - `scope`
 - `latest_sessions`
@@ -213,31 +239,35 @@ with phases for:
 - `team_members`
 - `kpis`
 
-This should come first because the current experience is already decent. The
-goal is to identify the real slow section before changing architecture.
+This came first because the current experience is already decent. The goal is
+to identify the real slow section before changing architecture.
 
 ### Step 2 - Replace broad list loaders with Team Home summary loaders
 
-Add dedicated helpers in `features/team-home/data.ts`:
+Status: implemented on 2026-07-12 through dedicated helpers in
+`features/team-home/data.ts`:
 
 - `getTeamHomeLatestSessions({ activeTeamId, limit: 5 })`
 - `getTeamHomeLatestCamps({ activeTeamId, limit: 5 })`
 
-These should return only the fields Team Home renders and should avoid:
+These return only the fields Team Home renders and avoid:
 
 - exact list counts;
 - page count metadata;
 - mutation/create option chrome;
 - session counts that Team Home does not display.
 
-This is the highest-value performance change because it keeps the UI exactly
+This was the highest-value performance change because it kept the UI exactly
 the same while removing summary-page overfetch.
 
 ### Step 3 - Make KPIs aggregate-oriented
 
-Keep the four current KPI labels, but stop fetching every session row when team
-data grows. Prefer a database-side aggregate through an RPC or narrowly scoped
-query contract that returns:
+Status: implemented on 2026-07-12 through
+`supabase/migrations/038_team_home_kpi_totals.sql`,
+`getTeamHomeKpis()`, and the generated database function type.
+
+The four current KPI labels are unchanged, but Team Home no longer fetches every
+session row when team data grows. The database-side RPC returns:
 
 - total camps;
 - total sessions;
@@ -246,59 +276,83 @@ query contract that returns:
 
 The Server Component can keep formatting the returned numbers.
 
+Live timing note: this code change removes the row-based KPI scale weakness once
+the migration is applied. A targeted row-based fallback remains for the known
+missing-RPC schema-cache error so the app stays usable during rollout. The
+actual before/after `team_home_timing` comparison should be captured after the
+migration is applied to the target database and an authenticated `/team-home`
+request is run against realistic team data.
+
 ### Step 4 - Split slow dashboard sections only if timing proves it
 
-If timing logs show one section blocks the route, split Team Home into stable
-server chrome plus nested deferred sections:
+Status: implemented on 2026-07-12 as a conservative structural split after the
+Step 4 request. The route now keeps auth/scope and static chrome stable, starts
+all section promises in parallel, and renders nested deferred sections for:
 
 - KPI cards boundary;
 - latest activity boundary;
 - venues boundary;
 - roster boundary.
 
-Keep the current route-level `TeamHomePageSkeleton` for direct cold entry. Use
-section skeletons inside the dashboard only when one section is demonstrably
-slower than the rest.
+The current route-level `TeamHomePageSkeleton` is still used for direct cold
+entry. Section skeletons are only inside the dashboard after the route shell is
+available.
+
+Measurement note: the split is implemented, but the original timing-proof
+condition is still pending live verification because the Step 3 RPC migration
+must be applied to the database used by the app before collecting realistic
+before/after `team_home_timing` logs.
 
 ### Step 5 - Mobile action polish
 
-If Team Home gets a UI pass, make mobile card actions match the 44px standard:
+Status: implemented on 2026-07-12 in `app/(app)/team-home/page.tsx`.
 
-- promote `View All` actions to `h-11` on mobile, or place them in a card
-  footer where the larger target does not crowd the title;
-- keep role badges visually badge-like instead of button-like;
-- preserve the current compact dashboard density.
+Mobile card actions now match the 44px standard:
+
+- `View All` actions stay compact in card headers on desktop.
+- On mobile, `View All` actions move to card footers and render as full-width
+  `h-11` links.
+- Team Members role labels use badge styling instead of `buttonVariants()`.
+- The dashboard keeps the same compact card density.
 
 ## What Not To Change Yet
 
 - Do not redesign Team Home into a table/list route. It is a dashboard landing
   surface, and the current card composition is appropriate.
-- Do not add client cache-first behavior before Step 1 and Step 2. The current
-  route is already acceptable, and narrower server data contracts are simpler
-  than adding warm-cache complexity.
+- Do not add client cache-first behavior unless timing proves it is needed. The
+  current route is already acceptable, and narrower server data contracts are
+  simpler than adding warm-cache complexity.
 - Do not move auth, scope, or membership checks into client code.
 - Do not make the static sailing-class card dynamic until there is a real team
   sailing-class model.
 
 ## Next Engineering Priority
 
-Implement Step 1 and Step 2 together:
+Apply the Step 3 migration, capture live timings, then add local retry only if
+the logs or real failures justify it:
 
-1. Add Team Home timing instrumentation around the current five dashboard
-   reads.
-2. Add dedicated latest Sessions and latest Camps summary helpers.
-3. Update `app/(app)/team-home/page.tsx` to use the summary helpers instead of
-   `getTeamSessionsPageData()` and `getTeamCampsPageData()`.
-4. Keep the UI unchanged.
-5. Validate with typecheck/build and compare timing logs before and after.
+1. Apply `038_team_home_kpi_totals.sql` to the target database.
+2. Confirm the fallback warning `team_home_kpi_totals_rpc_missing_fallback` no
+   longer appears.
+3. Run an authenticated `/team-home` request on realistic team data.
+4. Compare `team_home_timing` logs for `kpis` before and after the aggregate
+   RPC path.
+5. If a section fails independently often enough, add a local retry/error
+   boundary for that section.
 
-Expected result: Team Home keeps its current "pretty decent" feel, but removes
-the main scale weakness before it becomes visible to users.
+Expected result: Team Home keeps its current "pretty decent" feel, with the KPI
+scale weakness removed before it becomes visible to users.
 
 ## Validation
 
-Audit-only change in this pass. Required validation for the markdown artifact:
+Step 1, Step 2, Step 3, Step 4, and Step 5 implementation validation:
 
-- `git diff --check -- AUDIT_TEAM_HOME.MD`
-- direct trailing-whitespace scan, because new untracked docs are not covered
-  by `git diff --check` until staged.
+- `npm run lint`
+- `./node_modules/.bin/tsc --noEmit`
+- `npm run build`
+- `git diff --check -- app/(app)/team-home/page.tsx features/team-home/data.ts features/team-home/timing.ts types/database.ts supabase/migrations/038_team_home_kpi_totals.sql AUDIT_TEAM_HOME.MD`
+- direct trailing-whitespace scan for `AUDIT_TEAM_HOME.MD` and
+  `features/team-home/timing.ts`, because new untracked files are not covered by
+  `git diff --check` until staged.
+- Live `team_home_timing` before/after comparison remains pending until the new
+  RPC migration is applied to the database used by the app.

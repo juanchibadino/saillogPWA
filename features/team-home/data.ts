@@ -60,17 +60,37 @@ type TeamVenueRow = Pick<
   "id" | "team_id" | "venue_id" | "created_at"
 >
 
-type TeamVenueIdRow = Pick<
+type TeamHomeTeamVenueIdRow = Pick<
   Database["public"]["Tables"]["team_venues"]["Row"],
   "id"
 >
 
-type CampIdRow = Pick<
+type TeamHomeTeamVenueLookupRow = Pick<
+  Database["public"]["Tables"]["team_venues"]["Row"],
+  "id" | "venue_id"
+>
+
+type TeamHomeCampIdRow = Pick<
   Database["public"]["Tables"]["camps"]["Row"],
   "id"
 >
 
-type SessionNetTimeRow = Pick<
+type TeamHomeCampLookupRow = Pick<
+  Database["public"]["Tables"]["camps"]["Row"],
+  "id" | "team_venue_id" | "name"
+>
+
+type TeamHomeLatestCampRow = Pick<
+  Database["public"]["Tables"]["camps"]["Row"],
+  "id" | "team_venue_id" | "name" | "start_date" | "end_date"
+>
+
+type TeamHomeSessionRow = Pick<
+  Database["public"]["Tables"]["sessions"]["Row"],
+  "id" | "camp_id" | "session_type" | "session_date" | "net_time_minutes"
+>
+
+type TeamHomeSessionNetTimeRow = Pick<
   Database["public"]["Tables"]["sessions"]["Row"],
   "net_time_minutes"
 >
@@ -90,12 +110,35 @@ type VenueRow = Pick<
   "id" | "name" | "city" | "country"
 >
 
+type TeamHomeSupabaseClient = Awaited<ReturnType<typeof createServerSupabaseClient>>
+
 export type TeamHomeLatestVenueLive = {
   teamVenueId: string
   venueId: string
   name: string
   location: string
   linkedAt: string
+}
+
+export type TeamHomeLatestSessionLive = {
+  id: string
+  campId: string
+  campName: string
+  venueId: string
+  venueName: string
+  sessionType: TeamHomeSessionRow["session_type"]
+  sessionDate: string
+  netTimeMinutes: number | null
+}
+
+export type TeamHomeLatestCampLive = {
+  id: string
+  teamVenueId: string
+  venueId: string
+  venueName: string
+  name: string
+  startDate: string
+  endDate: string
 }
 
 export type TeamHomeTeamMemberLive = {
@@ -168,6 +211,95 @@ function buildKpis(input: {
   ]
 }
 
+function isMissingTeamHomeKpiTotalsRpcError(error: {
+  code?: string
+  message?: string
+}): boolean {
+  const message = error.message?.toLowerCase() ?? ""
+
+  return (
+    error.code === "PGRST202" ||
+    (message.includes("get_team_home_kpi_totals") &&
+      message.includes("schema cache"))
+  )
+}
+
+async function getTeamHomeKpisFromRows(input: {
+  activeTeamId: string
+  supabase: TeamHomeSupabaseClient
+}): Promise<TeamHomeKpi[]> {
+  const { data: teamVenueData, error: teamVenueError } = await input.supabase
+    .from("team_venues")
+    .select("id")
+    .eq("team_id", input.activeTeamId)
+
+  if (teamVenueError) {
+    throw new Error(`Could not load team venues for team home KPIs: ${teamVenueError.message}`)
+  }
+
+  const teamVenueRows: TeamHomeTeamVenueIdRow[] = teamVenueData ?? []
+
+  if (teamVenueRows.length === 0) {
+    return buildKpis({
+      campCount: 0,
+      sessionCount: 0,
+      sessionsWithNetTime: 0,
+      totalNetTimeMinutes: 0,
+      averageNetTimeMinutes: null,
+    })
+  }
+
+  const { data: campData, error: campError } = await input.supabase
+    .from("camps")
+    .select("id")
+    .in("team_venue_id", teamVenueRows.map((row) => row.id))
+
+  if (campError) {
+    throw new Error(`Could not load camps for team home KPIs: ${campError.message}`)
+  }
+
+  const campRows: TeamHomeCampIdRow[] = campData ?? []
+
+  if (campRows.length === 0) {
+    return buildKpis({
+      campCount: 0,
+      sessionCount: 0,
+      sessionsWithNetTime: 0,
+      totalNetTimeMinutes: 0,
+      averageNetTimeMinutes: null,
+    })
+  }
+
+  const { data: sessionData, error: sessionError } = await input.supabase
+    .from("sessions")
+    .select("net_time_minutes")
+    .in("camp_id", campRows.map((row) => row.id))
+
+  if (sessionError) {
+    throw new Error(`Could not load sessions for team home KPIs: ${sessionError.message}`)
+  }
+
+  const sessionRows: TeamHomeSessionNetTimeRow[] = sessionData ?? []
+  const netTimeMinutes = sessionRows
+    .map((row) => row.net_time_minutes)
+    .filter((value): value is number => value !== null)
+  const totalNetTimeMinutes = netTimeMinutes.reduce(
+    (total, minutes) => total + minutes,
+    0,
+  )
+
+  return buildKpis({
+    campCount: campRows.length,
+    sessionCount: sessionRows.length,
+    sessionsWithNetTime: netTimeMinutes.length,
+    totalNetTimeMinutes,
+    averageNetTimeMinutes:
+      netTimeMinutes.length > 0
+        ? Math.round(totalNetTimeMinutes / netTimeMinutes.length)
+        : null,
+  })
+}
+
 function formatTeamRoleLabel(
   role: Database["public"]["Enums"]["team_role_type"],
 ): string {
@@ -206,6 +338,202 @@ const TEAM_MEMBER_ROLE_SORT_ORDER: Record<
   team_admin: 0,
   coach: 1,
   crew: 2,
+}
+
+export async function getTeamHomeLatestSessions(input: {
+  activeTeamId: string
+  limit?: number
+}): Promise<TeamHomeLatestSessionLive[]> {
+  const supabase = await createServerSupabaseClient()
+  const limit = input.limit ?? 5
+
+  const { data: teamVenueData, error: teamVenueError } = await supabase
+    .from("team_venues")
+    .select("id,venue_id")
+    .eq("team_id", input.activeTeamId)
+
+  if (teamVenueError) {
+    throw new Error(`Could not load team venues for team home sessions: ${teamVenueError.message}`)
+  }
+
+  const teamVenueRows: TeamHomeTeamVenueLookupRow[] = teamVenueData ?? []
+
+  if (teamVenueRows.length === 0) {
+    return []
+  }
+
+  const teamVenueIds = teamVenueRows.map((row) => row.id)
+  const teamVenueById = new Map(teamVenueRows.map((row) => [row.id, row]))
+  const { data: campData, error: campError } = await supabase
+    .from("camps")
+    .select("id,team_venue_id,name")
+    .in("team_venue_id", teamVenueIds)
+
+  if (campError) {
+    throw new Error(`Could not load camps for team home sessions: ${campError.message}`)
+  }
+
+  const campRows: TeamHomeCampLookupRow[] = campData ?? []
+
+  if (campRows.length === 0) {
+    return []
+  }
+
+  const campIds = campRows.map((row) => row.id)
+  const campById = new Map(campRows.map((row) => [row.id, row]))
+  const { data: sessionData, error: sessionError } = await supabase
+    .from("sessions")
+    .select("id,camp_id,session_type,session_date,net_time_minutes")
+    .in("camp_id", campIds)
+    .order("session_date", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(limit)
+
+  if (sessionError) {
+    throw new Error(`Could not load latest team home sessions: ${sessionError.message}`)
+  }
+
+  const sessionRows: TeamHomeSessionRow[] = sessionData ?? []
+
+  if (sessionRows.length === 0) {
+    return []
+  }
+
+  const visibleVenueIds = uniqueIds(
+    sessionRows
+      .map((session) => {
+        const camp = campById.get(session.camp_id)
+        const teamVenue = camp ? teamVenueById.get(camp.team_venue_id) : undefined
+        return teamVenue?.venue_id
+      })
+      .filter((venueId): venueId is string => typeof venueId === "string"),
+  )
+
+  if (visibleVenueIds.length === 0) {
+    return []
+  }
+
+  const { data: venueData, error: venueError } = await supabase
+    .from("venues")
+    .select("id,name,city,country")
+    .in("id", visibleVenueIds)
+
+  if (venueError) {
+    throw new Error(`Could not load venue metadata for team home sessions: ${venueError.message}`)
+  }
+
+  const venueRows: VenueRow[] = venueData ?? []
+  const venueById = new Map(venueRows.map((row) => [row.id, row]))
+
+  return sessionRows
+    .map((session) => {
+      const camp = campById.get(session.camp_id)
+      const teamVenue = camp ? teamVenueById.get(camp.team_venue_id) : undefined
+      const venue = teamVenue ? venueById.get(teamVenue.venue_id) : undefined
+
+      if (!camp || !teamVenue || !venue) {
+        return null
+      }
+
+      return {
+        id: session.id,
+        campId: camp.id,
+        campName: camp.name,
+        venueId: venue.id,
+        venueName: venue.name,
+        sessionType: session.session_type,
+        sessionDate: session.session_date,
+        netTimeMinutes: session.net_time_minutes,
+      }
+    })
+    .filter((row): row is TeamHomeLatestSessionLive => row !== null)
+}
+
+export async function getTeamHomeLatestCamps(input: {
+  activeTeamId: string
+  limit?: number
+}): Promise<TeamHomeLatestCampLive[]> {
+  const supabase = await createServerSupabaseClient()
+  const limit = input.limit ?? 5
+
+  const { data: teamVenueData, error: teamVenueError } = await supabase
+    .from("team_venues")
+    .select("id,venue_id")
+    .eq("team_id", input.activeTeamId)
+
+  if (teamVenueError) {
+    throw new Error(`Could not load team venues for team home camps: ${teamVenueError.message}`)
+  }
+
+  const teamVenueRows: TeamHomeTeamVenueLookupRow[] = teamVenueData ?? []
+
+  if (teamVenueRows.length === 0) {
+    return []
+  }
+
+  const teamVenueIds = teamVenueRows.map((row) => row.id)
+  const teamVenueById = new Map(teamVenueRows.map((row) => [row.id, row]))
+  const { data: campData, error: campError } = await supabase
+    .from("camps")
+    .select("id,team_venue_id,name,start_date,end_date")
+    .in("team_venue_id", teamVenueIds)
+    .order("is_active", { ascending: false })
+    .order("start_date", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(limit)
+
+  if (campError) {
+    throw new Error(`Could not load latest team home camps: ${campError.message}`)
+  }
+
+  const campRows: TeamHomeLatestCampRow[] = campData ?? []
+
+  if (campRows.length === 0) {
+    return []
+  }
+
+  const visibleVenueIds = uniqueIds(
+    campRows
+      .map((camp) => teamVenueById.get(camp.team_venue_id)?.venue_id)
+      .filter((venueId): venueId is string => typeof venueId === "string"),
+  )
+
+  if (visibleVenueIds.length === 0) {
+    return []
+  }
+
+  const { data: venueData, error: venueError } = await supabase
+    .from("venues")
+    .select("id,name,city,country")
+    .in("id", visibleVenueIds)
+
+  if (venueError) {
+    throw new Error(`Could not load venue metadata for team home camps: ${venueError.message}`)
+  }
+
+  const venueRows: VenueRow[] = venueData ?? []
+  const venueById = new Map(venueRows.map((row) => [row.id, row]))
+
+  return campRows
+    .map((camp) => {
+      const teamVenue = teamVenueById.get(camp.team_venue_id)
+      const venue = teamVenue ? venueById.get(teamVenue.venue_id) : undefined
+
+      if (!teamVenue || !venue) {
+        return null
+      }
+
+      return {
+        id: camp.id,
+        teamVenueId: teamVenue.id,
+        venueId: venue.id,
+        venueName: venue.name,
+        name: camp.name,
+        startDate: camp.start_date,
+        endDate: camp.end_date,
+      }
+    })
+    .filter((row): row is TeamHomeLatestCampLive => row !== null)
 }
 
 export async function getTeamHomeLatestVenues(input: {
@@ -268,79 +596,38 @@ export async function getTeamHomeKpis(input: {
   activeTeamId: string
 }): Promise<TeamHomeKpi[]> {
   const supabase = await createServerSupabaseClient()
-  const { data: teamVenueData, error: teamVenueError } = await supabase
-    .from("team_venues")
-    .select("id")
-    .eq("team_id", input.activeTeamId)
 
-  if (teamVenueError) {
-    throw new Error(`Could not load team venues for team home KPIs: ${teamVenueError.message}`)
+  const { data, error } = await supabase.rpc("get_team_home_kpi_totals", {
+    p_team_id: input.activeTeamId,
+  })
+
+  if (error) {
+    if (isMissingTeamHomeKpiTotalsRpcError(error)) {
+      console.warn(
+        JSON.stringify({
+          level: "warn",
+          msg: "team_home_kpi_totals_rpc_missing_fallback",
+          route: "/team-home",
+        }),
+      )
+
+      return getTeamHomeKpisFromRows({
+        activeTeamId: input.activeTeamId,
+        supabase,
+      })
+    }
+
+    throw new Error(`Could not load team home KPI totals: ${error.message}`)
   }
 
-  const teamVenueRows: TeamVenueIdRow[] = teamVenueData ?? []
-  const teamVenueIds = teamVenueRows.map((row) => row.id)
-
-  if (teamVenueIds.length === 0) {
-    return buildKpis({
-      campCount: 0,
-      sessionCount: 0,
-      sessionsWithNetTime: 0,
-      totalNetTimeMinutes: 0,
-      averageNetTimeMinutes: null,
-    })
-  }
-
-  const { data: campData, error: campError } = await supabase
-    .from("camps")
-    .select("id")
-    .in("team_venue_id", teamVenueIds)
-
-  if (campError) {
-    throw new Error(`Could not load camps for team home KPIs: ${campError.message}`)
-  }
-
-  const campRows: CampIdRow[] = campData ?? []
-  const campIds = campRows.map((row) => row.id)
-
-  if (campIds.length === 0) {
-    return buildKpis({
-      campCount: campRows.length,
-      sessionCount: 0,
-      sessionsWithNetTime: 0,
-      totalNetTimeMinutes: 0,
-      averageNetTimeMinutes: null,
-    })
-  }
-
-  const { data: sessionData, error: sessionError } = await supabase
-    .from("sessions")
-    .select("net_time_minutes")
-    .in("camp_id", campIds)
-
-  if (sessionError) {
-    throw new Error(`Could not load sessions for team home KPIs: ${sessionError.message}`)
-  }
-
-  const sessionRows: SessionNetTimeRow[] = sessionData ?? []
-  const sessionsWithNetTimeValues = sessionRows
-    .map((row) => row.net_time_minutes)
-    .filter((minutes): minutes is number => typeof minutes === "number")
-
-  const totalNetTimeMinutes = sessionsWithNetTimeValues.reduce(
-    (sum, minutes) => sum + minutes,
-    0,
-  )
-  const averageNetTimeMinutes =
-    sessionsWithNetTimeValues.length > 0
-      ? Math.round(totalNetTimeMinutes / sessionsWithNetTimeValues.length)
-      : null
+  const totals = data?.[0]
 
   return buildKpis({
-    campCount: campRows.length,
-    sessionCount: sessionRows.length,
-    sessionsWithNetTime: sessionsWithNetTimeValues.length,
-    totalNetTimeMinutes,
-    averageNetTimeMinutes,
+    campCount: totals?.camp_count ?? 0,
+    sessionCount: totals?.session_count ?? 0,
+    sessionsWithNetTime: totals?.sessions_with_net_time ?? 0,
+    totalNetTimeMinutes: totals?.total_net_time_minutes ?? 0,
+    averageNetTimeMinutes: totals?.average_net_time_minutes ?? null,
   })
 }
 

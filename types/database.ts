@@ -1600,6 +1600,18 @@ export type Database = {
           total_count: number;
         }[];
       };
+      get_team_home_kpi_totals: {
+        Args: {
+          p_team_id: string;
+        };
+        Returns: {
+          camp_count: number;
+          session_count: number;
+          sessions_with_net_time: number;
+          total_net_time_minutes: number;
+          average_net_time_minutes: number | null;
+        }[];
+      };
       replace_session_gear_usage_atomic: {
         Args: {
           p_gear_item_ids: string[];

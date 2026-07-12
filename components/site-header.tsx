@@ -160,6 +160,31 @@ function getSectionTitle(pathname: string): string {
   return "Sailog"
 }
 
+function getTeamHomeTitle(
+  navigation: ResolvedNavigationScope | null,
+  searchParams: ReadonlyURLSearchParams,
+): string {
+  if (!navigation?.scope) {
+    return "Team Home"
+  }
+
+  const activeOrgId =
+    searchParams.get(NAVIGATION_SCOPE_ORG_QUERY_KEY) ?? navigation.scope.activeOrgId
+  const queryTeamId = searchParams.get(NAVIGATION_SCOPE_TEAM_QUERY_KEY)
+
+  const teamsForOrganization =
+    navigation.catalog.teamsByOrganizationId[activeOrgId] ?? []
+  const activeTeamId =
+    queryTeamId && teamsForOrganization.some((team) => team.id === queryTeamId)
+      ? queryTeamId
+      : navigation.scope.activeTeamId
+
+  return (
+    teamsForOrganization.find((team) => team.id === activeTeamId)?.name ??
+    "No team selected"
+  )
+}
+
 function getTeamVenuesTitle(
   navigation: ResolvedNavigationScope | null,
   searchParams: ReadonlyURLSearchParams,
@@ -694,29 +719,31 @@ export function SiteHeader({
     getHydratedServerSnapshot,
   )
 
-  const sectionTitle = pathname.startsWith("/team-venues")
-    ? getTeamVenuesTitle(navigation, searchParams)
-    : pathname.startsWith("/team-camps")
-      ? getTeamCampsTitle(navigation, searchParams)
-      : pathname.startsWith("/team-calendar")
-        ? getTeamCalendarTitle(navigation, searchParams)
-        : pathname.startsWith("/team-sessions")
-          ? getTeamSessionsTitle(navigation, searchParams)
-          : pathname.startsWith("/team-assessments")
-            ? getTeamAssessmentsTitle(navigation, searchParams)
-            : pathname.startsWith("/team-gear")
-              ? getTeamGearTitle(navigation, searchParams)
-        : pathname.startsWith("/team-notes")
-          ? getTeamNotesTitle(navigation, searchParams)
-        : pathname.startsWith("/team-standard-moves")
-          ? getTeamStandardMovesTitle(navigation, searchParams)
-        : pathname.startsWith("/team-wind-patterns")
-          ? getTeamWindPatternsTitle(navigation, searchParams)
-        : pathname.startsWith("/team-assets")
-          ? getTeamAssetsTitle(navigation, searchParams)
-        : pathname.startsWith("/team-reports")
-          ? "Team Reports"
-        : getSectionTitle(pathname)
+  const sectionTitle = pathname.startsWith("/team-home")
+    ? getTeamHomeTitle(navigation, searchParams)
+    : pathname.startsWith("/team-venues")
+      ? getTeamVenuesTitle(navigation, searchParams)
+      : pathname.startsWith("/team-camps")
+        ? getTeamCampsTitle(navigation, searchParams)
+        : pathname.startsWith("/team-calendar")
+          ? getTeamCalendarTitle(navigation, searchParams)
+          : pathname.startsWith("/team-sessions")
+            ? getTeamSessionsTitle(navigation, searchParams)
+            : pathname.startsWith("/team-assessments")
+              ? getTeamAssessmentsTitle(navigation, searchParams)
+              : pathname.startsWith("/team-gear")
+                ? getTeamGearTitle(navigation, searchParams)
+                : pathname.startsWith("/team-notes")
+                  ? getTeamNotesTitle(navigation, searchParams)
+                  : pathname.startsWith("/team-standard-moves")
+                    ? getTeamStandardMovesTitle(navigation, searchParams)
+                    : pathname.startsWith("/team-wind-patterns")
+                      ? getTeamWindPatternsTitle(navigation, searchParams)
+                      : pathname.startsWith("/team-assets")
+                        ? getTeamAssetsTitle(navigation, searchParams)
+                        : pathname.startsWith("/team-reports")
+                          ? "Team Reports"
+                          : getSectionTitle(pathname)
   const isTeamHomeHeader = pathname.startsWith("/team-home")
   const isTeamCampsListHeader = pathname === "/team-camps"
   const isTeamCalendarHeader = pathname.startsWith("/team-calendar")

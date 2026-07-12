@@ -90,45 +90,89 @@ export function HomePageSkeleton() {
 export function TeamHomePageSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <Skeleton className="h-8 w-36" />
-        <Skeleton className="h-4 w-full max-w-lg" />
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (
-          <SkeletonCard key={`team-home-kpi-${index}`} />
+          <GradientCard key={`team-home-kpi-${index}`}>
+            <div className="space-y-4 px-6 py-6">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-8 w-20" />
+            </div>
+          </GradientCard>
         ))}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <div key={`team-home-list-${index}`} className="rounded-xl border bg-card p-4">
-            <div className="space-y-3">
-              <Skeleton className="h-5 w-36" />
-              {Array.from({ length: 3 }).map((__, rowIndex) => (
-                <Skeleton key={`team-home-list-row-${index}-${rowIndex}`} className="h-16 w-full" />
-              ))}
+        {[
+          ["team-home-sessions", "w-32", "w-28"],
+          ["team-home-camps", "w-28", "w-40"],
+          ["team-home-venues", "w-32", "w-44"],
+        ].map(([key, titleWidth, descriptionWidth]) => (
+          <GradientCard key={key}>
+            <div className="space-y-4 px-6 py-6">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-2">
+                  <Skeleton className={cn("h-5", titleWidth)} />
+                  <Skeleton className={cn("h-4", descriptionWidth)} />
+                </div>
+                <Skeleton className="hidden h-7 w-16 md:block" />
+              </div>
+
+              <div className="divide-y divide-border">
+                {Array.from({ length: 3 }).map((__, rowIndex) => (
+                  <div
+                    key={`team-home-list-row-${key}-${rowIndex}`}
+                    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3"
+                  >
+                    <div className="min-w-0 space-y-2">
+                      <Skeleton className="h-4 w-full max-w-40" />
+                      <Skeleton className="h-3 w-full max-w-28" />
+                    </div>
+                    <Skeleton className="h-4 w-20" />
+                  </div>
+                ))}
+              </div>
+
+              <Skeleton className="h-11 w-full md:hidden" />
             </div>
-          </div>
+          </GradientCard>
         ))}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-4">
-        <div className="rounded-xl border bg-card p-4">
-          <div className="space-y-3">
-            <Skeleton className="h-10 w-24" />
-            <Skeleton className="h-4 w-36" />
-            <Skeleton className="h-10 w-36" />
-            <Skeleton className="h-32 w-full" />
+        <GradientCard>
+          <div className="space-y-4 px-6 py-6">
+            <Skeleton className="h-12 w-28" />
+            <Skeleton className="h-5 w-24" />
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-24 w-full" />
           </div>
-        </div>
-        <div className="rounded-xl border bg-card p-4 lg:col-span-3">
-          <div className="space-y-3">
-            <Skeleton className="h-5 w-28" />
-            <Skeleton className="h-20 w-full" />
+        </GradientCard>
+
+        <GradientCard className="lg:col-span-3">
+          <div className="space-y-4 px-6 py-6">
+            <div className="space-y-2">
+              <Skeleton className="h-5 w-32" />
+              <Skeleton className="h-4 w-40" />
+            </div>
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div
+                  key={`team-home-roster-row-${index}`}
+                  className="flex items-center justify-between gap-3"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Skeleton className="size-9 rounded-full" />
+                    <div className="min-w-0 space-y-2">
+                      <Skeleton className="h-4 w-32" />
+                      <Skeleton className="h-3 w-20" />
+                    </div>
+                  </div>
+                  <Skeleton className="h-6 w-16 rounded-full" />
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        </GradientCard>
       </div>
     </div>
   )

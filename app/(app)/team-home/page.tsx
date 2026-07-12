@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -5,28 +6,33 @@ import { buttonVariants } from "@/components/ui/button"
 import {
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { GradientCard } from "@/components/shared/gradient-card"
-import {
-  getTeamCampsPageData,
-  type TeamCampListItem,
-} from "@/features/camps/data"
 import { buildCampDetailHref } from "@/features/camps/navigation"
-import {
-  getTeamSessionsPageData,
-  type TeamSessionListItem,
-} from "@/features/sessions/data"
 import { buildSessionDetailHref } from "@/features/sessions/navigation"
 import {
   getTeamHomeKpis,
+  getTeamHomeLatestCamps,
+  getTeamHomeLatestSessions,
   getTeamHomeLatestVenues,
   getTeamHomeTeamMembers,
   type TeamHomeKpi,
+  type TeamHomeLatestCampLive,
+  type TeamHomeLatestSessionLive,
   type TeamHomeLatestVenueLive,
   type TeamHomeTeamMemberLive,
 } from "@/features/team-home/data"
+import {
+  formatTeamHomeTimingError,
+  logTeamHomeTiming,
+  startTeamHomeTiming,
+  type TeamHomeTimingMetadata,
+  type TeamHomeTimingPhase,
+} from "@/features/team-home/timing"
 import { buildVenueDetailHref } from "@/features/venues/navigation"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import {
@@ -37,10 +43,26 @@ import {
   getSingleSearchParamValue,
   resolveNavigationScope,
 } from "@/lib/navigation/scope"
+import type { NavigationScope } from "@/lib/navigation/types"
 
 type TeamHomeSearchParams = Promise<
   Record<string, string | string[] | undefined>
 >
+
+type TeamHomeDataTimingPhase = Exclude<TeamHomeTimingPhase, "scope">
+type ActiveTeamHomeScope = Omit<NavigationScope, "activeTeamId"> & {
+  activeTeamId: string
+}
+type TeamHomeDateParts = {
+  day: number
+  month: string
+  year: number
+}
+
+const TEAM_HOME_MONTH_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  timeZone: "UTC",
+})
 
 function toUtcDayValue(date: Date): number {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
@@ -75,6 +97,46 @@ function CurrentBadge() {
 }
 
 type TeamMemberBadgeLabel = "Team Admin" | "Coach" | "Crew"
+
+function TeamHomeHeaderViewAllLink({ href }: { href: string }) {
+  return (
+    <Link
+      href={href}
+      className={buttonVariants({
+        variant: "outline",
+        size: "sm",
+        className: "hidden md:inline-flex",
+      })}
+    >
+      View All
+    </Link>
+  )
+}
+
+function TeamHomeMobileViewAllFooter({ href }: { href: string }) {
+  return (
+    <CardFooter className="pt-0 md:hidden">
+      <Link
+        href={href}
+        className={buttonVariants({
+          variant: "outline",
+          size: "default",
+          className: "!h-11 w-full",
+        })}
+      >
+        View All
+      </Link>
+    </CardFooter>
+  )
+}
+
+function TeamHomeRoleBadge({ label }: { label: TeamMemberBadgeLabel }) {
+  return (
+    <span className="inline-flex shrink-0 items-center rounded-full border border-border bg-muted/60 px-2.5 py-1 text-xs font-medium leading-none text-muted-foreground">
+      {label}
+    </span>
+  )
+}
 
 function resolveTeamMemberBadgeLabel(
   role: TeamHomeTeamMemberLive["role"],
@@ -136,6 +198,20 @@ function formatDateLabel(value: string): string {
   return formatter.format(new Date(`${value}T00:00:00.000Z`))
 }
 
+function getTeamHomeDateParts(value: string): TeamHomeDateParts | null {
+  const date = new Date(`${value}T00:00:00.000Z`)
+
+  if (Number.isNaN(date.getTime())) {
+    return null
+  }
+
+  return {
+    day: date.getUTCDate(),
+    month: TEAM_HOME_MONTH_FORMATTER.format(date),
+    year: date.getUTCFullYear(),
+  }
+}
+
 function formatTimestampDateLabel(value: string): string {
   const formatter = new Intl.DateTimeFormat("en-US", {
     year: "numeric",
@@ -148,7 +224,30 @@ function formatTimestampDateLabel(value: string): string {
 }
 
 function formatCampDateRangeLabel(startDate: string, endDate: string): string {
-  return `${formatDateLabel(startDate)} to ${formatDateLabel(endDate)}`
+  const start = getTeamHomeDateParts(startDate)
+  const end = getTeamHomeDateParts(endDate)
+
+  if (!start || !end) {
+    return `${formatDateLabel(startDate)} to ${formatDateLabel(endDate)}`
+  }
+
+  if (
+    start.year === end.year &&
+    start.month === end.month &&
+    start.day === end.day
+  ) {
+    return `${start.month} ${start.day} / ${start.year}`
+  }
+
+  if (start.year === end.year && start.month === end.month) {
+    return `${start.month} ${start.day}-${end.day} / ${start.year}`
+  }
+
+  if (start.year === end.year) {
+    return `${start.month} ${start.day} - ${end.month} ${end.day} / ${start.year}`
+  }
+
+  return `${start.month} ${start.day} / ${start.year} - ${end.month} ${end.day} / ${end.year}`
 }
 
 function formatSessionTypeLabel(value: "training" | "regatta"): "Training" | "Regatta" {
@@ -177,11 +276,486 @@ function getTeamHomeErrorMessage(error: string | undefined): string | null {
   return null
 }
 
+function loadTeamHomeSection<T>(
+  input: {
+    activeTeamId: string
+    getMetadata?: (result: T) => TeamHomeTimingMetadata
+    metadata?: TeamHomeTimingMetadata
+    phase: TeamHomeDataTimingPhase
+  },
+  load: () => Promise<T>,
+): Promise<T> {
+  const startedAt = startTeamHomeTiming()
+
+  return load().then(
+    (result) => {
+      const resultMetadata = input.getMetadata?.(result)
+
+      logTeamHomeTiming({
+        activeTeamId: input.activeTeamId,
+        metadata: {
+          ...input.metadata,
+          ...resultMetadata,
+        },
+        phase: input.phase,
+        startedAt,
+        status: "success",
+      })
+
+      return result
+    },
+    (error: unknown) => {
+      logTeamHomeTiming({
+        activeTeamId: input.activeTeamId,
+        error: formatTeamHomeTimingError(error),
+        metadata: input.metadata,
+        phase: input.phase,
+        startedAt,
+        status: "error",
+      })
+
+      throw error
+    },
+  )
+}
+
+function getCurrentCampIds(
+  camps: TeamHomeLatestCampLive[],
+  today: Date,
+): Set<string> {
+  return new Set(
+    camps
+      .filter((camp) => isTodayWithinCampDateRange(camp.startDate, camp.endDate, today))
+      .map((camp) => camp.id),
+  )
+}
+
+function getCurrentVenueIds(
+  camps: TeamHomeLatestCampLive[],
+  today: Date,
+): Set<string> {
+  return new Set(
+    camps
+      .filter((camp) => isTodayWithinCampDateRange(camp.startDate, camp.endDate, today))
+      .map((camp) => camp.venueId),
+  )
+}
+
+function TeamHomeKpiCardsSkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <GradientCard key={`team-home-kpi-section-skeleton-${index}`}>
+          <CardHeader className="pb-2">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-8 w-20" />
+          </CardHeader>
+        </GradientCard>
+      ))}
+    </div>
+  )
+}
+
+function TeamHomeListCardSkeleton({
+  descriptionWidthClassName = "w-32",
+  rowCount = 3,
+  titleWidthClassName = "w-36",
+}: {
+  descriptionWidthClassName?: string
+  rowCount?: number
+  titleWidthClassName?: string
+}) {
+  return (
+    <GradientCard>
+      <CardHeader className="flex flex-row items-center justify-between pb-0">
+        <div className="space-y-2">
+          <Skeleton className={`h-5 ${titleWidthClassName}`} />
+          <Skeleton className={`h-4 ${descriptionWidthClassName}`} />
+        </div>
+        <Skeleton className="hidden h-7 w-16 md:block" />
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="divide-y divide-border">
+          {Array.from({ length: rowCount }).map((_, index) => (
+            <div
+              key={`team-home-list-section-skeleton-${index}`}
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3"
+            >
+              <div className="min-w-0 space-y-2">
+                <Skeleton className="h-4 w-full max-w-40" />
+                <Skeleton className="h-3 w-full max-w-28" />
+              </div>
+              <Skeleton className="h-4 w-20" />
+            </div>
+          ))}
+        </div>
+      </CardContent>
+      <CardFooter className="pt-0 md:hidden">
+        <Skeleton className="h-11 w-full" />
+      </CardFooter>
+    </GradientCard>
+  )
+}
+
+function TeamHomeLatestActivitySkeleton() {
+  return (
+    <>
+      <TeamHomeListCardSkeleton
+        descriptionWidthClassName="w-28"
+        titleWidthClassName="w-32"
+      />
+      <TeamHomeListCardSkeleton
+        descriptionWidthClassName="w-40"
+        titleWidthClassName="w-28"
+      />
+    </>
+  )
+}
+
+function TeamHomeLatestVenuesSkeleton() {
+  return (
+    <TeamHomeListCardSkeleton
+      descriptionWidthClassName="w-44"
+      titleWidthClassName="w-32"
+    />
+  )
+}
+
+function TeamHomeRosterSkeleton() {
+  return (
+    <GradientCard className="lg:col-span-3">
+      <CardHeader>
+        <Skeleton className="h-5 w-32" />
+        <Skeleton className="h-4 w-40" />
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div
+              key={`team-home-roster-section-skeleton-${index}`}
+              className="flex items-center justify-between gap-3"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <Skeleton className="size-9 rounded-full" />
+                <div className="min-w-0 space-y-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+              </div>
+              <Skeleton className="h-8 w-20" />
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </GradientCard>
+  )
+}
+
+async function TeamHomeKpiCards({
+  kpisPromise,
+}: {
+  kpisPromise: Promise<TeamHomeKpi[]>
+}) {
+  const teamKpis = await kpisPromise
+
+  return (
+    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {teamKpis.map((kpi) => (
+        <GradientCard key={kpi.label}>
+          <CardHeader className="pb-2">
+            <CardDescription>{kpi.label}</CardDescription>
+            <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
+              {kpi.value}
+            </CardTitle>
+          </CardHeader>
+        </GradientCard>
+      ))}
+    </div>
+  )
+}
+
+async function TeamHomeLatestActivitySection({
+  latestCampsPromise,
+  latestSessionsPromise,
+  scope,
+  teamCampsHref,
+  teamSessionsHref,
+}: {
+  latestCampsPromise: Promise<TeamHomeLatestCampLive[]>
+  latestSessionsPromise: Promise<TeamHomeLatestSessionLive[]>
+  scope: ActiveTeamHomeScope
+  teamCampsHref: string
+  teamSessionsHref: string
+}) {
+  const [latestSessions, latestCamps] = await Promise.all([
+    latestSessionsPromise,
+    latestCampsPromise,
+  ])
+  const currentCampIds = getCurrentCampIds(latestCamps, new Date())
+
+  return (
+    <>
+      <GradientCard>
+        <CardHeader className="flex flex-row items-center justify-between pb-0">
+          <div className="space-y-1">
+            <CardTitle>Latest Sessions</CardTitle>
+            <CardDescription>Last 5 sessions</CardDescription>
+          </div>
+          <TeamHomeHeaderViewAllLink href={teamSessionsHref} />
+        </CardHeader>
+        <CardContent className="pt-0">
+          {latestSessions.length === 0 ? (
+            <p className="py-3 text-sm text-muted-foreground">No sessions found for this team.</p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {latestSessions.map((session) => (
+                <li key={session.id}>
+                  <Link
+                    href={buildSessionDetailHref({
+                      scope,
+                      sessionId: session.id,
+                    })}
+                    className="grid grid-cols-[minmax(0,1fr)_minmax(7rem,1fr)_auto] items-center gap-3 rounded-md -mx-2 px-2 py-3 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium underline-offset-4 hover:underline">
+                        {formatDateLabel(session.sessionDate)}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">{session.campName}</p>
+                    </div>
+
+                    <p className="justify-self-center text-center text-xs font-medium text-muted-foreground md:text-sm">
+                      {formatSessionTypeLabel(session.sessionType)}
+                    </p>
+
+                    <p className="shrink-0 text-sm font-semibold tabular-nums">
+                      {formatDurationLabel(session.netTimeMinutes)}
+                    </p>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+        <TeamHomeMobileViewAllFooter href={teamSessionsHref} />
+      </GradientCard>
+
+      <GradientCard>
+        <CardHeader className="flex flex-row items-center justify-between pb-0">
+          <div className="space-y-1">
+            <CardTitle>Latest Camps</CardTitle>
+            <CardDescription>Most recent team camps</CardDescription>
+          </div>
+          <TeamHomeHeaderViewAllLink href={teamCampsHref} />
+        </CardHeader>
+        <CardContent className="pt-0">
+          {latestCamps.length === 0 ? (
+            <p className="py-3 text-sm text-muted-foreground">No camps found for this team.</p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {latestCamps.map((camp) => (
+                <li key={camp.id}>
+                  <Link
+                    href={buildCampDetailHref({
+                      scope,
+                      campId: camp.id,
+                      tab: "sessions",
+                    })}
+                    className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-md -mx-2 px-2 py-3 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-sm font-medium underline-offset-4 hover:underline">
+                          {camp.name}
+                        </p>
+                        {currentCampIds.has(camp.id) ? <CurrentBadge /> : null}
+                      </div>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {camp.venueName}
+                      </p>
+                    </div>
+
+                    <p className="shrink-0 text-xs text-muted-foreground md:text-sm">
+                      {formatCampDateRangeLabel(camp.startDate, camp.endDate)}
+                    </p>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+        <TeamHomeMobileViewAllFooter href={teamCampsHref} />
+      </GradientCard>
+    </>
+  )
+}
+
+async function TeamHomeLatestVenuesSection({
+  latestCampsPromise,
+  latestVenuesPromise,
+  scope,
+  teamVenuesHref,
+}: {
+  latestCampsPromise: Promise<TeamHomeLatestCampLive[]>
+  latestVenuesPromise: Promise<TeamHomeLatestVenueLive[]>
+  scope: ActiveTeamHomeScope
+  teamVenuesHref: string
+}) {
+  const [latestVenues, latestCamps] = await Promise.all([
+    latestVenuesPromise,
+    latestCampsPromise,
+  ])
+  const currentVenueIds = getCurrentVenueIds(latestCamps, new Date())
+
+  return (
+    <GradientCard>
+      <CardHeader className="flex flex-row items-center justify-between pb-0">
+        <div className="space-y-1">
+          <CardTitle>Latest Venues</CardTitle>
+          <CardDescription>Recently linked to this team</CardDescription>
+        </div>
+        <TeamHomeHeaderViewAllLink href={teamVenuesHref} />
+      </CardHeader>
+      <CardContent className="pt-0">
+        {latestVenues.length === 0 ? (
+          <p className="py-3 text-sm text-muted-foreground">No venues linked to this team yet.</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {latestVenues.map((venue) => (
+              <li key={venue.teamVenueId}>
+                <Link
+                  href={buildVenueDetailHref({
+                    scope,
+                    teamVenueId: venue.teamVenueId,
+                  })}
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-md -mx-2 px-2 py-3 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-medium underline-offset-4 hover:underline">
+                        {venue.name}
+                      </p>
+                      {currentVenueIds.has(venue.venueId) ? <CurrentBadge /> : null}
+                    </div>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {venue.location}
+                    </p>
+                  </div>
+
+                  <p className="shrink-0 text-xs text-muted-foreground md:text-sm">
+                    {`Linked ${formatTimestampDateLabel(venue.linkedAt)}`}
+                  </p>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+      <TeamHomeMobileViewAllFooter href={teamVenuesHref} />
+    </GradientCard>
+  )
+}
+
+function TeamHomeSailingClassCard({
+  classLabel,
+  logoSrc,
+  sailNumber,
+  teamLabel,
+}: {
+  classLabel: string
+  logoSrc: string
+  sailNumber: string
+  teamLabel: string
+}) {
+  return (
+    <GradientCard className="relative flex h-full flex-col overflow-hidden lg:col-span-1">
+      <CardContent className="relative flex min-h-[18rem] flex-1 p-6">
+        <div className="relative z-10 max-w-[62%] space-y-1">
+          <p className="text-5xl font-semibold leading-none tracking-tight">
+            {sailNumber}
+          </p>
+          <p className="text-xl font-light leading-tight text-muted-foreground">
+            {classLabel}
+          </p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {teamLabel}
+          </p>
+        </div>
+
+        <div className="pointer-events-none absolute inset-6 flex items-end justify-end">
+          <Image
+            src={logoSrc}
+            alt={`${classLabel} boat`}
+            width={308}
+            height={412}
+            className="h-full w-auto"
+          />
+        </div>
+      </CardContent>
+    </GradientCard>
+  )
+}
+
+async function TeamHomeRosterSection({
+  teamMembersPromise,
+}: {
+  teamMembersPromise: Promise<TeamHomeTeamMemberLive[]>
+}) {
+  const teamMembers = await teamMembersPromise
+
+  return (
+    <GradientCard className="lg:col-span-3">
+      <CardHeader>
+        <CardTitle>Team Members</CardTitle>
+        <CardDescription>Coach and crew roster</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {teamMembers.length === 0 ? (
+          <p className="py-3 text-sm text-muted-foreground">
+            No active team members found for this team.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {teamMembers.map((person) => {
+              const badgeLabel = resolveTeamMemberBadgeLabel(person.role)
+
+              return (
+                <li
+                  key={person.id}
+                  className="flex items-center justify-between gap-3 rounded-lg p-1"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Avatar className="size-9">
+                      {person.avatarUrl ? (
+                        <AvatarImage src={person.avatarUrl} alt={person.name} />
+                      ) : null}
+                      <AvatarFallback>{getInitials(person.name)}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{person.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {person.roleLabel}
+                      </p>
+                    </div>
+                  </div>
+
+                  <TeamHomeRoleBadge label={badgeLabel} />
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </GradientCard>
+  )
+}
+
 export default async function TeamHomePage({
   searchParams,
 }: {
   searchParams: TeamHomeSearchParams
 }) {
+  const scopeStartedAt = startTeamHomeTiming()
   const context = await requireAuthenticatedAccessContext()
   const resolvedSearchParams = await searchParams
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
@@ -190,6 +764,18 @@ export default async function TeamHomePage({
   const navigation = await resolveNavigationScope({
     context,
     searchParams: resolvedSearchParams,
+  })
+
+  logTeamHomeTiming({
+    activeOrgId: navigation.scope?.activeOrgId ?? null,
+    activeTeamId: navigation.scope?.activeTeamId ?? null,
+    metadata: {
+      hasActiveTeam: Boolean(navigation.scope?.activeTeamId),
+      hasScope: Boolean(navigation.scope),
+    },
+    phase: "scope",
+    startedAt: scopeStartedAt,
+    status: "success",
   })
 
   if (!navigation.scope) {
@@ -204,59 +790,116 @@ export default async function TeamHomePage({
   }
 
   const scope = navigation.scope
+  const errorMessage = teamHomeErrorMessage ? (
+    <p className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+      {teamHomeErrorMessage}
+    </p>
+  ) : null
+
+  if (scope.activeTeamId === null) {
+    return (
+      <div className="space-y-6">
+        {errorMessage}
+
+        <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
+          <h2 className="text-lg font-semibold text-amber-900">No team selected</h2>
+          <p className="mt-2 text-sm text-amber-800">
+            Team modules are muted until you pick a team from the scope picker.
+          </p>
+        </section>
+      </div>
+    )
+  }
+
+  const activeTeamScope: ActiveTeamHomeScope = {
+    ...scope,
+    activeTeamId: scope.activeTeamId,
+  }
   const activeTeam =
     navigation.catalog.teamsByOrganizationId[scope.activeOrgId]?.find(
       (team) => team.id === scope.activeTeamId,
     ) ?? null
   const activeTeamName = activeTeam?.name ?? "No team selected"
-  const teamSessionsHref = buildScopedHref("/team-sessions", scope)
-  const teamCampsHref = buildScopedHref("/team-camps", scope)
-  const teamVenuesHref = buildScopedHref("/team-venues", scope)
-  const latestSessions: TeamSessionListItem[] = []
-  const latestCamps: TeamCampListItem[] = []
-  const latestVenues: TeamHomeLatestVenueLive[] = []
-  const teamMembers: TeamHomeTeamMemberLive[] = []
-  const teamKpis: TeamHomeKpi[] = []
-
-  if (scope.activeTeamId !== null) {
-    const [sessionsData, campsData, venuesData, teamMembersData, kpisData] = await Promise.all([
-      getTeamSessionsPageData({
-        activeTeamId: scope.activeTeamId,
-        page: 1,
+  const activeTeamId = activeTeamScope.activeTeamId
+  const teamSessionsHref = buildScopedHref("/team-sessions", activeTeamScope)
+  const teamCampsHref = buildScopedHref("/team-camps", activeTeamScope)
+  const teamVenuesHref = buildScopedHref("/team-venues", activeTeamScope)
+  const latestSessionsPromise = loadTeamHomeSection(
+    {
+      activeTeamId,
+      getMetadata: (data) => ({
+        returnedItems: data.length,
       }),
-      getTeamCampsPageData({
-        activeTeamId: scope.activeTeamId,
-        page: 1,
-      }),
-      getTeamHomeLatestVenues({
-        activeTeamId: scope.activeTeamId,
+      metadata: {
+        limit: 5,
+      },
+      phase: "latest_sessions",
+    },
+    () =>
+      getTeamHomeLatestSessions({
+        activeTeamId,
         limit: 5,
       }),
-      getTeamHomeTeamMembers({
-        activeTeamId: scope.activeTeamId,
-      }),
-      getTeamHomeKpis({
-        activeTeamId: scope.activeTeamId,
-      }),
-    ])
-
-    latestSessions.push(...sessionsData.sessions.slice(0, 5))
-    latestCamps.push(...campsData.camps.slice(0, 5))
-    latestVenues.push(...venuesData)
-    teamMembers.push(...teamMembersData)
-    teamKpis.push(...kpisData)
-  }
-
-  const today = new Date()
-  const currentCampIds = new Set(
-    latestCamps
-      .filter((camp) => isTodayWithinCampDateRange(camp.startDate, camp.endDate, today))
-      .map((camp) => camp.id),
   )
-  const currentVenueIds = new Set(
-    latestCamps
-      .filter((camp) => isTodayWithinCampDateRange(camp.startDate, camp.endDate, today))
-      .map((camp) => camp.venueId),
+  const latestCampsPromise = loadTeamHomeSection(
+    {
+      activeTeamId,
+      getMetadata: (data) => ({
+        returnedItems: data.length,
+      }),
+      metadata: {
+        limit: 5,
+      },
+      phase: "latest_camps",
+    },
+    () =>
+      getTeamHomeLatestCamps({
+        activeTeamId,
+        limit: 5,
+      }),
+  )
+  const latestVenuesPromise = loadTeamHomeSection(
+    {
+      activeTeamId,
+      getMetadata: (data) => ({
+        returnedItems: data.length,
+      }),
+      metadata: {
+        limit: 5,
+      },
+      phase: "latest_venues",
+    },
+    () =>
+      getTeamHomeLatestVenues({
+        activeTeamId,
+        limit: 5,
+      }),
+  )
+  const teamMembersPromise = loadTeamHomeSection(
+    {
+      activeTeamId,
+      getMetadata: (data) => ({
+        returnedItems: data.length,
+      }),
+      phase: "team_members",
+    },
+    () =>
+      getTeamHomeTeamMembers({
+        activeTeamId,
+      }),
+  )
+  const kpisPromise = loadTeamHomeSection(
+    {
+      activeTeamId,
+      getMetadata: (data) => ({
+        kpiCount: data.length,
+      }),
+      phase: "kpis",
+    },
+    () =>
+      getTeamHomeKpis({
+        activeTeamId,
+      }),
   )
   // Temporary static class card until the sailing classes table is wired to teams.
   const sailingClassSummary = {
@@ -268,269 +911,45 @@ export default async function TeamHomePage({
 
   return (
     <div className="space-y-6">
-      {teamHomeErrorMessage ? (
-        <p className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-          {teamHomeErrorMessage}
-        </p>
-      ) : null}
+      {errorMessage}
 
-      {scope.activeTeamId === null ? (
-        <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
-          <h2 className="text-lg font-semibold text-amber-900">No team selected</h2>
-          <p className="mt-2 text-sm text-amber-800">
-            Team modules are muted until you pick a team from the scope picker.
-          </p>
-        </section>
-      ) : (
-        <>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            {teamKpis.map((kpi) => (
-              <GradientCard
-                key={kpi.label}
-              >
-                <CardHeader className="pb-2">
-                  <CardDescription>{kpi.label}</CardDescription>
-                  <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-                    {kpi.value}
-                  </CardTitle>
-                </CardHeader>
-              </GradientCard>
-            ))}
-          </div>
+      <Suspense fallback={<TeamHomeKpiCardsSkeleton />}>
+        <TeamHomeKpiCards kpisPromise={kpisPromise} />
+      </Suspense>
 
-          <div className="grid gap-4 lg:grid-cols-3">
-            <GradientCard>
-              <CardHeader className="flex flex-row items-center justify-between pb-0">
-                <div className="space-y-1">
-                  <CardTitle>Latest Sessions</CardTitle>
-                  <CardDescription>Last 5 sessions</CardDescription>
-                </div>
-                <Link
-                  href={teamSessionsHref}
-                  className={buttonVariants({ variant: "outline", size: "sm" })}
-                >
-                  View All
-                </Link>
-              </CardHeader>
-              <CardContent className="pt-0">
-                {latestSessions.length === 0 ? (
-                  <p className="py-3 text-sm text-muted-foreground">No sessions found for this team.</p>
-                ) : (
-                  <ul className="divide-y divide-border">
-                    {latestSessions.map((session) => (
-                      <li key={session.id}>
-                        <Link
-                          href={buildSessionDetailHref({
-                            scope,
-                            sessionId: session.id,
-                          })}
-                          className="grid grid-cols-[minmax(0,1fr)_minmax(7rem,1fr)_auto] items-center gap-3 rounded-md -mx-2 px-2 py-3 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40"
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium underline-offset-4 hover:underline">
-                              {formatDateLabel(session.sessionDate)}
-                            </p>
-                            <p className="truncate text-xs text-muted-foreground">{session.campName}</p>
-                          </div>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Suspense fallback={<TeamHomeLatestActivitySkeleton />}>
+          <TeamHomeLatestActivitySection
+            latestCampsPromise={latestCampsPromise}
+            latestSessionsPromise={latestSessionsPromise}
+            scope={activeTeamScope}
+            teamCampsHref={teamCampsHref}
+            teamSessionsHref={teamSessionsHref}
+          />
+        </Suspense>
 
-                          <p className="justify-self-center text-center text-xs font-medium text-muted-foreground md:text-sm">
-                            {formatSessionTypeLabel(session.sessionType)}
-                          </p>
+        <Suspense fallback={<TeamHomeLatestVenuesSkeleton />}>
+          <TeamHomeLatestVenuesSection
+            latestCampsPromise={latestCampsPromise}
+            latestVenuesPromise={latestVenuesPromise}
+            scope={activeTeamScope}
+            teamVenuesHref={teamVenuesHref}
+          />
+        </Suspense>
+      </div>
 
-                          <p className="shrink-0 text-sm font-semibold tabular-nums">
-                            {formatDurationLabel(session.netTimeMinutes)}
-                          </p>
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </GradientCard>
+      <div className="grid gap-4 lg:grid-cols-4">
+        <TeamHomeSailingClassCard
+          classLabel={sailingClassSummary.classLabel}
+          logoSrc={sailingClassSummary.logoSrc}
+          sailNumber={sailingClassSummary.sailNumber}
+          teamLabel={sailingClassSummary.teamLabel}
+        />
 
-            <GradientCard>
-              <CardHeader className="flex flex-row items-center justify-between pb-0">
-                <div className="space-y-1">
-                  <CardTitle>Latest Camps</CardTitle>
-                  <CardDescription>Most recent team camps</CardDescription>
-                </div>
-                <Link
-                  href={teamCampsHref}
-                  className={buttonVariants({ variant: "outline", size: "sm" })}
-                >
-                  View All
-                </Link>
-              </CardHeader>
-              <CardContent className="pt-0">
-                {latestCamps.length === 0 ? (
-                  <p className="py-3 text-sm text-muted-foreground">No camps found for this team.</p>
-                ) : (
-                  <ul className="divide-y divide-border">
-                    {latestCamps.map((camp) => (
-                      <li key={camp.id}>
-                        <Link
-                          href={buildCampDetailHref({
-                            scope,
-                            campId: camp.id,
-                            tab: "sessions",
-                          })}
-                          className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-md -mx-2 px-2 py-3 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40"
-                        >
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="truncate text-sm font-medium underline-offset-4 hover:underline">
-                                {camp.name}
-                              </p>
-                              {currentCampIds.has(camp.id) ? <CurrentBadge /> : null}
-                            </div>
-                            <p className="truncate text-xs text-muted-foreground">
-                              {camp.venueName}
-                            </p>
-                          </div>
-
-                          <p className="shrink-0 text-xs text-muted-foreground md:text-sm">
-                            {formatCampDateRangeLabel(camp.startDate, camp.endDate)}
-                          </p>
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </GradientCard>
-
-            <GradientCard>
-              <CardHeader className="flex flex-row items-center justify-between pb-0">
-                <div className="space-y-1">
-                  <CardTitle>Latest Venues</CardTitle>
-                  <CardDescription>Recently linked to this team</CardDescription>
-                </div>
-                <Link
-                  href={teamVenuesHref}
-                  className={buttonVariants({ variant: "outline", size: "sm" })}
-                >
-                  View All
-                </Link>
-              </CardHeader>
-              <CardContent className="pt-0">
-                {latestVenues.length === 0 ? (
-                  <p className="py-3 text-sm text-muted-foreground">No venues linked to this team yet.</p>
-                ) : (
-                  <ul className="divide-y divide-border">
-                    {latestVenues.map((venue) => (
-                      <li key={venue.teamVenueId}>
-                        <Link
-                          href={buildVenueDetailHref({
-                            scope,
-                            teamVenueId: venue.teamVenueId,
-                          })}
-                          className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-md -mx-2 px-2 py-3 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40"
-                        >
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="truncate text-sm font-medium underline-offset-4 hover:underline">
-                                {venue.name}
-                              </p>
-                              {currentVenueIds.has(venue.venueId) ? <CurrentBadge /> : null}
-                            </div>
-                            <p className="truncate text-xs text-muted-foreground">
-                              {venue.location}
-                            </p>
-                          </div>
-
-                          <p className="shrink-0 text-xs text-muted-foreground md:text-sm">
-                            {`Linked ${formatTimestampDateLabel(venue.linkedAt)}`}
-                          </p>
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </GradientCard>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-4">
-            <GradientCard className="relative flex h-full flex-col overflow-hidden lg:col-span-1">
-              <CardContent className="relative flex min-h-[18rem] flex-1 p-6">
-                <div className="relative z-10 max-w-[62%] space-y-1">
-                  <p className="text-5xl font-semibold leading-none tracking-tight">
-                    {sailingClassSummary.sailNumber}
-                  </p>
-                  <p className="text-xl font-light leading-tight text-muted-foreground">
-                    {sailingClassSummary.classLabel}
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {sailingClassSummary.teamLabel}
-                  </p>
-                </div>
-
-                <div className="pointer-events-none absolute inset-6 flex items-end justify-end">
-                  <Image
-                    src={sailingClassSummary.logoSrc}
-                    alt={`${sailingClassSummary.classLabel} boat`}
-                    width={308}
-                    height={412}
-                    className="h-full w-auto"
-                  />
-                </div>
-              </CardContent>
-            </GradientCard>
-
-            <GradientCard className="lg:col-span-3">
-              <CardHeader>
-                <CardTitle>Team Members</CardTitle>
-                <CardDescription>Coach and crew roster</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {teamMembers.length === 0 ? (
-                  <p className="py-3 text-sm text-muted-foreground">
-                    No active team members found for this team.
-                  </p>
-                ) : (
-                  <ul className="space-y-2">
-                    {teamMembers.map((person) => {
-                      const badgeLabel = resolveTeamMemberBadgeLabel(person.role)
-
-                      return (
-                        <li
-                          key={person.id}
-                          className="flex items-center justify-between gap-3 rounded-lg p-1"
-                        >
-                          <div className="flex min-w-0 items-center gap-3">
-                            <Avatar className="size-9">
-                              {person.avatarUrl ? (
-                                <AvatarImage src={person.avatarUrl} alt={person.name} />
-                              ) : null}
-                              <AvatarFallback>{getInitials(person.name)}</AvatarFallback>
-                            </Avatar>
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-medium">{person.name}</p>
-                              <p className="truncate text-xs text-muted-foreground">
-                                {person.roleLabel}
-                              </p>
-                            </div>
-                          </div>
-
-                          <span
-                            className={buttonVariants({
-                              variant: "outline",
-                              size: "sm",
-                              className: "pointer-events-none",
-                            })}
-                          >
-                            {badgeLabel}
-                          </span>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                )}
-              </CardContent>
-            </GradientCard>
-          </div>
-        </>
-      )}
+        <Suspense fallback={<TeamHomeRosterSkeleton />}>
+          <TeamHomeRosterSection teamMembersPromise={teamMembersPromise} />
+        </Suspense>
+      </div>
     </div>
   )
 }

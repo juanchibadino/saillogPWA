@@ -10,7 +10,6 @@ import {
   CheckIcon,
   ClipboardCheckIcon,
   CircleIcon,
-  CreditCardIcon,
   ChevronsUpDownIcon,
   ImagesIcon,
   NotebookTextIcon,
@@ -101,6 +100,7 @@ type SidebarNavItem = {
   title: string
   url?: string
   icon: LucideIcon
+  comingSoon?: boolean
 }
 
 type SidebarNavSection = {
@@ -110,29 +110,17 @@ type SidebarNavSection = {
 
 const NAVIGATION_SCOPE_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
 
-const homeNavItem = {
-  title: "Home",
-  url: "/dashboard",
-  icon: HomeIcon,
-}
-
 const organizationsNavItem = {
   title: "Organizations",
   url: "/organizations",
   icon: Building2Icon,
 }
 
-const organizationNavItems = [
+const organizationNavItems: SidebarNavItem[] = [
   {
     title: "Teams",
     url: "/teams",
     icon: UsersIcon,
-  },
-  {
-    title: "Members",
-    url: "/users",
-    icon: UserIcon,
-    comingSoon: false,
   },
   {
     title: "Venues",
@@ -140,15 +128,9 @@ const organizationNavItems = [
     icon: MapPinIcon,
   },
   {
-    title: "Reports",
-    url: "/reports",
-    icon: BarChart3Icon,
-    comingSoon: false,
-  },
-  {
-    title: "Billing",
-    url: "/billing",
-    icon: CreditCardIcon,
+    title: "Members",
+    url: "/users",
+    icon: UserIcon,
   },
 ]
 
@@ -162,7 +144,7 @@ const teamNavSections: SidebarNavSection[] = [
         icon: HomeIcon,
       },
       {
-        title: "Venue",
+        title: "Venues",
         url: "/team-venues",
         icon: MapPinIcon,
       },
@@ -172,7 +154,7 @@ const teamNavSections: SidebarNavSection[] = [
         icon: CircleIcon,
       },
       {
-        title: "Session",
+        title: "Sessions",
         url: "/team-sessions",
         icon: SailboatIcon,
       },
@@ -271,6 +253,22 @@ function buildScopedHref(
   }
 
   return `${path}?${params.toString()}`
+}
+
+function getTeamNavSectionLabel(input: {
+  sectionTitle: string
+  teamName: string
+  hasActiveTeam: boolean
+}): string {
+  if (!input.hasActiveTeam) {
+    return input.sectionTitle
+  }
+
+  if (input.sectionTitle === "Team") {
+    return input.teamName
+  }
+
+  return `${input.teamName} ${input.sectionTitle}`
 }
 
 function persistScopeSelection(orgId: string, teamId: NavigationTeamId): void {
@@ -504,6 +502,7 @@ export function AppSidebar({
     canAccessOrganizationModules && activeOrgId
       ? planTierByOrganizationId[activeOrgId]
       : null
+  const organizationSectionLabel = activeOrgId ? organizationName : "Organization"
   const planBadgeLabel =
     activePlanTier === "pro"
       ? "Pro Plan"
@@ -814,37 +813,11 @@ export function AppSidebar({
           <>
             {canAccessOrganizationArea ? (
               <SidebarGroup>
-                <SidebarGroupLabel>Organization</SidebarGroupLabel>
+                <SidebarGroupLabel className="truncate" title={organizationSectionLabel}>
+                  {organizationSectionLabel}
+                </SidebarGroupLabel>
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    <SidebarMenuItem key={homeNavItem.title}>
-                      <SidebarMenuButton
-                        isActive={isItemActive(displayPathname, homeNavItem.url)}
-                        tooltip={homeNavItem.title}
-                        render={
-                          (() => {
-                            const href = buildScopedHref(
-                              homeNavItem.url,
-                              activeOrgId,
-                              activeTeamId,
-                            )
-
-                            return (
-                              <Link
-                                href={href}
-                                onClick={(event) =>
-                                  handleSidebarNavigationClick(href, event)
-                                }
-                              />
-                            )
-                          })()
-                        }
-                      >
-                        <homeNavItem.icon />
-                        <span>{homeNavItem.title}</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-
                     {canAccessOrganizationsPage ? (
                       <SidebarMenuItem key={organizationsNavItem.title}>
                         <SidebarMenuButton
@@ -923,61 +896,71 @@ export function AppSidebar({
               </SidebarGroup>
             ) : null}
 
-            {teamNavSections.map((section) => (
-              <SidebarGroup key={section.title}>
-                <SidebarGroupLabel>{section.title}</SidebarGroupLabel>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {section.items.map((item) => {
-                      const disabled = !item.url || noTeamSelected
-                      const tooltip = noTeamSelected
-                        ? `${item.title} (Select a team first)`
-                        : item.title
+            {teamNavSections.map((section) => {
+              const sectionLabel = getTeamNavSectionLabel({
+                sectionTitle: section.title,
+                teamName: activeTeamName,
+                hasActiveTeam: !noTeamSelected,
+              })
 
-                      return (
-                        <SidebarMenuItem key={item.title}>
-                          <SidebarMenuButton
-                            isActive={
-                              item.url ? isItemActive(displayPathname, item.url) : false
-                            }
-                            tooltip={tooltip}
-                            disabled={disabled}
-                            render={
-                              item.url && !disabled
-                                ? (() => {
-                                    const href = buildScopedHref(
-                                      item.url,
-                                      activeOrgId,
-                                      activeTeamId,
-                                    )
+              return (
+                <SidebarGroup key={section.title}>
+                  <SidebarGroupLabel className="truncate" title={sectionLabel}>
+                    {sectionLabel}
+                  </SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {section.items.map((item) => {
+                        const disabled = !item.url || noTeamSelected
+                        const tooltip = noTeamSelected
+                          ? `${item.title} (Select a team first)`
+                          : item.title
 
-                                    return (
-                                      <Link
-                                        href={href}
-                                        onClick={(event) =>
-                                          handleSidebarNavigationClick(href, event)
-                                        }
-                                      />
-                                    )
-                                  })()
-                                : undefined
-                            }
-                          >
-                            <item.icon />
-                            <span>{item.title}</span>
-                            {noTeamSelected ? (
-                              <span className="ml-auto text-[10px] text-muted-foreground">
-                                TEAM
-                              </span>
-                            ) : null}
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      )
-                    })}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            ))}
+                        return (
+                          <SidebarMenuItem key={item.title}>
+                            <SidebarMenuButton
+                              isActive={
+                                item.url ? isItemActive(displayPathname, item.url) : false
+                              }
+                              tooltip={tooltip}
+                              disabled={disabled}
+                              render={
+                                item.url && !disabled
+                                  ? (() => {
+                                      const href = buildScopedHref(
+                                        item.url,
+                                        activeOrgId,
+                                        activeTeamId,
+                                      )
+
+                                      return (
+                                        <Link
+                                          href={href}
+                                          onClick={(event) =>
+                                            handleSidebarNavigationClick(href, event)
+                                          }
+                                        />
+                                      )
+                                    })()
+                                  : undefined
+                              }
+                            >
+                              <item.icon />
+                              <span>{item.title}</span>
+                              {noTeamSelected ? (
+                                <span className="ml-auto text-[10px] text-muted-foreground">
+                                  TEAM
+                                </span>
+                              ) : null}
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        )
+                      })}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              )
+            })}
           </>
         ) : (
           <SidebarGroup>
