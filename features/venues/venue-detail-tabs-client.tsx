@@ -1320,15 +1320,24 @@ export function VenueDetailTabsClient(input: {
   ]);
 
   const retrySelectedTab = routeData.retry;
+  const selectedRoutePayload =
+    routeData.data &&
+    isValidVenueDetailTabResponse({
+      expectedCache: selectedTabCache,
+      expectedTab: selectedTab,
+      payload: routeData.data,
+    })
+      ? routeData.data
+      : null;
 
   const currentKpis =
-    routeData.data?.kpis.kpis ?? selectedInitialPayload?.kpis.kpis ?? EMPTY_KPIS;
-  const selectedTabData = routeData.data?.data ?? null;
-  const showInlineError = routeData.status === "error" && routeData.hasData;
-  const isSelectedTabRevalidating = routeData.isRevalidating && routeData.hasData;
+    selectedRoutePayload?.kpis.kpis ?? selectedInitialPayload?.kpis.kpis ?? EMPTY_KPIS;
+  const selectedTabData = selectedRoutePayload?.data ?? selectedInitialPayload?.data ?? null;
+  const showInlineError = routeData.status === "error" && selectedTabData !== null;
+  const isSelectedTabRevalidating = routeData.isRevalidating && selectedTabData !== null;
 
   function renderPendingTab(tab: VenueDetailTab) {
-    if (routeData.status === "error" && !routeData.hasData) {
+    if (routeData.status === "error") {
       return (
         <VenueTabDataError
           error={{
@@ -1344,6 +1353,10 @@ export function VenueDetailTabsClient(input: {
   }
 
   function renderLoadedTab(tab: VenueDetailTab, data: VenueDetailTabPayload) {
+    if (!isVenueDetailTabPayload(data, tab)) {
+      return renderPendingTab(tab);
+    }
+
     const panel = renderTabPanel({
       tab,
       scope: input.scope,

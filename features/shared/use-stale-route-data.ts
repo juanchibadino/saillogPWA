@@ -90,6 +90,21 @@ function createError(value: unknown): Error {
   return new Error("Could not load fresh route data.")
 }
 
+function isRouteDataPayloadValid<TPayload>(input: {
+  context: StaleRouteDataValidationContext
+  payload: TPayload
+  validatePayload: (
+    payload: TPayload,
+    context: StaleRouteDataValidationContext,
+  ) => boolean
+}): boolean {
+  try {
+    return input.validatePayload(input.payload, input.context)
+  } catch {
+    return false
+  }
+}
+
 function resolveInitialState<TPayload>(input: {
   enabled: boolean
   initialData?: TPayload | null
@@ -175,6 +190,11 @@ export function useStaleRouteData<TPayload>(
     const controller = new AbortController()
     const didIdentityChange = activeIdentityRef.current !== identityKey
     activeIdentityRef.current = identityKey
+    const validationContext: StaleRouteDataValidationContext = {
+      cacheKey,
+      scope,
+      scopeKey,
+    }
     const cacheResult = didIdentityChange
       ? readScopedRouteCache<TPayload>({
           key: cacheKey,
@@ -182,18 +202,27 @@ export function useStaleRouteData<TPayload>(
           storage,
         })
       : null
+    const validCacheResult =
+      cacheResult?.status === "hit" &&
+      isRouteDataPayloadValid({
+        context: validationContext,
+        payload: cacheResult.payload,
+        validatePayload: validateFreshPayload,
+      })
+        ? cacheResult
+        : null
 
     setState((currentState) => {
-      if (cacheResult?.status === "hit") {
+      if (validCacheResult) {
         return {
           status: "cached",
-          data: cacheResult.payload,
+          data: validCacheResult.payload,
           error: null,
           cacheMeta: {
-            cachedAt: cacheResult.cachedAt,
-            staleAt: cacheResult.staleAt,
-            expiresAt: cacheResult.expiresAt,
-            isStale: cacheResult.isStale,
+            cachedAt: validCacheResult.cachedAt,
+            staleAt: validCacheResult.staleAt,
+            expiresAt: validCacheResult.expiresAt,
+            isStale: validCacheResult.isStale,
           },
           isFetching: true,
           isRevalidating: true,
@@ -244,13 +273,13 @@ export function useStaleRouteData<TPayload>(
           return
         }
 
-        const validationContext: StaleRouteDataValidationContext = {
-          cacheKey,
-          scope,
-          scopeKey,
-        }
-
-        if (!validateFreshPayload(payload, validationContext)) {
+        if (
+          !isRouteDataPayloadValid({
+            context: validationContext,
+            payload,
+            validatePayload: validateFreshPayload,
+          })
+        ) {
           throw new Error("Fresh route data failed scoped validation.")
         }
 

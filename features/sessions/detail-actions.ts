@@ -19,6 +19,16 @@ import {
   type SessionDetailTimingStatus,
 } from "@/features/sessions/detail-timing"
 import { getSessionDetailInfoTabData } from "@/features/sessions/detail-data"
+import {
+  buildScopedNotificationHref,
+  buildSessionReviewFieldLabel,
+  buildSessionUpdateMessage,
+  formatActorName,
+  formatSessionLabel,
+  NOTIFICATION_EVENT_TYPES,
+  shouldNotifyTextAdded,
+} from "@/features/notifications/core.mjs"
+import { createNotificationsForActiveTeamMembers } from "@/features/notifications/server"
 import { createAdminSupabaseClient } from "@/lib/supabase/admin"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { scopeFormInputSchema } from "@/lib/validation/navigation"
@@ -636,7 +646,10 @@ async function resolveScopedSessionContext(input: {
       session: {
         id: string
         camp_id: string
+        session_date: string
+        dock_out_at: string | null
         net_time_minutes: number | null
+        goals: string | null
       }
       camp: {
         id: string
@@ -654,7 +667,7 @@ async function resolveScopedSessionContext(input: {
 
   const { data: sessionRow, error: sessionError } = await supabase
     .from("sessions")
-    .select("id,camp_id,net_time_minutes")
+    .select("id,camp_id,session_date,dock_out_at,net_time_minutes,goals")
     .eq("id", input.sessionId)
     .maybeSingle()
 
@@ -1250,6 +1263,16 @@ async function updateSessionInfoMutation(formData: FormData): Promise<UpdateSess
   const selectedWindPatternIds = [...new Set(parsedInput.data.windPatternIds)]
 
   const supabase = await createServerSupabaseClient()
+  const { data: existingReviewRow, error: existingReviewError } = await supabase
+    .from("session_reviews")
+    .select("best_of_session,to_work")
+    .eq("session_id", parsedInput.data.sessionId)
+    .maybeSingle()
+
+  if (existingReviewError) {
+    console.error("Failed to load session notification state", existingReviewError)
+  }
+
   const [reviewMutation, setupMutation] = await Promise.all([
     supabase.from("session_reviews").upsert(
       {
@@ -1472,6 +1495,53 @@ async function updateSessionInfoMutation(formData: FormData): Promise<UpdateSess
     })
   }
 
+  if (!existingReviewError) {
+    const bestAdded = shouldNotifyTextAdded(
+      existingReviewRow?.best_of_session,
+      bestOfSession,
+    )
+    const toWorkAdded = shouldNotifyTextAdded(existingReviewRow?.to_work, toWork)
+
+    if (bestAdded || toWorkAdded) {
+      const actorName = formatActorName({
+        firstName: context.profile?.first_name,
+        lastName: context.profile?.last_name,
+        email: context.user.email ?? null,
+      })
+      const fieldLabel = buildSessionReviewFieldLabel({ bestAdded, toWorkAdded })
+      const sessionLabel = formatSessionLabel({
+        sessionDate: scopedSession.session.session_date,
+        dockOutAt: scopedSession.session.dock_out_at,
+      })
+
+      await createNotificationsForActiveTeamMembers({
+        excludeProfileId: context.user.id,
+        actorProfileId: context.user.id,
+        teamId: scope.scopeTeamId,
+        eventType: NOTIFICATION_EVENT_TYPES.SESSION_REVIEW_ADDED,
+        message: buildSessionUpdateMessage({
+          actorName,
+          fieldLabel,
+          sessionLabel,
+        }),
+        targetHref: buildScopedNotificationHref({
+          pathname: `/team-sessions/${parsedInput.data.sessionId}`,
+          orgId: scope.scopeOrgId,
+          teamId: scope.scopeTeamId,
+          tab: "info",
+        }),
+        metadata: {
+          sessionId: parsedInput.data.sessionId,
+          campId: scopedSession.camp.id,
+          fields: {
+            bestAdded,
+            toWorkAdded,
+          },
+        },
+      })
+    }
+  }
+
   return {
     ok: true,
     sessionId: parsedInput.data.sessionId,
@@ -1687,6 +1757,40 @@ export async function updateSessionGoalsAction(formData: FormData): Promise<void
         ...scope,
       }),
     )
+  }
+
+  if (shouldNotifyTextAdded(scopedSession.session.goals, normalizedGoals)) {
+    const actorName = formatActorName({
+      firstName: context.profile?.first_name,
+      lastName: context.profile?.last_name,
+      email: context.user.email ?? null,
+    })
+    const sessionLabel = formatSessionLabel({
+      sessionDate: scopedSession.session.session_date,
+      dockOutAt: scopedSession.session.dock_out_at,
+    })
+
+    await createNotificationsForActiveTeamMembers({
+      excludeProfileId: context.user.id,
+      actorProfileId: context.user.id,
+      teamId: scope.scopeTeamId,
+      eventType: NOTIFICATION_EVENT_TYPES.SESSION_GOALS_ADDED,
+      message: buildSessionUpdateMessage({
+        actorName,
+        fieldLabel: "Goals",
+        sessionLabel,
+      }),
+      targetHref: buildScopedNotificationHref({
+        pathname: `/team-sessions/${parsedInput.data.sessionId}`,
+        orgId: scope.scopeOrgId,
+        teamId: scope.scopeTeamId,
+        tab: "goals",
+      }),
+      metadata: {
+        sessionId: parsedInput.data.sessionId,
+        campId: scopedSession.camp.id,
+      },
+    })
   }
 
   revalidateSessionSlices({

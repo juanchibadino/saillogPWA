@@ -23,6 +23,14 @@ import {
   startCampDetailTiming,
   type CampDetailTimingStatus,
 } from "@/features/camps/detail-timing"
+import {
+  buildCampGoalsMessage,
+  buildScopedNotificationHref,
+  formatActorName,
+  NOTIFICATION_EVENT_TYPES,
+  shouldNotifyTextAdded,
+} from "@/features/notifications/core.mjs"
+import { createNotificationsForActiveTeamMembers } from "@/features/notifications/server"
 
 function getFormString(formData: FormData, key: string): string | undefined {
   const value = formData.get(key)
@@ -655,6 +663,16 @@ export async function updateCampGoalsAction(formData: FormData): Promise<void> {
 
   const normalizedGoals = parsedInput.data.goals.trim()
   const supabase = await createServerSupabaseClient()
+  const { data: campNotificationRow, error: campNotificationError } = await supabase
+    .from("camps")
+    .select("name,notes")
+    .eq("id", parsedInput.data.campId)
+    .maybeSingle()
+
+  if (campNotificationError) {
+    console.error("Failed to load camp notification state", campNotificationError)
+  }
+
   const { error: updateError } = await supabase
     .from("camps")
     .update({
@@ -671,6 +689,39 @@ export async function updateCampGoalsAction(formData: FormData): Promise<void> {
         ...scope,
       }),
     )
+  }
+
+  if (
+    campNotificationRow &&
+    shouldNotifyTextAdded(campNotificationRow.notes, normalizedGoals)
+  ) {
+    const actorName = formatActorName({
+      firstName: context.profile?.first_name,
+      lastName: context.profile?.last_name,
+      email: context.user.email ?? null,
+    })
+    const campName =
+      campNotificationRow.name.trim().length > 0 ? campNotificationRow.name : "this camp"
+
+    await createNotificationsForActiveTeamMembers({
+      excludeProfileId: context.user.id,
+      actorProfileId: context.user.id,
+      teamId: scope.scopeTeamId,
+      eventType: NOTIFICATION_EVENT_TYPES.CAMP_GOALS_ADDED,
+      message: buildCampGoalsMessage({
+        actorName,
+        campName,
+      }),
+      targetHref: buildScopedNotificationHref({
+        pathname: `/team-camps/${parsedInput.data.campId}`,
+        orgId: scope.scopeOrgId,
+        teamId: scope.scopeTeamId,
+        tab: "goals",
+      }),
+      metadata: {
+        campId: parsedInput.data.campId,
+      },
+    })
   }
 
   revalidatePath("/team-camps")

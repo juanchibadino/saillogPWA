@@ -514,6 +514,48 @@ export type Database = {
         };
         Relationships: [];
       };
+      notifications: {
+        Row: {
+          id: string;
+          recipient_profile_id: string;
+          actor_profile_id: string | null;
+          team_id: string;
+          event_type: Database["public"]["Enums"]["notification_event_type"];
+          message: string;
+          target_href: string;
+          metadata: Json;
+          read_at: string | null;
+          deleted_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          recipient_profile_id: string;
+          actor_profile_id?: string | null;
+          team_id: string;
+          event_type: Database["public"]["Enums"]["notification_event_type"];
+          message: string;
+          target_href: string;
+          metadata?: Json;
+          read_at?: string | null;
+          deleted_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          recipient_profile_id?: string;
+          actor_profile_id?: string | null;
+          team_id?: string;
+          event_type?: Database["public"]["Enums"]["notification_event_type"];
+          message?: string;
+          target_href?: string;
+          metadata?: Json;
+          read_at?: string | null;
+          deleted_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       session_regatta_results: {
         Row: {
           id: string;
@@ -1600,6 +1642,11 @@ export type Database = {
         | "running_rigging"
         | "hardware_and_fittings";
       global_role_type: "super_admin";
+      notification_event_type:
+        | "camp_goals_added"
+        | "session_review_added"
+        | "session_goals_added"
+        | "assessment_run_created";
       organization_role_type: "organization_admin";
       plan_tier: "free" | "pro" | "olympic";
       session_type: "training" | "regatta";

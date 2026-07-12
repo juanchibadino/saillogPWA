@@ -10,6 +10,10 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { AppMobileBottomNavClient } from "@/components/app-mobile-bottom-nav-client";
 import { SiteHeader } from "@/components/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import {
+  getEmptyNotificationCenterData,
+  getNotificationCenterData,
+} from "@/features/notifications/data";
 
 function formatDisplayName(firstName: string | null, lastName: string | null): string {
   const name = [firstName, lastName].filter(Boolean).join(" ").trim();
@@ -54,6 +58,7 @@ export default async function AppLayout({
   const hasNoMemberships =
     context.organizationMemberships.length === 0 && context.teamMemberships.length === 0;
   let navigation: ResolvedNavigationScope | null = null;
+  let notificationData = getEmptyNotificationCenterData();
 
   if (!canAccessApp && hasNoMemberships) {
     redirect("/onboarding");
@@ -64,6 +69,15 @@ export default async function AppLayout({
       context,
       searchParams: {},
     });
+
+    try {
+      notificationData = await getNotificationCenterData({
+        currentProfileId: context.user.id,
+        limit: 20,
+      });
+    } catch (error) {
+      console.error("Failed to load notification center data", error);
+    }
   }
 
   const userName = formatDisplayName(
@@ -92,7 +106,7 @@ export default async function AppLayout({
           }}
         />
         <SidebarInset className="h-full min-h-0 overflow-hidden">
-          <SiteHeader navigation={navigation} />
+          <SiteHeader navigation={navigation} notificationData={notificationData} />
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             <div className="@container/main mobile-shell-content flex min-h-full flex-col gap-4 p-4 md:gap-6 md:p-6">
               {canAccessApp ? (

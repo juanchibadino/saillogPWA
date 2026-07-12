@@ -13,6 +13,8 @@ import { ArrowLeftIcon } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { InstallAppButton } from "@/components/pwa/install-app-button"
 import { PwaDebugPanel } from "@/components/pwa/pwa-debug-panel"
+import { NotificationBell } from "@/features/notifications/notification-bell"
+import type { NotificationCenterData } from "@/features/notifications/data"
 import {
   NAVIGATION_SCOPE_ORG_QUERY_KEY,
   NAVIGATION_SCOPE_TEAM_QUERY_KEY,
@@ -89,6 +91,10 @@ function getSectionTitle(pathname: string): string {
 
   if (pathname.startsWith("/team-home")) {
     return "Team Home"
+  }
+
+  if (pathname.startsWith("/notifications")) {
+    return "Notifications"
   }
 
   if (pathname.startsWith("/team-camps")) {
@@ -591,6 +597,10 @@ function shouldUsePhaseOneMobileHeader(pathname: string): boolean {
     return true
   }
 
+  if (pathname.startsWith("/notifications")) {
+    return true
+  }
+
   return false
 }
 
@@ -647,13 +657,19 @@ function resolveMobileBackFallbackPath(pathname: string): string {
     return "/team-home"
   }
 
+  if (pathname.startsWith("/notifications")) {
+    return "/team-home"
+  }
+
   return "/team-home"
 }
 
 export function SiteHeader({
   navigation,
+  notificationData,
 }: {
   navigation: ResolvedNavigationScope | null
+  notificationData: NotificationCenterData
 }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -710,6 +726,7 @@ export function SiteHeader({
   const isTeamStandardMovesHeader = pathname.startsWith("/team-standard-moves")
   const isTeamWindPatternsHeader = pathname.startsWith("/team-wind-patterns")
   const isTeamAssetsHeader = pathname.startsWith("/team-assets")
+  const isNotificationsHeader = pathname.startsWith("/notifications")
   const teamScopeSectionLabel = pathname.startsWith("/team-venues")
     ? "Venues"
     : pathname.startsWith("/team-camps")
@@ -753,6 +770,7 @@ export function SiteHeader({
   const venuesHref = buildScopedHref("/venues", activeScope)
   const teamVenuesHref = buildScopedHref("/team-venues", activeScope)
   const teamAssessmentsHref = buildScopedHref("/team-assessments", activeScope)
+  const notificationsHref = buildScopedHref("/notifications", activeScope)
   const pathnameUsesPhaseOneMobileHeader = shouldUsePhaseOneMobileHeader(pathname)
   // Keep the initial SSR/client hydration tree identical before switching to
   // the route-specific mobile header.
@@ -1119,7 +1137,8 @@ export function SiteHeader({
       isTeamGearHeader ||
       isTeamStandardMovesHeader ||
       isTeamWindPatternsHeader ||
-      isTeamAssetsHeader
+      isTeamAssetsHeader ||
+      isNotificationsHeader
     ) {
       router.push(teamHomeHref)
       return
@@ -1240,6 +1259,12 @@ export function SiteHeader({
         )}
         <div className="ml-auto flex items-center gap-2">
           <PwaDebugPanel enabled={isPwaDebugEnabled} />
+          {!isNotificationsHeader ? (
+            <NotificationBell
+              initialData={notificationData}
+              notificationsHref={notificationsHref}
+            />
+          ) : null}
           <InstallAppButton />
           <ThemeToggle />
         </div>
@@ -1263,7 +1288,8 @@ export function SiteHeader({
                 isTeamGearHeader ||
                 isTeamStandardMovesHeader ||
                 isTeamWindPatternsHeader ||
-                isTeamAssetsHeader
+                isTeamAssetsHeader ||
+                isNotificationsHeader
               ? "Go to Team Home"
               : "Go back"
 
@@ -1281,6 +1307,12 @@ export function SiteHeader({
             <ArrowLeftIcon className="size-4" />
           </Button>
           <h1 className="ml-2 flex-1 truncate text-base font-medium">{mobileHeaderTitle}</h1>
+          {!isNotificationsHeader ? (
+            <NotificationBell
+              initialData={notificationData}
+              notificationsHref={notificationsHref}
+            />
+          ) : null}
           <SidebarTrigger className="ml-1" />
         </header>
         {desktopHeader}
