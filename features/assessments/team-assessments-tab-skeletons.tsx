@@ -21,8 +21,6 @@ export function TeamAssessmentsCreatedTabSkeleton() {
             <div className="space-y-2">
               <Skeleton className="h-4 w-40" />
               <Skeleton className="h-3 w-28" />
-              <Skeleton className="h-3 w-52" />
-              <Skeleton className="h-3 w-32" />
             </div>
           </GradientCard>
         ))}
@@ -169,8 +167,8 @@ export function TeamAssessmentTemplateEditorSkeleton() {
         </div>
 
         <div className="flex flex-col-reverse gap-2 border-t pt-4 md:flex-row md:justify-end">
-          <Skeleton className="h-8 w-full md:w-20" />
-          <Skeleton className="h-8 w-full md:w-32" />
+          <Skeleton className="h-11 w-full md:h-8 md:w-20" />
+          <Skeleton className="h-11 w-full md:h-8 md:w-32" />
         </div>
       </div>
     </GradientCard>

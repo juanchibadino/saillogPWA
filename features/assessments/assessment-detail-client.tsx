@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/chart"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -106,7 +107,13 @@ function DeleteRunSubmitButton() {
   const { pending } = useFormStatus()
 
   return (
-    <Button type="submit" size="sm" variant="destructive" disabled={pending}>
+    <Button
+      type="submit"
+      size="sm"
+      variant="destructive"
+      disabled={pending}
+      className="h-11 w-full md:h-7"
+    >
       {pending ? <Loader2Icon className="size-4 animate-spin" /> : null}
       {pending ? "Deleting..." : "Delete"}
     </Button>
@@ -117,7 +124,7 @@ function AnswerSubmitButton() {
   const { pending } = useFormStatus()
 
   return (
-    <Button type="submit" disabled={pending}>
+    <Button type="submit" disabled={pending} className="h-11 w-full md:h-8 md:w-auto">
       {pending ? <Loader2Icon className="size-4 animate-spin" /> : null}
       {pending ? "Saving answers..." : "Save answers"}
     </Button>
@@ -139,7 +146,10 @@ function DeleteRunDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        className="sm:max-w-md"
+        overlayClassName="bg-black/30 backdrop-blur-sm supports-backdrop-filter:backdrop-blur-sm"
+      >
         <DialogHeader>
           <DialogTitle>Delete assessment?</DialogTitle>
           <DialogDescription>
@@ -147,14 +157,25 @@ function DeleteRunDialog({
             and all submitted answers linked to it.
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter showCloseButton>
-          <form action={deleteAssessmentRunAction}>
+        <DialogFooter>
+          <form action={deleteAssessmentRunAction} className="w-full md:w-auto">
             <AssessmentScopeFields scope={scope} />
             <input type="hidden" name="returnPath" value={returnPath} />
             <input type="hidden" name="runId" value={run.id} />
             <input type="hidden" name="teamVenueId" value={run.teamVenueId} />
             <DeleteRunSubmitButton />
           </form>
+          <DialogClose
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 w-full md:h-8 md:w-auto"
+              />
+            }
+          >
+            Close
+          </DialogClose>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -182,7 +203,14 @@ function AssessmentDetailActions({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger
-          render={<Button type="button" variant="outline" size="icon" />}
+          render={
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-11 w-11 md:h-8 md:w-8"
+            />
+          }
           aria-label="Open assessment actions"
         >
           <MoreHorizontalIcon className="size-4" />
@@ -297,7 +325,13 @@ function VenueAxisTick({
   const venueName = venueNameByLabel.get(label)
 
   return (
-    <text x={x} y={y} dy={16} textAnchor="middle">
+    <text
+      x={x}
+      y={y}
+      dy={16}
+      textAnchor="middle"
+      style={{ fill: "var(--foreground)" }}
+    >
       {venueName ? <title>{venueName}</title> : null}
       {label}
     </text>

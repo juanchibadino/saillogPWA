@@ -33,7 +33,6 @@ import {
 import {
   Drawer,
   DrawerContent,
-  DrawerDescription,
   DrawerFooter,
   DrawerHeader,
   DrawerTitle,
@@ -49,7 +48,6 @@ import { Label } from "@/components/ui/label"
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetFooter,
   SheetHeader,
   SheetTitle,
@@ -392,12 +390,9 @@ export function CreateWindPatternDialog({
           <PlusIcon className={isFabTrigger ? "size-6" : "size-4"} />
           {isFabTrigger ? <span className="sr-only">New wind pattern</span> : "New"}
         </button>
-        <DrawerContent className="flex h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+        <DrawerContent className="flex max-h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden">
           <DrawerHeader className="shrink-0 border-b text-left">
             <DrawerTitle>Create Wind Pattern</DrawerTitle>
-            <DrawerDescription>
-              Add a reusable wind pattern for this venue and team.
-            </DrawerDescription>
           </DrawerHeader>
           {createForm}
         </DrawerContent>
@@ -422,9 +417,6 @@ export function CreateWindPatternDialog({
         <SheetContent side="right" className="flex h-full flex-col gap-0 overflow-hidden sm:max-w-xl">
           <SheetHeader className="shrink-0 border-b">
             <SheetTitle>Create Wind Pattern</SheetTitle>
-            <SheetDescription>
-              Add a reusable wind pattern for this team.
-            </SheetDescription>
           </SheetHeader>
           {createForm}
         </SheetContent>
@@ -543,10 +535,9 @@ export function EditWindPatternDialog({
             Edit
           </button>
         ) : null}
-        <DrawerContent className="flex h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+        <DrawerContent className="flex max-h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden">
           <DrawerHeader className="shrink-0 border-b text-left">
             <DrawerTitle>Edit Wind Pattern</DrawerTitle>
-            <DrawerDescription>{windPattern.name}</DrawerDescription>
           </DrawerHeader>
           {editForm}
         </DrawerContent>
@@ -572,7 +563,6 @@ export function EditWindPatternDialog({
         <SheetContent side="right" className="flex h-full flex-col gap-0 overflow-hidden sm:max-w-xl">
           <SheetHeader className="shrink-0 border-b">
             <SheetTitle>Edit Wind Pattern</SheetTitle>
-            <SheetDescription>{windPattern.name}</SheetDescription>
           </SheetHeader>
           {editForm}
         </SheetContent>

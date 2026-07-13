@@ -24,7 +24,6 @@ import {
 import {
   Drawer,
   DrawerContent,
-  DrawerDescription,
   DrawerFooter,
   DrawerHeader,
   DrawerTitle,
@@ -34,7 +33,6 @@ import { Label } from "@/components/ui/label"
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetFooter,
   SheetHeader,
   SheetTitle,
@@ -584,10 +582,9 @@ export function EditVenueDialog({
           <PencilIcon className="size-4" />
           Edit
         </Button>
-        <DrawerContent className="flex h-[85dvh] min-h-0 flex-col overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+        <DrawerContent className="flex max-h-[85dvh] min-h-0 flex-col overflow-hidden">
           <DrawerHeader className="shrink-0 border-b px-4 py-3">
             <DrawerTitle>Edit venue</DrawerTitle>
-            <DrawerDescription>{venue.name}</DrawerDescription>
           </DrawerHeader>
           {renderForm("drawer")}
         </DrawerContent>
@@ -608,10 +605,9 @@ export function EditVenueDialog({
         <PencilIcon className="size-4" />
         Edit
       </Button>
-      <SheetContent side="right" className="h-full overflow-hidden sm:max-w-xl">
+      <SheetContent side="right" className="flex h-full flex-col overflow-hidden sm:max-w-xl">
         <SheetHeader className="shrink-0 border-b pr-14">
           <SheetTitle>Edit venue</SheetTitle>
-          <SheetDescription>{venue.name}</SheetDescription>
         </SheetHeader>
         {renderForm("sheet")}
       </SheetContent>

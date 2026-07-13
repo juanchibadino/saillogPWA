@@ -33,6 +33,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -99,7 +100,13 @@ function DeleteRunSubmitButton() {
   const { pending } = useFormStatus()
 
   return (
-    <Button type="submit" size="sm" variant="destructive" disabled={pending}>
+    <Button
+      type="submit"
+      size="sm"
+      variant="destructive"
+      disabled={pending}
+      className="h-11 w-full md:h-7"
+    >
       {pending ? <Loader2Icon className="size-4 animate-spin" /> : null}
       {pending ? "Deleting..." : "Delete"}
     </Button>
@@ -152,7 +159,10 @@ function RunDeleteDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        className="sm:max-w-md"
+        overlayClassName="bg-black/30 backdrop-blur-sm supports-backdrop-filter:backdrop-blur-sm"
+      >
         <DialogHeader>
           <DialogTitle>Delete assessment?</DialogTitle>
           <DialogDescription>
@@ -161,14 +171,25 @@ function RunDeleteDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <DialogFooter showCloseButton>
-          <form action={deleteAssessmentRunAction}>
+        <DialogFooter>
+          <form action={deleteAssessmentRunAction} className="w-full md:w-auto">
             <AssessmentScopeFields scope={scope} />
             <input type="hidden" name="returnPath" value={returnPath} />
             <input type="hidden" name="runId" value={run.id} />
             <input type="hidden" name="teamVenueId" value={run.teamVenueId} />
             <DeleteRunSubmitButton />
           </form>
+          <DialogClose
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 w-full md:h-8 md:w-auto"
+              />
+            }
+          >
+            Close
+          </DialogClose>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -355,21 +376,12 @@ export function TeamAssessmentRunsList({
                   }}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate text-sm font-semibold">
-                          {run.templateName ?? run.name}
-                        </p>
-                        <Badge variant={getAssessmentRunStatusBadgeVariant(run.status)}>
-                          {formatAssessmentRunStatusLabel(run.status)}
-                        </Badge>
-                      </div>
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <p className="truncate text-sm font-semibold">
+                        {run.templateName ?? run.name}
+                      </p>
                       <p className="truncate text-xs text-muted-foreground">
                         {run.venueName} - {run.venueLocation}
-                      </p>
-                      <AssessmentRunCampsBadges camps={run.camps} />
-                      <p className="text-sm font-medium tabular-nums">
-                        {run.completedRespondentsCount}/{run.expectedRespondentsCount}
                       </p>
                     </div>
                     <div

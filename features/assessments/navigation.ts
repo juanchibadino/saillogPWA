@@ -5,6 +5,7 @@ import {
 import type { NavigationScope } from "@/lib/navigation/types"
 
 export const TEAM_ASSESSMENT_TABS = ["created", "templates"] as const
+export const ASSESSMENT_DETAIL_RETURN_TO_QUERY_KEY = "returnTo"
 
 export type TeamAssessmentTab = (typeof TEAM_ASSESSMENT_TABS)[number]
 
@@ -64,6 +65,7 @@ export function buildTeamAssessmentsHref(input: {
 export function buildAssessmentDetailHref(input: {
   scope: NavigationScope
   assessmentId: string
+  returnTo?: string
   status?: string
   error?: string
 }): string {
@@ -76,6 +78,10 @@ export function buildAssessmentDetailHref(input: {
 
   if (input.error) {
     params.set("error", input.error)
+  }
+
+  if (input.returnTo) {
+    params.set(ASSESSMENT_DETAIL_RETURN_TO_QUERY_KEY, input.returnTo)
   }
 
   const query = params.toString()

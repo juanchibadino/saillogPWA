@@ -67,62 +67,78 @@ export function VenueWindPatternsPanel({
   });
 
   return (
-    <WindPatternsTable
-      patterns={filteredPatterns}
-      canManageWindPatterns={canManageWindPatterns}
-      selectedStatusFilter={statusFilter}
-      scope={scope}
-      teamVenueId={teamVenueId}
-      year={selectedYear}
-      toolbar={
-        <WindPatternsToolbar
-          selectedValue={statusFilter}
-          options={[
-            {
-              value: "active",
-              label: "Active",
-              href: buildWindPatternsFiltersHref({
-                scope,
-                teamVenueId,
-                year: selectedYear,
-                statusFilter: "active",
-              }),
-              count: data.windPatterns.activeCount,
-            },
-            {
-              value: "archived",
-              label: "Archived",
-              href: buildWindPatternsFiltersHref({
-                scope,
-                teamVenueId,
-                year: selectedYear,
-                statusFilter: "archived",
-              }),
-              count: data.windPatterns.archivedCount,
-            },
-            {
-              value: "all",
-              label: "All",
-              href: buildWindPatternsFiltersHref({
-                scope,
-                teamVenueId,
-                year: selectedYear,
-                statusFilter: "all",
-              }),
-              count: data.windPatterns.activeCount + data.windPatterns.archivedCount,
-            },
-          ]}
-          action={
-            <CreateWindPatternDialog
-              scope={scope}
-              teamVenueId={teamVenueId}
-              statusFilter={statusFilter}
-              year={selectedYear}
-              disabled={!canManageWindPatterns}
-            />
-          }
-        />
-      }
-    />
+    <>
+      <WindPatternsTable
+        patterns={filteredPatterns}
+        canManageWindPatterns={canManageWindPatterns}
+        selectedStatusFilter={statusFilter}
+        scope={scope}
+        teamVenueId={teamVenueId}
+        year={selectedYear}
+        toolbar={
+          <WindPatternsToolbar
+            selectedValue={statusFilter}
+            options={[
+              {
+                value: "active",
+                label: "Active",
+                href: buildWindPatternsFiltersHref({
+                  scope,
+                  teamVenueId,
+                  year: selectedYear,
+                  statusFilter: "active",
+                }),
+                count: data.windPatterns.activeCount,
+              },
+              {
+                value: "archived",
+                label: "Archived",
+                href: buildWindPatternsFiltersHref({
+                  scope,
+                  teamVenueId,
+                  year: selectedYear,
+                  statusFilter: "archived",
+                }),
+                count: data.windPatterns.archivedCount,
+              },
+              {
+                value: "all",
+                label: "All",
+                href: buildWindPatternsFiltersHref({
+                  scope,
+                  teamVenueId,
+                  year: selectedYear,
+                  statusFilter: "all",
+                }),
+                count:
+                  data.windPatterns.activeCount + data.windPatterns.archivedCount,
+              },
+            ]}
+            action={
+              <div className="hidden md:block">
+                <CreateWindPatternDialog
+                  scope={scope}
+                  teamVenueId={teamVenueId}
+                  statusFilter={statusFilter}
+                  year={selectedYear}
+                  disabled={!canManageWindPatterns}
+                  surface="sheet"
+                />
+              </div>
+            }
+          />
+        }
+      />
+
+      <CreateWindPatternDialog
+        scope={scope}
+        teamVenueId={teamVenueId}
+        statusFilter={statusFilter}
+        year={selectedYear}
+        disabled={!canManageWindPatterns}
+        surface="drawer"
+        triggerVariant="fab"
+      />
+    </>
   );
 }

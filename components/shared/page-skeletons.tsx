@@ -1328,7 +1328,9 @@ function TeamAssessmentDetailHeaderSkeleton({
           <Skeleton className="h-8 w-64 max-w-full" />
           <Skeleton className="h-4 w-72 max-w-full" />
         </div>
-        {canManageAssessments ? <Skeleton className="h-9 w-9" /> : null}
+        {canManageAssessments ? (
+          <Skeleton className="h-11 w-11 md:h-8 md:w-8" />
+        ) : null}
       </div>
     </section>
   )
@@ -2408,13 +2410,10 @@ function VenueDetailAssessmentsPanelSkeleton({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1 space-y-3">
                 <Skeleton className="h-4 w-40 max-w-full" />
-                <div className="space-y-1.5">
-                  <div className="flex flex-wrap gap-1.5">
-                    <Skeleton className="h-5 w-20 rounded-full" />
-                    <Skeleton className="h-5 w-24 rounded-full" />
-                  </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <Skeleton className="h-5 w-20 rounded-full" />
+                  <Skeleton className="h-5 w-24 rounded-full" />
                 </div>
-                <Skeleton className="h-4 w-10" />
               </div>
               <Skeleton className="h-11 w-11 shrink-0 self-center" />
             </div>

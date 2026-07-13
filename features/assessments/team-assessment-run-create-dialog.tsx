@@ -17,7 +17,6 @@ import { Button } from "@/components/ui/button"
 import {
   Drawer,
   DrawerContent,
-  DrawerDescription,
   DrawerFooter,
   DrawerHeader,
   DrawerTitle,
@@ -26,7 +25,6 @@ import { Label } from "@/components/ui/label"
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetFooter,
   SheetHeader,
   SheetTitle,
@@ -204,12 +202,9 @@ export function TeamAssessmentRunCreateDialog({
         >
           <PlusIcon className="size-6" />
         </Button>
-        <DrawerContent className="flex h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+        <DrawerContent className="flex max-h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden">
           <DrawerHeader className="shrink-0 border-b text-left">
             <DrawerTitle>Create assessment</DrawerTitle>
-            <DrawerDescription>
-              Select a venue, template, and camps for this assessment.
-            </DrawerDescription>
           </DrawerHeader>
           {renderForm("drawer")}
         </DrawerContent>
@@ -226,9 +221,6 @@ export function TeamAssessmentRunCreateDialog({
       <SheetContent side="right" className="flex h-full flex-col gap-0 overflow-hidden sm:max-w-3xl">
         <SheetHeader className="shrink-0 border-b">
           <SheetTitle>Create assessment</SheetTitle>
-          <SheetDescription>
-            Select a venue, template, and camps for this assessment.
-          </SheetDescription>
         </SheetHeader>
         {renderForm("sheet")}
       </SheetContent>

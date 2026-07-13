@@ -31,7 +31,6 @@ import {
 import {
   Drawer,
   DrawerContent,
-  DrawerDescription,
   DrawerFooter,
   DrawerHeader,
   DrawerTitle,
@@ -47,7 +46,6 @@ import { Label } from "@/components/ui/label"
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetFooter,
   SheetHeader,
   SheetTitle,
@@ -513,7 +511,11 @@ function GearDialogForm({
     isDrawerSurface ? "h-11 text-base md:text-sm" : "h-9 text-sm",
   )
   const compactButtonClassName = isDrawerSurface ? "h-11 px-3" : undefined
-  const iconButtonClassName = isDrawerSurface ? "h-11 w-11" : undefined
+  const ruleInputClassName = "h-11 px-3 text-base md:text-sm"
+  const ruleSelectClassName =
+    "h-11 w-full rounded-lg border border-input bg-background px-3 text-base outline-none ring-ring/50 focus-visible:ring-[3px] md:text-sm"
+  const ruleDeleteButtonClassName =
+    "h-11 w-11 shrink-0 border border-red-500/20 bg-red-500/10 text-red-600 hover:bg-red-500/15 hover:text-red-700 dark:border-red-400/25 dark:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/20"
 
   return (
     <form action={action} className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -657,11 +659,8 @@ function GearDialogForm({
 
         <div className="space-y-3 rounded-lg border p-4">
           <div className="flex items-center justify-between gap-3">
-            <div>
+            <div className="min-w-0">
               <h4 className="text-sm font-semibold">Threshold Rules</h4>
-              <p className="text-xs text-muted-foreground">
-                Create warning and critical thresholds by uses or minutes.
-              </p>
             </div>
             <Button
               type="button"
@@ -686,7 +685,7 @@ function GearDialogForm({
               {alertRules.map((rule, index) => (
                 <div
                   key={rule.draftKey}
-                  className="grid gap-3 rounded-md border p-3 md:grid-cols-[1.1fr_1fr_1fr_auto_auto]"
+                  className="space-y-3 rounded-md border p-3"
                 >
                   <div className="space-y-1">
                     <Label className="text-xs">Metric</Label>
@@ -703,7 +702,7 @@ function GearDialogForm({
                           return nextRules
                         })
                       }}
-                      className={selectClassName}
+                      className={ruleSelectClassName}
                     >
                       <option value="usage_minutes">Minutes</option>
                       <option value="usage_count">Times Used</option>
@@ -725,7 +724,7 @@ function GearDialogForm({
                           return nextRules
                         })
                       }}
-                      className={selectClassName}
+                      className={ruleSelectClassName}
                     >
                       <option value="warning">Warning</option>
                       <option value="critical">Critical</option>
@@ -750,43 +749,45 @@ function GearDialogForm({
                           return nextRules
                         })
                       }}
-                      className={inputClassName}
+                      className={ruleInputClassName}
                     />
                   </div>
 
-                  <label className="inline-flex min-h-11 items-center gap-2 pt-0 text-sm md:pt-6">
-                    <input
-                      type="checkbox"
-                      checked={rule.isRefurbishedRule}
-                      onChange={(event) => {
-                        setAlertRules((existingRules) => {
-                          const nextRules = [...existingRules]
-                          nextRules[index] = {
-                            ...nextRules[index],
-                            isRefurbishedRule: event.target.checked,
-                          }
-                          return nextRules
-                        })
-                      }}
-                      className="size-4 rounded border-input"
-                    />
-                    Refurb only
-                  </label>
+                  <div className="flex min-h-11 items-center justify-between gap-3">
+                    <label className="inline-flex min-w-0 items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={rule.isRefurbishedRule}
+                        onChange={(event) => {
+                          setAlertRules((existingRules) => {
+                            const nextRules = [...existingRules]
+                            nextRules[index] = {
+                              ...nextRules[index],
+                              isRefurbishedRule: event.target.checked,
+                            }
+                            return nextRules
+                          })
+                        }}
+                        className="size-4 rounded border-input"
+                      />
+                      <span>Refurb only</span>
+                    </label>
 
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    className={cn("md:mt-5", iconButtonClassName)}
-                    aria-label={`Remove rule ${index + 1}`}
-                    onClick={() => {
-                      setAlertRules((existingRules) =>
-                        existingRules.filter((_, ruleIndex) => ruleIndex !== index),
-                      )
-                    }}
-                  >
-                    <Trash2Icon className="size-4" />
-                  </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className={ruleDeleteButtonClassName}
+                      aria-label={`Remove rule ${index + 1}`}
+                      onClick={() => {
+                        setAlertRules((existingRules) =>
+                          existingRules.filter((_, ruleIndex) => ruleIndex !== index),
+                        )
+                      }}
+                    >
+                      <Trash2Icon className="size-4" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -895,9 +896,6 @@ export function CreateGearDialog({
         <DrawerContent className="flex h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
           <DrawerHeader className="shrink-0 border-b text-left">
             <DrawerTitle>Create gear item</DrawerTitle>
-            <DrawerDescription>
-              Create an item and define optional usage alert thresholds.
-            </DrawerDescription>
           </DrawerHeader>
           {createForm}
         </DrawerContent>
@@ -921,9 +919,6 @@ export function CreateGearDialog({
       <SheetContent side="right" className="flex h-full flex-col gap-0 overflow-hidden sm:max-w-xl">
         <SheetHeader className="shrink-0 border-b">
           <SheetTitle>Create gear item</SheetTitle>
-          <SheetDescription>
-            Create an item and define optional usage alert thresholds.
-          </SheetDescription>
         </SheetHeader>
         {createForm}
       </SheetContent>
@@ -1016,7 +1011,6 @@ export function EditGearDialog({
         <DrawerContent className="flex h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
           <DrawerHeader className="shrink-0 border-b text-left">
             <DrawerTitle>Edit gear item</DrawerTitle>
-            <DrawerDescription>{gearItem.name}</DrawerDescription>
           </DrawerHeader>
           {editForm}
         </DrawerContent>
@@ -1041,7 +1035,6 @@ export function EditGearDialog({
       <SheetContent side="right" className="flex h-full flex-col gap-0 overflow-hidden sm:max-w-xl">
         <SheetHeader className="shrink-0 border-b">
           <SheetTitle>Edit gear item</SheetTitle>
-          <SheetDescription>{gearItem.name}</SheetDescription>
         </SheetHeader>
         {editForm}
       </SheetContent>

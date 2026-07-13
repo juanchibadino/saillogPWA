@@ -296,7 +296,13 @@ function TeamAssessmentsTabDataError({
         <p className="text-sm font-medium">Could not load {error.tab}.</p>
         <p className="text-sm text-muted-foreground">{error.message}</p>
       </div>
-      <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-11 w-full md:h-7 md:w-auto"
+        onClick={onRetry}
+      >
         Retry
       </Button>
     </div>
@@ -666,11 +672,22 @@ export function TeamAssessmentsPageClient({
             onValueChange={switchTab}
             className="w-full gap-0 md:w-auto"
           >
-            <TabsList className="grid h-10 w-full grid-cols-2 md:inline-flex md:w-fit">
-              <TabsTrigger value="created" className="w-full">
+            <div className="flex h-11 w-full max-w-full items-center rounded-lg bg-muted p-[3px] text-muted-foreground md:hidden">
+              <TabsList className="h-full min-w-0 flex-1 rounded-md bg-transparent p-0 group-data-horizontal/tabs:h-full">
+                <TabsTrigger value="created" className="min-w-0 basis-0 px-2">
+                  Created
+                </TabsTrigger>
+                <TabsTrigger value="templates" className="min-w-0 basis-0 px-2">
+                  Templates
+                </TabsTrigger>
+              </TabsList>
+            </div>
+
+            <TabsList className="hidden h-10 md:inline-flex">
+              <TabsTrigger value="created" className="min-w-fit">
                 Created
               </TabsTrigger>
-              <TabsTrigger value="templates" className="w-full">
+              <TabsTrigger value="templates" className="min-w-fit">
                 Templates
               </TabsTrigger>
             </TabsList>

@@ -267,9 +267,11 @@ Rules:
 - Drawer and Sheet forms must have fixed header/footer and a single scrolling content region.
 - The focused field must be inside that scrolling region.
 - Use `100dvh` or the existing drawer CSS variables for mobile surface height. Avoid `100vh` for mobile form surfaces.
+- Prefer `max-h-[85dvh]` over fixed `h-[85dvh]` for mobile form Drawers. Fixed height creates empty bottom space when the form is short and the middle body uses `flex-1`.
 - Add enough bottom padding to the scroll region for the Save footer and keyboard-safe scrolling.
 - For long mobile forms, scroll the focused control into view after focus.
 - Apply the focus visibility behavior to `Input`, `Textarea`, search inputs, select triggers that open searchable controls, and validation error focus targets.
+- Drawer and Sheet form headers should be title-only by default. Avoid visible `DrawerDescription` or `SheetDescription` subtitles unless the text changes an operator decision.
 
 Canonical focus helper for long mobile forms:
 
@@ -290,7 +292,7 @@ Use it only on mobile surfaces where lower fields can be hidden by the keyboard.
 Drawer structure standard:
 
 ```tsx
-<DrawerContent className="h-[85dvh] overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+<DrawerContent className="flex max-h-[85dvh] min-h-0 flex-col overflow-hidden">
   <DrawerHeader className="shrink-0 border-b px-4 py-3" />
   <fieldset className="min-h-0 flex-1 overflow-y-auto px-4 pb-28">
     {/* fields */}

@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -36,7 +37,6 @@ import {
 import {
   Drawer,
   DrawerContent,
-  DrawerDescription,
   DrawerFooter,
   DrawerHeader,
   DrawerTitle,
@@ -51,7 +51,6 @@ import { Label } from "@/components/ui/label";
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetFooter,
   SheetHeader,
   SheetTitle,
@@ -273,7 +272,13 @@ function RunDeleteSubmitButton() {
   const { pending } = useFormStatus();
 
   return (
-    <Button type="submit" size="sm" variant="destructive" disabled={pending}>
+    <Button
+      type="submit"
+      size="sm"
+      variant="destructive"
+      disabled={pending}
+      className="h-11 w-full md:h-7"
+    >
       {pending ? (
         <>
           <Loader2Icon className="size-4 animate-spin" />
@@ -550,12 +555,9 @@ function RunCreateDialog(input: {
           <PlusIcon className="size-6" />
           <span className="sr-only">{input.triggerLabel}</span>
         </Button>
-        <DrawerContent className="flex h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+        <DrawerContent className="flex max-h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden">
           <DrawerHeader className="shrink-0 border-b text-left">
             <DrawerTitle>Create assessment run</DrawerTitle>
-            <DrawerDescription>
-              Select one template and the camps that should answer this assessment.
-            </DrawerDescription>
           </DrawerHeader>
 
           {renderCreateRunForm("drawer")}
@@ -573,9 +575,6 @@ function RunCreateDialog(input: {
       <SheetContent side="right" className="flex h-full flex-col gap-0 overflow-hidden sm:max-w-3xl">
         <SheetHeader className="shrink-0 border-b">
           <SheetTitle>Create assessment run</SheetTitle>
-          <SheetDescription>
-            Select one template and the camps that should answer this assessment.
-          </SheetDescription>
         </SheetHeader>
 
         {renderCreateRunForm("sheet")}
@@ -603,7 +602,10 @@ function RunDeleteDialog(input: {
           </DialogTrigger>
         )
       )}
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        className="sm:max-w-md"
+        overlayClassName="bg-black/30 backdrop-blur-sm supports-backdrop-filter:backdrop-blur-sm"
+      >
         <DialogHeader>
           <DialogTitle>Delete assessment run?</DialogTitle>
           <DialogDescription>
@@ -612,8 +614,8 @@ function RunDeleteDialog(input: {
           </DialogDescription>
         </DialogHeader>
 
-        <DialogFooter showCloseButton>
-          <form action={deleteAssessmentRunAction}>
+        <DialogFooter>
+          <form action={deleteAssessmentRunAction} className="w-full md:w-auto">
             <AssessmentScopeFields
               scope={input.scope}
               teamVenueId={input.teamVenueId}
@@ -622,6 +624,17 @@ function RunDeleteDialog(input: {
             <input type="hidden" name="runId" value={input.runId} />
             <RunDeleteSubmitButton />
           </form>
+          <DialogClose
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 w-full md:h-8 md:w-auto"
+              />
+            }
+          >
+            Close
+          </DialogClose>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -648,10 +661,26 @@ export function VenueAssessmentsPanel(input: {
   const canCreateRun = input.templates.length > 0;
   const runsCardIsEmpty = input.runs.length === 0;
 
+  function buildAssessmentReturnToHref(): string {
+    const params = new URLSearchParams();
+
+    params.set("org", input.scope.activeOrgId);
+
+    if (input.scope.activeTeamId) {
+      params.set("team", input.scope.activeTeamId);
+    }
+
+    params.set("tab", "assessments");
+    params.set("year", String(input.selectedYear));
+
+    return `/venues/${input.teamVenueId}?${params.toString()}`;
+  }
+
   function buildRunDetailHref(runId: string): string {
     return buildAssessmentDetailHref({
       scope: input.scope,
       assessmentId: runId,
+      returnTo: buildAssessmentReturnToHref(),
     });
   }
 
@@ -708,18 +737,11 @@ export function VenueAssessmentsPanel(input: {
                     }}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1 space-y-3">
+                      <div className="min-w-0 flex-1 space-y-2">
                         <h4 className="truncate text-sm font-semibold">
                           {run.templateName ?? "Template unavailable"}
                         </h4>
-
-                        <div className="space-y-1.5">
-                          <AssessmentRunCampsBadges camps={run.camps} />
-                        </div>
-
-                        <p className="text-sm font-medium tabular-nums">
-                          {run.completedRespondentsCount}/{run.expectedRespondentsCount}
-                        </p>
+                        <AssessmentRunCampsBadges camps={run.camps} />
                       </div>
 
                       <span className="inline-flex h-11 items-center justify-center gap-1.5 self-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">
@@ -865,18 +887,11 @@ export function VenueAssessmentsPanel(input: {
                   }}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1 space-y-3">
+                    <div className="min-w-0 flex-1 space-y-2">
                       <h4 className="truncate text-sm font-semibold">
                         {run.templateName ?? "Template unavailable"}
                       </h4>
-
-                      <div className="space-y-1.5">
-                        <AssessmentRunCampsBadges camps={run.camps} />
-                      </div>
-
-                      <p className="text-sm font-medium tabular-nums">
-                        {run.completedRespondentsCount}/{run.expectedRespondentsCount}
-                      </p>
+                      <AssessmentRunCampsBadges camps={run.camps} />
                     </div>
 
                     <div

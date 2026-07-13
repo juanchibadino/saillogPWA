@@ -15,6 +15,7 @@ import { InstallAppButton } from "@/components/pwa/install-app-button"
 import { PwaDebugPanel } from "@/components/pwa/pwa-debug-panel"
 import { NotificationBell } from "@/features/notifications/notification-bell"
 import type { NotificationCenterData } from "@/features/notifications/data"
+import { ASSESSMENT_DETAIL_RETURN_TO_QUERY_KEY } from "@/features/assessments/navigation"
 import {
   NAVIGATION_SCOPE_ORG_QUERY_KEY,
   NAVIGATION_SCOPE_TEAM_QUERY_KEY,
@@ -581,6 +582,42 @@ function buildScopedHrefWithTab(
   return baseHref.includes("?") ? `${baseHref}&tab=${tab}` : `${baseHref}?tab=${tab}`
 }
 
+function normalizeAssessmentDetailReturnHref(
+  value: string | null,
+  scope: ActiveScope,
+): string | null {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return null
+  }
+
+  let url: URL
+
+  try {
+    url = new URL(value, "http://sailog.local")
+  } catch {
+    return null
+  }
+
+  if (!/^\/venues\/[^/]+$/.test(url.pathname)) {
+    return null
+  }
+
+  const params = url.searchParams
+
+  if (scope.activeOrgId) {
+    params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, scope.activeOrgId)
+  }
+
+  if (scope.activeTeamId) {
+    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, scope.activeTeamId)
+  }
+
+  params.set("tab", "assessments")
+
+  const query = params.toString()
+  return query.length > 0 ? `${url.pathname}?${query}` : url.pathname
+}
+
 function shouldUsePhaseOneMobileHeader(pathname: string): boolean {
   if (/^\/venues\/[^/]+$/.test(pathname)) {
     return true
@@ -797,6 +834,12 @@ export function SiteHeader({
   const venuesHref = buildScopedHref("/venues", activeScope)
   const teamVenuesHref = buildScopedHref("/team-venues", activeScope)
   const teamAssessmentsHref = buildScopedHref("/team-assessments", activeScope)
+  const assessmentDetailReturnHref = assessmentDetailId
+    ? normalizeAssessmentDetailReturnHref(
+        searchParams.get(ASSESSMENT_DETAIL_RETURN_TO_QUERY_KEY),
+        activeScope,
+      )
+    : null
   const notificationsHref = buildScopedHref("/notifications", activeScope)
   const pathnameUsesPhaseOneMobileHeader = shouldUsePhaseOneMobileHeader(pathname)
   // Keep the initial SSR/client hydration tree identical before switching to
@@ -1133,7 +1176,7 @@ export function SiteHeader({
     }
 
     if (isTeamAssessmentDetailHeader) {
-      router.push(teamAssessmentsHref)
+      router.push(assessmentDetailReturnHref ?? teamAssessmentsHref)
       return
     }
 

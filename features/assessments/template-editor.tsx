@@ -37,7 +37,7 @@ function SaveTemplateButton() {
   const { pending } = useFormStatus()
 
   return (
-    <Button type="submit" disabled={pending}>
+    <Button type="submit" disabled={pending} className="h-11 w-full md:h-8 md:w-auto">
       {pending ? <Loader2Icon className="size-4 animate-spin" /> : null}
       {pending ? "Saving template..." : "Save template"}
     </Button>
@@ -81,7 +81,11 @@ function TemplateCancelButton({
       variant="outline"
       nativeButton={false}
       aria-disabled={pending}
-      className={pending ? "pointer-events-none opacity-50" : undefined}
+      className={
+        pending
+          ? "h-11 w-full pointer-events-none opacity-50 md:h-8 md:w-auto"
+          : "h-11 w-full md:h-8 md:w-auto"
+      }
       render={
         <Link
           href={href}
@@ -632,6 +636,7 @@ export function AssessmentTemplateEditor({
                           type="button"
                           size="sm"
                           variant={category.shape === "direct" ? "secondary" : "ghost"}
+                          className="h-11 md:h-7"
                           onClick={() => setCategoryShape(categoryIndex, "direct")}
                         >
                           Direct
@@ -640,6 +645,7 @@ export function AssessmentTemplateEditor({
                           type="button"
                           size="sm"
                           variant={category.shape === "mode" ? "secondary" : "ghost"}
+                          className="h-11 md:h-7"
                           onClick={() => setCategoryShape(categoryIndex, "mode")}
                         >
                           Modes
@@ -677,6 +683,7 @@ export function AssessmentTemplateEditor({
                           type="button"
                           variant="outline"
                           size="sm"
+                          className="h-11 w-full md:h-7 md:w-auto"
                           onClick={() => addDirectQuestion(categoryIndex)}
                         >
                           <PlusIcon className="size-4" />
@@ -773,6 +780,7 @@ export function AssessmentTemplateEditor({
                                       type="button"
                                       variant="outline"
                                       size="sm"
+                                      className="h-11 w-full md:h-7 md:w-auto"
                                       onClick={() => addModeQuestion(categoryIndex, modeIndex)}
                                     >
                                       <PlusIcon className="size-4" />
@@ -789,6 +797,7 @@ export function AssessmentTemplateEditor({
                           type="button"
                           variant="outline"
                           size="sm"
+                          className="h-11 w-full md:h-7 md:w-auto"
                           onClick={() => addMode(categoryIndex)}
                         >
                           <PlusIcon className="size-4" />
@@ -802,7 +811,13 @@ export function AssessmentTemplateEditor({
             })}
           </Accordion>
 
-          <Button type="button" variant="outline" size="sm" onClick={addCategory}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-11 w-full md:h-7 md:w-auto"
+            onClick={addCategory}
+          >
             <PlusIcon className="size-4" />
             Add category
           </Button>

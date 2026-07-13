@@ -118,6 +118,9 @@ Use this with `MOBILE_UI_PATTERNS.md`: desktop uses tables, mobile uses cards.
 - Row actions belong in the final right-aligned column.
 - Editing on desktop should use the established Dialog or right Sheet pattern,
   depending on the screen.
+- Right Sheet form headers should be title-only by default. Avoid visible
+  `SheetDescription` subtitles unless the text changes an operator decision; put
+  necessary guidance inline next to the relevant field instead.
 - Destructive or secondary actions should live behind a menu when space is
   tight.
 - Read-only users should see disabled or unavailable actions, not hidden
