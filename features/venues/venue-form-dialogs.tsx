@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -502,9 +501,6 @@ export function CreateVenueDialog({
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Create venue</DialogTitle>
-          <DialogDescription>
-            Add a new operational venue for your organization.
-          </DialogDescription>
         </DialogHeader>
 
         <VenueDialogForm

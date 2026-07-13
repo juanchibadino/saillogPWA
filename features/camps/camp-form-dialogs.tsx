@@ -463,9 +463,6 @@ export function CreateCampDialog({
         <DrawerContent className="flex h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
           <DrawerHeader className="shrink-0 border-b text-left">
             <DrawerTitle>Create camp</DrawerTitle>
-            <DrawerDescription>
-              Add a camp to one of the active team venues.
-            </DrawerDescription>
           </DrawerHeader>
 
           <CampDialogForm

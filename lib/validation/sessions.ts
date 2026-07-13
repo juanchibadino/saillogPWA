@@ -37,7 +37,9 @@ const baseSessionInputSchema = z.object({
   highlightedByCoach: z.coerce.boolean(),
 })
 
-export const createSessionInputSchema = baseSessionInputSchema
+export const createSessionInputSchema = baseSessionInputSchema.extend({
+  dockOutTime: hhmmTimeSchema,
+})
 
 export const updateSessionInputSchema = baseSessionInputSchema.extend({
   id: z.string().uuid(),

@@ -112,7 +112,7 @@ function TeamHomeHeaderViewAllLink({ href }: { href: string }) {
       className={buttonVariants({
         variant: "outline",
         size: "sm",
-        className: "hidden md:inline-flex",
+        className: "!hidden md:!inline-flex",
       })}
     >
       View All

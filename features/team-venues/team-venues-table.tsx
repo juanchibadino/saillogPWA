@@ -605,13 +605,9 @@ export function CreateTeamVenueDialog({
           <PlusIcon className={isFabTrigger ? "size-6" : "size-4"} />
           {isFabTrigger ? <span className="sr-only">New team venue</span> : "New"}
         </Button>
-        <DrawerContent className="flex h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+        <DrawerContent className="flex max-h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden">
           <DrawerHeader className="shrink-0 border-b text-left">
             <DrawerTitle>New team venue</DrawerTitle>
-            <DrawerDescription>
-              Bind an existing organization venue or create a new venue and bind it
-              immediately to this team.
-            </DrawerDescription>
           </DrawerHeader>
           {createTeamVenueForm}
         </DrawerContent>
@@ -636,10 +632,6 @@ export function CreateTeamVenueDialog({
       <SheetContent side="right" className="flex h-full flex-col gap-0 overflow-hidden sm:max-w-xl">
         <SheetHeader className="shrink-0 border-b">
           <SheetTitle>New team venue</SheetTitle>
-          <SheetDescription>
-            Bind an existing organization venue or create a new venue and bind it
-            immediately to this team.
-          </SheetDescription>
         </SheetHeader>
 
         {createTeamVenueForm}

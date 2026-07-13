@@ -179,6 +179,16 @@ function isSessionDateWithinCampRange(input: {
   )
 }
 
+function buildUtcTimestamp(sessionDate: string, time: string): string {
+  return `${sessionDate}T${time}:00.000Z`
+}
+
+function addMinutesToIsoTimestamp(isoTimestamp: string, minutes: number): string {
+  const date = new Date(isoTimestamp)
+  date.setUTCMinutes(date.getUTCMinutes() + minutes)
+  return date.toISOString()
+}
+
 async function resolveTeamOrganizationId(teamId: string): Promise<string | null> {
   const supabase = await createServerSupabaseClient()
   const { data: teamRow, error: teamError } = await supabase
@@ -367,6 +377,7 @@ export async function createSessionAction(formData: FormData): Promise<void> {
     campId: getFormString(formData, "campId"),
     sessionType: getFormString(formData, "sessionType"),
     sessionDate: getFormString(formData, "sessionDate"),
+    dockOutTime: getFormString(formData, "dockOutTime"),
     netTimeMinutes: getOptionalIntegerField(formData, "netTimeMinutes"),
     highlightedByCoach: getBooleanField(formData, "highlightedByCoach"),
   })
@@ -450,12 +461,22 @@ export async function createSessionAction(formData: FormData): Promise<void> {
   }
 
   const supabase = await createServerSupabaseClient()
+  const dockOutAt = buildUtcTimestamp(
+    parsedInput.data.sessionDate,
+    parsedInput.data.dockOutTime,
+  )
+  const dockInAt =
+    typeof parsedInput.data.netTimeMinutes === "number"
+      ? addMinutesToIsoTimestamp(dockOutAt, parsedInput.data.netTimeMinutes)
+      : null
   const { data: insertedSession, error: insertError } = await supabase
     .from("sessions")
     .insert({
       camp_id: parsedInput.data.campId,
       session_type: parsedInput.data.sessionType,
       session_date: parsedInput.data.sessionDate,
+      dock_out_at: dockOutAt,
+      dock_in_at: dockInAt,
       net_time_minutes: parsedInput.data.netTimeMinutes ?? null,
       highlighted_by_coach: parsedInput.data.highlightedByCoach,
     })

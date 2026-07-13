@@ -50,6 +50,7 @@ function DrawerContent({
   children,
   onFocusOutside,
   onPointerDownOutside,
+  onSubmitCapture,
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Content>) {
   function isPortaledInteractiveEventTarget(event: Event): boolean {
@@ -68,6 +69,79 @@ function DrawerContent({
         ),
       )
     )
+  }
+
+  function isKeyboardInputElement(element: HTMLElement): boolean {
+    return element.matches(
+      [
+        'input:not([type="button"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="submit"]):not([type="reset"])',
+        "textarea",
+        "select",
+        '[contenteditable="true"]',
+      ].join(", "),
+    )
+  }
+
+  function releaseMobileKeyboardOffset(content: HTMLElement) {
+    if (
+      typeof window === "undefined" ||
+      content.getAttribute("data-vaul-drawer-direction") !== "bottom"
+    ) {
+      return
+    }
+
+    const activeElement = document.activeElement
+
+    if (
+      !(activeElement instanceof HTMLElement) ||
+      !content.contains(activeElement) ||
+      !isKeyboardInputElement(activeElement)
+    ) {
+      return
+    }
+
+    activeElement.blur()
+
+    const visualViewport = window.visualViewport
+    let timeoutId = 0
+    let hasReset = false
+
+    function clearKeyboardStyles() {
+      content.style.removeProperty("bottom")
+      content.style.removeProperty("height")
+    }
+
+    function cleanup() {
+      if (timeoutId !== 0) {
+        window.clearTimeout(timeoutId)
+      }
+
+      visualViewport?.removeEventListener("resize", resetAfterViewportSettles)
+    }
+
+    function resetAfterViewportSettles() {
+      if (hasReset) {
+        return
+      }
+
+      hasReset = true
+      cleanup()
+
+      window.requestAnimationFrame(() => {
+        clearKeyboardStyles()
+        window.setTimeout(clearKeyboardStyles, 80)
+      })
+    }
+
+    if (visualViewport && visualViewport.height < window.innerHeight - 60) {
+      visualViewport.addEventListener("resize", resetAfterViewportSettles, {
+        once: true,
+      })
+      timeoutId = window.setTimeout(resetAfterViewportSettles, 320)
+      return
+    }
+
+    resetAfterViewportSettles()
   }
 
   return (
@@ -93,6 +167,13 @@ function DrawerContent({
             event.preventDefault()
           }
         }}
+        onSubmitCapture={(event) => {
+          onSubmitCapture?.(event)
+
+          if (!event.defaultPrevented) {
+            releaseMobileKeyboardOffset(event.currentTarget)
+          }
+        }}
         {...props}
       >
         <div className="mx-auto my-5 hidden h-1 w-[100px] shrink-0 rounded-full bg-muted group-data-[vaul-drawer-direction=bottom]/drawer-content:block" />
@@ -107,7 +188,7 @@ function DrawerHeader({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="drawer-header"
       className={cn(
-        "flex flex-col gap-0.5 p-4 group-data-[vaul-drawer-direction=bottom]/drawer-content:text-center group-data-[vaul-drawer-direction=top]/drawer-content:text-center md:gap-0.5 md:text-left",
+        "flex flex-col gap-0.5 pt-1 pb-4 group-data-[vaul-drawer-direction=bottom]/drawer-content:text-center group-data-[vaul-drawer-direction=top]/drawer-content:text-center md:gap-0.5 md:text-left",
         className
       )}
       {...props}

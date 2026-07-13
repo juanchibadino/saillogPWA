@@ -64,6 +64,7 @@ type SessionFormInitialValues = {
   campId: string
   sessionType: "training" | "regatta"
   sessionDate: string
+  dockOutTime?: string
   netTimeMinutes: string
   highlightedByCoach: boolean
 }
@@ -330,6 +331,7 @@ function SessionDialogForm({
   const [campId, setCampId] = React.useState(initialValues.campId)
   const [sessionType, setSessionType] = React.useState(initialValues.sessionType)
   const [sessionDate, setSessionDate] = React.useState(initialValues.sessionDate)
+  const [dockOutTime, setDockOutTime] = React.useState(initialValues.dockOutTime ?? "")
   const [netTimeDuration, setNetTimeDuration] = React.useState(() =>
     formatMinutesAsDurationInput(initialValues.netTimeMinutes),
   )
@@ -346,8 +348,12 @@ function SessionDialogForm({
   const netTimeMinutes = parseDurationInputToMinutes(netTimeDuration)
   const currentNetTimeMinutes =
     netTimeMinutes.length > 0 ? Number.parseInt(netTimeMinutes, 10) : 0
+  const showDockOutTime = typeof initialValues.dockOutTime === "string"
   const canSubmit =
-    campId.length > 0 && sessionDate.length > 0 && !hasSessionDateRangeError
+    campId.length > 0 &&
+    sessionDate.length > 0 &&
+    (!showDockOutTime || dockOutTime.length > 0) &&
+    !hasSessionDateRangeError
   const isDrawerSurface = surface === "drawer"
   const selectClassName = cn(
     "w-full rounded-lg border border-input bg-background text-sm outline-none ring-ring/50 focus-visible:ring-[3px]",
@@ -468,6 +474,21 @@ function SessionDialogForm({
               </p>
             ) : null}
           </div>
+
+          {showDockOutTime ? (
+            <div className="space-y-2">
+              <Label htmlFor={`${idPrefix}-dockOutTime`}>Dock Out Time</Label>
+              <Input
+                id={`${idPrefix}-dockOutTime`}
+                name="dockOutTime"
+                type="time"
+                required
+                value={dockOutTime}
+                onChange={(event) => setDockOutTime(event.target.value)}
+                className={inputClassName}
+              />
+            </div>
+          ) : null}
 
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor={`${idPrefix}-netTimeDuration`}>Net time</Label>
@@ -598,6 +619,7 @@ export function CreateSessionDialog({
               campId: defaultCampId,
               sessionType: "training",
               sessionDate: "",
+              dockOutTime: "",
               netTimeMinutes: "",
               highlightedByCoach: false,
             }}
@@ -648,6 +670,7 @@ export function CreateSessionDialog({
             campId: defaultCampId,
             sessionType: "training",
             sessionDate: "",
+            dockOutTime: "",
             netTimeMinutes: "",
             highlightedByCoach: false,
           }}

@@ -2,10 +2,11 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { CameraIcon, Loader2Icon, SearchIcon } from "lucide-react"
+import { CameraIcon, FilterIcon, Loader2Icon, SearchIcon } from "lucide-react"
 import { useFormStatus } from "react-dom"
 import { toast } from "sonner"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -270,25 +271,14 @@ function formatGearStatusLabel(value: SessionDetailGearItem["status"]): string {
   return "On Repair"
 }
 
-function formatGearIdentifiers(input: {
-  serialNumber: string | null
-  barcode: string | null
-}): string | null {
-  const parts: string[] = []
+function formatGearSerialNumber(value: string | null): string | null {
+  const serialNumber = value?.trim()
 
-  if (input.serialNumber && input.serialNumber.trim().length > 0) {
-    parts.push(`SN ${input.serialNumber.trim()}`)
-  }
-
-  if (input.barcode && input.barcode.trim().length > 0) {
-    parts.push(`BC ${input.barcode.trim()}`)
-  }
-
-  if (parts.length === 0) {
+  if (!serialNumber) {
     return null
   }
 
-  return parts.join(" · ")
+  return `SN ${serialNumber}`
 }
 
 function normalizeBarcodeValue(value: string): string {
@@ -314,7 +304,6 @@ function SessionGearBarcodeScannerDialog({
   const frameRequestRef = React.useRef<number | null>(null)
   const isClosedRef = React.useRef(false)
   const isDetectingRef = React.useRef(false)
-  const portalContainerRef = React.useRef<HTMLSpanElement | null>(null)
 
   const stopScanner = React.useCallback(() => {
     if (frameRequestRef.current !== null) {
@@ -456,7 +445,7 @@ function SessionGearBarcodeScannerDialog({
 
   return (
     <Dialog modal={false} open={isOpen} onOpenChange={setIsOpen} disablePointerDismissal>
-      <span ref={portalContainerRef} className="contents">
+      <span className="contents">
         <Button
           type="button"
           variant="outline"
@@ -471,44 +460,43 @@ function SessionGearBarcodeScannerDialog({
         </Button>
       </span>
       <DialogContent
-        className="z-[70] sm:max-w-lg"
-        overlayClassName="z-[60]"
+        className="z-[70] grid h-[calc(100dvh-0.75rem)] max-h-[calc(100dvh-0.75rem)] w-[calc(100vw-0.75rem)] max-w-[calc(100vw-0.75rem)] min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-3 overflow-hidden p-3 sm:h-auto sm:max-h-[90dvh] sm:w-full sm:max-w-3xl sm:gap-4 sm:p-4"
+        overlayClassName="z-[60] bg-black/35 backdrop-blur-sm supports-backdrop-filter:backdrop-blur-sm"
         overlayStyle={{ zIndex: 60 }}
-        portalContainer={portalContainerRef.current ?? undefined}
         style={{ zIndex: 70 }}
       >
-        <DialogHeader>
-          <DialogTitle>Scan</DialogTitle>
+        <DialogHeader className="min-w-0">
+          <DialogTitle className="min-w-0 max-w-full truncate pr-10">Scan</DialogTitle>
           <DialogDescription>
             Point your camera at a barcode to auto-link gear.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
-          <div className="overflow-hidden rounded-lg border bg-black/95">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="aspect-video w-full object-cover"
-            />
-          </div>
+        <div className="min-h-0 min-w-0 overflow-hidden rounded-lg border bg-black/95 sm:h-[68dvh]">
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="h-full w-full object-cover"
+          />
+        </div>
 
+        <div className="min-h-8 min-w-0">
           {isStarting ? (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2Icon className="size-4 animate-spin" />
-              Starting camera...
+            <p className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+              <Loader2Icon className="size-4 shrink-0 animate-spin" />
+              <span className="truncate">Starting camera...</span>
             </p>
           ) : null}
 
           {errorMessage ? (
             <p className="text-sm text-rose-700">{errorMessage}</p>
-          ) : (
-            <p className="text-xs text-muted-foreground">
+          ) : !isStarting ? (
+            <p className="text-sm text-muted-foreground">
               Keep the barcode centered for faster detection.
             </p>
-          )}
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>
@@ -878,14 +866,27 @@ function SessionGearLinkDialog(input: {
       : activeSelectorTab === "linked"
         ? `Linked (${linkedGearItems.length})`
         : formatGearTypeLabel(activeSelectorTab)
+  const hasActiveGearFilter = activeSelectorTab !== "all"
+
+  function renderGearFilterSelectContent() {
+    return (
+      <SelectContent>
+        <SelectItem value="all">All Gear</SelectItem>
+        <SelectItem value="linked">Linked ({linkedGearItems.length})</SelectItem>
+        {availableGearTypes.map((gearType) => (
+          <SelectItem key={gearType} value={gearType}>
+            {formatGearTypeLabel(gearType)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    )
+  }
 
   function renderGearCard(gearItem: SessionDetailGearItem) {
     const isSelected = selectedGearItemIdSet.has(gearItem.id)
-    const primaryMeta = `${formatGearTypeLabel(gearItem.gear_type)} · ${formatGearStatusLabel(gearItem.status)}`
-    const identifiers = formatGearIdentifiers({
-      serialNumber: gearItem.serial_number,
-      barcode: gearItem.barcode,
-    })
+    const typeLabel = formatGearTypeLabel(gearItem.gear_type)
+    const statusLabel = formatGearStatusLabel(gearItem.status)
+    const serialNumber = formatGearSerialNumber(gearItem.serial_number)
 
     return (
       <button
@@ -899,12 +900,17 @@ function SessionGearLinkDialog(input: {
             : "border-border bg-background dark:bg-muted/70"
         }`}
       >
-        <div className="space-y-1.5">
-          <div className="flex items-start justify-between gap-3">
-            <p className="truncate text-sm font-medium">{gearItem.name}</p>
-            <p className="shrink-0 text-right text-xs text-muted-foreground">{primaryMeta}</p>
+        <div className="min-w-0 space-y-1.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="min-w-0 flex-1 truncate text-sm font-medium">{gearItem.name}</p>
+            <Badge variant="outline" className="max-w-24 justify-start truncate">
+              {typeLabel}
+            </Badge>
           </div>
-          {identifiers ? <p className="text-xs text-muted-foreground">{identifiers}</p> : null}
+          <p className="truncate text-xs text-muted-foreground">{statusLabel}</p>
+          {serialNumber ? (
+            <p className="truncate text-xs text-muted-foreground">{serialNumber}</p>
+          ) : null}
         </div>
       </button>
     )
@@ -991,32 +997,42 @@ function SessionGearLinkDialog(input: {
               value={activeSelectorTab}
               onValueChange={(value) => setSelectorTab(value as SessionGearSelectorTab)}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="hidden w-full md:flex">
                 <SelectValue>{activeSelectorLabel}</SelectValue>
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Gear</SelectItem>
-                <SelectItem value="linked">Linked ({linkedGearItems.length})</SelectItem>
-                {availableGearTypes.map((gearType) => (
-                  <SelectItem key={gearType} value={gearType}>
-                    {formatGearTypeLabel(gearType)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
+              {renderGearFilterSelectContent()}
             </Select>
 
-            {activeSelectorTab !== "linked" ? (
-              <div className="relative">
-                <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={gearSearch}
-                  onChange={(event) => setGearSearch(event.target.value)}
-                  placeholder="Search gear"
-                  className="pl-9"
-                  aria-label="Search gear"
-                />
-              </div>
-            ) : null}
+            <div className="flex min-w-0 items-center gap-2">
+              {activeSelectorTab !== "linked" ? (
+                <div className="relative min-w-0 flex-1">
+                  <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={gearSearch}
+                    onChange={(event) => setGearSearch(event.target.value)}
+                    placeholder="Search gear"
+                    className={isMobile ? "h-11 pl-9" : "pl-9"}
+                    aria-label="Search gear"
+                  />
+                </div>
+              ) : null}
+              <Select
+                value={activeSelectorTab}
+                onValueChange={(value) => setSelectorTab(value as SessionGearSelectorTab)}
+              >
+                <SelectTrigger
+                  aria-label={`Filter gear: ${activeSelectorLabel}`}
+                  className={cn(
+                    "h-11 min-h-11 w-11 shrink-0 justify-center px-0 md:hidden data-[size=default]:h-11 [&>svg:last-child]:hidden",
+                    hasActiveGearFilter &&
+                      "border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 aria-expanded:bg-emerald-100 dark:border-emerald-600/50 dark:bg-emerald-900/20 dark:text-emerald-100 dark:hover:bg-emerald-900/30",
+                  )}
+                >
+                  <FilterIcon className="size-4" />
+                </SelectTrigger>
+                {renderGearFilterSelectContent()}
+              </Select>
+            </div>
 
             <div className="space-y-3">{renderGearResults()}</div>
 
@@ -1122,27 +1138,27 @@ function SessionGearPanel(input: {
 
   return (
     <ul className="space-y-2 rounded-lg border p-4">
-      {linkedItems.map((gearItem) => (
-        <li key={gearItem.id} className="space-y-1 text-sm">
-          <div className="flex items-start justify-between gap-3">
-            <span className="font-medium">{gearItem.name}</span>
-            <p className="shrink-0 text-right text-xs text-muted-foreground">
-              {formatGearTypeLabel(gearItem.gear_type)} · {formatGearStatusLabel(gearItem.status)}
+      {linkedItems.map((gearItem) => {
+        const typeLabel = formatGearTypeLabel(gearItem.gear_type)
+        const serialNumber = formatGearSerialNumber(gearItem.serial_number)
+
+        return (
+          <li key={gearItem.id} className="min-w-0 space-y-1 text-sm">
+            <div className="flex min-w-0 items-center gap-2">
+              <p className="min-w-0 flex-1 truncate font-medium">{gearItem.name}</p>
+              <Badge variant="outline" className="max-w-24 justify-start truncate">
+                {typeLabel}
+              </Badge>
+            </div>
+            <p className="truncate text-xs text-muted-foreground">
+              {formatGearStatusLabel(gearItem.status)}
             </p>
-          </div>
-          {formatGearIdentifiers({
-            serialNumber: gearItem.serial_number,
-            barcode: gearItem.barcode,
-          }) ? (
-            <p className="text-xs text-muted-foreground">
-              {formatGearIdentifiers({
-                serialNumber: gearItem.serial_number,
-                barcode: gearItem.barcode,
-              })}
-            </p>
-          ) : null}
-        </li>
-      ))}
+            {serialNumber ? (
+              <p className="truncate text-xs text-muted-foreground">{serialNumber}</p>
+            ) : null}
+          </li>
+        )
+      })}
     </ul>
   )
 }
