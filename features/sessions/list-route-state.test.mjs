@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 
 import {
+  buildTeamSessionDetailRedirectPath,
   buildTeamSessionsPageHref,
   buildTeamSessionsRedirectPath,
   normalizeSelectedId,
@@ -158,6 +159,21 @@ test("builds create update and delete redirects preserving scope filters and pag
       scopePage: 4,
     }),
     "/team-sessions?status=deleted&org=org-1&team=team-1&venue=venue-1&camp=camp-1&highlight=yes&page=4",
+  )
+})
+
+test("builds session detail redirect for newly created sessions", () => {
+  assert.equal(
+    buildTeamSessionDetailRedirectPath({
+      sessionId: "session-1",
+      status: "created",
+      scopeOrgId: "org-1",
+      scopeTeamId: "team-1",
+      cacheSessionId: "session-1",
+      cacheCampId: "camp-1",
+      cacheTeamVenueId: "team-venue-1",
+    }),
+    "/team-sessions/session-1?status=created&org=org-1&team=team-1&cacheSession=session-1&cacheCamp=camp-1&cacheTeamVenue=team-venue-1",
   )
 })
 

@@ -157,3 +157,39 @@ export function buildTeamSessionsRedirectPath(input) {
   const query = params.toString()
   return query.length > 0 ? `${url.pathname}?${query}` : url.pathname
 }
+
+export function buildTeamSessionDetailRedirectPath(input) {
+  const params = new URLSearchParams()
+
+  if (input.status) {
+    params.set("status", input.status)
+  }
+
+  if (input.error) {
+    params.set("error", input.error)
+  }
+
+  if (input.scopeOrgId) {
+    params.set("org", input.scopeOrgId)
+  }
+
+  if (input.scopeTeamId) {
+    params.set("team", input.scopeTeamId)
+  }
+
+  if (input.cacheSessionId) {
+    params.set("cacheSession", input.cacheSessionId)
+  }
+
+  if (input.cacheCampId) {
+    params.set("cacheCamp", input.cacheCampId)
+  }
+
+  if (input.cacheTeamVenueId) {
+    params.set("cacheTeamVenue", input.cacheTeamVenueId)
+  }
+
+  const basePath = `/team-sessions/${encodeURIComponent(input.sessionId)}`
+  const query = params.toString()
+  return query.length > 0 ? `${basePath}?${query}` : basePath
+}

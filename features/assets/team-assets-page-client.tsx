@@ -433,13 +433,24 @@ function TeamAssetTabs(input: {
     <Tabs
       value={input.tab}
       onValueChange={(value) => input.onTabChange(value === "files" ? "files" : "images")}
-      className="min-w-0"
+      className="w-full min-w-0 md:w-auto"
     >
-      <TabsList className="grid h-10 w-full grid-cols-2 md:w-56">
-        <TabsTrigger value="images" disabled={input.isNavigating}>
+      <div className="flex h-11 w-full max-w-full items-center rounded-lg bg-muted p-[3px] text-muted-foreground md:hidden">
+        <TabsList className="h-full min-w-0 flex-1 rounded-md bg-transparent p-0 group-data-horizontal/tabs:h-full">
+          <TabsTrigger value="images" disabled={input.isNavigating} className="min-w-0 basis-0 px-2">
+            Images
+          </TabsTrigger>
+          <TabsTrigger value="files" disabled={input.isNavigating} className="min-w-0 basis-0 px-2">
+            Files
+          </TabsTrigger>
+        </TabsList>
+      </div>
+
+      <TabsList className="hidden h-10 w-56 md:inline-flex">
+        <TabsTrigger value="images" disabled={input.isNavigating} className="min-w-0 basis-0">
           Images
         </TabsTrigger>
-        <TabsTrigger value="files" disabled={input.isNavigating}>
+        <TabsTrigger value="files" disabled={input.isNavigating} className="min-w-0 basis-0">
           Files
         </TabsTrigger>
       </TabsList>

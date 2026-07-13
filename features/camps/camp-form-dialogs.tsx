@@ -516,9 +516,6 @@ export function CreateCampDialog({
       <SheetContent side="right" className="flex h-full flex-col gap-0 overflow-hidden sm:max-w-xl">
         <SheetHeader className="shrink-0 border-b">
           <SheetTitle>Create camp</SheetTitle>
-          <SheetDescription>
-            Add a camp to one of the active team venues.
-          </SheetDescription>
         </SheetHeader>
 
         <CampDialogForm

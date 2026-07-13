@@ -1400,9 +1400,19 @@ export function VenueDetailTabsClient(input: {
               navigateToYear(parsedYear);
             }
           }}
-          className="min-w-0"
+          className="min-w-0 flex-1 md:flex-none"
         >
-          <div className="no-scrollbar max-w-full overflow-x-auto overflow-y-hidden">
+          <div className="no-scrollbar flex h-11 w-full max-w-full items-center overflow-x-auto overflow-y-hidden rounded-lg bg-muted p-[3px] text-muted-foreground md:hidden">
+            <TabsList className="h-full w-max min-w-full rounded-md bg-transparent p-0 group-data-horizontal/tabs:h-full">
+              {input.availableYears.map((year) => (
+                <TabsTrigger key={year} value={String(year)} className="min-w-fit px-3">
+                  {year}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
+
+          <div className="no-scrollbar hidden max-w-full overflow-x-auto overflow-y-hidden md:block">
             <TabsList className="h-10 w-max">
               {input.availableYears.map((year) => (
                 <TabsTrigger key={year} value={String(year)} className="min-w-fit">

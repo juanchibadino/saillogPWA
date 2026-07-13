@@ -4,6 +4,13 @@ import { GradientCard } from "@/components/shared/gradient-card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 
+const TEAM_HOME_KPI_LABELS = [
+  "Total Camps",
+  "Total Sessions",
+  "Avg. Session",
+  "Net Time Sailed",
+] as const
+
 function SkeletonCard() {
   return (
     <div className="rounded-xl border bg-card p-6">
@@ -90,11 +97,25 @@ export function HomePageSkeleton() {
 export function TeamHomePageSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <GradientCard key={`team-home-kpi-${index}`}>
+      <GradientCard className="overflow-hidden p-0 md:hidden">
+        <div className="divide-y divide-border px-6 py-3">
+          {TEAM_HOME_KPI_LABELS.map((label) => (
+            <div
+              key={`team-home-mobile-kpi-${label}`}
+              className="flex min-h-12 items-center justify-between gap-4"
+            >
+              <p className="text-sm text-muted-foreground">{label}</p>
+              <Skeleton className="h-5 w-20" />
+            </div>
+          ))}
+        </div>
+      </GradientCard>
+
+      <div className="hidden gap-4 md:grid md:grid-cols-2 lg:grid-cols-4">
+        {TEAM_HOME_KPI_LABELS.map((label) => (
+          <GradientCard key={`team-home-desktop-kpi-${label}`}>
             <div className="space-y-4 px-6 py-6">
-              <Skeleton className="h-4 w-24" />
+              <p className="text-sm text-muted-foreground">{label}</p>
               <Skeleton className="h-8 w-20" />
             </div>
           </GradientCard>

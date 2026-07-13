@@ -40,6 +40,7 @@ const MIN_IMAGE_PREVIEW_ZOOM = 1
 const MAX_IMAGE_PREVIEW_ZOOM = 3
 const IMAGE_PREVIEW_ZOOM_STEP = 0.35
 const IMAGE_PREVIEW_PINCH_SENSITIVITY = 0.5
+const ASSET_DIALOG_FOOTER_BUTTON_CLASS = "h-11 w-full sm:h-7 sm:w-auto"
 
 export function formatAssetSize(sizeBytes: number | null): string {
   if (typeof sizeBytes !== "number" || sizeBytes < 0) {
@@ -581,7 +582,7 @@ export function SessionAssetCard(input: {
               rel="noreferrer"
               className={cn(
                 buttonVariants({ variant: "outline", size: "sm" }),
-                "w-full sm:w-auto",
+                ASSET_DIALOG_FOOTER_BUTTON_CLASS,
               )}
             >
               <ExternalLinkIcon className="size-4" />
@@ -593,7 +594,7 @@ export function SessionAssetCard(input: {
             download={input.asset.file_name}
             className={cn(
               buttonVariants({ variant: "default", size: "sm" }),
-              "w-full sm:w-auto",
+              ASSET_DIALOG_FOOTER_BUTTON_CLASS,
             )}
           >
             <DownloadIcon className="size-4" />

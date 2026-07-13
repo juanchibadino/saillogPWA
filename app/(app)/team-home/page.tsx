@@ -64,6 +64,13 @@ const TEAM_HOME_MONTH_FORMATTER = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
 })
 
+const TEAM_HOME_KPI_SKELETON_LABELS = [
+  "Total Camps",
+  "Total Sessions",
+  "Avg. Session",
+  "Net Time Sailed",
+] as const
+
 function toUtcDayValue(date: Date): number {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
 }
@@ -343,16 +350,32 @@ function getCurrentVenueIds(
 
 function TeamHomeKpiCardsSkeleton() {
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-      {Array.from({ length: 4 }).map((_, index) => (
-        <GradientCard key={`team-home-kpi-section-skeleton-${index}`}>
-          <CardHeader className="pb-2">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-8 w-20" />
-          </CardHeader>
-        </GradientCard>
-      ))}
-    </div>
+    <>
+      <GradientCard className="overflow-hidden p-0 md:hidden">
+        <div className="divide-y divide-border px-6 py-3">
+          {TEAM_HOME_KPI_SKELETON_LABELS.map((label) => (
+            <div
+              key={`team-home-mobile-kpi-section-skeleton-${label}`}
+              className="flex min-h-12 items-center justify-between gap-4"
+            >
+              <p className="text-sm text-muted-foreground">{label}</p>
+              <Skeleton className="h-5 w-20" />
+            </div>
+          ))}
+        </div>
+      </GradientCard>
+
+      <div className="hidden gap-4 md:grid md:grid-cols-2 lg:grid-cols-4">
+        {TEAM_HOME_KPI_SKELETON_LABELS.map((label) => (
+          <GradientCard key={`team-home-desktop-kpi-section-skeleton-${label}`}>
+            <CardHeader className="pb-2">
+              <p className="text-sm text-muted-foreground">{label}</p>
+              <Skeleton className="h-8 w-20" />
+            </CardHeader>
+          </GradientCard>
+        ))}
+      </div>
+    </>
   )
 }
 
@@ -459,18 +482,36 @@ async function TeamHomeKpiCards({
   const teamKpis = await kpisPromise
 
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-      {teamKpis.map((kpi) => (
-        <GradientCard key={kpi.label}>
-          <CardHeader className="pb-2">
-            <CardDescription>{kpi.label}</CardDescription>
-            <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-              {kpi.value}
-            </CardTitle>
-          </CardHeader>
-        </GradientCard>
-      ))}
-    </div>
+    <>
+      <GradientCard className="overflow-hidden p-0 md:hidden">
+        <div className="divide-y divide-border px-6 py-3">
+          {teamKpis.map((kpi) => (
+            <div
+              key={`mobile-team-home-kpi-${kpi.label}`}
+              className="flex min-h-12 items-center justify-between gap-4"
+            >
+              <p className="text-sm text-muted-foreground">{kpi.label}</p>
+              <p className="text-right text-sm font-semibold tabular-nums">
+                {kpi.value}
+              </p>
+            </div>
+          ))}
+        </div>
+      </GradientCard>
+
+      <div className="hidden gap-4 md:grid md:grid-cols-2 lg:grid-cols-4">
+        {teamKpis.map((kpi) => (
+          <GradientCard key={`desktop-team-home-kpi-${kpi.label}`}>
+            <CardHeader className="pb-2">
+              <CardDescription>{kpi.label}</CardDescription>
+              <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
+                {kpi.value}
+              </CardTitle>
+            </CardHeader>
+          </GradientCard>
+        ))}
+      </div>
+    </>
   )
 }
 

@@ -138,6 +138,49 @@ Rules:
 - Keep persistent missing-scope, read-only, and setup-blocker messages inline.
   Those are not transient toast feedback.
 
+## 3.2 Mobile Summary KPI Card
+
+Goal:
+- Summary KPIs stay scannable on small screens without creating a grid of
+  competing cards.
+
+Rules:
+- Mobile summary KPIs render as one `GradientCard` with vertical divided rows.
+- Use `overflow-hidden p-0 md:hidden` on the mobile `GradientCard`.
+- Use `divide-y divide-border px-6 py-3` for the row wrapper.
+- Each KPI row uses `flex min-h-12 items-center justify-between gap-4`.
+- Labels stay left-aligned in `text-sm text-muted-foreground`.
+- Values stay right-aligned in `text-sm font-semibold`; add `tabular-nums`
+  when the value is numeric, a time, or otherwise scan-aligned.
+- Desktop keeps the compact KPI grid with one `GradientCard` per KPI.
+- Route and section skeletons should mirror the same mobile divided-card shape.
+
+Canonical mobile KPI card:
+
+```tsx
+<GradientCard className="overflow-hidden p-0 md:hidden">
+  <div className="divide-y divide-border px-6 py-3">
+    {kpis.map((kpi) => (
+      <div
+        key={kpi.label}
+        className="flex min-h-12 items-center justify-between gap-4"
+      >
+        <p className="text-sm text-muted-foreground">{kpi.label}</p>
+        <p className="text-right text-sm font-semibold tabular-nums">
+          {kpi.value}
+        </p>
+      </div>
+    ))}
+  </div>
+</GradientCard>
+```
+
+Current implementation references:
+- `features/sessions/detail/session-summary-cards.tsx`
+- `features/camps/camp-detail-tabs-client.tsx`
+- `features/venues/venue-detail-tabs-client.tsx`
+- `app/(app)/team-home/page.tsx`
+
 ## 4. Inputs, Selects, And Textareas
 
 Goal:

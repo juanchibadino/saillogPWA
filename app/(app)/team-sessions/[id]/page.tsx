@@ -49,6 +49,10 @@ function resolveTab(value: string | undefined): SessionDetailTab {
 }
 
 function getStatusMessage(status: string | undefined): string | null {
+  if (status === "created") {
+    return "Session created successfully."
+  }
+
   if (status === "updated") {
     return "Session updated successfully."
   }

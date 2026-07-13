@@ -7,6 +7,7 @@ import { canManageTeamSessions } from "@/lib/auth/capabilities"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { resolveOrganizationWriteEntitlement } from "@/lib/billing/entitlements"
 import {
+  buildTeamSessionDetailRedirectPath,
   buildTeamSessionsRedirectPath,
   resolveHighlightFilter,
 } from "@/features/sessions/list-route-state.mjs"
@@ -449,15 +450,19 @@ export async function createSessionAction(formData: FormData): Promise<void> {
   }
 
   const supabase = await createServerSupabaseClient()
-  const { error: insertError } = await supabase.from("sessions").insert({
-    camp_id: parsedInput.data.campId,
-    session_type: parsedInput.data.sessionType,
-    session_date: parsedInput.data.sessionDate,
-    net_time_minutes: parsedInput.data.netTimeMinutes ?? null,
-    highlighted_by_coach: parsedInput.data.highlightedByCoach,
-  })
+  const { data: insertedSession, error: insertError } = await supabase
+    .from("sessions")
+    .insert({
+      camp_id: parsedInput.data.campId,
+      session_type: parsedInput.data.sessionType,
+      session_date: parsedInput.data.sessionDate,
+      net_time_minutes: parsedInput.data.netTimeMinutes ?? null,
+      highlighted_by_coach: parsedInput.data.highlightedByCoach,
+    })
+    .select("id")
+    .single()
 
-  if (insertError) {
+  if (insertError || !insertedSession) {
     redirect(
       buildTeamSessionsRedirectPath({
         error: "create_failed",
@@ -479,11 +484,14 @@ export async function createSessionAction(formData: FormData): Promise<void> {
   })
 
   redirect(
-    buildTeamSessionsRedirectPath({
+    buildTeamSessionDetailRedirectPath({
+      sessionId: insertedSession.id,
       status: "created",
+      cacheSessionId: insertedSession.id,
       cacheCampId: cacheContext?.campId ?? parsedInput.data.campId,
       cacheTeamVenueId: cacheContext?.teamVenueId,
-      ...scope,
+      scopeOrgId: scope.scopeOrgId,
+      scopeTeamId: scope.scopeTeamId,
     }),
   )
 }

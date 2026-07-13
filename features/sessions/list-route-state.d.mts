@@ -55,6 +55,17 @@ export type TeamSessionsRedirectInput = {
   scopePage?: number
 }
 
+export type TeamSessionDetailRedirectInput = {
+  cacheCampId?: string | null
+  cacheSessionId?: string | null
+  cacheTeamVenueId?: string | null
+  error?: "invalid_input" | "forbidden" | "create_failed"
+  scopeOrgId?: string
+  scopeTeamId?: string
+  sessionId: string
+  status?: "created"
+}
+
 export function normalizeRequestedPage(value: string | undefined): number
 
 export function normalizeSelectedId(input: {
@@ -78,4 +89,8 @@ export function buildTeamSessionsPageHref(input: TeamSessionsPageHrefInput): str
 
 export function buildTeamSessionsRedirectPath(
   input: TeamSessionsRedirectInput,
+): string
+
+export function buildTeamSessionDetailRedirectPath(
+  input: TeamSessionDetailRedirectInput,
 ): string
