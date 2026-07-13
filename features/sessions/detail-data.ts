@@ -53,7 +53,7 @@ type SessionRow = Pick<
 
 type CampRow = Pick<
   Database["public"]["Tables"]["camps"]["Row"],
-  "id" | "name" | "team_venue_id"
+  "id" | "name" | "team_venue_id" | "start_date" | "end_date"
 >
 
 type TeamVenueRow = Pick<
@@ -142,7 +142,7 @@ type SessionWindPatternRow = Pick<
 
 const SESSION_SELECT_COLUMNS =
   "id,camp_id,session_type,session_date,dock_out_at,dock_in_at,net_time_minutes,highlighted_by_coach,goals"
-const CAMP_SELECT_COLUMNS = "id,name,team_venue_id"
+const CAMP_SELECT_COLUMNS = "id,name,team_venue_id,start_date,end_date"
 const TEAM_VENUE_SELECT_COLUMNS = "id,team_id,venue_id"
 const TEAM_SELECT_COLUMNS = "id,name,organization_id"
 const VENUE_SELECT_COLUMNS = "id,name,city,country,organization_id"

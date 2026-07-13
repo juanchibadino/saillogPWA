@@ -355,7 +355,7 @@ export function MultiselectContent(
     <DropdownMenuContent
       className={cn("max-h-72 w-[var(--anchor-width)] overflow-y-auto p-1.5 sm:p-1", className)}
       align="start"
-      sideOffset={6}
+      sideOffset={0}
       {...contentProps}
     >
       {children}

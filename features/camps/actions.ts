@@ -15,6 +15,7 @@ import {
   updateCampInputSchema,
 } from "@/lib/validation/camps"
 import {
+  buildCampDetailRedirectPath,
   buildTeamCampsRedirectPath,
   resolveCampGoalsActionRedirect,
 } from "@/features/camps/detail-route-state.mjs"
@@ -404,16 +405,29 @@ export async function createCampAction(formData: FormData): Promise<void> {
     )
   }
 
+  if (!createdCamp?.id) {
+    redirect(
+      buildCampActionRedirectPath({
+        error: "create_failed",
+        ...scope,
+      }),
+    )
+  }
+
   revalidatePath("/team-camps")
+  revalidatePath(`/team-camps/${createdCamp.id}`)
   revalidatePath("/team-sessions")
   revalidateCampActionReturnPath(scope.returnPath)
 
   redirect(
-    buildCampActionRedirectPath({
-      status: "created",
-      cacheCampId: createdCamp?.id ?? null,
+    buildCampDetailRedirectPath({
+      campId: createdCamp.id,
+      status: "camp_created",
+      cacheCampId: createdCamp.id,
       cacheTeamVenueId: parsedInput.data.teamVenueId,
-      ...scope,
+      scopeOrgId: scope.scopeOrgId,
+      scopeTeamId: scope.scopeTeamId,
+      scopeTab: "sessions",
     }),
   )
 }

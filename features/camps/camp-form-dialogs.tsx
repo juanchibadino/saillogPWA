@@ -236,13 +236,16 @@ function CampDialogForm({
   const [campType, setCampType] = React.useState(initialValues.campType)
   const [startDate, setStartDate] = React.useState(initialValues.startDate)
   const [endDate, setEndDate] = React.useState(initialValues.endDate)
+  const hasDateRangeError =
+    startDate.length > 0 && endDate.length > 0 && endDate < startDate
 
   const canSubmit =
     teamVenueId.length > 0 &&
     name.trim().length > 0 &&
     campType.length > 0 &&
     startDate.length > 0 &&
-    endDate.length > 0
+    endDate.length > 0 &&
+    !hasDateRangeError
   const isDrawerSurface = surface === "drawer"
   const hasFixedFooter = footer === "drawer" || footer === "sheet"
   const selectClassName = cn(
@@ -345,6 +348,7 @@ function CampDialogForm({
               name="startDate"
               type="date"
               required
+              lang="en-US"
               value={startDate}
               onChange={(event) => setStartDate(event.target.value)}
               className={inputClassName}
@@ -358,10 +362,21 @@ function CampDialogForm({
               name="endDate"
               type="date"
               required
+              lang="en-US"
+              min={startDate || undefined}
               value={endDate}
               onChange={(event) => setEndDate(event.target.value)}
               className={inputClassName}
+              aria-invalid={hasDateRangeError}
+              aria-describedby={
+                hasDateRangeError ? `${idPrefix}-endDate-error` : undefined
+              }
             />
+            {hasDateRangeError ? (
+              <p id={`${idPrefix}-endDate-error`} className="text-sm text-destructive">
+                End date must be on or after start date.
+              </p>
+            ) : null}
           </div>
         </div>
 

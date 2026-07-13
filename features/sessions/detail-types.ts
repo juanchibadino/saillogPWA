@@ -11,7 +11,10 @@ export type SessionDetailTeam = Pick<TeamRow, "id" | "name">
 
 export type SessionDetailVenue = Pick<VenueRow, "id" | "name" | "city" | "country">
 
-export type SessionDetailCamp = Pick<CampRow, "id" | "name" | "team_venue_id">
+export type SessionDetailCamp = Pick<
+  CampRow,
+  "id" | "name" | "team_venue_id" | "start_date" | "end_date"
+>
 
 export type SessionDetailSession = Pick<
   SessionRow,

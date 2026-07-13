@@ -337,10 +337,17 @@ function SessionDialogForm({
     initialValues.highlightedByCoach,
   )
 
+  const selectedCampOption =
+    campOptions.find((option) => option.campId === campId) ?? null
+  const hasSessionDateRangeError =
+    selectedCampOption !== null &&
+    sessionDate.length > 0 &&
+    (sessionDate < selectedCampOption.startDate || sessionDate > selectedCampOption.endDate)
   const netTimeMinutes = parseDurationInputToMinutes(netTimeDuration)
   const currentNetTimeMinutes =
     netTimeMinutes.length > 0 ? Number.parseInt(netTimeMinutes, 10) : 0
-  const canSubmit = campId.length > 0 && sessionDate.length > 0
+  const canSubmit =
+    campId.length > 0 && sessionDate.length > 0 && !hasSessionDateRangeError
   const isDrawerSurface = surface === "drawer"
   const selectClassName = cn(
     "w-full rounded-lg border border-input bg-background text-sm outline-none ring-ring/50 focus-visible:ring-[3px]",
@@ -444,10 +451,22 @@ function SessionDialogForm({
               name="sessionDate"
               type="date"
               required
+              lang="en-US"
+              min={selectedCampOption?.startDate}
+              max={selectedCampOption?.endDate}
               value={sessionDate}
               onChange={(event) => setSessionDate(event.target.value)}
               className={inputClassName}
+              aria-invalid={hasSessionDateRangeError}
+              aria-describedby={
+                hasSessionDateRangeError ? `${idPrefix}-sessionDate-error` : undefined
+              }
             />
+            {hasSessionDateRangeError ? (
+              <p id={`${idPrefix}-sessionDate-error`} className="text-sm text-destructive">
+                Date must be within the selected camp range.
+              </p>
+            ) : null}
           </div>
 
           <div className="space-y-2 sm:col-span-2">

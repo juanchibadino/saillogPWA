@@ -62,6 +62,21 @@ test("builds Camp detail redirects preserving valid tab and page state", () => {
   )
 })
 
+test("builds Camp detail redirect for newly created camps", () => {
+  assert.equal(
+    buildCampDetailRedirectPath({
+      campId: "camp-1",
+      status: "camp_created",
+      scopeOrgId: "org-1",
+      scopeTeamId: "team-1",
+      scopeTab: "sessions",
+      cacheCampId: "camp-1",
+      cacheTeamVenueId: "team-venue-1",
+    }),
+    "/team-camps/camp-1?status=camp_created&org=org-1&team=team-1&tab=sessions&cacheCamp=camp-1&cacheTeamVenue=team-venue-1",
+  )
+})
+
 test("builds Team Camps action redirects preserving list filters and page state", () => {
   for (const status of ["created", "updated", "deleted"]) {
     assert.equal(

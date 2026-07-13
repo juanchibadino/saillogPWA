@@ -228,15 +228,20 @@ function EditSessionMetadataDialog(input: {
   scope: NavigationScope
   sessionType: "training" | "regatta"
   sessionDate: string
+  campStartDate: string
+  campEndDate: string
   dockOutAt: string | null
   dockInAt: string | null
   netTimeMinutes: number | null
 }) {
-  function EditSessionDialogSubmitButton(props: { className?: string }) {
+  function EditSessionDialogSubmitButton(props: {
+    className?: string
+    disabled?: boolean
+  }) {
     const { pending } = useFormStatus()
 
     return (
-      <Button type="submit" disabled={pending} className={props.className}>
+      <Button type="submit" disabled={pending || props.disabled} className={props.className}>
         {pending ? (
           <>
             <Loader2Icon className="size-4 animate-spin" />
@@ -268,6 +273,9 @@ function EditSessionMetadataDialog(input: {
   const isMobile = useIsMobile()
   const totalDurationLabelId = `session-duration-label-${input.sessionId}`
   const nextTotalDurationHours = formatSessionDurationHoursValue(nextTotalDurationMinutes)
+  const hasSessionDateRangeError =
+    nextSessionDate.length > 0 &&
+    (nextSessionDate < input.campStartDate || nextSessionDate > input.campEndDate)
 
   function adjustTotalDurationMinutes(deltaMinutes: number): void {
     setNextTotalDurationMinutes((currentMinutes) =>
@@ -318,9 +326,26 @@ function EditSessionMetadataDialog(input: {
                   name="sessionDate"
                   type="date"
                   required
+                  lang="en-US"
+                  min={input.campStartDate}
+                  max={input.campEndDate}
                   value={nextSessionDate}
                   onChange={(event) => setNextSessionDate(event.target.value)}
+                  aria-invalid={hasSessionDateRangeError}
+                  aria-describedby={
+                    hasSessionDateRangeError
+                      ? `session-date-${input.sessionId}-error`
+                      : undefined
+                  }
                 />
+                {hasSessionDateRangeError ? (
+                  <p
+                    id={`session-date-${input.sessionId}-error`}
+                    className="text-sm text-destructive"
+                  >
+                    Date must be within the camp range.
+                  </p>
+                ) : null}
               </div>
 
               <div className="space-y-2">
@@ -380,11 +405,17 @@ function EditSessionMetadataDialog(input: {
 
       {isMobile ? (
         <DrawerFooter className="shrink-0 border-t">
-          <EditSessionDialogSubmitButton className="h-11 w-full" />
+          <EditSessionDialogSubmitButton
+            className="h-11 w-full"
+            disabled={hasSessionDateRangeError}
+          />
         </DrawerFooter>
       ) : (
         <SheetFooter className="shrink-0 border-t">
-          <EditSessionDialogSubmitButton className="w-full" />
+          <EditSessionDialogSubmitButton
+            className="w-full"
+            disabled={hasSessionDateRangeError}
+          />
         </SheetFooter>
       )}
     </form>
@@ -429,6 +460,8 @@ export function SessionHeaderActions(input: {
   scope: NavigationScope
   sessionType: "training" | "regatta"
   sessionDate: string
+  campStartDate: string
+  campEndDate: string
   dockOutAt: string | null
   dockInAt: string | null
   netTimeMinutes: number | null
@@ -511,6 +544,8 @@ export function SessionHeaderActions(input: {
         scope={input.scope}
         sessionType={input.sessionType}
         sessionDate={input.sessionDate}
+        campStartDate={input.campStartDate}
+        campEndDate={input.campEndDate}
         dockOutAt={input.dockOutAt}
         dockInAt={input.dockInAt}
         netTimeMinutes={input.netTimeMinutes}

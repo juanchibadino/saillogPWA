@@ -653,6 +653,8 @@ async function resolveScopedSessionContext(input: {
       }
       camp: {
         id: string
+        end_date: string
+        start_date: string
         team_venue_id: string
       }
       teamVenue: {
@@ -677,7 +679,7 @@ async function resolveScopedSessionContext(input: {
 
   const { data: campRow, error: campError } = await supabase
     .from("camps")
-    .select("id,team_venue_id")
+    .select("id,team_venue_id,start_date,end_date")
     .eq("id", sessionRow.camp_id)
     .maybeSingle()
 
@@ -821,6 +823,20 @@ export async function updateSessionDetailAction(formData: FormData): Promise<voi
       buildSessionDetailRedirectPath({
         sessionId: parsedInput.data.id,
         error: "forbidden",
+        ...scope,
+      }),
+    )
+  }
+
+  if (
+    parsedInput.data.sessionDate < scopedSession.camp.start_date ||
+    parsedInput.data.sessionDate > scopedSession.camp.end_date
+  ) {
+    logTiming("error", "invalid_input")
+    redirect(
+      buildSessionDetailRedirectPath({
+        sessionId: parsedInput.data.id,
+        error: "invalid_input",
         ...scope,
       }),
     )

@@ -43,6 +43,10 @@ function getStatusMessage(status: string | undefined): string | null {
     return "Camp goals updated successfully."
   }
 
+  if (status === "camp_created") {
+    return "Camp created successfully."
+  }
+
   if (status === "created") {
     return "Session created successfully."
   }

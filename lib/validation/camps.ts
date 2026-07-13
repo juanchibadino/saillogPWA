@@ -1,9 +1,15 @@
 import { z } from "zod"
 
+import { normalizeUsDateInput } from "@/lib/us-date-input"
+
 const requiredShortTextSchema = z.string().trim().min(1).max(120)
 const dateInputSchema = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date in YYYY-MM-DD format")
+  .trim()
+  .refine((value) => normalizeUsDateInput(value) !== null, {
+    message: "Use a valid date in MM/DD/YYYY format",
+  })
+  .transform((value) => normalizeUsDateInput(value) ?? value)
 const optionalLongTextSchema = z.string().trim().max(4000)
 
 const baseCampInputSchema = z

@@ -240,6 +240,8 @@ async function SessionHeaderActionsSlot(input: {
       scope={input.scope}
       sessionType={detailData.session.session_type}
       sessionDate={detailData.session.session_date}
+      campStartDate={detailData.camp.start_date}
+      campEndDate={detailData.camp.end_date}
       dockOutAt={detailData.session.dock_out_at}
       dockInAt={detailData.session.dock_in_at}
       netTimeMinutes={detailData.session.net_time_minutes}

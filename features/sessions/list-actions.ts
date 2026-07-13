@@ -36,6 +36,13 @@ type SessionAssetStorageReference = {
   thumbnail_storage_path: string | null
 }
 
+type ScopedCampContext = {
+  id: string
+  end_date: string
+  start_date: string
+  team_venue_id: string
+}
+
 function getFormString(formData: FormData, key: string): string | undefined {
   const value = formData.get(key)
 
@@ -115,21 +122,21 @@ function getScopeFromFormData(formData: FormData): SessionListActionScope {
   }
 }
 
-async function ensureCampBelongsToScope(input: {
+async function resolveScopedCampContext(input: {
   campId: string
   scopeOrgId: string
   scopeTeamId: string
-}): Promise<boolean> {
+}): Promise<ScopedCampContext | null> {
   const supabase = await createServerSupabaseClient()
 
   const { data: campRow, error: campError } = await supabase
     .from("camps")
-    .select("id,team_venue_id")
+    .select("id,team_venue_id,start_date,end_date")
     .eq("id", input.campId)
     .maybeSingle()
 
   if (campError || !campRow) {
-    return false
+    return null
   }
 
   const { data: teamVenueRow, error: teamVenueError } = await supabase
@@ -140,7 +147,7 @@ async function ensureCampBelongsToScope(input: {
     .maybeSingle()
 
   if (teamVenueError || !teamVenueRow) {
-    return false
+    return null
   }
 
   const { data: venueRow, error: venueError } = await supabase
@@ -151,10 +158,24 @@ async function ensureCampBelongsToScope(input: {
     .maybeSingle()
 
   if (venueError) {
-    return false
+    return null
   }
 
-  return Boolean(venueRow)
+  if (!venueRow) {
+    return null
+  }
+
+  return campRow
+}
+
+function isSessionDateWithinCampRange(input: {
+  camp: ScopedCampContext
+  sessionDate: string
+}): boolean {
+  return (
+    input.sessionDate >= input.camp.start_date &&
+    input.sessionDate <= input.camp.end_date
+  )
 }
 
 async function resolveTeamOrganizationId(teamId: string): Promise<string | null> {
@@ -373,13 +394,27 @@ export async function createSessionAction(formData: FormData): Promise<void> {
     )
   }
 
-  const campBelongsToScope = await ensureCampBelongsToScope({
+  const scopedCamp = await resolveScopedCampContext({
     campId: parsedInput.data.campId,
     scopeOrgId: scope.scopeOrgId,
     scopeTeamId: scope.scopeTeamId,
   })
 
-  if (!campBelongsToScope) {
+  if (!scopedCamp) {
+    redirect(
+      buildTeamSessionsRedirectPath({
+        error: "invalid_input",
+        ...scope,
+      }),
+    )
+  }
+
+  if (
+    !isSessionDateWithinCampRange({
+      camp: scopedCamp,
+      sessionDate: parsedInput.data.sessionDate,
+    })
+  ) {
     redirect(
       buildTeamSessionsRedirectPath({
         error: "invalid_input",
@@ -505,13 +540,27 @@ export async function updateSessionAction(formData: FormData): Promise<void> {
     )
   }
 
-  const campBelongsToScope = await ensureCampBelongsToScope({
+  const scopedCamp = await resolveScopedCampContext({
     campId: parsedInput.data.campId,
     scopeOrgId: scope.scopeOrgId,
     scopeTeamId: scope.scopeTeamId,
   })
 
-  if (!campBelongsToScope) {
+  if (!scopedCamp) {
+    redirect(
+      buildTeamSessionsRedirectPath({
+        error: "invalid_input",
+        ...scope,
+      }),
+    )
+  }
+
+  if (
+    !isSessionDateWithinCampRange({
+      camp: scopedCamp,
+      sessionDate: parsedInput.data.sessionDate,
+    })
+  ) {
     redirect(
       buildTeamSessionsRedirectPath({
         error: "invalid_input",
