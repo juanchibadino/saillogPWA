@@ -23,6 +23,7 @@ import {
   TEST_ORGANIZATION_FREE_SLUGS_CORE,
   normalizePlanTierCore,
   resolveForcedPlanTierOverrideCore,
+  shouldHonorForcedFreePlanCore,
 } from "./subscription-rules.mjs"
 
 type ServerSupabaseClient = SupabaseClient<Database>
@@ -245,7 +246,7 @@ export async function resolveOrganizationSubscription(
     ? resolveForcedPlanTierOverride(organizationRow as OrganizationPlanOverrideRow)
     : null
 
-  if (forcedPlanTier) {
+  if (forcedPlanTier === "pro") {
     return buildForcedSubscriptionSnapshot({
       organizationId,
       planTier: forcedPlanTier,
@@ -262,6 +263,22 @@ export async function resolveOrganizationSubscription(
     throw new Error(
       `Could not resolve organization subscription for ${organizationId}: ${error.message}`,
     )
+  }
+
+  if (
+    forcedPlanTier === "free" &&
+    shouldHonorForcedFreePlanCore({
+      planTier: data
+        ? normalizePlanTier(data.plan_tier as PlanTier | "olympic")
+        : "free",
+      subscriptionStatus: data?.status ?? "active",
+      polarSubscriptionId: data?.polar_subscription_id ?? null,
+    })
+  ) {
+    return buildForcedSubscriptionSnapshot({
+      organizationId,
+      planTier: forcedPlanTier,
+    })
   }
 
   return mapSubscriptionRow(organizationId, data)

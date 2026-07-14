@@ -206,6 +206,7 @@ export function SignInAccessCodePanel({
             required
             autoComplete="email"
             placeholder="you@team.com"
+            className="h-11 px-3 md:h-8 md:px-2.5"
             value={email}
             disabled={isRequesting || isRefreshing || isVerifying}
             onChange={(event) => {
@@ -224,7 +225,10 @@ export function SignInAccessCodePanel({
       {!showOtpInput ? (
         <button
           type="button"
-          className={buttonVariants({ variant: "outline", className: "w-full" })}
+          className={buttonVariants({
+            variant: "outline",
+            className: "h-11 w-full md:h-8",
+          })}
           disabled={isRequesting || !email.trim()}
           onClick={() => void requestAccessCode(false)}
         >
@@ -286,7 +290,7 @@ export function SignInAccessCodePanel({
 
           <button
             type="button"
-            className={buttonVariants({ className: "w-full" })}
+            className={buttonVariants({ className: "h-11 w-full md:h-8" })}
             disabled={isVerifying || !isValidOtp(otp)}
             onClick={() => void verifyAccessCode()}
           >
@@ -305,7 +309,7 @@ export function SignInAccessCodePanel({
               type="button"
               className={buttonVariants({
                 variant: "outline",
-                className: "min-w-0",
+                className: "h-11 min-w-0 md:h-8",
               })}
               onClick={() => void requestAccessCode(true)}
               disabled={refreshDisabled}
@@ -324,7 +328,7 @@ export function SignInAccessCodePanel({
               type="button"
               className={buttonVariants({
                 variant: "ghost",
-                className: "shrink-0 px-2",
+                className: "h-11 shrink-0 px-2 md:h-8",
               })}
               disabled={isRefreshing || isVerifying}
               onClick={handleChangeEmail}

@@ -5,8 +5,10 @@ import { CheckCircle2Icon, ExternalLinkIcon } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -19,7 +21,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { PolarSubscriptionAction } from "@/features/billing/polar-subscription-card"
+import {
+  ManageSubscriptionLink,
+  PolarSubscriptionAction,
+} from "@/features/billing/polar-subscription-card"
+import { SubscriptionFeedback } from "@/features/billing/subscription-feedback"
 import {
   SubscriptionBillingSkeleton,
   SubscriptionInvoiceSkeleton,
@@ -29,7 +35,9 @@ import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageOrganizationOperations } from "@/lib/auth/capabilities"
 import { requireOrganizationRouteAccess } from "@/lib/auth/organization-route-guard"
 import {
+  getPolarLatestPaymentForOrganization,
   listPolarInvoicesForOrganization,
+  type PolarLatestPaymentSummary,
   type PolarInvoiceSummary,
 } from "@/lib/billing/polar"
 import {
@@ -161,6 +169,23 @@ function buildSubscriptionHref(input: {
   }
 
   return `/subscription?${params.toString()}`
+}
+
+function buildSubscriptionPortalHref(organizationId: string): string {
+  return `/api/subscription/portal?${new URLSearchParams({
+    [NAVIGATION_SCOPE_ORG_QUERY_KEY]: organizationId,
+  }).toString()}`
+}
+
+function buildInvoiceOpenHref(input: {
+  invoiceId: string
+  organizationId: string
+}): string {
+  return `/api/subscription/invoices/${encodeURIComponent(
+    input.invoiceId,
+  )}?${new URLSearchParams({
+    [NAVIGATION_SCOPE_ORG_QUERY_KEY]: input.organizationId,
+  }).toString()}`
 }
 
 function UsageTile(input: { label: string; usage: number; limit: number | null }) {
@@ -344,43 +369,150 @@ function PlanCards(input: {
 function QuotaPanel(input: {
   billingSnapshot: SubscriptionBillingSnapshot
 }) {
+  return (
+    <Card className="h-full">
+      <CardHeader>
+        <CardTitle className="text-base">Actual quota</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <UsageTile
+            label="Teams"
+            usage={input.billingSnapshot.usage.teams}
+            limit={input.billingSnapshot.limits.teams}
+          />
+          <UsageTile
+            label="Venues"
+            usage={input.billingSnapshot.usage.venues}
+            limit={input.billingSnapshot.limits.venues}
+          />
+          <UsageTile
+            label="Camps"
+            usage={input.billingSnapshot.usage.camps}
+            limit={input.billingSnapshot.limits.camps}
+          />
+          <UsageTile
+            label="Sessions"
+            usage={input.billingSnapshot.usage.sessions}
+            limit={input.billingSnapshot.limits.sessions}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function BillingCycleItem(input: {
+  label: string
+  value: ReactNode
+  className?: string
+}) {
+  return (
+    <div className={cn("rounded-lg border bg-background p-3", input.className)}>
+      <p className="text-xs font-medium uppercase text-muted-foreground">
+        {input.label}
+      </p>
+      <div className="mt-2 text-sm font-medium">{input.value}</div>
+    </div>
+  )
+}
+
+function formatDateRange(input: {
+  startsAt: string | null
+  endsAt: string | null
+}): string {
+  if (!input.startsAt || !input.endsAt) {
+    return "No active billing period"
+  }
+
+  return `${formatDate(input.startsAt)} - ${formatDate(input.endsAt)}`
+}
+
+function BillingCycleCard(input: {
+  billingSnapshot: SubscriptionBillingSnapshot
+  latestPayment: PolarLatestPaymentSummary | null
+  latestPaymentErrorMessage: string | null
+  organizationId: string
+  canManageSubscription: boolean
+}) {
   const subscription = input.billingSnapshot.subscription
+  const hasPolarSubscription =
+    subscription.planTier === "pro" &&
+    subscription.status === "active" &&
+    Boolean(subscription.polarSubscriptionId)
+  const portalHref = buildSubscriptionPortalHref(input.organizationId)
+  const lastPaymentLabel = input.latestPayment
+    ? `${input.latestPayment.amountLabel} on ${formatDate(input.latestPayment.paidAt)}`
+    : "No payment recorded"
+  const planSummaryLabel = `${formatPlanTier(subscription.planTier)} plan · ${formatSubscriptionStatus(
+    subscription.status,
+  )} · ${formatBillingCycle(subscription.billingCycle)}`
+  const manageSubscriptionAction = hasPolarSubscription && input.canManageSubscription ? (
+    <ManageSubscriptionLink
+      href={portalHref}
+      className={buttonVariants({ variant: "outline", size: "sm" })}
+    />
+  ) : (
+    <Button type="button" variant="outline" size="sm" disabled>
+      {hasPolarSubscription ? "Manage subscription" : "No active subscription"}
+    </Button>
+  )
+  const mobileManageSubscriptionAction =
+    hasPolarSubscription && input.canManageSubscription ? (
+      <ManageSubscriptionLink
+        href={portalHref}
+        className={cn(
+          buttonVariants({ variant: "outline", size: "default" }),
+          "!h-11 w-full",
+        )}
+      />
+    ) : (
+      <Button
+        type="button"
+        variant="outline"
+        size="default"
+        disabled
+        className="!h-11 w-full"
+      >
+        {hasPolarSubscription ? "Manage subscription" : "No active subscription"}
+      </Button>
+  )
 
   return (
-    <section className="rounded-lg border bg-card p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold">Actual quota</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {formatPlanTier(subscription.planTier)} plan ·{" "}
-            {formatSubscriptionStatus(subscription.status)} ·{" "}
-            {formatBillingCycle(subscription.billingCycle)}
-          </p>
+    <Card className="h-full">
+      <CardHeader className="gap-3">
+        <CardTitle className="text-base">Billing Cycle</CardTitle>
+        <CardAction className="hidden md:block">
+          {manageSubscriptionAction}
+        </CardAction>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <BillingCycleItem
+            label="Current period"
+            value={formatDateRange({
+              startsAt: subscription.currentPeriodStartAt,
+              endsAt: subscription.currentPeriodEndAt,
+            })}
+          />
+          <BillingCycleItem label="Last payment" value={lastPaymentLabel} />
+          <BillingCycleItem
+            label="Plan card"
+            value={planSummaryLabel}
+            className="sm:col-span-2"
+          />
         </div>
-      </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <UsageTile
-          label="Teams"
-          usage={input.billingSnapshot.usage.teams}
-          limit={input.billingSnapshot.limits.teams}
-        />
-        <UsageTile
-          label="Venues"
-          usage={input.billingSnapshot.usage.venues}
-          limit={input.billingSnapshot.limits.venues}
-        />
-        <UsageTile
-          label="Camps"
-          usage={input.billingSnapshot.usage.camps}
-          limit={input.billingSnapshot.limits.camps}
-        />
-        <UsageTile
-          label="Sessions"
-          usage={input.billingSnapshot.usage.sessions}
-          limit={input.billingSnapshot.limits.sessions}
-        />
-      </div>
-    </section>
+
+        {input.latestPaymentErrorMessage ? (
+          <p className="text-xs text-muted-foreground">
+            {input.latestPaymentErrorMessage}
+          </p>
+        ) : null}
+      </CardContent>
+      <CardFooter className="pt-0 md:hidden">
+        {mobileManageSubscriptionAction}
+      </CardFooter>
+    </Card>
   )
 }
 
@@ -391,6 +523,20 @@ async function SubscriptionBillingContent(input: {
 }) {
   const billingSnapshot = await resolveOrganizationBillingSnapshot(input.organizationId)
   const premiumContactHref = buildPremiumContactHref(input.organizationName)
+  const hasPolarSubscription = Boolean(
+    billingSnapshot.subscription.polarSubscriptionId,
+  )
+  let latestPayment: PolarLatestPaymentSummary | null = null
+  let latestPaymentErrorMessage: string | null = null
+
+  if (hasPolarSubscription) {
+    try {
+      latestPayment = await getPolarLatestPaymentForOrganization(input.organizationId)
+    } catch {
+      latestPaymentErrorMessage =
+        "Could not load the latest payment from Polar."
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -400,7 +546,16 @@ async function SubscriptionBillingContent(input: {
         organizationId={input.organizationId}
         premiumContactHref={premiumContactHref}
       />
-      <QuotaPanel billingSnapshot={billingSnapshot} />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <BillingCycleCard
+          billingSnapshot={billingSnapshot}
+          latestPayment={latestPayment}
+          latestPaymentErrorMessage={latestPaymentErrorMessage}
+          organizationId={input.organizationId}
+          canManageSubscription={input.canManageSubscription}
+        />
+        <QuotaPanel billingSnapshot={billingSnapshot} />
+      </div>
     </div>
   )
 }
@@ -443,17 +598,18 @@ function InvoiceList(input: {
                 <TableCell>{invoice.status}</TableCell>
                 <TableCell>{invoice.amountLabel}</TableCell>
                 <TableCell className="text-right">
-                  <Link
-                    href={`/api/subscription/invoices/${encodeURIComponent(
-                      invoice.id,
-                    )}?${new URLSearchParams({
-                      [NAVIGATION_SCOPE_ORG_QUERY_KEY]: input.organizationId,
-                    }).toString()}`}
+                  <a
+                    href={buildInvoiceOpenHref({
+                      invoiceId: invoice.id,
+                      organizationId: input.organizationId,
+                    })}
+                    target="_blank"
+                    rel="noreferrer"
                     className={buttonVariants({ variant: "outline", size: "sm" })}
                   >
                     <ExternalLinkIcon className="size-4" />
                     Open
-                  </Link>
+                  </a>
                 </TableCell>
               </TableRow>
             ))}
@@ -475,17 +631,18 @@ function InvoiceList(input: {
                 <span className="text-muted-foreground">Amount</span>
                 <span className="text-right font-medium">{invoice.amountLabel}</span>
               </div>
-              <Link
-                href={`/api/subscription/invoices/${encodeURIComponent(
-                  invoice.id,
-                )}?${new URLSearchParams({
-                  [NAVIGATION_SCOPE_ORG_QUERY_KEY]: input.organizationId,
-                }).toString()}`}
+              <a
+                href={buildInvoiceOpenHref({
+                  invoiceId: invoice.id,
+                  organizationId: input.organizationId,
+                })}
+                target="_blank"
+                rel="noreferrer"
                 className={buttonVariants({ variant: "outline", size: "sm" })}
               >
                 <ExternalLinkIcon className="size-4" />
                 Open invoice
-              </Link>
+              </a>
             </CardContent>
           </Card>
         ))}
@@ -530,6 +687,7 @@ export default async function SubscriptionPage({
   )
   const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
+  const checkoutId = getSingleSearchParamValue(resolvedSearchParams.checkout_id)
   const statusMessage = getStatusMessage(status)
   const errorMessage = getErrorMessage(error)
   const navigation = await requireOrganizationRouteAccess({
@@ -592,17 +750,12 @@ export default async function SubscriptionPage({
 
   return (
     <div className="space-y-6">
-      {statusMessage ? (
-        <p className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {statusMessage}
-        </p>
-      ) : null}
-
-      {errorMessage ? (
-        <p className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-          {errorMessage}
-        </p>
-      ) : null}
+      <SubscriptionFeedback
+        organizationId={activeOrganization.id}
+        statusMessage={statusMessage}
+        errorMessage={errorMessage}
+        checkoutId={checkoutId ?? null}
+      />
 
       <SubscriptionTabsShell
         selectedTab={selectedTab}

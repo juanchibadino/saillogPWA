@@ -11,13 +11,11 @@ import { Separator } from "@/components/ui/separator";
 import { SignInAccessCodePanel } from "./access-code-panel";
 
 type SignInAccessCodeProps = {
-  isRegisterMode: boolean;
   statusMessage: string | null;
   errorMessage: string | null;
 };
 
 export function SignInAuthContent({
-  isRegisterMode,
   statusMessage,
   errorMessage,
 }: SignInAccessCodeProps) {
@@ -76,6 +74,7 @@ export function SignInAuthContent({
                   required
                   autoComplete="email"
                   placeholder="you@team.com"
+                  className="h-11 px-3 md:h-8 md:px-2.5"
                   readOnly={isPasswordSubmitting}
                 />
               </div>
@@ -89,13 +88,14 @@ export function SignInAuthContent({
                   required
                   autoComplete="current-password"
                   placeholder="••••••••"
+                  className="h-11 px-3 md:h-8 md:px-2.5"
                   readOnly={isPasswordSubmitting}
                 />
               </div>
 
               <button
                 type="submit"
-                className={buttonVariants({ className: "w-full" })}
+                className={buttonVariants({ className: "h-11 w-full md:h-8" })}
                 disabled={isPasswordSubmitting}
                 aria-busy={isPasswordSubmitting}
               >

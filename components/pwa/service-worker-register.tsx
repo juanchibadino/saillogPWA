@@ -2,33 +2,28 @@
 
 import { useEffect } from "react";
 
-const DEVELOPMENT_CACHE_PREFIXES = ["sailog-", "dockout-"];
+const DEVELOPMENT_SW_CLEANUP_RELOAD_KEY = "dockout-dev-sw-cleanup-reloaded";
 
-async function clearDevelopmentServiceWorkerState(): Promise<void> {
+async function clearDevelopmentServiceWorkerState(): Promise<boolean> {
   const registrations = await navigator.serviceWorker.getRegistrations();
+  const sameOriginRegistrations = registrations.filter((registration) => {
+    const scopeUrl = new URL(registration.scope);
+    return scopeUrl.origin === window.location.origin;
+  });
 
   await Promise.all(
-    registrations
-      .filter((registration) => {
-        const scopeUrl = new URL(registration.scope);
-        return scopeUrl.origin === window.location.origin;
-      })
-      .map((registration) => registration.unregister()),
+    sameOriginRegistrations.map((registration) => registration.unregister()),
   );
 
   if (!("caches" in window)) {
-    return;
+    return sameOriginRegistrations.length > 0;
   }
 
   const cacheNames = await caches.keys();
 
-  await Promise.all(
-    cacheNames
-      .filter((cacheName) =>
-        DEVELOPMENT_CACHE_PREFIXES.some((prefix) => cacheName.startsWith(prefix)),
-      )
-      .map((cacheName) => caches.delete(cacheName)),
-  );
+  await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
+
+  return sameOriginRegistrations.length > 0 || cacheNames.length > 0;
 }
 
 export function ServiceWorkerRegister() {
@@ -38,9 +33,27 @@ export function ServiceWorkerRegister() {
     }
 
     if (process.env.NODE_ENV !== "production") {
-      void clearDevelopmentServiceWorkerState();
+      void (async () => {
+        const wasControlledByServiceWorker = Boolean(navigator.serviceWorker.controller);
+        const hadDevelopmentServiceWorkerState =
+          await clearDevelopmentServiceWorkerState();
+
+        if (!wasControlledByServiceWorker && !hadDevelopmentServiceWorkerState) {
+          window.sessionStorage.removeItem(DEVELOPMENT_SW_CLEANUP_RELOAD_KEY);
+          return;
+        }
+
+        if (window.sessionStorage.getItem(DEVELOPMENT_SW_CLEANUP_RELOAD_KEY) === "true") {
+          return;
+        }
+
+        window.sessionStorage.setItem(DEVELOPMENT_SW_CLEANUP_RELOAD_KEY, "true");
+        window.location.reload();
+      })();
       return;
     }
+
+    window.sessionStorage.removeItem(DEVELOPMENT_SW_CLEANUP_RELOAD_KEY);
 
     const registerServiceWorker = async () => {
       try {

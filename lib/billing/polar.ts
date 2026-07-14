@@ -2,7 +2,10 @@ import "server-only"
 
 import { Polar } from "@polar-sh/sdk"
 import { validateEvent, WebhookVerificationError } from "@polar-sh/sdk/webhooks"
+import type { CardPayment } from "@polar-sh/sdk/models/components/cardpayment"
+import type { Checkout } from "@polar-sh/sdk/models/components/checkout"
 import type { Order } from "@polar-sh/sdk/models/components/order"
+import type { Payment } from "@polar-sh/sdk/models/components/payment"
 import type { Subscription } from "@polar-sh/sdk/models/components/subscription"
 
 import { createAdminSupabaseClient } from "@/lib/supabase/admin"
@@ -34,6 +37,14 @@ export type PolarInvoiceSummary = {
   productName: string
 }
 
+export type PolarLatestPaymentSummary = {
+  paidAt: string
+  amountLabel: string
+  status: string
+  invoiceNumber: string
+  paymentMethodLabel: string | null
+}
+
 export type PolarSubscriptionSyncResult = {
   organizationId: string
   planTier: "pro"
@@ -45,6 +56,13 @@ export type PolarSubscriptionSyncResult = {
   polarCheckoutId: string | null
   currentPeriodStartAt: string
   currentPeriodEndAt: string
+}
+
+export type PolarCheckoutSyncResult = {
+  synced: boolean
+  organizationId: string
+  planTier: "pro" | null
+  reason: "checkout_not_completed" | "missing_subscription" | "product_mismatch" | null
 }
 
 type PolarWebhookPayload = ReturnType<typeof validateEvent>
@@ -116,6 +134,14 @@ function requireIsoString(value: Date, label: string): string {
   }
 
   return isoValue
+}
+
+function getMetadataStringValue(
+  metadata: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = metadata[key]
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null
 }
 
 function isUuid(value: string): boolean {
@@ -203,6 +229,25 @@ function formatAmountLabel(input: { amount: number; currency: string }): string 
   }).format(input.amount / 100)
 }
 
+function isCardPayment(payment: Payment): payment is CardPayment {
+  return payment.method === "card" && "methodMetadata" in payment
+}
+
+function formatPaymentMethodLabel(payment: Payment): string | null {
+  if (isCardPayment(payment)) {
+    const brand = payment.methodMetadata.brand.trim()
+    const last4 = payment.methodMetadata.last4.trim()
+
+    if (brand && last4) {
+      return `${brand.charAt(0).toUpperCase() + brand.slice(1)} •••• ${last4}`
+    }
+  }
+
+  return payment.method
+    ? payment.method.charAt(0).toUpperCase() + payment.method.slice(1)
+    : null
+}
+
 export function mapPolarOrderToInvoiceSummary(order: Order): PolarInvoiceSummary {
   return {
     id: order.id,
@@ -227,19 +272,79 @@ export async function listPolarInvoicesForOrganization(
   return page.result.items.map(mapPolarOrderToInvoiceSummary)
 }
 
+export async function getPolarLatestPaymentForOrganization(
+  organizationId: string,
+): Promise<PolarLatestPaymentSummary | null> {
+  const polar = getPolarClient()
+  const orderPage = await polar.orders.list(buildPolarOrdersListRequest(organizationId))
+  const latestPaidOrder = orderPage.result.items.find((order) => order.paid)
+
+  if (!latestPaidOrder) {
+    return null
+  }
+
+  let paymentMethodLabel: string | null = null
+
+  try {
+    const paymentPage = await polar.payments.list({
+      orderId: latestPaidOrder.id,
+      status: "succeeded",
+      sorting: ["-created_at"],
+      limit: 1,
+    })
+    const latestPayment = paymentPage.result.items[0] ?? null
+    paymentMethodLabel = latestPayment
+      ? formatPaymentMethodLabel(latestPayment)
+      : null
+  } catch {
+    paymentMethodLabel = null
+  }
+
+  return {
+    paidAt: latestPaidOrder.createdAt.toISOString(),
+    amountLabel: formatAmountLabel({
+      amount: latestPaidOrder.totalAmount,
+      currency: latestPaidOrder.currency,
+    }),
+    status: latestPaidOrder.status,
+    invoiceNumber: latestPaidOrder.invoiceNumber || latestPaidOrder.id,
+    paymentMethodLabel,
+  }
+}
+
 export async function getPolarOrderInvoiceUrl(input: {
   organizationId: string
   orderId: string
 }): Promise<string> {
   const polar = getPolarClient()
-  const order = await polar.orders.get({ id: input.orderId })
+  const orderPage = await polar.orders.list(
+    buildPolarOrdersListRequest(input.organizationId),
+  )
+  const order = orderPage.result.items.find((item) => item.id === input.orderId)
 
-  if (order.customer.externalId !== input.organizationId) {
+  if (!order) {
     throw new Error("Polar order does not belong to the active organization.")
   }
 
-  const invoice = await polar.orders.invoice({ id: input.orderId })
-  return invoice.url
+  if (!order.isInvoiceGenerated) {
+    await polar.orders.generateInvoice({ id: input.orderId })
+  }
+
+  let lastError: unknown = null
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const invoice = await polar.orders.invoice({ id: input.orderId })
+      return invoice.url
+    } catch (error) {
+      lastError = error
+      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)))
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Polar invoice is unavailable.")
 }
 
 export async function createPolarCustomerPortalUrl(input: {
@@ -263,6 +368,102 @@ function getMetadataString(
 ): string | null {
   const value = metadata[key]
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null
+}
+
+function getCheckoutOrganizationId(checkout: Checkout): string | null {
+  const customerExternalId = checkout.externalCustomerId?.trim()
+  if (customerExternalId && isUuid(customerExternalId)) {
+    return customerExternalId
+  }
+
+  const metadataOrganizationId = getMetadataStringValue(
+    checkout.metadata,
+    "organization_id",
+  )
+  return metadataOrganizationId && isUuid(metadataOrganizationId)
+    ? metadataOrganizationId
+    : null
+}
+
+function getCheckoutProductId(checkout: Checkout): string | null {
+  return checkout.productId ?? checkout.product?.id ?? null
+}
+
+function isCompletedCheckoutStatus(status: string): boolean {
+  return status === "succeeded" || status === "confirmed"
+}
+
+export async function syncPolarCheckoutCompletion(input: {
+  checkoutId: string
+  organizationId: string
+}): Promise<PolarCheckoutSyncResult> {
+  const polar = getPolarClient()
+  const config = getPolarConfig()
+  const checkout = await polar.checkouts.get({ id: input.checkoutId })
+  const checkoutOrganizationId = getCheckoutOrganizationId(checkout)
+
+  if (checkoutOrganizationId !== input.organizationId) {
+    throw new Error("Polar checkout does not belong to this organization.")
+  }
+
+  if (getCheckoutProductId(checkout) !== config.proMonthlyProductId) {
+    return {
+      synced: false,
+      organizationId: input.organizationId,
+      planTier: null,
+      reason: "product_mismatch",
+    }
+  }
+
+  if (!isCompletedCheckoutStatus(checkout.status)) {
+    return {
+      synced: false,
+      organizationId: input.organizationId,
+      planTier: null,
+      reason: "checkout_not_completed",
+    }
+  }
+
+  if (!checkout.subscriptionId) {
+    return {
+      synced: false,
+      organizationId: input.organizationId,
+      planTier: null,
+      reason: "missing_subscription",
+    }
+  }
+
+  const adminSupabase = createAdminSupabaseClient()
+  const { error } = await adminSupabase
+    .from("organization_subscriptions")
+    .upsert(
+      {
+        organization_id: input.organizationId,
+        plan_tier: "pro",
+        billing_cycle: "monthly",
+        status: "active",
+        paypal_subscription_id: null,
+        paypal_plan_id: null,
+        polar_customer_id: checkout.customerId,
+        polar_subscription_id: checkout.subscriptionId,
+        polar_product_id: config.proMonthlyProductId,
+        polar_checkout_id: checkout.id,
+        polar_status: checkout.status,
+        cancel_at_period_end: false,
+      },
+      { onConflict: "organization_id" },
+    )
+
+  if (error) {
+    throw new Error(`Could not sync Polar checkout: ${error.message}`)
+  }
+
+  return {
+    synced: true,
+    organizationId: input.organizationId,
+    planTier: "pro",
+    reason: null,
+  }
 }
 
 function getSubscriptionOrganizationId(subscription: Subscription): string | null {

@@ -60,7 +60,13 @@ export async function GET(request: Request, context: InvoiceRouteContext) {
     })
 
     return NextResponse.redirect(invoiceUrl)
-  } catch {
+  } catch (error) {
+    console.error("Could not open Polar invoice.", {
+      organizationId,
+      orderId,
+      error,
+    })
+
     return NextResponse.redirect(
       new URL(
         buildInvoiceRedirectPath({

@@ -98,7 +98,6 @@ export default async function SignInPage({
 
         <CardContent className="space-y-5">
           <SignInAuthContent
-            isRegisterMode={isRegisterMode}
             statusMessage={statusMessage}
             errorMessage={errorMessage}
           />

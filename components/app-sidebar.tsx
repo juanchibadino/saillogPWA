@@ -73,6 +73,10 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { useAppNavigationState } from "@/components/app-navigation-state"
+import {
+  SUBSCRIPTION_PLAN_UPDATED_EVENT,
+  type SubscriptionPlanUpdatedEventDetail,
+} from "@/features/billing/subscription-plan-events"
 
 type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
   canAccessApp: boolean
@@ -500,6 +504,33 @@ export function AppSidebar({
       controller.abort()
     }
   }, [activeOrgId, canAccessOrganizationModules, planTierByOrganizationId])
+
+  React.useEffect(() => {
+    function handleSubscriptionPlanUpdated(event: Event): void {
+      const detail = (event as CustomEvent<SubscriptionPlanUpdatedEventDetail>).detail
+
+      if (!detail?.organizationId || !detail.planTier) {
+        return
+      }
+
+      setPlanTierByOrganizationId((currentValue) => ({
+        ...currentValue,
+        [detail.organizationId]: detail.planTier,
+      }))
+    }
+
+    window.addEventListener(
+      SUBSCRIPTION_PLAN_UPDATED_EVENT,
+      handleSubscriptionPlanUpdated,
+    )
+
+    return () => {
+      window.removeEventListener(
+        SUBSCRIPTION_PLAN_UPDATED_EVENT,
+        handleSubscriptionPlanUpdated,
+      )
+    }
+  }, [])
 
   const activePlanTier =
     canAccessOrganizationModules && activeOrgId
@@ -956,7 +987,7 @@ export function AppSidebar({
                               <item.icon />
                               <span className="flex min-w-0 flex-1 items-center gap-1.5">
                                 <span className="truncate">{item.title}</span>
-                                {item.badge ? (
+                                {item.badge && activePlanTier === "free" ? (
                                   <Badge
                                     variant="secondary"
                                     className="h-4 px-1.5 text-[10px] font-medium"
@@ -1072,7 +1103,7 @@ export function AppSidebar({
                         router.push(scopedSubscriptionHref)
                       })
                     }
-                    className="w-full text-left"
+                    className="min-h-11 w-full gap-3 px-2.5 py-2 text-left"
                   >
                     <WalletCardsIcon className="size-4" />
                     <span>Subscription</span>
@@ -1092,7 +1123,7 @@ export function AppSidebar({
                       router.push("/set-password")
                     })
                   }
-                  className="w-full text-left"
+                  className="min-h-11 w-full gap-3 px-2.5 py-2 text-left"
                 >
                   <KeyIcon className="size-4" />
                   <span>Set password</span>
@@ -1110,7 +1141,7 @@ export function AppSidebar({
                       window.location.assign("/sign-out")
                     })
                   }
-                  className="w-full text-left"
+                  className="min-h-11 w-full gap-3 px-2.5 py-2 text-left"
                 >
                   <LogOutIcon className="size-4" />
                   <span>Sign out</span>

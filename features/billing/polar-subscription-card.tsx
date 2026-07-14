@@ -16,6 +16,46 @@ type CheckoutResponse = {
   error?: string
 }
 
+export function ManageSubscriptionLink(input: {
+  href: string
+  className?: string
+  label?: string
+}) {
+  const [isOpening, setIsOpening] = React.useState(false)
+  const label = input.label ?? "Manage subscription"
+
+  function handleClick(event: React.MouseEvent<HTMLAnchorElement>) {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return
+    }
+
+    setIsOpening(true)
+  }
+
+  return (
+    <a
+      href={input.href}
+      onClick={handleClick}
+      aria-busy={isOpening}
+      className={cn(input.className, isOpening ? "pointer-events-none" : null)}
+    >
+      {isOpening ? (
+        <Loader2Icon className="size-4 animate-spin" />
+      ) : (
+        <ExternalLinkIcon className="size-4" />
+      )}
+      {label}
+    </a>
+  )
+}
+
 function resolveCheckoutErrorMessage(payload: unknown): string | null {
   if (!payload || typeof payload !== "object") {
     return null
@@ -115,10 +155,10 @@ export function PolarSubscriptionAction(input: {
           className={input.buttonClassName}
         >
           <ExternalLinkIcon className="size-4" />
-          Manage in Polar
+          Manage subscription
         </Button>
       ) : (
-        <Link
+        <ManageSubscriptionLink
           href={portalHref}
           className={cn(
             buttonVariants({
@@ -127,10 +167,7 @@ export function PolarSubscriptionAction(input: {
             }),
             input.buttonClassName,
           )}
-        >
-          <ExternalLinkIcon className="size-4" />
-          Manage in Polar
-        </Link>
+        />
       )
     )
   }
