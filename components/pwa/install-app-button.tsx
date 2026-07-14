@@ -81,7 +81,7 @@ export function InstallAppButton() {
       size="sm"
       onClick={() => void handleInstall()}
       disabled={isPromptOpen}
-      aria-label="Install Sailog app"
+      aria-label="Install Dock Out app"
     >
       <Download aria-hidden="true" />
       {isPromptOpen ? "Installing..." : "Install App"}

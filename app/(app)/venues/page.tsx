@@ -1,4 +1,5 @@
 import { getVenuePageData } from "@/features/venues/data";
+import { FreeTierQuotaDialog } from "@/features/billing/free-tier-quota-dialog";
 import { CreateVenueDialog } from "@/features/venues/venue-form-dialogs";
 import { VenuesFeedback } from "@/features/venues/venues-feedback";
 import { VenuesTable } from "@/features/venues/venues-table";
@@ -44,11 +45,11 @@ function getErrorMessage(error: string | undefined): string | null {
   }
 
   if (error === "plan_limit_reached") {
-    return "Plan limit reached for venues in this organization. Upgrade or change plan in Billing to continue.";
+    return null;
   }
 
   if (error === "payment_required") {
-    return "Your paid plan is inactive. Recover payment in Billing to continue creating venues.";
+    return "Your paid plan is inactive. Recover payment in Subscription to continue creating venues.";
   }
 
   return null;
@@ -116,6 +117,10 @@ export default async function VenuesPage({
     <div className="space-y-6">
 
       <VenuesFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
+      <FreeTierQuotaDialog
+        organizationId={activeOrganization.id}
+        teamId={scope.activeTeamId}
+      />
 
       {!canManageVenues ? (
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">

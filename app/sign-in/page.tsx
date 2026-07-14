@@ -89,7 +89,7 @@ export default async function SignInPage({
       <Card className="w-full max-w-sm border-border/70 bg-card/95 shadow-sm">
         <CardHeader className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-            {isRegisterMode ? "Sailog Registration" : "Sailog"}
+            {isRegisterMode ? "Dock Out Registration" : "Dock Out"}
           </p>
           <CardTitle className="text-2xl">
             {isRegisterMode ? "Create your account" : "Sign in"}

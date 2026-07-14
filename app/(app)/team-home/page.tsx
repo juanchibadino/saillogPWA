@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { GradientCard } from "@/components/shared/gradient-card"
+import { FreeTierQuotaDialog } from "@/features/billing/free-tier-quota-dialog"
 import { buildCampDetailHref } from "@/features/camps/navigation"
 import { buildSessionDetailHref } from "@/features/sessions/navigation"
 import {
@@ -273,11 +274,11 @@ function formatDurationLabel(minutes: number | null): string {
 
 function getTeamHomeErrorMessage(error: string | undefined): string | null {
   if (error === "plan_limit_reached") {
-    return "Plan limit reached for this organization. Upgrade or change plan in Billing to continue."
+    return null
   }
 
   if (error === "payment_required") {
-    return "Your paid plan is inactive. Recover payment in Billing to continue."
+    return "Your paid plan is inactive. Recover payment in Subscription to continue."
   }
 
   return null
@@ -841,6 +842,7 @@ export default async function TeamHomePage({
     return (
       <div className="space-y-6">
         {errorMessage}
+        <FreeTierQuotaDialog organizationId={scope.activeOrgId} />
 
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
           <h2 className="text-lg font-semibold text-amber-900">No team selected</h2>
@@ -953,6 +955,7 @@ export default async function TeamHomePage({
   return (
     <div className="space-y-6">
       {errorMessage}
+      <FreeTierQuotaDialog organizationId={scope.activeOrgId} teamId={activeTeamId} />
 
       <Suspense fallback={<TeamHomeKpiCardsSkeleton />}>
         <TeamHomeKpiCards kpisPromise={kpisPromise} />

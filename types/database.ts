@@ -1425,8 +1425,15 @@ export type Database = {
           status: Database["public"]["Enums"]["subscription_status"];
           paypal_subscription_id: string | null;
           paypal_plan_id: string | null;
+          polar_customer_id: string | null;
+          polar_subscription_id: string | null;
+          polar_product_id: string | null;
+          polar_checkout_id: string | null;
+          polar_status: string | null;
           current_period_start_at: string | null;
           current_period_end_at: string | null;
+          cancelled_at: string | null;
+          cancel_at_period_end: boolean;
           created_by_profile_id: string | null;
           created_at: string;
           updated_at: string;
@@ -1438,8 +1445,15 @@ export type Database = {
           status?: Database["public"]["Enums"]["subscription_status"];
           paypal_subscription_id?: string | null;
           paypal_plan_id?: string | null;
+          polar_customer_id?: string | null;
+          polar_subscription_id?: string | null;
+          polar_product_id?: string | null;
+          polar_checkout_id?: string | null;
+          polar_status?: string | null;
           current_period_start_at?: string | null;
           current_period_end_at?: string | null;
+          cancelled_at?: string | null;
+          cancel_at_period_end?: boolean;
           created_by_profile_id?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -1451,9 +1465,55 @@ export type Database = {
           status?: Database["public"]["Enums"]["subscription_status"];
           paypal_subscription_id?: string | null;
           paypal_plan_id?: string | null;
+          polar_customer_id?: string | null;
+          polar_subscription_id?: string | null;
+          polar_product_id?: string | null;
+          polar_checkout_id?: string | null;
+          polar_status?: string | null;
           current_period_start_at?: string | null;
           current_period_end_at?: string | null;
+          cancelled_at?: string | null;
+          cancel_at_period_end?: boolean;
           created_by_profile_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      polar_webhook_events: {
+        Row: {
+          id: string;
+          event_id: string;
+          event_type: string;
+          resource_id: string | null;
+          organization_id: string | null;
+          payload: Json;
+          processed_at: string | null;
+          processing_error: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          event_id: string;
+          event_type: string;
+          resource_id?: string | null;
+          organization_id?: string | null;
+          payload: Json;
+          processed_at?: string | null;
+          processing_error?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          event_id?: string;
+          event_type?: string;
+          resource_id?: string | null;
+          organization_id?: string | null;
+          payload?: Json;
+          processed_at?: string | null;
+          processing_error?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1660,7 +1720,7 @@ export type Database = {
         | "session_goals_added"
         | "assessment_run_created";
       organization_role_type: "organization_admin";
-      plan_tier: "free" | "pro" | "olympic";
+      plan_tier: "free" | "pro" | "premium";
       session_type: "training" | "regatta";
       setup_metric_group: "weather" | "boat";
       setup_input_kind: "single_select" | "multi_select" | "text";

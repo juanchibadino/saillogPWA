@@ -6,14 +6,24 @@ import { createServerSupabaseClient } from "@/lib/supabase/server"
 import type { Database } from "@/types/database"
 
 import {
+  BILLING_PLAN_CAPABILITIES,
   BILLING_PLAN_LIMITS,
   type BillingCycle,
   type BillingResource,
+  type PlanCapabilities,
   type PlanLimits,
   type PlanTier,
   PAID_PLAN_TIERS,
   type SubscriptionStatus,
 } from "./plans"
+import {
+  PRO_TEST_ORGANIZATION_NAMES_CORE,
+  PRO_TEST_ORGANIZATION_SLUGS_CORE,
+  TEST_ORGANIZATION_FREE_NAMES_CORE,
+  TEST_ORGANIZATION_FREE_SLUGS_CORE,
+  normalizePlanTierCore,
+  resolveForcedPlanTierOverrideCore,
+} from "./subscription-rules.mjs"
 
 type ServerSupabaseClient = SupabaseClient<Database>
 
@@ -21,6 +31,11 @@ type OrganizationSubscriptionRow =
   Database["public"]["Tables"]["organization_subscriptions"]["Row"]
 
 type IdRow = { id: string }
+type OrganizationPlanOverrideRow = {
+  id: string
+  name: string
+  slug: string
+}
 
 export type OrganizationUsage = {
   teams: number
@@ -36,8 +51,15 @@ export type OrganizationSubscriptionSnapshot = {
   status: SubscriptionStatus
   paypalSubscriptionId: string | null
   paypalPlanId: string | null
+  polarCustomerId: string | null
+  polarSubscriptionId: string | null
+  polarProductId: string | null
+  polarCheckoutId: string | null
+  polarStatus: string | null
   currentPeriodStartAt: string | null
   currentPeriodEndAt: string | null
+  cancelledAt: string | null
+  cancelAtPeriodEnd: boolean
 }
 
 export type OrganizationBillingSnapshot = {
@@ -45,6 +67,7 @@ export type OrganizationBillingSnapshot = {
   subscription: OrganizationSubscriptionSnapshot
   usage: OrganizationUsage
   limits: PlanLimits
+  capabilities: PlanCapabilities
   hasActivePaidStatus: boolean
 }
 
@@ -66,6 +89,19 @@ export type OrganizationWriteEntitlementDecision = {
   resourceLimit: number | null
 }
 
+export type OrganizationSessionAssetUploadEntitlementDecision = {
+  allowed: boolean
+  reason: OrganizationWriteEntitlementReason | null
+  organizationId: string
+  planTier: PlanTier
+  subscriptionStatus: SubscriptionStatus
+}
+
+export const TEST_ORGANIZATION_FREE_SLUGS = TEST_ORGANIZATION_FREE_SLUGS_CORE
+export const TEST_ORGANIZATION_FREE_NAMES = TEST_ORGANIZATION_FREE_NAMES_CORE
+export const PRO_TEST_ORGANIZATION_SLUGS = PRO_TEST_ORGANIZATION_SLUGS_CORE
+export const PRO_TEST_ORGANIZATION_NAMES = PRO_TEST_ORGANIZATION_NAMES_CORE
+
 const DEFAULT_FREE_SUBSCRIPTION: Omit<OrganizationSubscriptionSnapshot, "organizationId"> =
   {
     planTier: "free",
@@ -73,9 +109,36 @@ const DEFAULT_FREE_SUBSCRIPTION: Omit<OrganizationSubscriptionSnapshot, "organiz
     status: "active",
     paypalSubscriptionId: null,
     paypalPlanId: null,
+    polarCustomerId: null,
+    polarSubscriptionId: null,
+    polarProductId: null,
+    polarCheckoutId: null,
+    polarStatus: null,
     currentPeriodStartAt: null,
     currentPeriodEndAt: null,
+    cancelledAt: null,
+    cancelAtPeriodEnd: false,
   }
+
+const DEFAULT_FORCED_PRO_SUBSCRIPTION: Omit<
+  OrganizationSubscriptionSnapshot,
+  "organizationId"
+> = {
+  planTier: "pro",
+  billingCycle: "monthly",
+  status: "active",
+  paypalSubscriptionId: null,
+  paypalPlanId: null,
+  polarCustomerId: null,
+  polarSubscriptionId: null,
+  polarProductId: null,
+  polarCheckoutId: null,
+  polarStatus: null,
+  currentPeriodStartAt: null,
+  currentPeriodEndAt: null,
+  cancelledAt: null,
+  cancelAtPeriodEnd: false,
+}
 
 function hasPaypalSubscriptionId(value: string | null): boolean {
   return typeof value === "string" && value.trim().length > 0
@@ -88,6 +151,29 @@ function shouldFallbackToFreePlan(row: OrganizationSubscriptionRow): boolean {
     row.status === "approval_pending" || row.status === "approved"
 
   return isPaidPlan && !hasLinkedPaypalSubscription && isNonActivatedStatus
+}
+
+export function normalizePlanTier(value: PlanTier | "olympic"): PlanTier {
+  return normalizePlanTierCore(value) as PlanTier
+}
+
+export function resolveForcedPlanTierOverride(input: {
+  name: string
+  slug: string
+}): PlanTier | null {
+  return resolveForcedPlanTierOverrideCore(input) as PlanTier | null
+}
+
+function buildForcedSubscriptionSnapshot(input: {
+  organizationId: string
+  planTier: PlanTier
+}): OrganizationSubscriptionSnapshot {
+  return {
+    organizationId: input.organizationId,
+    ...(input.planTier === "pro"
+      ? DEFAULT_FORCED_PRO_SUBSCRIPTION
+      : DEFAULT_FREE_SUBSCRIPTION),
+  }
 }
 
 function mapSubscriptionRow(
@@ -110,13 +196,20 @@ function mapSubscriptionRow(
 
   return {
     organizationId,
-    planTier: row.plan_tier,
+    planTier: normalizePlanTier(row.plan_tier as PlanTier | "olympic"),
     billingCycle: row.billing_cycle,
     status: row.status,
     paypalSubscriptionId: row.paypal_subscription_id,
     paypalPlanId: row.paypal_plan_id,
+    polarCustomerId: row.polar_customer_id,
+    polarSubscriptionId: row.polar_subscription_id,
+    polarProductId: row.polar_product_id,
+    polarCheckoutId: row.polar_checkout_id,
+    polarStatus: row.polar_status,
     currentPeriodStartAt: row.current_period_start_at,
     currentPeriodEndAt: row.current_period_end_at,
+    cancelledAt: row.cancelled_at,
+    cancelAtPeriodEnd: row.cancel_at_period_end,
   }
 }
 
@@ -135,6 +228,29 @@ export async function resolveOrganizationSubscription(
   supabase?: ServerSupabaseClient,
 ): Promise<OrganizationSubscriptionSnapshot> {
   const scopedSupabase = supabase ?? (await createServerSupabaseClient())
+
+  const { data: organizationRow, error: organizationError } = await scopedSupabase
+    .from("organizations")
+    .select("id,name,slug")
+    .eq("id", organizationId)
+    .maybeSingle()
+
+  if (organizationError) {
+    throw new Error(
+      `Could not resolve organization plan override for ${organizationId}: ${organizationError.message}`,
+    )
+  }
+
+  const forcedPlanTier = organizationRow
+    ? resolveForcedPlanTierOverride(organizationRow as OrganizationPlanOverrideRow)
+    : null
+
+  if (forcedPlanTier) {
+    return buildForcedSubscriptionSnapshot({
+      organizationId,
+      planTier: forcedPlanTier,
+    })
+  }
 
   const { data, error } = await scopedSupabase
     .from("organization_subscriptions")
@@ -292,6 +408,7 @@ export async function resolveOrganizationBillingSnapshot(
     subscription,
     usage,
     limits: BILLING_PLAN_LIMITS[subscription.planTier],
+    capabilities: BILLING_PLAN_CAPABILITIES[subscription.planTier],
     hasActivePaidStatus: hasActivePaidSubscription({
       planTier: subscription.planTier,
       status: subscription.status,
@@ -355,5 +472,43 @@ export async function resolveOrganizationWriteEntitlement(input: {
     subscriptionStatus: snapshot.subscription.status,
     currentUsage,
     resourceLimit,
+  }
+}
+
+export async function resolveOrganizationSessionAssetUploadEntitlement(input: {
+  organizationId: string
+  supabase?: ServerSupabaseClient
+}): Promise<OrganizationSessionAssetUploadEntitlementDecision> {
+  const snapshot = await resolveOrganizationBillingSnapshot(
+    input.organizationId,
+    input.supabase,
+  )
+
+  if (!snapshot.hasActivePaidStatus) {
+    return {
+      allowed: false,
+      reason: "payment_required",
+      organizationId: input.organizationId,
+      planTier: snapshot.subscription.planTier,
+      subscriptionStatus: snapshot.subscription.status,
+    }
+  }
+
+  if (!snapshot.capabilities.sessionAssetUploads) {
+    return {
+      allowed: false,
+      reason: "plan_limit_reached",
+      organizationId: input.organizationId,
+      planTier: snapshot.subscription.planTier,
+      subscriptionStatus: snapshot.subscription.status,
+    }
+  }
+
+  return {
+    allowed: true,
+    reason: null,
+    organizationId: input.organizationId,
+    planTier: snapshot.subscription.planTier,
+    subscriptionStatus: snapshot.subscription.status,
   }
 }

@@ -67,13 +67,13 @@ export default async function Home() {
           <div className="flex items-center gap-3">
             <Image
               src="/Black_49er.svg"
-              alt="Sailog logo"
+              alt="Dock Out logo"
               width={32}
               height={32}
               className="size-8"
             />
             <div>
-              <p className="text-sm font-semibold tracking-wide text-slate-900">Sailog</p>
+              <p className="text-sm font-semibold tracking-wide text-slate-900">Dock Out</p>
               <p className="text-xs text-slate-600">Sailing Operations Platform</p>
             </div>
           </div>
@@ -109,7 +109,7 @@ export default async function Home() {
               Stop using sheets and paper. Log everything in one easy web and mobile app.
             </h1>
             <p className="max-w-xl text-base leading-relaxed text-slate-600">
-              Sailog is built for fast daily operations: organization setup, team flow,
+              Dock Out is built for fast daily operations: organization setup, team flow,
               session logging, notes and performance tracking in one place.
             </p>
             <div className="flex flex-wrap gap-3">
@@ -136,7 +136,7 @@ export default async function Home() {
             </div>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-            <p className="text-sm font-medium text-slate-900">Why Sailog</p>
+            <p className="text-sm font-medium text-slate-900">Why Dock Out</p>
             <ul className="mt-3 space-y-2 text-sm text-slate-600">
               <li>One workflow from organization to sessions</li>
               <li>Built for mobile and desktop operations</li>
@@ -198,7 +198,7 @@ export default async function Home() {
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <Image
               src="/Screen.png"
-              alt="Sailog product screen"
+              alt="Dock Out product screen"
               width={1826}
               height={1012}
               className="h-auto w-full"
@@ -259,13 +259,13 @@ export default async function Home() {
             <div className="flex items-center gap-3">
               <Image
                 src="/Black_49er.svg"
-                alt="Sailog logo"
+                alt="Dock Out logo"
                 width={24}
                 height={24}
                 className="size-6"
               />
               <p className="text-sm text-slate-600">
-                Sailog © {new Date().getFullYear()} · Internal Sailing Operations
+                Dock Out © {new Date().getFullYear()} · Internal Sailing Operations
               </p>
             </div>
             <div className="flex items-center gap-2">

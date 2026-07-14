@@ -5,6 +5,7 @@ import {
   SessionDetailHeaderActionsSkeleton,
   SessionDetailTabsSkeleton,
 } from "@/components/shared/page-skeletons"
+import { FreeTierQuotaDialog } from "@/features/billing/free-tier-quota-dialog"
 import { RouteCacheInvalidationOnSuccess } from "@/features/shared/route-cache-invalidation-on-success"
 import {
   getSessionDetailShellData,
@@ -23,6 +24,7 @@ import {
 } from "@/features/sessions/navigation"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageTeamSessions } from "@/lib/auth/capabilities"
+import { resolveOrganizationSessionAssetUploadEntitlement } from "@/lib/billing/entitlements"
 import {
   getSingleSearchParamValue,
   resolveNavigationScope,
@@ -117,6 +119,14 @@ function getErrorMessage(error: string | undefined): string | null {
     return "Could not upload this file. Verify bucket availability and try again."
   }
 
+  if (error === "plan_limit_reached") {
+    return null
+  }
+
+  if (error === "payment_required") {
+    return "Your paid plan is inactive. Recover payment in Subscription to continue uploading files."
+  }
+
   return null
 }
 
@@ -205,6 +215,8 @@ async function SessionDetailTabsSlot(input: {
   teamVenueId: string
   goals: string | null
   canManageSession: boolean
+  canUploadSessionAssets: boolean
+  sessionAssetUploadBlockReason?: "plan_limit_reached" | "payment_required" | null
 }) {
   const initialTabData = await input.initialTabDataPromise
 
@@ -219,6 +231,8 @@ async function SessionDetailTabsSlot(input: {
       sessionType={input.sessionType}
       goals={input.goals}
       canManageSession={input.canManageSession}
+      canUploadSessionAssets={input.canUploadSessionAssets}
+      sessionAssetUploadBlockReason={input.sessionAssetUploadBlockReason}
     />
   )
 }
@@ -256,9 +270,11 @@ async function SessionHeaderActionsSlot(input: {
 
 async function SessionDetailResolvedContent(input: {
   canManageSession: boolean
+  canUploadSessionAssets: boolean
   detailDataPromise: SessionDetailShellDataPromise
   scope: ResolvedSessionDetailScope
   selectedTab: SessionDetailTab
+  sessionAssetUploadBlockReason?: "plan_limit_reached" | "payment_required" | null
 }) {
   const detailData = await input.detailDataPromise
 
@@ -331,6 +347,8 @@ async function SessionDetailResolvedContent(input: {
           sessionType={detailData.session.session_type}
           goals={detailData.session.goals}
           canManageSession={input.canManageSession}
+          canUploadSessionAssets={input.canUploadSessionAssets}
+          sessionAssetUploadBlockReason={input.sessionAssetUploadBlockReason}
         />
       </Suspense>
     </>
@@ -377,6 +395,7 @@ export default async function SessionDetailPage({
     return (
       <div className="space-y-6">
         <SessionsFeedback mode="toast" statusMessage={statusMessage} errorMessage={errorMessage} />
+        <FreeTierQuotaDialog organizationId={scope.activeOrgId} />
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
           <h2 className="text-lg font-semibold text-amber-900">Team selection required</h2>
           <p className="mt-2 text-sm text-amber-800">
@@ -392,6 +411,13 @@ export default async function SessionDetailPage({
     organizationId: scope.activeOrgId,
     teamId: scope.activeTeamId,
   })
+  const sessionAssetUploadEntitlement = canManageSession
+    ? await resolveOrganizationSessionAssetUploadEntitlement({
+        organizationId: scope.activeOrgId,
+      })
+    : null
+  const canUploadSessionAssets = sessionAssetUploadEntitlement?.allowed ?? false
+  const sessionAssetUploadBlockReason = sessionAssetUploadEntitlement?.reason ?? null
   const detailDataPromise = getSessionDetailShellData({
     activeOrganizationId: scope.activeOrgId,
     activeTeamId: scope.activeTeamId,
@@ -401,6 +427,7 @@ export default async function SessionDetailPage({
   return (
     <div className="space-y-6">
       <SessionsFeedback mode="toast" statusMessage={statusMessage} errorMessage={errorMessage} />
+      <FreeTierQuotaDialog organizationId={scope.activeOrgId} teamId={scope.activeTeamId} />
 
       <section className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -427,9 +454,11 @@ export default async function SessionDetailPage({
       >
         <SessionDetailResolvedContent
           canManageSession={canManageSession}
+          canUploadSessionAssets={canUploadSessionAssets}
           detailDataPromise={detailDataPromise}
           scope={scope}
           selectedTab={selectedTab}
+          sessionAssetUploadBlockReason={sessionAssetUploadBlockReason}
         />
       </Suspense>
     </div>

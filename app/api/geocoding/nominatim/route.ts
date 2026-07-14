@@ -78,7 +78,7 @@ export async function GET(request: Request) {
       `https://nominatim.openstreetmap.org/search?${params.toString()}`,
       {
         headers: {
-          "User-Agent": "sailog/1.0 (internal operations app)",
+          "User-Agent": "dockout/1.0 (internal operations app)",
           Accept: "application/json",
         },
         cache: "no-store",

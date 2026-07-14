@@ -1106,6 +1106,8 @@ export function SessionDetailTabsClient(input: {
   teamVenueId: string
   goals: string | null
   canManageSession: boolean
+  canUploadSessionAssets: boolean
+  sessionAssetUploadBlockReason?: "plan_limit_reached" | "payment_required" | null
 }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -1616,6 +1618,8 @@ export function SessionDetailTabsClient(input: {
                   onLoadMore={() => void loadMoreAssets("images")}
                   onAssetsChanged={() => handleAssetsChanged("images")}
                   canManageSession={input.canManageSession}
+                  canUploadAssets={input.canUploadSessionAssets}
+                  assetUploadBlockReason={input.sessionAssetUploadBlockReason}
                 />
               ) : (
                 renderPendingTab("images")
@@ -1642,6 +1646,8 @@ export function SessionDetailTabsClient(input: {
                   onLoadMore={() => void loadMoreAssets("analytics")}
                   onAssetsChanged={() => handleAssetsChanged("analytics")}
                   canManageSession={input.canManageSession}
+                  canUploadAssets={input.canUploadSessionAssets}
+                  assetUploadBlockReason={input.sessionAssetUploadBlockReason}
                 />
               ) : (
                 renderPendingTab("analytics")

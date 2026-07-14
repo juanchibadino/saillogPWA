@@ -327,30 +327,114 @@ begin
     status,
     paypal_subscription_id,
     paypal_plan_id,
+    polar_customer_id,
+    polar_subscription_id,
+    polar_product_id,
+    polar_checkout_id,
+    polar_status,
     current_period_start_at,
     current_period_end_at,
     created_by_profile_id
   )
   values (
     test_org_id,
-    'pro'::public.plan_tier,
-    'yearly'::public.billing_cycle,
+    'free'::public.plan_tier,
+    'none'::public.billing_cycle,
     'active'::public.subscription_status,
     null,
     null,
-    timezone('utc', now()),
-    timezone('utc', now()) + interval '1 year',
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
     null
   )
   on conflict (organization_id) do update
   set
-    plan_tier = 'pro'::public.plan_tier,
-    billing_cycle = 'yearly'::public.billing_cycle,
+    plan_tier = 'free'::public.plan_tier,
+    billing_cycle = 'none'::public.billing_cycle,
     status = 'active'::public.subscription_status,
     paypal_subscription_id = null,
     paypal_plan_id = null,
+    polar_customer_id = null,
+    polar_subscription_id = null,
+    polar_product_id = null,
+    polar_checkout_id = null,
+    polar_status = null,
+    current_period_start_at = null,
+    current_period_end_at = null,
+    cancelled_at = null,
+    cancel_at_period_end = false,
+    updated_at = timezone('utc', now());
+
+  insert into public.organization_subscriptions (
+    organization_id,
+    plan_tier,
+    billing_cycle,
+    status,
+    paypal_subscription_id,
+    paypal_plan_id,
+    polar_customer_id,
+    polar_subscription_id,
+    polar_product_id,
+    polar_checkout_id,
+    polar_status,
+    current_period_start_at,
+    current_period_end_at,
+    created_by_profile_id
+  )
+  values
+    (
+      america_org_id,
+      'pro'::public.plan_tier,
+      'monthly'::public.billing_cycle,
+      'active'::public.subscription_status,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      timezone('utc', now()),
+      timezone('utc', now()) + interval '1 month',
+      null
+    ),
+    (
+      enard_org_id,
+      'pro'::public.plan_tier,
+      'monthly'::public.billing_cycle,
+      'active'::public.subscription_status,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      timezone('utc', now()),
+      timezone('utc', now()) + interval '1 month',
+      null
+    )
+  on conflict (organization_id) do update
+  set
+    plan_tier = 'pro'::public.plan_tier,
+    billing_cycle = 'monthly'::public.billing_cycle,
+    status = 'active'::public.subscription_status,
+    paypal_subscription_id = null,
+    paypal_plan_id = null,
+    polar_customer_id = null,
+    polar_subscription_id = null,
+    polar_product_id = null,
+    polar_checkout_id = null,
+    polar_status = null,
     current_period_start_at = timezone('utc', now()),
-    current_period_end_at = timezone('utc', now()) + interval '1 year',
+    current_period_end_at = timezone('utc', now()) + interval '1 month',
+    cancelled_at = null,
+    cancel_at_period_end = false,
     updated_at = timezone('utc', now());
 
   select t.id

@@ -32,7 +32,7 @@ export function RootTransitionLoading() {
           className="size-8 animate-spin rounded-full border-2 border-muted-foreground/25 border-t-foreground"
         />
         <p className="text-sm font-medium text-muted-foreground">
-          Loading Sailog...
+          Loading Dock Out...
         </p>
       </div>
     </main>

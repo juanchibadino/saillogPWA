@@ -15,8 +15,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Sailog",
-  description: "Internal sailing operations app",
+  title: "Dock Out",
+  description: "Sailing operations app",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Sailog",
+    title: "Dock Out",
   },
 };
 

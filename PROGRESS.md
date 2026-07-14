@@ -1,8 +1,28 @@
 # PROGRESS.md
 
-Last updated: 2026-07-04
+Last updated: 2026-07-14
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
+
+## 2026-07-14 - Subscription, Polar billing, quotas, and Dock Out PWA
+
+- Renamed the app-facing Billing surface to Subscription, added the
+  `/subscription` route with Billing and Invoice tabs, and kept `/billing` as a
+  redirect to the new scoped Subscription URL.
+- Added Polar checkout, portal, webhook, live invoice routes, subscription
+  skeleton/loading states, and plan data APIs for the Monthly Pro plan.
+- Replaced Olympic-facing plan copy with Premium, kept Premium as a contact-us
+  manual plan, and added Free/Pro/Premium quota and entitlement rules.
+- Added Free quota upgrade dialogs across teams, venues, camps, sessions, camp
+  detail, team home, and session asset upload paths; Free organizations cannot
+  upload session images/files.
+- Updated seed/migration and billing resolution defaults so Test Organization
+  stays Free while America One Racing and ENARD Argentina stay Pro.
+- Updated the sidebar user dropdown with Subscription entry, plan badges, Assets
+  Pro Plan badge, and account-row alignment tweaks.
+- Rebranded PWA-visible metadata from Sailog to Dock Out, regenerated PWA icons
+  with more blue padding around the sail logo, and bumped the shell cache name
+  for refreshed manifest/icon assets.
 
 ## 2026-07-04 - Mobile card-list standards consolidation
 

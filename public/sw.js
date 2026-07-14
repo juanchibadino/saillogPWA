@@ -1,4 +1,4 @@
-const SHELL_CACHE_NAME = "sailog-shell-v3";
+const SHELL_CACHE_NAME = "dockout-shell-v1";
 const APP_SHELL_ASSETS = [
   "/manifest.webmanifest",
   "/favicon.ico",

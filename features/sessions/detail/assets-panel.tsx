@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import * as React from "react"
 import {
   DownloadIcon,
@@ -12,7 +13,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
@@ -63,6 +64,33 @@ type DecodedImageSource = {
 type CompressedSessionPhotoFiles = {
   displayFile: File
   thumbnailFile: File
+}
+
+type SessionAssetUploadBlockReason = "plan_limit_reached" | "payment_required" | null
+
+function buildSubscriptionHref(scope: NavigationScope): string {
+  const params = new URLSearchParams({
+    org: scope.activeOrgId,
+    tab: "billing",
+  })
+
+  if (scope.activeTeamId) {
+    params.set("team", scope.activeTeamId)
+  }
+
+  return `/subscription?${params.toString()}`
+}
+
+function getUploadBlockedMessage(reason: SessionAssetUploadBlockReason): string {
+  if (reason === "payment_required") {
+    return "Your paid plan is inactive. Recover payment in Subscription to continue uploading files."
+  }
+
+  if (reason === "plan_limit_reached") {
+    return "Free tier quota reached. Upgrade to Pro to continue."
+  }
+
+  return "Uploads are unavailable for this organization."
 }
 
 function buildCompressedPhotoFileName(fileName: string, suffix = ""): string {
@@ -458,6 +486,8 @@ export function SessionAssetsPanel(input: {
   assetLimit: number
   assetTotalCount: number
   canManageSession: boolean
+  canUploadAssets: boolean
+  assetUploadBlockReason?: SessionAssetUploadBlockReason
   isLoadingMore?: boolean
   onLoadMore?: () => void
   onAssetsChanged: () => Promise<void> | void
@@ -468,8 +498,15 @@ export function SessionAssetsPanel(input: {
   const isUploading = pendingUpload !== null
   const description = input.description?.trim()
   const hasMoreAssets = input.assets.length < input.assetTotalCount
+  const canUploadAssets = input.canManageSession && input.canUploadAssets
+  const subscriptionHref = buildSubscriptionHref(input.scope)
 
   async function handleSelectedFile(file: File): Promise<void> {
+    if (!canUploadAssets) {
+      toast.error(getUploadBlockedMessage(input.assetUploadBlockReason ?? null))
+      return
+    }
+
     setPendingUpload({
       fileName: file.name,
       statusLabel: input.assetType === "photo" ? "Compressing..." : "Uploading...",
@@ -535,7 +572,7 @@ export function SessionAssetsPanel(input: {
           ) : null}
         </div>
 
-        {input.canManageSession ? (
+        {canUploadAssets ? (
           <div>
             <input
               ref={fileInputRef}
@@ -563,6 +600,24 @@ export function SessionAssetsPanel(input: {
           </div>
         ) : null}
       </div>
+
+      {input.canManageSession && !input.canUploadAssets ? (
+        <div className="flex flex-col gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+          <p>{getUploadBlockedMessage(input.assetUploadBlockReason ?? null)}</p>
+          <Link
+            href={subscriptionHref}
+            className={buttonVariants({
+              variant: "outline",
+              size: "sm",
+              className: "bg-background",
+            })}
+          >
+            {input.assetUploadBlockReason === "payment_required"
+              ? "Open Subscription"
+              : "Upgrade to Pro"}
+          </Link>
+        </div>
+      ) : null}
 
       <AssetGrid
         assets={input.assets}

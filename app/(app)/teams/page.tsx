@@ -1,4 +1,5 @@
 import { TableFiltersToolbar } from "@/components/shared/table-filters-toolbar"
+import { FreeTierQuotaDialog } from "@/features/billing/free-tier-quota-dialog"
 import { CreateTeamDialog } from "@/features/teams/team-form-dialogs"
 import { TeamsFeedback } from "@/features/teams/teams-feedback"
 import { TeamsTable } from "@/features/teams/teams-table"
@@ -34,11 +35,11 @@ function getErrorMessage(error: string | undefined): string | null {
   }
 
   if (error === "plan_limit_reached") {
-    return "Plan limit reached for teams in this organization. Upgrade or change plan in Billing to continue."
+    return null
   }
 
   if (error === "payment_required") {
-    return "Your paid plan is inactive. Recover payment in Billing to continue creating teams."
+    return "Your paid plan is inactive. Recover payment in Subscription to continue creating teams."
   }
 
   return null
@@ -105,6 +106,10 @@ export default async function TeamsPage({
       </header>
 
       <TeamsFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
+      <FreeTierQuotaDialog
+        organizationId={activeOrganization.id}
+        teamId={scope.activeTeamId}
+      />
 
       {!canManageTeams ? (
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">

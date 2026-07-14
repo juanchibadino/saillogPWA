@@ -146,8 +146,8 @@ function getSectionTitle(pathname: string): string {
     return "Venues"
   }
 
-  if (pathname.startsWith("/billing")) {
-    return "Billing"
+  if (pathname.startsWith("/subscription") || pathname.startsWith("/billing")) {
+    return "Subscription"
   }
 
   if (pathname.startsWith("/reports")) {
@@ -158,7 +158,7 @@ function getSectionTitle(pathname: string): string {
     return "Dashboard"
   }
 
-  return "Sailog"
+  return "Dock Out"
 }
 
 function getTeamHomeTitle(
@@ -593,7 +593,7 @@ function normalizeAssessmentDetailReturnHref(
   let url: URL
 
   try {
-    url = new URL(value, "http://sailog.local")
+    url = new URL(value, "http://dockout.local")
   } catch {
     return null
   }

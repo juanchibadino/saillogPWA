@@ -18,6 +18,7 @@ import {
   LogOutIcon,
   MapPinIcon,
   SailboatIcon,
+  WalletCardsIcon,
   WindIcon,
   UserIcon,
   UsersIcon,
@@ -90,7 +91,7 @@ type PendingScopeSwitch = {
   toLabel: string
 }
 
-type BillingPlanTier = "free" | "pro" | "olympic"
+type BillingPlanTier = "free" | "pro" | "premium"
 
 type BillingPlanResponse = {
   planTier: BillingPlanTier | null
@@ -100,6 +101,7 @@ type SidebarNavItem = {
   title: string
   url?: string
   icon: LucideIcon
+  badge?: string
   comingSoon?: boolean
 }
 
@@ -197,6 +199,7 @@ const teamNavSections: SidebarNavSection[] = [
         title: "Assets",
         url: "/team-assets",
         icon: ImagesIcon,
+        badge: "Pro Plan",
       },
       {
         title: "Assessments",
@@ -426,7 +429,7 @@ export function AppSidebar({
 
   const activeTeamName = activeTeam?.name ?? "No team selected"
 
-  const organizationName = activeOrganization?.name ?? activeTeamOrgName ?? "Sailog"
+  const organizationName = activeOrganization?.name ?? activeTeamOrgName ?? "Dock Out"
   const organizationAvatarUrl = activeOrganization?.avatarUrl ?? null
   const hasMultipleTeamPickerOrganizations =
     new Set(teamPickerOptions.map((team) => team.organizationId)).size > 1
@@ -459,7 +462,7 @@ export function AppSidebar({
     const loadPlanTier = async () => {
       try {
         const response = await fetch(
-          `/api/billing/plan?org=${encodeURIComponent(activeOrgId)}`,
+          `/api/subscription/plan?org=${encodeURIComponent(activeOrgId)}`,
           {
             cache: "no-store",
             signal: controller.signal,
@@ -506,8 +509,8 @@ export function AppSidebar({
   const planBadgeLabel =
     activePlanTier === "pro"
       ? "Pro Plan"
-      : activePlanTier === "olympic"
-        ? "Olympic Plan"
+      : activePlanTier === "premium"
+        ? "Premium Plan"
         : "Free Plan"
 
   const handleSidebarNavigationClick = React.useCallback(
@@ -616,6 +619,11 @@ export function AppSidebar({
   const canAccessOrganizationArea = canAccessOrganizationModules
   const scopedDefaultHomeHref = buildScopedHref(
     canAccessOrganizationArea ? "/dashboard" : "/team-home",
+    activeOrgId,
+    activeTeamId,
+  )
+  const scopedSubscriptionHref = buildScopedHref(
+    "/subscription",
     activeOrgId,
     activeTeamId,
   )
@@ -946,7 +954,17 @@ export function AppSidebar({
                               }
                             >
                               <item.icon />
-                              <span>{item.title}</span>
+                              <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                                <span className="truncate">{item.title}</span>
+                                {item.badge ? (
+                                  <Badge
+                                    variant="secondary"
+                                    className="h-4 px-1.5 text-[10px] font-medium"
+                                  >
+                                    {item.badge}
+                                  </Badge>
+                                ) : null}
+                              </span>
                               {noTeamSelected ? (
                                 <span className="ml-auto text-[10px] text-muted-foreground">
                                   TEAM
@@ -1012,7 +1030,7 @@ export function AppSidebar({
               >
                 <DropdownMenuGroup>
                   <DropdownMenuLabel className="p-0 font-normal">
-                    <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                    <div className="flex items-start gap-2 px-1 py-1.5 text-left text-sm">
                       <Avatar className="h-8 w-8 rounded-lg">
                         {user.avatarUrl ? (
                           <AvatarImage src={user.avatarUrl} alt={user.name} />
@@ -1039,6 +1057,27 @@ export function AppSidebar({
                   </DropdownMenuLabel>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
+                {canAccessOrganizationModules ? (
+                  <DropdownMenuItem
+                    nativeButton
+                    render={<button type="button" />}
+                    onClick={() => {
+                      setIsUserMenuOpen(false)
+                      router.push(scopedSubscriptionHref)
+                    }}
+                    onPointerDownCapture={(event) =>
+                      handleMobileMenuPointerDown(event, () => {
+                        setIsUserMenuOpen(false)
+                        setOpenMobile(false)
+                        router.push(scopedSubscriptionHref)
+                      })
+                    }
+                    className="w-full text-left"
+                  >
+                    <WalletCardsIcon className="size-4" />
+                    <span>Subscription</span>
+                  </DropdownMenuItem>
+                ) : null}
                 <DropdownMenuItem
                   nativeButton
                   render={<button type="button" />}

@@ -29,6 +29,7 @@ import {
   shouldNotifyTextAdded,
 } from "@/features/notifications/core.mjs"
 import { createNotificationsForActiveTeamMembers } from "@/features/notifications/server"
+import { resolveOrganizationSessionAssetUploadEntitlement } from "@/lib/billing/entitlements"
 import { createAdminSupabaseClient } from "@/lib/supabase/admin"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { scopeFormInputSchema } from "@/lib/validation/navigation"
@@ -608,7 +609,13 @@ function buildSessionDetailRedirectPath(input: {
     | "setup_metrics_reordered"
     | "asset_uploaded"
     | "gear_updated"
-  error?: "invalid_input" | "forbidden" | "update_failed" | "upload_failed"
+  error?:
+    | "invalid_input"
+    | "forbidden"
+    | "update_failed"
+    | "upload_failed"
+    | "plan_limit_reached"
+    | "payment_required"
 }): string {
   const params = new URLSearchParams()
 
@@ -3179,7 +3186,12 @@ export async function updateSessionGearUsageAction(formData: FormData): Promise<
   )
 }
 
-type UploadSessionAssetActionError = "invalid_input" | "forbidden" | "upload_failed"
+type UploadSessionAssetActionError =
+  | "invalid_input"
+  | "forbidden"
+  | "plan_limit_reached"
+  | "payment_required"
+  | "upload_failed"
 type DeleteSessionAssetActionError = "invalid_input" | "forbidden" | "delete_failed"
 
 export type UploadSessionAssetActionResult =
@@ -3225,6 +3237,9 @@ type UploadSessionAssetMutationResult =
 const SESSION_ASSET_UPLOAD_ERROR_MESSAGES: Record<UploadSessionAssetActionError, string> = {
   invalid_input: "The selected file is invalid. Review the file and try again.",
   forbidden: "You do not have permission to upload files in the active scope.",
+  plan_limit_reached: "Free tier quota reached. Upgrade to Pro to continue.",
+  payment_required:
+    "Your paid plan is inactive. Recover payment in Subscription to continue uploading files.",
   upload_failed: "Could not upload this file. Confirm storage is available and try again.",
 }
 
@@ -3292,6 +3307,46 @@ async function uploadSessionAssetMutation(
     })
   }
 
+  if (
+    !canManageTeamSessions({
+      context,
+      organizationId: scope.scopeOrgId,
+      teamId: scope.scopeTeamId,
+    })
+  ) {
+    return buildUploadSessionAssetActionError({
+      error: "forbidden",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
+  }
+
+  const scopedSession = await resolveScopedSessionContext({
+    sessionId: parsedInput.data.sessionId,
+    scopeOrgId: scope.scopeOrgId,
+    scopeTeamId: scope.scopeTeamId,
+  })
+
+  if (!scopedSession) {
+    return buildUploadSessionAssetActionError({
+      error: "forbidden",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
+  }
+
+  const uploadEntitlement = await resolveOrganizationSessionAssetUploadEntitlement({
+    organizationId: scope.scopeOrgId,
+  })
+
+  if (!uploadEntitlement.allowed) {
+    return buildUploadSessionAssetActionError({
+      error: uploadEntitlement.reason ?? "forbidden",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
+  }
+
   const maxFileSize =
     parsedInput.data.assetType === "photo" ? MAX_PHOTO_ASSET_BYTES : MAX_ASSET_BYTES
   const hasValidPhotoMimeType =
@@ -3346,34 +3401,6 @@ async function uploadSessionAssetMutation(
   ) {
     return buildUploadSessionAssetActionError({
       error: "invalid_input",
-      scope,
-      sessionId: parsedInput.data.sessionId,
-    })
-  }
-
-  if (
-    !canManageTeamSessions({
-      context,
-      organizationId: scope.scopeOrgId,
-      teamId: scope.scopeTeamId,
-    })
-  ) {
-    return buildUploadSessionAssetActionError({
-      error: "forbidden",
-      scope,
-      sessionId: parsedInput.data.sessionId,
-    })
-  }
-
-  const scopedSession = await resolveScopedSessionContext({
-    sessionId: parsedInput.data.sessionId,
-    scopeOrgId: scope.scopeOrgId,
-    scopeTeamId: scope.scopeTeamId,
-  })
-
-  if (!scopedSession) {
-    return buildUploadSessionAssetActionError({
-      error: "forbidden",
       scope,
       sessionId: parsedInput.data.sessionId,
     })

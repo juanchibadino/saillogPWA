@@ -17,7 +17,7 @@ import {
 
 function formatDisplayName(firstName: string | null, lastName: string | null): string {
   const name = [firstName, lastName].filter(Boolean).join(" ").trim();
-  return name.length > 0 ? name : "Sailog User";
+  return name.length > 0 ? name : "Dock Out User";
 }
 
 function formatUserRole(input: {

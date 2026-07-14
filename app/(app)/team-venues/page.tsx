@@ -15,6 +15,7 @@ import {
   startTeamVenuesListTiming,
 } from "@/features/team-venues/list-timing"
 import { RouteCacheInvalidationOnSuccess } from "@/features/shared/route-cache-invalidation-on-success"
+import { FreeTierQuotaDialog } from "@/features/billing/free-tier-quota-dialog"
 import { resolveTeamVenuesListRequest } from "@/features/team-venues/list-route-state.mjs"
 import { TeamVenuesFeedback } from "@/features/team-venues/team-venues-feedback"
 import { TeamVenuesResultsRetry } from "@/features/team-venues/team-venues-results-retry"
@@ -78,11 +79,11 @@ function getErrorMessage(error: string | undefined): string | null {
   }
 
   if (error === "plan_limit_reached") {
-    return "Plan limit reached for venues in this organization. Upgrade or change plan in Billing to continue."
+    return null
   }
 
   if (error === "payment_required") {
-    return "Your paid plan is inactive. Recover payment in Billing to continue creating venues."
+    return "Your paid plan is inactive. Recover payment in Subscription to continue creating venues."
   }
 
   if (error === "create_failed") {
@@ -286,6 +287,10 @@ export default async function TeamVenuesPage({
   return (
     <div className="space-y-6">
       <TeamVenuesFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
+      <FreeTierQuotaDialog
+        organizationId={scope.activeOrgId}
+        teamId={scope.activeTeamId}
+      />
       {activeTeamId ? (
         <RouteCacheInvalidationOnSuccess
           mutation="venue"

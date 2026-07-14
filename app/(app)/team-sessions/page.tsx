@@ -5,6 +5,7 @@ import {
   TeamSessionsResultsSkeleton,
 } from "@/components/shared/page-skeletons"
 import { RouteCacheInvalidationOnSuccess } from "@/features/shared/route-cache-invalidation-on-success"
+import { FreeTierQuotaDialog } from "@/features/billing/free-tier-quota-dialog"
 import { SessionsFeedback } from "@/features/sessions/sessions-feedback"
 import { TeamSessionsResultsClient } from "@/features/sessions/team-sessions-results-client"
 import { TeamSessionsRouteShell } from "@/features/sessions/team-sessions-route-shell"
@@ -72,11 +73,11 @@ function getErrorMessage(error: string | undefined): string | null {
   }
 
   if (error === "plan_limit_reached") {
-    return "Plan limit reached for sessions in this organization. Upgrade or change plan in Billing to continue."
+    return null
   }
 
   if (error === "payment_required") {
-    return "Your paid plan is inactive. Recover payment in Billing to continue creating sessions."
+    return "Your paid plan is inactive. Recover payment in Subscription to continue creating sessions."
   }
 
   return null
@@ -256,6 +257,10 @@ export default async function TeamSessionsPage({
         mode="toast"
         statusMessage={statusMessage}
         errorMessage={errorMessage}
+      />
+      <FreeTierQuotaDialog
+        organizationId={scope.activeOrgId}
+        teamId={scope.activeTeamId}
       />
       {activeTeamId ? (
         <RouteCacheInvalidationOnSuccess

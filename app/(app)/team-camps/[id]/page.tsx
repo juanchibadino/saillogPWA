@@ -1,6 +1,7 @@
 import { Suspense } from "react"
 
 import { CampDetailTabsClient } from "@/features/camps/camp-detail-tabs-client"
+import { FreeTierQuotaDialog } from "@/features/billing/free-tier-quota-dialog"
 import { CampsFeedback } from "@/features/camps/camps-feedback"
 import { RouteCacheInvalidationOnSuccess } from "@/features/shared/route-cache-invalidation-on-success"
 import { Badge } from "@/components/ui/badge"
@@ -84,11 +85,11 @@ function getErrorMessage(error: string | undefined): string | null {
   }
 
   if (error === "plan_limit_reached") {
-    return "Plan limit reached for sessions in this organization. Upgrade or change plan in Billing to continue."
+    return null
   }
 
   if (error === "payment_required") {
-    return "Your paid plan is inactive. Recover payment in Billing to continue creating sessions."
+    return "Your paid plan is inactive. Recover payment in Subscription to continue creating sessions."
   }
 
   return null
@@ -188,6 +189,7 @@ export default async function CampDetailPage({
     return (
       <div className="space-y-6">
         <CampsFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
+        <FreeTierQuotaDialog organizationId={scope.activeOrgId} />
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
           <h2 className="text-lg font-semibold text-amber-900">Team selection required</h2>
           <p className="mt-2 text-sm text-amber-800">
@@ -211,6 +213,7 @@ export default async function CampDetailPage({
     return (
       <div className="space-y-6">
         <CampsFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
+        <FreeTierQuotaDialog organizationId={scope.activeOrgId} teamId={activeTeamId} />
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
           <h2 className="text-lg font-semibold text-amber-900">Camp unavailable</h2>
           <p className="mt-2 text-sm text-amber-800">
@@ -259,6 +262,7 @@ export default async function CampDetailPage({
       </header>
 
       <CampsFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
+      <FreeTierQuotaDialog organizationId={scope.activeOrgId} teamId={activeTeamId} />
       <RouteCacheInvalidationOnSuccess
         mutation="camp-detail"
         scope={scope}

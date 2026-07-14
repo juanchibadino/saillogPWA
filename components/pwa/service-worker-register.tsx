@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-const SAILOG_CACHE_PREFIX = "sailog-";
+const DEVELOPMENT_CACHE_PREFIXES = ["sailog-", "dockout-"];
 
 async function clearDevelopmentServiceWorkerState(): Promise<void> {
   const registrations = await navigator.serviceWorker.getRegistrations();
@@ -24,7 +24,9 @@ async function clearDevelopmentServiceWorkerState(): Promise<void> {
 
   await Promise.all(
     cacheNames
-      .filter((cacheName) => cacheName.startsWith(SAILOG_CACHE_PREFIX))
+      .filter((cacheName) =>
+        DEVELOPMENT_CACHE_PREFIXES.some((prefix) => cacheName.startsWith(prefix)),
+      )
       .map((cacheName) => caches.delete(cacheName)),
   );
 }

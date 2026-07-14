@@ -5,6 +5,7 @@ import {
   TeamCampsResultsSkeleton,
 } from "@/components/shared/page-skeletons"
 import { RouteCacheInvalidationOnSuccess } from "@/features/shared/route-cache-invalidation-on-success"
+import { FreeTierQuotaDialog } from "@/features/billing/free-tier-quota-dialog"
 import { CampsFeedback } from "@/features/camps/camps-feedback"
 import { TeamCampsResultsClient } from "@/features/camps/team-camps-results-client"
 import {
@@ -73,11 +74,11 @@ function getErrorMessage(error: string | undefined): string | null {
   }
 
   if (error === "plan_limit_reached") {
-    return "Plan limit reached for camps in this organization. Upgrade or change plan in Billing to continue."
+    return null
   }
 
   if (error === "payment_required") {
-    return "Your paid plan is inactive. Recover payment in Billing to continue creating camps."
+    return "Your paid plan is inactive. Recover payment in Subscription to continue creating camps."
   }
 
   return null
@@ -266,6 +267,10 @@ export default async function TeamCampsPage({
   return (
     <div className="space-y-6">
       <CampsFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
+      <FreeTierQuotaDialog
+        organizationId={scope.activeOrgId}
+        teamId={scope.activeTeamId}
+      />
       {activeTeamId ? (
         <RouteCacheInvalidationOnSuccess
           mutation="camp"

@@ -45,7 +45,7 @@ const FEATURES = [
   "Year calendar connected to Google and Outlook",
 ] as const;
 
-const CONTACT_SALES_EMAIL = "billing@sailog.app";
+const CONTACT_SALES_EMAIL = "billing@dockout.app";
 
 export function ProPlanCard() {
   const [billingCycle, setBillingCycle] = React.useState<BillingCycle>("yearly");
@@ -153,7 +153,7 @@ export function ProPlanCard() {
 
         <Card className="border-slate-200 bg-white shadow-sm">
           <CardHeader className="space-y-2">
-            <CardTitle className="text-2xl">Olympic</CardTitle>
+            <CardTitle className="text-2xl">Premium</CardTitle>
             <p className="text-sm text-slate-600">
               For national programs and high-volume operations with manual onboarding.
             </p>
@@ -162,7 +162,7 @@ export function ProPlanCard() {
           </CardHeader>
           <CardContent className="space-y-4">
             <Link
-              href={`mailto:${CONTACT_SALES_EMAIL}?subject=Sailog Olympic plan request`}
+              href={`mailto:${CONTACT_SALES_EMAIL}?subject=Dock Out Premium plan request`}
               className={buttonVariants({
                 variant: "outline",
                 className:

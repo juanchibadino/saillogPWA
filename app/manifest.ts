@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Sailog",
-    short_name: "Sailog",
-    description: "Internal sailing operations app",
+    name: "Dock Out",
+    short_name: "Dock Out",
+    description: "Sailing operations app",
     start_url: "/",
     scope: "/",
     display: "standalone",
