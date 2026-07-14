@@ -1,6 +1,3 @@
-"use client";
-
-import * as React from "react";
 import Link from "next/link";
 import { CheckIcon } from "lucide-react";
 
@@ -11,31 +8,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
-
-type BillingCycle = "monthly" | "yearly";
-
-const PLAN_DETAILS: Record<
-  BillingCycle,
-  {
-    title: string;
-    amount: string;
-    description: string;
-    savings?: string;
-  }
-> = {
-  monthly: {
-    title: "Monthly",
-    amount: "120",
-    description: "USD per month",
-  },
-  yearly: {
-    title: "Yearly",
-    amount: "100",
-    description: "USD per month · billed yearly",
-    savings: "Save USD 20 per month with yearly billing",
-  },
-};
 
 const FEATURES = [
   "Session setup templates for 49er",
@@ -48,49 +20,31 @@ const FEATURES = [
 const CONTACT_SALES_EMAIL = "billing@dockout.app";
 
 export function ProPlanCard() {
-  const [billingCycle, setBillingCycle] = React.useState<BillingCycle>("yearly");
-  const details = PLAN_DETAILS[billingCycle];
-
   return (
     <section className="mx-auto w-full max-w-5xl space-y-6">
       <div className="space-y-2 text-center">
-        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Pricing Plan</p>
-        <h2 className="text-4xl font-semibold tracking-tight text-slate-900">Choose your plan</h2>
-        <p className="mx-auto max-w-2xl text-sm text-slate-600">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+          Pricing plan
+        </p>
+        <h2 className="text-4xl font-semibold tracking-tight text-foreground">
+          Choose your plan
+        </h2>
+        <p className="mx-auto max-w-2xl text-sm leading-6 text-muted-foreground">
           Start free and demo our product up to one organization, one team, one venue,
           one camp, and three sessions. Free is hard-capped at session 3 for testing,
           then continue on Pro.
         </p>
       </div>
 
-      <div className="mx-auto inline-flex rounded-full border border-slate-200 bg-slate-100 p-1">
-        {(["monthly", "yearly"] as BillingCycle[]).map((cycle) => (
-          <button
-            key={cycle}
-            type="button"
-            onClick={() => setBillingCycle(cycle)}
-            className={cn(
-              "rounded-full px-5 py-2 text-sm font-medium transition-colors",
-              billingCycle === cycle
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-600 hover:text-slate-900",
-            )}
-            aria-pressed={billingCycle === cycle}
-          >
-            {PLAN_DETAILS[cycle].title}
-          </button>
-        ))}
-      </div>
-
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="border-slate-200 bg-white shadow-sm">
+        <Card className="rounded-md border-border bg-background shadow-sm">
           <CardHeader className="space-y-2">
-            <CardTitle className="text-2xl">Free</CardTitle>
-            <p className="text-sm text-slate-600">
+            <CardTitle className="text-2xl text-foreground">Free</CardTitle>
+            <p className="text-sm leading-6 text-muted-foreground">
               Perfect for getting started and to know the tool.
             </p>
-            <p className="text-5xl font-semibold tracking-tight text-slate-900">$0</p>
-            <p className="text-sm text-slate-600">Free demo access</p>
+            <p className="text-5xl font-semibold tracking-tight text-foreground">$0</p>
+            <p className="text-sm text-muted-foreground">Free demo access</p>
           </CardHeader>
           <CardContent className="space-y-4">
             <Link
@@ -98,12 +52,12 @@ export function ProPlanCard() {
               className={buttonVariants({
                 variant: "outline",
                 className:
-                  "w-full border-slate-300 bg-white text-slate-900 hover:bg-slate-100",
+                  "w-full border-border bg-background text-foreground hover:bg-muted",
               })}
             >
               Start free
             </Link>
-            <ul className="space-y-2 text-sm text-slate-700">
+            <ul className="space-y-2 text-sm text-muted-foreground">
               <li>1 organization</li>
               <li>1 team</li>
               <li>1 venue</li>
@@ -113,36 +67,31 @@ export function ProPlanCard() {
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200 bg-white shadow-sm">
+        <Card className="rounded-md border-primary bg-muted/40 shadow-sm ring-1 ring-primary/20">
           <CardHeader className="space-y-2">
-            <CardTitle className="text-2xl">Pro</CardTitle>
-            <p className="text-sm text-slate-600">
+            <CardTitle className="text-2xl text-foreground">Pro</CardTitle>
+            <p className="text-sm leading-6 text-muted-foreground">
               Built for daily team operations and long-term performance tracking.
             </p>
-            <p className="text-5xl font-semibold tracking-tight text-slate-900">
-              ${details.amount}
-            </p>
-            <p className="text-sm text-slate-600">{details.description}</p>
-            {details.savings ? (
-              <p className="text-sm font-medium text-emerald-700">{details.savings}</p>
-            ) : null}
+            <p className="text-5xl font-semibold tracking-tight text-foreground">$120</p>
+            <p className="text-sm text-muted-foreground">USD</p>
           </CardHeader>
           <CardContent className="space-y-6">
             <Link
               href="/sign-in?mode=register"
               className={buttonVariants({
-                className: "w-full bg-blue-700 text-white hover:bg-blue-600",
+                className: "w-full !bg-foreground !text-background hover:!bg-foreground/90",
               })}
             >
               Get started
             </Link>
 
             <div className="space-y-3">
-              <p className="text-sm font-medium text-slate-900">Features</p>
-              <ul className="space-y-2 text-sm text-slate-700">
+              <p className="text-sm font-medium text-foreground">Features</p>
+              <ul className="space-y-2 text-sm text-muted-foreground">
                 {FEATURES.map((feature) => (
                   <li key={feature} className="flex items-start gap-2">
-                    <CheckIcon className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+                    <CheckIcon className="mt-0.5 size-4 shrink-0 text-primary" />
                     <span>{feature}</span>
                   </li>
                 ))}
@@ -151,14 +100,14 @@ export function ProPlanCard() {
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200 bg-white shadow-sm">
+        <Card className="rounded-md border-border bg-background shadow-sm">
           <CardHeader className="space-y-2">
-            <CardTitle className="text-2xl">Premium</CardTitle>
-            <p className="text-sm text-slate-600">
+            <CardTitle className="text-2xl text-foreground">Premium</CardTitle>
+            <p className="text-sm leading-6 text-muted-foreground">
               For national programs and high-volume operations with manual onboarding.
             </p>
-            <p className="text-5xl font-semibold tracking-tight text-slate-900">Custom</p>
-            <p className="text-sm text-slate-600">Contact sales for activation</p>
+            <p className="text-5xl font-semibold tracking-tight text-foreground">Custom</p>
+            <p className="text-sm text-muted-foreground">Contact sales for activation</p>
           </CardHeader>
           <CardContent className="space-y-4">
             <Link
@@ -166,12 +115,12 @@ export function ProPlanCard() {
               className={buttonVariants({
                 variant: "outline",
                 className:
-                  "w-full border-slate-300 bg-white text-slate-900 hover:bg-slate-100",
+                  "w-full border-border bg-background text-foreground hover:bg-muted",
               })}
             >
               Contact sales
             </Link>
-            <ul className="space-y-2 text-sm text-slate-700">
+            <ul className="space-y-2 text-sm text-muted-foreground">
               <li>1 organization</li>
               <li>30 teams</li>
               <li>Unlimited venues</li>

@@ -15,8 +15,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Dock Out",
-  description: "Sailing operations app",
+  title: "Dock Out | Sailing Logbook App",
+  description:
+    "Dock Out is a sailing logbook app made by pro sailors for pro sailors. Track sessions, camps, venues, media and reports.",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
