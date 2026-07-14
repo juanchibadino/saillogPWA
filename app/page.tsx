@@ -25,7 +25,6 @@ import {
 
 import {
   LandingThemeShell,
-  LandingThemeToggle,
 } from "@/components/marketing/landing-theme-shell";
 import { ProPlanCard } from "@/components/marketing/pro-plan-card";
 import { buttonVariants } from "@/components/ui/button";
@@ -148,12 +147,6 @@ const DOCK_OUT_FULL_LOGO = {
   height: 681,
 } as const;
 
-const DOCK_OUT_WORDMARK_LOGO = {
-  src: "/dockout-logo.svg",
-  width: 2417,
-  height: 479,
-} as const;
-
 export default async function Home() {
   const context = await getCurrentAccessContext();
 
@@ -179,14 +172,13 @@ export default async function Home() {
           </nav>
 
           <div className="flex items-center gap-2">
-            <LandingThemeToggle />
             <Link
               href="/sign-in"
               className={buttonVariants({
                 variant: "outline",
                 size: "sm",
                 className:
-                  "border-border bg-background/80 text-foreground hover:bg-muted",
+                  "h-11 border-border bg-background/80 px-4 text-foreground hover:bg-muted md:h-7 md:px-2.5",
               })}
             >
               Sign in
@@ -195,7 +187,8 @@ export default async function Home() {
               href="/sign-in?mode=register"
               className={buttonVariants({
                 size: "sm",
-                className: "!bg-foreground !text-background hover:!bg-foreground/90",
+                className:
+                  "!hidden !bg-foreground !text-background hover:!bg-foreground/90 md:!inline-flex",
               })}
             >
               Start free
@@ -206,25 +199,19 @@ export default async function Home() {
 
       <section className="min-h-screen border-b border-border bg-background">
         <div className="mx-auto grid min-h-screen w-full max-w-6xl items-center gap-10 px-4 py-10 md:grid-cols-[0.9fr_1.1fr] md:px-8">
-          <div className="max-w-2xl space-y-6">
+          <div className="max-w-2xl space-y-6 text-center md:text-left">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
               Sailing logbook app
             </p>
             <div className="space-y-4">
-              <h1 className="max-w-[22rem] md:max-w-[34rem]">
-                <span className="sr-only">Dock Out</span>
-                <DockOutLogo
-                  variant="wordmark"
-                  className="h-auto w-full"
-                  priority
-                  sizes="(min-width: 768px) 34rem, 22rem"
-                />
+              <h1 className="text-7xl font-semibold leading-none tracking-normal text-foreground md:text-7xl lg:text-7xl">
+                Dock Out
               </h1>
               <p className="max-w-2xl text-xl font-medium leading-tight text-foreground md:text-2xl">
                 Made by pro sailors for pro sailors.
               </p>
             </div>
-            <p className="max-w-2xl text-base leading-7 text-muted-foreground">
+            <p className="mx-auto max-w-2xl text-center text-base leading-7 text-muted-foreground md:mx-0 md:text-left">
               Track sessions, training camps, venues, water time, media and reports in one
               simple mobile-first workspace.
             </p>
@@ -530,24 +517,20 @@ export default async function Home() {
 }
 
 function DockOutLogo({
-  variant = "full",
   className,
   priority = false,
   sizes,
 }: {
-  variant?: "full" | "wordmark";
   className?: string;
   priority?: boolean;
   sizes?: string;
 }) {
-  const logo = variant === "wordmark" ? DOCK_OUT_WORDMARK_LOGO : DOCK_OUT_FULL_LOGO;
-
   return (
     <Image
-      src={logo.src}
+      src={DOCK_OUT_FULL_LOGO.src}
       alt=""
-      width={logo.width}
-      height={logo.height}
+      width={DOCK_OUT_FULL_LOGO.width}
+      height={DOCK_OUT_FULL_LOGO.height}
       sizes={sizes}
       priority={priority}
       className={cn("object-contain invert dark:invert-0", className)}
