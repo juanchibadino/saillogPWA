@@ -152,6 +152,8 @@ const SESSION_SETUP_SELECTED_OPTIONS_SELECT_COLUMNS =
   "session_setup_item_value_id,team_setup_item_option_id"
 const TEAM_MEMBERSHIP_SELECT_COLUMNS = "profile_id,role"
 const PROFILE_SELECT_COLUMNS = "id,first_name,last_name,email"
+const REPORT_BRAND_LOGO_FILE_NAME = "A1R.png"
+const REPORT_BRAND_LOGO_MIME_TYPE = "image/png"
 
 function sanitizeFileName(value: string): string {
   return value
@@ -271,6 +273,16 @@ function renderTemplatePlaceholders(templateHtml: string, payload: TemplatePaylo
 async function loadTemplateHtml(): Promise<string> {
   const templatePath = path.join(process.cwd(), "features/reports/report-template.html")
   return readFile(templatePath, "utf-8")
+}
+
+async function loadPublicAssetDataUri(input: {
+  fileName: string
+  mimeType: string
+}): Promise<string> {
+  const assetPath = path.join(process.cwd(), "public", input.fileName)
+  const asset = await readFile(assetPath)
+
+  return `data:${input.mimeType};base64,${asset.toString("base64")}`
 }
 
 async function dynamicImport<T = unknown>(moduleName: string): Promise<T> {
@@ -630,8 +642,13 @@ async function buildTemplatePayload(input: {
     netTimeMinutesValues.length > 0
       ? Math.round(totalNetTimeMinutes / netTimeMinutesValues.length)
       : null
+  const brandLogoDataUri = await loadPublicAssetDataUri({
+    fileName: REPORT_BRAND_LOGO_FILE_NAME,
+    mimeType: REPORT_BRAND_LOGO_MIME_TYPE,
+  })
 
   return {
+    "Brand Logo": brandLogoDataUri,
     Crew: input.crewNames.join(" - "),
     Coach: input.coachNames.join(", "),
     Date:

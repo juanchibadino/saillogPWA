@@ -142,6 +142,18 @@ const REPORT_FEATURES: FeatureCard[] = [
   },
 ] as const;
 
+const DOCK_OUT_FULL_LOGO = {
+  src: "/dockout-logo-horizontal2.svg",
+  width: 3282,
+  height: 681,
+} as const;
+
+const DOCK_OUT_WORDMARK_LOGO = {
+  src: "/dockout-logo.svg",
+  width: 2417,
+  height: 479,
+} as const;
+
 export default async function Home() {
   const context = await getCurrentAccessContext();
 
@@ -154,16 +166,8 @@ export default async function Home() {
       <main className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur">
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 md:px-8">
-          <Link href="/" className="flex items-center gap-3" aria-label="Dock Out home">
-            <Image
-              src="/Black_49er.svg"
-              alt=""
-              width={32}
-              height={32}
-              className="size-8 dark:invert"
-              priority
-            />
-            <span className="text-sm font-semibold tracking-wide text-foreground">Dock Out</span>
+          <Link href="/" className="flex min-w-0 items-center" aria-label="Dock Out home">
+            <DockOutLogo className="h-6 w-auto sm:h-7" priority sizes="9rem" />
           </Link>
 
           <nav className="hidden items-center gap-8 text-sm font-medium text-muted-foreground md:flex">
@@ -207,8 +211,14 @@ export default async function Home() {
               Sailing logbook app
             </p>
             <div className="space-y-4">
-              <h1 className="text-5xl font-semibold leading-[0.96] tracking-tight text-foreground md:text-7xl">
-                Dock Out
+              <h1 className="max-w-[22rem] md:max-w-[34rem]">
+                <span className="sr-only">Dock Out</span>
+                <DockOutLogo
+                  variant="wordmark"
+                  className="h-auto w-full"
+                  priority
+                  sizes="(min-width: 768px) 34rem, 22rem"
+                />
               </h1>
               <p className="max-w-2xl text-xl font-medium leading-tight text-foreground md:text-2xl">
                 Made by pro sailors for pro sailors.
@@ -495,15 +505,8 @@ export default async function Home() {
       <footer className="border-t border-border bg-background">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 md:flex-row md:items-center md:justify-between md:px-8">
           <div className="flex items-center gap-3">
-            <Image
-              src="/Black_49er.svg"
-              alt=""
-              width={28}
-              height={28}
-              className="size-7 dark:invert"
-            />
+            <DockOutLogo className="h-6 w-auto" sizes="9rem" />
             <div>
-              <p className="text-sm font-semibold text-foreground">Dock Out</p>
               <p className="text-xs text-muted-foreground">
                 Sailing operations platform {new Date().getFullYear()}
               </p>
@@ -523,6 +526,32 @@ export default async function Home() {
       </footer>
       </main>
     </LandingThemeShell>
+  );
+}
+
+function DockOutLogo({
+  variant = "full",
+  className,
+  priority = false,
+  sizes,
+}: {
+  variant?: "full" | "wordmark";
+  className?: string;
+  priority?: boolean;
+  sizes?: string;
+}) {
+  const logo = variant === "wordmark" ? DOCK_OUT_WORDMARK_LOGO : DOCK_OUT_FULL_LOGO;
+
+  return (
+    <Image
+      src={logo.src}
+      alt=""
+      width={logo.width}
+      height={logo.height}
+      sizes={sizes}
+      priority={priority}
+      className={cn("object-contain invert dark:invert-0", className)}
+    />
   );
 }
 
