@@ -1,8 +1,18 @@
 # PROGRESS.md
 
-Last updated: 2026-07-14
+Last updated: 2026-07-15
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
+
+## 2026-07-15 - Onboarding sign-in routing and class options
+
+- Updated `/sign-in` so authenticated users without completed app access can
+  still view the sign-in form instead of being forced through `/post-auth` to
+  `/onboarding`.
+- Added `49erFX` to the onboarding class select, server action type, and Zod
+  validation so final onboarding submit can create `49erFX` teams.
+- Validation: `./node_modules/.bin/tsc --noEmit`, `npm run lint`,
+  `git diff --check`, and `npm run build` passed.
 
 ## 2026-07-14 - Subscription, Polar billing, quotas, and Dock Out PWA
 

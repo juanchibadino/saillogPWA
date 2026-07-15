@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
 type CoachAnswer = "yes" | "no"
-type TeamClass = "49er" | "Laser" | "Nacra"
+type TeamClass = "49er" | "49erFX" | "Laser" | "Nacra"
 
 type OnboardingFlowProps = {
   initialFirstName: string
@@ -21,7 +21,7 @@ const INITIAL_ONBOARDING_SUBMIT_STATE = {
   error: null,
 }
 
-const TEAM_CLASS_OPTIONS: TeamClass[] = ["49er", "Laser", "Nacra"]
+const TEAM_CLASS_OPTIONS: TeamClass[] = ["49er", "49erFX", "Laser", "Nacra"]
 
 const WELCOME_STEP = 0
 const FIRST_NAME_STEP = 1
@@ -227,7 +227,9 @@ export function OnboardingFlow({
 
               {step === WELCOME_STEP ? (
                 <div className="space-y-3">
-                  <h1 className="text-6xl font-semibold tracking-tight">Welcome to Dock Out!</h1>
+                  <h1 className="text-6xl font-semibold tracking-tight">
+                    Welcome to <span className="md:whitespace-nowrap">Dock Out!</span>
+                  </h1>
                   <p className="text-base text-white/80">
                     Let&apos;s set up your team in a few quick steps.
                   </p>

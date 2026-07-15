@@ -164,7 +164,7 @@ async function createTeamWithUniqueSlug(input: {
   supabase: DatabaseClient
   organizationId: string
   name: string
-  teamType: "49er" | "Laser" | "Nacra"
+  teamType: "49er" | "49erFX" | "Laser" | "Nacra"
 }): Promise<{
   teamId: string | null
   error: { code?: string; message: string } | null

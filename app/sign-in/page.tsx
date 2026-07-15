@@ -6,7 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { getCurrentAccessContext } from "@/lib/auth/access";
+import { getCurrentAccessContext, hasAppAccess } from "@/lib/auth/access";
 import { SignInAuthContent } from "./sign-in-content";
 
 type SignInSearchParams = Promise<
@@ -72,7 +72,7 @@ export default async function SignInPage({
 }) {
   const context = await getCurrentAccessContext();
 
-  if (context.user) {
+  if (context.user && hasAppAccess(context)) {
     redirect("/post-auth");
   }
 

@@ -8,7 +8,7 @@ export const onboardingFormInputSchema = z.object({
   organizationName: requiredShortTextSchema,
   teamName: requiredShortTextSchema,
   isCoach: z.enum(["yes", "no"]),
-  teamClass: z.enum(["49er", "Laser", "Nacra"]),
+  teamClass: z.enum(["49er", "49erFX", "Laser", "Nacra"]),
 })
 
 export type OnboardingFormInput = z.infer<typeof onboardingFormInputSchema>
