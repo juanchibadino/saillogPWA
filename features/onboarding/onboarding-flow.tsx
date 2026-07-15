@@ -7,7 +7,6 @@ import { useFormStatus } from "react-dom"
 import { completeOnboardingAction } from "@/features/onboarding/actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 
 type CoachAnswer = "yes" | "no"
 type TeamClass = "49er" | "Laser" | "Nacra"
@@ -228,7 +227,7 @@ export function OnboardingFlow({
 
               {step === WELCOME_STEP ? (
                 <div className="space-y-3">
-                  <h1 className="text-6xl font-semibold tracking-tight">Welcome to Sailog.</h1>
+                  <h1 className="text-6xl font-semibold tracking-tight">Welcome to Dock Out!</h1>
                   <p className="text-base text-white/80">
                     Let&apos;s set up your team in a few quick steps.
                   </p>
@@ -395,14 +394,20 @@ export function OnboardingFlow({
               <input type="hidden" name="isCoach" value={coachAnswer} />
               <input type="hidden" name="teamClass" value={teamClass} />
 
-              <h2 className="text-3xl font-semibold tracking-tight">
-                You are all set{" "}
-                <span className="text-white/55">{trimValue(firstName)}</span>{" "}
-                <span className="text-white/55">{trimValue(lastName)}</span>. Your organization{" "}
-                <span className="text-white/55">{trimValue(organizationName)}</span> and your{" "}
-                <span className="text-white/55">{teamClass}</span> team{" "}
-                <span className="text-white/55">{trimValue(teamName)}</span> will be created.
-              </h2>
+              <div className="space-y-3">
+                <h2 className="text-3xl font-semibold tracking-tight">
+                  You are all set{" "}
+                  <span className="text-white/55">{trimValue(firstName)}</span>{" "}
+                  <span className="text-white/55">{trimValue(lastName)}</span>!
+                </h2>
+
+                <p className="text-base leading-7 text-white/80">
+                  Your organization{" "}
+                  <span className="text-white/55">{trimValue(organizationName)}</span> and your{" "}
+                  <span className="text-white/55">{teamClass}</span> team{" "}
+                  <span className="text-white/55">{trimValue(teamName)}</span> will be created.
+                </p>
+              </div>
 
               <FinalSubmitButton />
             </form>

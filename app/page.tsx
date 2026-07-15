@@ -28,7 +28,7 @@ import {
 } from "@/components/marketing/landing-theme-shell";
 import { ProPlanCard } from "@/components/marketing/pro-plan-card";
 import { buttonVariants } from "@/components/ui/button";
-import { getCurrentAccessContext } from "@/lib/auth/access";
+import { getCurrentAccessContext, hasAppAccess } from "@/lib/auth/access";
 import { cn } from "@/lib/utils";
 
 type FeatureCard = {
@@ -150,7 +150,7 @@ const DOCK_OUT_FULL_LOGO = {
 export default async function Home() {
   const context = await getCurrentAccessContext();
 
-  if (context.user) {
+  if (context.user && hasAppAccess(context)) {
     redirect("/post-auth");
   }
 

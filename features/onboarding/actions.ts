@@ -11,7 +11,10 @@ import {
 } from "@/lib/navigation/constants"
 import { createAdminSupabaseClient } from "@/lib/supabase/admin"
 import type { Database } from "@/types/database"
-import { onboardingFormInputSchema } from "@/lib/validation/onboarding"
+import {
+  onboardingFormInputSchema,
+  type OnboardingFormInput,
+} from "@/lib/validation/onboarding"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 type DatabaseClient = SupabaseClient<Database>
@@ -33,6 +36,82 @@ function getFormString(formData: FormData, key: string): string | undefined {
   }
 
   return value
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function buildUserNameMetadata(input: {
+  currentMetadata: unknown
+  firstName: string
+  lastName: string
+}): Record<string, unknown> {
+  const currentMetadata = isRecord(input.currentMetadata) ? input.currentMetadata : {}
+  const fullName = `${input.firstName} ${input.lastName}`.trim()
+
+  return {
+    ...currentMetadata,
+    first_name: input.firstName,
+    last_name: input.lastName,
+    full_name: fullName,
+    name: fullName,
+  }
+}
+
+async function updateAuthUserName(input: {
+  supabase: DatabaseClient
+  userId: string
+  currentMetadata: unknown
+  firstName: string
+  lastName: string
+}): Promise<boolean> {
+  const { error } = await input.supabase.auth.admin.updateUserById(input.userId, {
+    user_metadata: buildUserNameMetadata({
+      currentMetadata: input.currentMetadata,
+      firstName: input.firstName,
+      lastName: input.lastName,
+    }),
+  })
+
+  return !error
+}
+
+async function saveOnboardingName(input: {
+  supabase: DatabaseClient
+  userId: string
+  email: string
+  currentMetadata: unknown
+  values: Pick<OnboardingFormInput, "firstName" | "lastName">
+}): Promise<boolean> {
+  const { error: profileUpsertError } = await input.supabase
+    .from("profiles")
+    .upsert(
+      {
+        id: input.userId,
+        email: input.email,
+        first_name: input.values.firstName,
+        last_name: input.values.lastName,
+        is_active: true,
+        is_profile_complete: false,
+        profile_completed_at: null,
+      },
+      {
+        onConflict: "id",
+      },
+    )
+
+  if (profileUpsertError) {
+    return false
+  }
+
+  return updateAuthUserName({
+    supabase: input.supabase,
+    userId: input.userId,
+    currentMetadata: input.currentMetadata,
+    firstName: input.values.firstName,
+    lastName: input.values.lastName,
+  })
 }
 
 async function createOrganizationWithUniqueSlug(input: {
@@ -177,24 +256,18 @@ export async function completeOnboardingAction(
     }
   }
 
-  const { error: profileUpsertError } = await adminSupabase
-    .from("profiles")
-    .upsert(
-      {
-        id: context.user.id,
-        email: resolvedEmail,
-        first_name: parsedInput.data.firstName,
-        last_name: parsedInput.data.lastName,
-        is_active: true,
-        is_profile_complete: false,
-        profile_completed_at: null,
-      },
-      {
-        onConflict: "id",
-      },
-    )
+  const wasNameSaved = await saveOnboardingName({
+    supabase: adminSupabase,
+    userId: context.user.id,
+    email: resolvedEmail,
+    currentMetadata: context.user.user_metadata,
+    values: {
+      firstName: parsedInput.data.firstName,
+      lastName: parsedInput.data.lastName,
+    },
+  })
 
-  if (profileUpsertError) {
+  if (!wasNameSaved) {
     return {
       error: CREATE_FAILED_ERROR_MESSAGE,
     }
