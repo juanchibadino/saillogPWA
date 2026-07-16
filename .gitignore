@@ -42,3 +42,16 @@ passwords.txt
 /generate report/
 /REFERENCE/
 /RAW DATA/
+
+# local-only migration/import artifacts
+/reports/
+/scripts/import-raw-data.mjs
+/scripts/import-raw-data.test.mjs
+/scripts/seed-49erfx-setup.mjs
+/supabase/migrations/042_49erfx_setup_seed.sql
+
+# local-only audit and pattern docs
+/AUDIT*.md
+/AUDIT*.MD
+/*PATTERNS*.md
+/*PATTERNS*.MD
