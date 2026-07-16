@@ -67,6 +67,8 @@ type EditableVenue = {
 
 type VenueFormFooter = "dialog" | "drawer" | "sheet"
 type VenueFormSurface = "dialog" | "drawer" | "sheet"
+type CreateVenueSurface = VenueFormSurface
+type CreateVenueTriggerVariant = "default" | "fab"
 
 function normalizeText(value: string): string {
   return value.trim().toLocaleLowerCase()
@@ -483,12 +485,59 @@ export function CreateVenueDialog({
   organizations,
   scope,
   redirectTo,
+  surface = "dialog",
+  triggerVariant = "default",
 }: {
   organizations: VenueOrganizationOption[]
   scope: NavigationScope
   redirectTo?: string
+  surface?: CreateVenueSurface
+  triggerVariant?: CreateVenueTriggerVariant
 }) {
   const defaultOrganizationId = organizations[0]?.id ?? ""
+  const isFabTrigger = triggerVariant === "fab"
+
+  function renderForm(formSurface: CreateVenueSurface) {
+    const isDrawer = formSurface === "drawer"
+    const isSheet = formSurface === "sheet"
+
+    return (
+      <VenueDialogForm
+        organizations={organizations}
+        initialValues={{
+          organizationId: defaultOrganizationId,
+          name: "",
+          city: "",
+          country: "",
+        }}
+        includeIsActive={false}
+        idPrefix={`create-venue-${formSurface}-${triggerVariant}`}
+        submitLabel="Create venue"
+        pendingLabel="Creating..."
+        scope={scope}
+        redirectTo={redirectTo}
+        action={createVenueAction}
+        footer={formSurface}
+        fieldsClassName={
+          isDrawer ? "px-4 pb-6" : isSheet ? "px-4 pb-4" : undefined
+        }
+        surface={formSurface}
+      />
+    )
+  }
+
+  if (surface === "drawer") {
+    return (
+      <CreateVenueDrawerContent
+        isFabTrigger={isFabTrigger}
+        renderForm={renderForm}
+      />
+    )
+  }
+
+  if (surface === "sheet") {
+    return <CreateVenueSheetContent renderForm={renderForm} />
+  }
 
   return (
     <Dialog>
@@ -500,25 +549,78 @@ export function CreateVenueDialog({
         <DialogHeader>
           <DialogTitle>Create venue</DialogTitle>
         </DialogHeader>
-
-        <VenueDialogForm
-          organizations={organizations}
-          initialValues={{
-            organizationId: defaultOrganizationId,
-            name: "",
-            city: "",
-            country: "",
-          }}
-          includeIsActive={false}
-          idPrefix="create-venue"
-          submitLabel="Create venue"
-          pendingLabel="Creating..."
-          scope={scope}
-          redirectTo={redirectTo}
-          action={createVenueAction}
-        />
+        {renderForm("dialog")}
       </DialogContent>
     </Dialog>
+  )
+}
+
+function CreateVenueSheetContent({
+  renderForm,
+}: {
+  renderForm: (surface: CreateVenueSurface) => React.ReactNode
+}) {
+  const [isOpen, setIsOpen] = React.useState(false)
+
+  return (
+    <Sheet open={isOpen} onOpenChange={setIsOpen}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen(true)}
+      >
+        <PlusIcon className="size-4" />
+        New
+      </Button>
+      <SheetContent side="right" className="flex h-full flex-col overflow-hidden sm:max-w-xl">
+        <SheetHeader className="shrink-0 border-b pr-14">
+          <SheetTitle>Create venue</SheetTitle>
+        </SheetHeader>
+        {renderForm("sheet")}
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+function CreateVenueDrawerContent({
+  isFabTrigger,
+  renderForm,
+}: {
+  isFabTrigger: boolean
+  renderForm: (surface: CreateVenueSurface) => React.ReactNode
+}) {
+  const [isOpen, setIsOpen] = React.useState(false)
+
+  return (
+    <Drawer open={isOpen} onOpenChange={setIsOpen}>
+      <Button
+        type="button"
+        variant={isFabTrigger ? "default" : "outline"}
+        size={isFabTrigger ? "icon" : "default"}
+        aria-label={isFabTrigger ? "New venue" : undefined}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        className={
+          isFabTrigger
+            ? "mobile-floating-action size-14 rounded-full shadow-lg shadow-black/20 md:hidden"
+            : "h-11 px-3"
+        }
+        onClick={() => setIsOpen(true)}
+      >
+        <PlusIcon className={isFabTrigger ? "size-6" : "size-4"} />
+        {isFabTrigger ? <span className="sr-only">New venue</span> : "New"}
+      </Button>
+
+      <DrawerContent className="flex max-h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden">
+        <DrawerHeader className="shrink-0 border-b text-left">
+          <DrawerTitle>Create venue</DrawerTitle>
+        </DrawerHeader>
+        {renderForm("drawer")}
+      </DrawerContent>
+    </Drawer>
   )
 }
 

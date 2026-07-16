@@ -2011,27 +2011,103 @@ export function CampDetailPageSkeleton() {
   )
 }
 
+export function VenuesChromeSkeleton() {
+  return (
+    <>
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold">Organization Venues</h2>
+        <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+          <Skeleton className="h-9 w-36" />
+          <button
+            type="button"
+            disabled
+            className="hidden h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium text-muted-foreground opacity-70 md:inline-flex"
+          >
+            <PlusIcon className="size-4" />
+            New
+          </button>
+        </div>
+      </header>
+
+      <button
+        type="button"
+        disabled
+        aria-label="New venue"
+        className="mobile-floating-action inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground opacity-70 shadow-lg shadow-black/20 md:hidden"
+      >
+        <PlusIcon className="size-6" />
+      </button>
+    </>
+  )
+}
+
+export function VenuesResultsSkeleton() {
+  return (
+    <section className="space-y-4">
+      <div className="space-y-2 md:hidden">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <GradientCard key={`venues-mobile-row-${index}`} className="px-3 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-4 w-2/3 max-w-40" />
+                <Skeleton className="h-3 w-3/4 max-w-52" />
+                <div className="flex items-center gap-3">
+                  <Skeleton className="h-3 w-14" />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+              </div>
+              <Skeleton className="h-11 w-11 rounded-full" />
+            </div>
+          </GradientCard>
+        ))}
+        <button
+          type="button"
+          disabled
+          className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-md border border-border bg-background text-sm font-medium text-muted-foreground opacity-70"
+        >
+          Load more venues
+        </button>
+      </div>
+
+      <GradientCard className="hidden overflow-hidden p-0 md:block">
+        <div className="grid grid-cols-[1.125fr_1.625fr_0.6fr_1.65fr] items-center gap-4 bg-muted/40 px-4 py-3 text-sm font-medium text-muted-foreground">
+          {["Venue", "Location", "Status", "Team Context"].map((header) => (
+            <span key={`venues-header-${header}`} className="truncate">
+              {header}
+            </span>
+          ))}
+        </div>
+        <div className="divide-y divide-border">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div
+              key={`venue-row-${index}`}
+              className="grid min-h-12 grid-cols-[1.125fr_1.625fr_0.6fr_1.65fr] items-center gap-4 px-4 py-3"
+            >
+              <Skeleton className="h-4 w-full max-w-32" />
+              <Skeleton className="h-4 w-full max-w-32" />
+              <Skeleton className="h-4 w-full max-w-16" />
+              <Skeleton className="h-4 w-full max-w-28" />
+            </div>
+          ))}
+        </div>
+      </GradientCard>
+
+      <div className="hidden items-center gap-1 md:flex">
+        <Skeleton className="h-9 w-24" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-16" />
+      </div>
+    </section>
+  )
+}
+
 export function VenuesPageSkeleton() {
   return (
-    <div className="space-y-6">
-
-      <div className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="space-y-2">
-            <Skeleton className="h-6 w-24" />
-          </div>
-          <Skeleton className="h-8 w-28" />
-        </div>
-
-        <div className="rounded-xl border bg-card p-4">
-          <div className="space-y-3">
-            <Skeleton className="h-10 w-full" />
-            {Array.from({ length: 5 }).map((_, index) => (
-              <Skeleton key={`venue-row-${index}`} className="h-10 w-full" />
-            ))}
-          </div>
-        </div>
-      </div>
+    <div className="space-y-4">
+      <VenuesChromeSkeleton />
+      <VenuesResultsSkeleton />
     </div>
   )
 }

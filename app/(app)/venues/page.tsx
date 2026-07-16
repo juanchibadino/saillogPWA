@@ -1,19 +1,43 @@
-import { getVenuePageData } from "@/features/venues/data";
+import { Suspense } from "react";
+
 import { FreeTierQuotaDialog } from "@/features/billing/free-tier-quota-dialog";
-import { CreateVenueDialog } from "@/features/venues/venue-form-dialogs";
 import { VenuesFeedback } from "@/features/venues/venues-feedback";
 import { VenuesTable } from "@/features/venues/venues-table";
-import { TableFiltersToolbar } from "@/components/shared/table-filters-toolbar";
+import { VenuesRouteShell } from "@/features/venues/venues-route-shell";
+import {
+  VenuesPageSkeleton,
+  VenuesResultsSkeleton,
+} from "@/components/shared/page-skeletons";
 import { canManageOrganizationOperations } from "@/lib/auth/capabilities";
 import { requireOrganizationRouteAccess } from "@/lib/auth/organization-route-guard";
 import {
   getSingleSearchParamValue,
 } from "@/lib/navigation/scope";
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access";
+import {
+  VENUE_STATUS_QUERY_KEY,
+  resolveVenuesListRequest,
+} from "@/features/venues/list-route-state.mjs";
+import {
+  getVenuesChromeData,
+  getVenuesResultsData,
+  type VenueOrganizationOption,
+  type VenuesChromeData,
+  type VenueStatusFilter,
+} from "@/features/venues/data";
 
 type VenuesSearchParams = Promise<
   Record<string, string | string[] | undefined>
 >;
+type ResolvedVenuesScope = NonNullable<
+  Awaited<ReturnType<typeof requireOrganizationRouteAccess>>["scope"]
+>;
+type VenuesChromeDataPromise = Promise<VenuesChromeData>;
+type VenuesListRequest = {
+  requestedLoadMoreMode: boolean;
+  requestedPage: number;
+  requestedStatusFilter: VenueStatusFilter;
+};
 
 function getStatusMessage(status: string | undefined): string | null {
   if (status === "created") {
@@ -55,6 +79,65 @@ function getErrorMessage(error: string | undefined): string | null {
   return null;
 }
 
+async function VenuesShellSlot(input: {
+  activeOrganization: VenueOrganizationOption;
+  canManageVenues: boolean;
+  chromeDataPromise: VenuesChromeDataPromise;
+  requestedLoadMoreMode: boolean;
+  requestedPage: number;
+  requestedStatusFilter: VenueStatusFilter;
+  scope: ResolvedVenuesScope;
+}) {
+  const chromeData = await input.chromeDataPromise;
+
+  return (
+    <VenuesRouteShell
+      canManageVenues={input.canManageVenues}
+      chromeData={chromeData}
+      scope={input.scope}
+    >
+      <Suspense fallback={<VenuesResultsSkeleton />}>
+        <VenuesResultsContent
+          activeOrganization={input.activeOrganization}
+          activeTeamId={input.scope.activeTeamId}
+          requestedLoadMoreMode={input.requestedLoadMoreMode}
+          requestedPage={input.requestedPage}
+          requestedStatusFilter={input.requestedStatusFilter}
+          scope={input.scope}
+        />
+      </Suspense>
+    </VenuesRouteShell>
+  );
+}
+
+async function VenuesResultsContent(input: {
+  activeOrganization: VenueOrganizationOption;
+  activeTeamId: string | null;
+  requestedLoadMoreMode: boolean;
+  requestedPage: number;
+  requestedStatusFilter: VenueStatusFilter;
+  scope: ResolvedVenuesScope;
+}) {
+  const resultsData = await getVenuesResultsData({
+    activeOrganization: input.activeOrganization,
+    activeTeamId: input.activeTeamId,
+    accumulatePages: input.requestedLoadMoreMode,
+    page: input.requestedPage,
+    statusFilter: input.requestedStatusFilter,
+  });
+
+  return (
+    <VenuesTable
+      currentPage={resultsData.currentPage}
+      hasNextPage={resultsData.hasNextPage}
+      hasPreviousPage={resultsData.hasPreviousPage}
+      pageCount={resultsData.pageCount}
+      scope={input.scope}
+      venues={resultsData.venues}
+    />
+  );
+}
+
 export default async function VenuesPage({
   searchParams,
 }: {
@@ -65,6 +148,17 @@ export default async function VenuesPage({
 
   const status = getSingleSearchParamValue(resolvedSearchParams.status);
   const error = getSingleSearchParamValue(resolvedSearchParams.error);
+  const {
+    requestedLoadMoreMode,
+    requestedPage,
+    requestedStatusFilter,
+  } = resolveVenuesListRequest({
+    statusParam: getSingleSearchParamValue(
+      resolvedSearchParams[VENUE_STATUS_QUERY_KEY],
+    ),
+    pageParam: getSingleSearchParamValue(resolvedSearchParams.page),
+    loadMoreParam: getSingleSearchParamValue(resolvedSearchParams.loadMore),
+  }) as VenuesListRequest;
   const statusMessage = getStatusMessage(status);
   const errorMessage = getErrorMessage(error);
 
@@ -103,15 +197,14 @@ export default async function VenuesPage({
     );
   }
 
-  const { organizations, venues } = await getVenuePageData({
-    activeOrganization,
-    activeTeamId: scope.activeTeamId,
-  });
-
   const canManageVenues = canManageOrganizationOperations(
     context,
     scope.activeOrgId,
   );
+  const chromeDataPromise = getVenuesChromeData({
+    activeOrganization,
+    statusFilter: requestedStatusFilter,
+  });
 
   return (
     <div className="space-y-6">
@@ -134,24 +227,17 @@ export default async function VenuesPage({
         </section>
       ) : null}
 
-      <VenuesTable
-        venues={venues}
-        toolbar={
-          <TableFiltersToolbar
-            scope={scope}
-            fields={[]}
-            embedded
-            autoSubmit
-            className="rounded-none border-0 bg-transparent p-0"
-            action={
-              canManageVenues && organizations.length > 0 ? (
-                <CreateVenueDialog organizations={organizations} scope={scope} />
-              ) : undefined
-            }
-          />
-        }
-        scope={scope}
-      />
+      <Suspense fallback={<VenuesPageSkeleton />}>
+        <VenuesShellSlot
+          activeOrganization={activeOrganization}
+          canManageVenues={canManageVenues}
+          chromeDataPromise={chromeDataPromise}
+          requestedLoadMoreMode={requestedLoadMoreMode}
+          requestedPage={requestedPage}
+          requestedStatusFilter={requestedStatusFilter}
+          scope={scope}
+        />
+      </Suspense>
     </div>
   );
 }
