@@ -134,6 +134,19 @@ function sortTeamPickerOptions(
   });
 }
 
+function appendTeamOption(
+  teamsByOrganizationId: Record<string, ScopeTeamOption[]>,
+  team: ScopeTeamOption,
+): void {
+  const currentTeams = teamsByOrganizationId[team.organizationId] ?? [];
+
+  if (currentTeams.some((currentTeam) => currentTeam.id === team.id)) {
+    return;
+  }
+
+  teamsByOrganizationId[team.organizationId] = [...currentTeams, team];
+}
+
 function uiCapabilitiesFromPickerMode(
   pickerMode: NavigationPickerMode,
 ): NavigationScopeUiCapabilities {
@@ -257,12 +270,6 @@ const loadNavigationBaseDataCached = cache(
       directTeamsByOrganizationId[team.organizationId].push(team);
     }
 
-    for (const [organizationId, teamOptions] of Object.entries(
-      directTeamsByOrganizationId,
-    )) {
-      directTeamsByOrganizationId[organizationId] = sortByName(teamOptions);
-    }
-
     const orgAdminIdSet = new Set(orgAdminIds);
     const orgIdsWithAllTeamsAccess = isSuperAdmin
       ? organizationOptions.map((organization) => organization.id)
@@ -271,22 +278,9 @@ const loadNavigationBaseDataCached = cache(
           .map((organization) => organization.id);
 
     const orgIdsWithAllTeamsAccessSet = new Set(orgIdsWithAllTeamsAccess);
-    const defaultTeamIdByOrganizationId: Record<string, NavigationTeamId> = {};
-
-    for (const organization of organizationOptions) {
-      if (orgIdsWithAllTeamsAccessSet.has(organization.id)) {
-        defaultTeamIdByOrganizationId[organization.id] = null;
-        continue;
-      }
-
-      const fallbackTeam = directTeamsByOrganizationId[organization.id]?.[0]?.id;
-      defaultTeamIdByOrganizationId[organization.id] =
-        fallbackTeam ?? null;
-    }
-
     const teamPickerRowsById = new Map<string, ScopeTeamPickerOption>();
 
-    if (pickerMode === "organization_admin" && orgIdsWithAllTeamsAccess.length > 0) {
+    if (orgIdsWithAllTeamsAccess.length > 0) {
       const { data: orgWideTeamRows, error: orgWideTeamsError } = await supabase
         .from("teams")
         .select("id, name, organization_id")
@@ -307,11 +301,31 @@ const loadNavigationBaseDataCached = cache(
           continue;
         }
 
+        appendTeamOption(directTeamsByOrganizationId, team);
         teamPickerRowsById.set(team.id, {
           ...team,
           organizationName,
         });
       }
+    }
+
+    for (const [organizationId, teamOptions] of Object.entries(
+      directTeamsByOrganizationId,
+    )) {
+      directTeamsByOrganizationId[organizationId] = sortByName(teamOptions);
+    }
+
+    const defaultTeamIdByOrganizationId: Record<string, NavigationTeamId> = {};
+
+    for (const organization of organizationOptions) {
+      if (orgIdsWithAllTeamsAccessSet.has(organization.id)) {
+        defaultTeamIdByOrganizationId[organization.id] = null;
+        continue;
+      }
+
+      const fallbackTeam = directTeamsByOrganizationId[organization.id]?.[0]?.id;
+      defaultTeamIdByOrganizationId[organization.id] =
+        fallbackTeam ?? null;
     }
 
     if (pickerMode === "organization_admin" || pickerMode === "team_member_multi") {

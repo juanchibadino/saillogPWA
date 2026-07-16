@@ -1156,7 +1156,11 @@ export function AppSidebar({
       </Sidebar>
 
       <Dialog open={pendingScopeSwitch !== null}>
-        <DialogContent showCloseButton={false}>
+        <DialogContent
+          showCloseButton={false}
+          forceOverlayRender
+          overlayClassName="bg-black/20 backdrop-blur-sm supports-backdrop-filter:backdrop-blur-sm"
+        >
           <DialogHeader>
             <DialogTitle>{pendingScopeSwitch?.title ?? "Changing Scope"}</DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground">
