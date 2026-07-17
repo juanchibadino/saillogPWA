@@ -24,6 +24,7 @@ import {
   normalizePlanTierCore,
   resolveForcedPlanTierOverrideCore,
   shouldHonorForcedFreePlanCore,
+  shouldDowngradePaidPlanToFreeCore,
 } from "./subscription-rules.mjs"
 
 type ServerSupabaseClient = SupabaseClient<Database>
@@ -195,9 +196,33 @@ function mapSubscriptionRow(
     }
   }
 
+  const normalizedPlanTier = normalizePlanTier(row.plan_tier as PlanTier | "olympic")
+
+  if (
+    shouldDowngradePaidPlanToFreeCore({
+      planTier: normalizedPlanTier,
+      subscriptionStatus: row.status,
+      currentPeriodEndAt: row.current_period_end_at,
+      now: new Date(),
+    })
+  ) {
+    return {
+      organizationId,
+      ...DEFAULT_FREE_SUBSCRIPTION,
+      paypalSubscriptionId: row.paypal_subscription_id,
+      paypalPlanId: row.paypal_plan_id,
+      polarCustomerId: row.polar_customer_id,
+      polarSubscriptionId: row.polar_subscription_id,
+      polarProductId: row.polar_product_id,
+      polarCheckoutId: row.polar_checkout_id,
+      polarStatus: row.polar_status,
+      cancelledAt: row.cancelled_at,
+    }
+  }
+
   return {
     organizationId,
-    planTier: normalizePlanTier(row.plan_tier as PlanTier | "olympic"),
+    planTier: normalizedPlanTier,
     billingCycle: row.billing_cycle,
     status: row.status,
     paypalSubscriptionId: row.paypal_subscription_id,
