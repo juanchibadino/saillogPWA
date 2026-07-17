@@ -4,6 +4,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server"
 import type { Database, Json } from "@/types/database"
 
 const TEAM_NOTES_PAGE_SIZE = 12
+const SUPABASE_IN_FILTER_BATCH_SIZE = 100
 const CONDITION_ITEM_KEYS = new Set(["tws", "twd", "sea_state", "conditions"])
 
 type TeamVenueRow = Pick<
@@ -204,6 +205,16 @@ function normalizeSearchQuery(value: string | undefined): string {
 
 function uniqueIds(values: string[]): string[] {
   return [...new Set(values)]
+}
+
+function chunkIds(ids: string[]): string[][] {
+  const chunks: string[][] = []
+
+  for (let index = 0; index < ids.length; index += SUPABASE_IN_FILTER_BATCH_SIZE) {
+    chunks.push(ids.slice(index, index + SUPABASE_IN_FILTER_BATCH_SIZE))
+  }
+
+  return chunks
 }
 
 function buildLocation(city: string, country: string): string {
@@ -481,36 +492,43 @@ export async function getTeamNotesPageData(input: {
     }
   }
 
-  let setupValues: SessionSetupItemValueRow[] = []
-  let selectedOptions: SessionSetupItemSelectedOptionRow[] = []
+  const setupValues: SessionSetupItemValueRow[] = []
+  const selectedOptions: SessionSetupItemSelectedOptionRow[] = []
 
   if (setupItemIds.length > 0) {
-    const { data: setupValueData, error: setupValuesError } = await supabase
-      .from("session_setup_item_values")
-      .select(SESSION_SETUP_ITEM_VALUE_SELECT_COLUMNS)
-      .in("session_id", sessionIds)
-      .in("team_setup_item_id", setupItemIds)
+    for (const sessionIdBatch of chunkIds(sessionIds)) {
+      const { data: setupValueData, error: setupValuesError } = await supabase
+        .from("session_setup_item_values")
+        .select(SESSION_SETUP_ITEM_VALUE_SELECT_COLUMNS)
+        .in("session_id", sessionIdBatch)
+        .in("team_setup_item_id", setupItemIds)
 
-    if (setupValuesError) {
-      throw new Error(`Could not load session setup values for notes: ${setupValuesError.message}`)
-    }
-
-    setupValues = setupValueData ?? []
-    const setupValueIds = setupValues.map((value) => value.id)
-
-    if (setupValueIds.length > 0) {
-      const { data: selectedOptionData, error: selectedOptionsError } = await supabase
-        .from("session_setup_item_selected_options")
-        .select(SESSION_SETUP_ITEM_SELECTED_OPTION_SELECT_COLUMNS)
-        .in("session_setup_item_value_id", setupValueIds)
-
-      if (selectedOptionsError) {
+      if (setupValuesError) {
         throw new Error(
-          `Could not load selected setup options for notes: ${selectedOptionsError.message}`,
+          `Could not load session setup values for notes: ${setupValuesError.message}`,
         )
       }
 
-      selectedOptions = selectedOptionData ?? []
+      setupValues.push(...(setupValueData ?? []))
+    }
+
+    const setupValueIds = setupValues.map((value) => value.id)
+
+    if (setupValueIds.length > 0) {
+      for (const setupValueIdBatch of chunkIds(setupValueIds)) {
+        const { data: selectedOptionData, error: selectedOptionsError } = await supabase
+          .from("session_setup_item_selected_options")
+          .select(SESSION_SETUP_ITEM_SELECTED_OPTION_SELECT_COLUMNS)
+          .in("session_setup_item_value_id", setupValueIdBatch)
+
+        if (selectedOptionsError) {
+          throw new Error(
+            `Could not load selected setup options for notes: ${selectedOptionsError.message}`,
+          )
+        }
+
+        selectedOptions.push(...(selectedOptionData ?? []))
+      }
     }
   }
 

@@ -102,7 +102,13 @@ type TeamMembershipRow = Pick<
 
 type ProfileRow = Pick<
   Database["public"]["Tables"]["profiles"]["Row"],
-  "id" | "first_name" | "last_name" | "email" | "photo_url" | "is_active"
+  | "id"
+  | "first_name"
+  | "last_name"
+  | "email"
+  | "photo_url"
+  | "is_active"
+  | "first_seen_at"
 >
 
 type VenueRow = Pick<
@@ -147,6 +153,7 @@ export type TeamHomeTeamMemberLive = {
   role: Database["public"]["Enums"]["team_role_type"]
   roleLabel: string
   avatarUrl: string | null
+  firstSeenAt: string | null
 }
 
 function buildVenueLocation(city: string, country: string): string {
@@ -655,7 +662,7 @@ export async function getTeamHomeTeamMembers(input: {
   const profileIds = uniqueIds(membershipRows.map((row) => row.profile_id))
   const { data: profileData, error: profileError } = await supabase
     .from("profiles")
-    .select("id,first_name,last_name,email,photo_url,is_active")
+    .select("id,first_name,last_name,email,photo_url,is_active,first_seen_at")
     .in("id", profileIds)
 
   if (profileError) {
@@ -679,6 +686,7 @@ export async function getTeamHomeTeamMembers(input: {
         role: membership.role,
         roleLabel: formatTeamRoleLabel(membership.role),
         avatarUrl: profile.photo_url,
+        firstSeenAt: profile.first_seen_at,
       }
     })
     .filter((row): row is TeamHomeTeamMemberLive => row !== null)

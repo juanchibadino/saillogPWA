@@ -505,6 +505,12 @@ export default async function Home() {
                 {item.label}
               </Link>
             ))}
+            <Link href="/privacy" className="hover:text-foreground">
+              Privacy
+            </Link>
+            <Link href="/terms" className="hover:text-foreground">
+              Terms
+            </Link>
             <Link href="/sign-in" className="hover:text-foreground">
               Sign in
             </Link>

@@ -8,7 +8,7 @@ import { completeOnboardingAction } from "@/features/onboarding/actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
-type CoachAnswer = "yes" | "no"
+type TeamRole = "team_admin" | "coach" | "crew"
 type TeamClass = "49er" | "49erFX" | "Laser" | "Nacra"
 
 type OnboardingFlowProps = {
@@ -22,6 +22,11 @@ const INITIAL_ONBOARDING_SUBMIT_STATE = {
 }
 
 const TEAM_CLASS_OPTIONS: TeamClass[] = ["49er", "49erFX", "Laser", "Nacra"]
+const TEAM_ROLE_OPTIONS: { value: TeamRole; label: string }[] = [
+  { value: "team_admin", label: "Team Admin" },
+  { value: "coach", label: "Coach" },
+  { value: "crew", label: "Crew" },
+]
 
 const WELCOME_STEP = 0
 const FIRST_NAME_STEP = 1
@@ -29,7 +34,7 @@ const LAST_NAME_STEP = 2
 const GREETING_STEP = 3
 const ORGANIZATION_STEP = 4
 const TEAM_STEP = 5
-const COACH_STEP = 6
+const TEAM_ROLE_STEP = 6
 const TEAM_CLASS_STEP = 7
 const FINAL_STEP = 8
 
@@ -71,7 +76,7 @@ export function OnboardingFlow({
   const [lastName, setLastName] = React.useState(initialLastName)
   const [organizationName, setOrganizationName] = React.useState("")
   const [teamName, setTeamName] = React.useState("")
-  const [coachAnswer, setCoachAnswer] = React.useState<CoachAnswer>("yes")
+  const [teamRole, setTeamRole] = React.useState<TeamRole>("team_admin")
   const [teamClass, setTeamClass] = React.useState<TeamClass>("49er")
   const [submitState, submitAction, isSubmitting] = React.useActionState(
     completeOnboardingAction,
@@ -96,8 +101,8 @@ export function OnboardingFlow({
       return trimValue(teamName).length > 0
     }
 
-    if (step === COACH_STEP) {
-      return coachAnswer === "yes" || coachAnswer === "no"
+    if (step === TEAM_ROLE_STEP) {
+      return TEAM_ROLE_OPTIONS.some((option) => option.value === teamRole)
     }
 
     if (step === TEAM_CLASS_STEP) {
@@ -105,7 +110,7 @@ export function OnboardingFlow({
     }
 
     return true
-  }, [coachAnswer, firstName, lastName, organizationName, step, teamClass, teamName])
+  }, [firstName, lastName, organizationName, step, teamClass, teamName, teamRole])
 
   const canGoBack = step > WELCOME_STEP
   const isFinalStep = step === FINAL_STEP
@@ -132,8 +137,8 @@ export function OnboardingFlow({
     handleNext()
   }
 
-  function handleCoachAnswerSelect(answer: CoachAnswer): void {
-    setCoachAnswer(answer)
+  function handleTeamRoleSelect(role: TeamRole): void {
+    setTeamRole(role)
     setStep(TEAM_CLASS_STEP)
   }
 
@@ -156,7 +161,7 @@ export function OnboardingFlow({
         return
       }
 
-      if (step === COACH_STEP) {
+      if (step === TEAM_ROLE_STEP) {
         return
       }
 
@@ -271,7 +276,7 @@ export function OnboardingFlow({
               {step === GREETING_STEP ? (
                 <div className="space-y-3">
                   <h2 className="text-6xl font-semibold tracking-tight">
-                    Hi, {trimValue(firstName) || "Sailog User"}.
+                    Hi, {trimValue(firstName) || "Dockout User"}.
                   </h2>
                   <p className="text-base text-white/80">
                     We&apos;ll set up your first organization and team.
@@ -311,36 +316,27 @@ export function OnboardingFlow({
                 </div>
               ) : null}
 
-              {step === COACH_STEP ? (
+              {step === TEAM_ROLE_STEP ? (
                 <div className="space-y-4">
                   <h2 className="text-3xl font-semibold tracking-tight">
-                    Are you also the team coach?
+                    What is your role on this team?
                   </h2>
 
                   <div className="flex flex-wrap gap-3">
-                    <button
-                      type="button"
-                      onClick={() => handleCoachAnswerSelect("yes")}
-                      className={`h-11 rounded-full border px-6 text-sm font-medium transition ${
-                        coachAnswer === "yes"
-                          ? "border-white bg-white text-black"
-                          : "border-white/30 bg-transparent text-white hover:border-white/60"
-                      }`}
-                    >
-                      Yes
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleCoachAnswerSelect("no")}
-                      className={`h-11 rounded-full border px-6 text-sm font-medium transition ${
-                        coachAnswer === "no"
-                          ? "border-white bg-white text-black"
-                          : "border-white/30 bg-transparent text-white hover:border-white/60"
-                      }`}
-                    >
-                      No
-                    </button>
+                    {TEAM_ROLE_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => handleTeamRoleSelect(option.value)}
+                        className={`h-11 rounded-full border px-6 text-sm font-medium transition ${
+                          teamRole === option.value
+                            ? "border-white bg-white text-black"
+                            : "border-white/30 bg-transparent text-white hover:border-white/60"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
               ) : null}
@@ -367,7 +363,7 @@ export function OnboardingFlow({
               ) : null}
             </div>
 
-            {step !== COACH_STEP ? (
+            {step !== TEAM_ROLE_STEP ? (
               <div className="mt-8">
                 <Button
                   type="submit"
@@ -393,7 +389,7 @@ export function OnboardingFlow({
                 value={trimValue(organizationName)}
               />
               <input type="hidden" name="teamName" value={trimValue(teamName)} />
-              <input type="hidden" name="isCoach" value={coachAnswer} />
+              <input type="hidden" name="teamRole" value={teamRole} />
               <input type="hidden" name="teamClass" value={teamClass} />
 
               <div className="space-y-3">
@@ -408,6 +404,10 @@ export function OnboardingFlow({
                   <span className="text-white/55">{trimValue(organizationName)}</span> and your{" "}
                   <span className="text-white/55">{teamClass}</span> team{" "}
                   <span className="text-white/55">{trimValue(teamName)}</span> will be created.
+                  Your team role will be{" "}
+                  <span className="text-white/55">
+                    {TEAM_ROLE_OPTIONS.find((option) => option.value === teamRole)?.label}
+                  </span>.
                 </p>
               </div>
 

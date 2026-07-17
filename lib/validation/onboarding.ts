@@ -7,7 +7,7 @@ export const onboardingFormInputSchema = z.object({
   lastName: requiredShortTextSchema,
   organizationName: requiredShortTextSchema,
   teamName: requiredShortTextSchema,
-  isCoach: z.enum(["yes", "no"]),
+  teamRole: z.enum(["team_admin", "coach", "crew"]),
   teamClass: z.enum(["49er", "49erFX", "Laser", "Nacra"]),
 })
 

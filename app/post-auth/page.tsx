@@ -9,9 +9,11 @@ import {
   NAVIGATION_SCOPE_TEAM_QUERY_KEY,
 } from "@/lib/navigation/constants";
 import { resolveNavigationScope } from "@/lib/navigation/scope";
-import { shouldTeamUserLandOnTeamHome } from "@/lib/auth/post-auth-route-state.mjs";
+import { resolvePostAuthLandingPath } from "@/lib/auth/post-auth-route-state.mjs";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-function buildTeamHomePath(input: {
+function buildScopedPath(input: {
+  path: string;
   activeOrgId: string;
   activeTeamId: string | null;
 }): string {
@@ -22,7 +24,34 @@ function buildTeamHomePath(input: {
     params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.activeTeamId);
   }
 
-  return `/team-home?${params.toString()}`;
+  return `${input.path}?${params.toString()}`;
+}
+
+function buildTeamHomePath(input: {
+  activeOrgId: string;
+  activeTeamId: string | null;
+}): string {
+  return buildScopedPath({
+    path: "/team-home",
+    activeOrgId: input.activeOrgId,
+    activeTeamId: input.activeTeamId,
+  });
+}
+
+async function markFirstSeenIfNeeded(input: {
+  userId: string;
+  firstSeenAt: string | null | undefined;
+}): Promise<void> {
+  if (input.firstSeenAt) {
+    return;
+  }
+
+  const supabase = await createServerSupabaseClient();
+  await supabase
+    .from("profiles")
+    .update({ first_seen_at: new Date().toISOString() })
+    .eq("id", input.userId)
+    .is("first_seen_at", null);
 }
 
 export default async function PostAuthPage() {
@@ -32,13 +61,18 @@ export default async function PostAuthPage() {
     redirect("/onboarding");
   }
 
-  if (
-    shouldTeamUserLandOnTeamHome({
-      globalRole: context.effectiveRoles.globalRole,
-      organizationRoles: context.effectiveRoles.organizationRoles,
-      teamRoles: context.effectiveRoles.teamRoles,
-    })
-  ) {
+  await markFirstSeenIfNeeded({
+    userId: context.user.id,
+    firstSeenAt: context.profile?.first_seen_at,
+  });
+
+  const landingPath = resolvePostAuthLandingPath({
+    globalRole: context.effectiveRoles.globalRole,
+    organizationRoles: context.effectiveRoles.organizationRoles,
+    teamRoles: context.effectiveRoles.teamRoles,
+  });
+
+  if (landingPath === "/team-home") {
     const navigation = await resolveNavigationScope({
       context,
       searchParams: {},
@@ -51,5 +85,20 @@ export default async function PostAuthPage() {
     redirect("/team-home");
   }
 
-  redirect("/dashboard");
+  const navigation = await resolveNavigationScope({
+    context,
+    searchParams: {},
+  });
+
+  if (navigation.scope) {
+    redirect(
+      buildScopedPath({
+        path: landingPath,
+        activeOrgId: navigation.scope.activeOrgId,
+        activeTeamId: navigation.scope.activeTeamId,
+      }),
+    );
+  }
+
+  redirect(landingPath);
 }

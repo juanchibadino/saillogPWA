@@ -32,6 +32,10 @@ type ResolvedUsersScope = NonNullable<
 type UsersChromeDataPromise = Promise<UsersChromeData>
 
 function getStatusMessage(status: string | undefined): string | null {
+  if (status === "invited") {
+    return "Invite created successfully."
+  }
+
   if (status === "created") {
     return "Member created successfully."
   }
@@ -57,11 +61,15 @@ function getErrorMessage(error: string | undefined): string | null {
   }
 
   if (error === "member_exists") {
-    return "This member already belongs to the selected team."
+    return "This member already has the selected access."
   }
 
   if (error === "create_failed") {
     return "Could not create member. Confirm the email and permissions, then try again."
+  }
+
+  if (error === "invite_email_failed") {
+    return "Access was created, but the invite email could not be sent."
   }
 
   if (error === "update_failed") {
@@ -128,6 +136,7 @@ async function UsersResultsContent(input: {
   try {
     resultsData = await getUsersResultsData({
       accumulatePages: input.requestedLoadMoreMode,
+      activeOrganizationId: input.scope.activeOrgId,
       page: input.requestedPage,
       selectedTeamId: input.chromeData.selectedTeamId,
       teamOptions: input.chromeData.teamOptions,

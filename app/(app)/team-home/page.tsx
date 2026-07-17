@@ -27,6 +27,8 @@ import {
   type TeamHomeLatestVenueLive,
   type TeamHomeTeamMemberLive,
 } from "@/features/team-home/data"
+import { TeamHomeFeedback } from "@/features/team-home/team-home-feedback"
+import { CreateCrewMemberDialog } from "@/features/users/user-form-dialogs"
 import {
   formatTeamHomeTimingError,
   logTeamHomeTiming,
@@ -36,6 +38,7 @@ import {
 } from "@/features/team-home/timing"
 import { buildVenueDetailHref } from "@/features/venues/navigation"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
+import { canManageTeamStructure } from "@/lib/auth/capabilities"
 import {
   NAVIGATION_SCOPE_ORG_QUERY_KEY,
   NAVIGATION_SCOPE_TEAM_QUERY_KEY,
@@ -142,6 +145,18 @@ function TeamHomeRoleBadge({ label }: { label: TeamMemberBadgeLabel }) {
   return (
     <span className="inline-flex shrink-0 items-center rounded-full border border-border bg-muted/60 px-2.5 py-1 text-xs font-medium leading-none text-muted-foreground">
       {label}
+    </span>
+  )
+}
+
+function TeamHomeInvitedBadge({ firstSeenAt }: { firstSeenAt: string | null }) {
+  if (firstSeenAt) {
+    return null
+  }
+
+  return (
+    <span className="inline-flex shrink-0 items-center rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium leading-none text-muted-foreground">
+      Invited
     </span>
   )
 }
@@ -273,12 +288,40 @@ function formatDurationLabel(minutes: number | null): string {
 }
 
 function getTeamHomeErrorMessage(error: string | undefined): string | null {
+  if (error === "invalid_input") {
+    return "The submitted member data is invalid. Review the form and try again."
+  }
+
+  if (error === "forbidden") {
+    return "You do not have permission to invite members to this team."
+  }
+
+  if (error === "member_exists") {
+    return "This member already has the selected access."
+  }
+
+  if (error === "create_failed") {
+    return "Could not create member access. Confirm the email and permissions, then try again."
+  }
+
+  if (error === "invite_email_failed") {
+    return "Access was created, but the invite email could not be sent."
+  }
+
   if (error === "plan_limit_reached") {
     return null
   }
 
   if (error === "payment_required") {
     return "Your paid plan is inactive. Recover payment in Subscription to continue."
+  }
+
+  return null
+}
+
+function getTeamHomeStatusMessage(status: string | undefined): string | null {
+  if (status === "invited") {
+    return "Invite created successfully."
   }
 
   return null
@@ -739,17 +782,41 @@ function TeamHomeSailingClassCard({
 }
 
 async function TeamHomeRosterSection({
+  activeTeamName,
+  canInviteMembers,
+  scope,
   teamMembersPromise,
 }: {
+  activeTeamName: string
+  canInviteMembers: boolean
+  scope: ActiveTeamHomeScope
   teamMembersPromise: Promise<TeamHomeTeamMemberLive[]>
 }) {
   const teamMembers = await teamMembersPromise
+  const teamOptions = [{ id: scope.activeTeamId, name: activeTeamName }]
 
   return (
     <GradientCard className="lg:col-span-3">
-      <CardHeader>
-        <CardTitle>Team Members</CardTitle>
-        <CardDescription>Coach and crew roster</CardDescription>
+      <CardHeader className="flex flex-row items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1.5">
+          <CardTitle>Team Members</CardTitle>
+          <CardDescription>Coach and crew roster</CardDescription>
+        </div>
+        {canInviteMembers ? (
+          <>
+            <div className="hidden shrink-0 md:block">
+              <CreateCrewMemberDialog
+                allowedInviteTargets="team"
+                disabled={false}
+                redirectTo="/team-home"
+                scope={scope}
+                selectedTeamId={scope.activeTeamId}
+                surface="sheet"
+                teamOptions={teamOptions}
+              />
+            </div>
+          </>
+        ) : null}
       </CardHeader>
       <CardContent>
         {teamMembers.length === 0 ? (
@@ -775,19 +842,38 @@ async function TeamHomeRosterSection({
                     </Avatar>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{person.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {person.roleLabel}
-                      </p>
+                      <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
+                        <p className="truncate text-xs text-muted-foreground">
+                          {person.roleLabel}
+                        </p>
+                        <TeamHomeInvitedBadge firstSeenAt={person.firstSeenAt} />
+                      </div>
                     </div>
                   </div>
 
-                  <TeamHomeRoleBadge label={badgeLabel} />
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                    <TeamHomeRoleBadge label={badgeLabel} />
+                  </div>
                 </li>
               )
             })}
           </ul>
         )}
       </CardContent>
+      {canInviteMembers ? (
+        <CardFooter className="md:hidden">
+          <CreateCrewMemberDialog
+            allowedInviteTargets="team"
+            disabled={false}
+            redirectTo="/team-home"
+            scope={scope}
+            selectedTeamId={scope.activeTeamId}
+            surface="drawer"
+            teamOptions={teamOptions}
+            triggerClassName="w-full"
+          />
+        </CardFooter>
+      ) : null}
     </GradientCard>
   )
 }
@@ -800,7 +886,9 @@ export default async function TeamHomePage({
   const scopeStartedAt = startTeamHomeTiming()
   const context = await requireAuthenticatedAccessContext()
   const resolvedSearchParams = await searchParams
+  const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
+  const teamHomeStatusMessage = getTeamHomeStatusMessage(status)
   const teamHomeErrorMessage = getTeamHomeErrorMessage(error)
 
   const navigation = await resolveNavigationScope({
@@ -832,16 +920,13 @@ export default async function TeamHomePage({
   }
 
   const scope = navigation.scope
-  const errorMessage = teamHomeErrorMessage ? (
-    <p className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-      {teamHomeErrorMessage}
-    </p>
-  ) : null
+  const statusMessage = teamHomeStatusMessage
+  const errorMessage = teamHomeErrorMessage
 
   if (scope.activeTeamId === null) {
     return (
       <div className="space-y-6">
-        {errorMessage}
+        <TeamHomeFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
         <FreeTierQuotaDialog organizationId={scope.activeOrgId} />
 
         <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
@@ -864,6 +949,11 @@ export default async function TeamHomePage({
     ) ?? null
   const activeTeamName = activeTeam?.name ?? "No team selected"
   const activeTeamId = activeTeamScope.activeTeamId
+  const canInviteTeamMembers = canManageTeamStructure({
+    context,
+    organizationId: scope.activeOrgId,
+    teamId: activeTeamId,
+  })
   const teamSessionsHref = buildScopedHref("/team-sessions", activeTeamScope)
   const teamCampsHref = buildScopedHref("/team-camps", activeTeamScope)
   const teamVenuesHref = buildScopedHref("/team-venues", activeTeamScope)
@@ -954,7 +1044,7 @@ export default async function TeamHomePage({
 
   return (
     <div className="space-y-6">
-      {errorMessage}
+      <TeamHomeFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
       <FreeTierQuotaDialog organizationId={scope.activeOrgId} teamId={activeTeamId} />
 
       <Suspense fallback={<TeamHomeKpiCardsSkeleton />}>
@@ -991,7 +1081,12 @@ export default async function TeamHomePage({
         />
 
         <Suspense fallback={<TeamHomeRosterSkeleton />}>
-          <TeamHomeRosterSection teamMembersPromise={teamMembersPromise} />
+          <TeamHomeRosterSection
+            activeTeamName={activeTeamName}
+            canInviteMembers={canInviteTeamMembers}
+            scope={activeTeamScope}
+            teamMembersPromise={teamMembersPromise}
+          />
         </Suspense>
       </div>
     </div>

@@ -13,7 +13,7 @@ export default async function OnboardingPage() {
     context.organizationMemberships.length > 0 || context.teamMemberships.length > 0
 
   if (hasAppAccess(context) || hasAnyMembership) {
-    redirect("/dashboard")
+    redirect("/post-auth")
   }
 
   const firstName = trimValue(context.profile?.first_name)

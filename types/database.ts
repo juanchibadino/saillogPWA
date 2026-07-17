@@ -20,6 +20,7 @@ export type Database = {
           is_active: boolean;
           is_profile_complete: boolean;
           profile_completed_at: string | null;
+          first_seen_at: string | null;
           onboarding_stage: number;
           onboarding_draft: Json;
           legacy_glide_row_id: string | null;
@@ -36,6 +37,7 @@ export type Database = {
           is_active?: boolean;
           is_profile_complete?: boolean;
           profile_completed_at?: string | null;
+          first_seen_at?: string | null;
           onboarding_stage?: number;
           onboarding_draft?: Json;
           legacy_glide_row_id?: string | null;
@@ -51,6 +53,7 @@ export type Database = {
           is_active?: boolean;
           is_profile_complete?: boolean;
           profile_completed_at?: string | null;
+          first_seen_at?: string | null;
           onboarding_stage?: number;
           onboarding_draft?: Json;
           legacy_glide_row_id?: string | null;

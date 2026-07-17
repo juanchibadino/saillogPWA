@@ -131,14 +131,14 @@ export default async function SetPasswordPage({
           </form>
 
           <Link
-            href="/dashboard"
+            href="/post-auth"
             className={buttonVariants({
               variant: "link",
               size: "sm",
               className: "h-auto px-0 text-xs",
             })}
           >
-            Back to dashboard
+            Back to Dockout
           </Link>
         </CardContent>
       </Card>

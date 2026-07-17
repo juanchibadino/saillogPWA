@@ -3,9 +3,13 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
-import { buildUsersRedirectPath } from "@/features/users/list-route-state.mjs"
+import { resolveMemberInviteTarget } from "@/features/users/invite-rules.mjs"
+import {
+  buildUsersRedirectPath as buildUsersListRedirectPath,
+} from "@/features/users/list-route-state.mjs"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageOrganizationOperations } from "@/lib/auth/capabilities"
+import { resolveCurrentRequestOrigin } from "@/lib/http/request-origin"
 import { createAdminSupabaseClient } from "@/lib/supabase/admin"
 import { scopeFormInputSchema } from "@/lib/validation/navigation"
 import {
@@ -31,6 +35,7 @@ function getScopeFromFormData(formData: FormData): {
   scopeUsersTeamId?: string
   scopePage?: number
   scopeLoadMoreMode?: boolean
+  redirectTo?: string
 } {
   const parsedScope = scopeFormInputSchema.safeParse({
     scopeOrgId: getFormString(formData, "scopeOrgId"),
@@ -46,12 +51,18 @@ function getScopeFromFormData(formData: FormData): {
       ? Math.floor(parsedScopePage)
       : undefined
   const scopeLoadMoreMode = getFormString(formData, "scopeLoadMoreMode") === "1"
+  const redirectToValue = getFormString(formData, "redirectTo")
+  const redirectTo =
+    redirectToValue === "/team-home" || redirectToValue === "/users"
+      ? redirectToValue
+      : undefined
 
   if (!parsedScope.success) {
     return {
       scopeUsersTeamId,
       scopePage,
       scopeLoadMoreMode,
+      redirectTo,
     }
   }
 
@@ -60,7 +71,50 @@ function getScopeFromFormData(formData: FormData): {
     scopeUsersTeamId,
     scopePage,
     scopeLoadMoreMode,
+    redirectTo,
   }
+}
+
+function buildMemberMutationRedirectPath(input: {
+  error?: string
+  redirectTo?: string
+  scopeLoadMoreMode?: boolean
+  scopeOrgId?: string
+  scopePage?: number
+  scopeTeamId?: string
+  scopeUsersTeamId?: string
+  status?: string
+}): string {
+  if (input.redirectTo !== "/team-home") {
+    return buildUsersListRedirectPath(input)
+  }
+
+  const params = new URLSearchParams()
+
+  if (input.status) {
+    params.set("status", input.status)
+  }
+
+  if (input.error) {
+    params.set("error", input.error)
+  }
+
+  if (input.scopeOrgId) {
+    params.set("org", input.scopeOrgId)
+  }
+
+  if (input.scopeTeamId) {
+    params.set("team", input.scopeTeamId)
+  }
+
+  const query = params.toString()
+  return query.length > 0 ? `/team-home?${query}` : "/team-home"
+}
+
+function buildUsersRedirectPath(
+  input: Parameters<typeof buildMemberMutationRedirectPath>[0],
+): string {
+  return buildMemberMutationRedirectPath(input)
 }
 
 function normalizeAvatarUrl(value: string | undefined): string | null {
@@ -96,13 +150,29 @@ type AdminSupabaseClient = ReturnType<typeof createAdminSupabaseClient>
 
 type ProfileLookupRow = Pick<
   Database["public"]["Tables"]["profiles"]["Row"],
-  "id" | "email"
+  "id" | "email" | "first_seen_at"
 >
 
 type MembershipLookupRow = Pick<
   Database["public"]["Tables"]["team_memberships"]["Row"],
   "id" | "role" | "is_active"
 >
+
+type EnsureCrewMemberProfileResult =
+  | {
+      cleanupAuthUserId: string | null
+      profileId: string
+      shouldSendInviteEmail: boolean
+      status: "ok"
+    }
+  | {
+      error: "create_failed" | "invite_email_failed"
+      status: "error"
+    }
+
+type SupabaseInviteEmailResult = {
+  userId: string | null
+}
 
 async function resolveScopedMembership(input: {
   membershipId: string
@@ -170,7 +240,7 @@ async function getProfileByEmail(input: {
 }): Promise<ProfileLookupRow | null> {
   const { data, error } = await input.adminSupabase
     .from("profiles")
-    .select("id,email")
+    .select("id,email,first_seen_at")
     .ilike("email", input.email)
     .limit(20)
 
@@ -191,37 +261,46 @@ async function ensureCrewMemberProfile(input: {
   firstName: string
   lastName: string
   avatarUrl: string | null
-}): Promise<string | null> {
+  role: string
+}): Promise<EnsureCrewMemberProfileResult> {
   const existingProfile = await getProfileByEmail({
     adminSupabase: input.adminSupabase,
     email: input.email,
   })
 
   if (existingProfile) {
-    return existingProfile.id
+    return {
+      cleanupAuthUserId: null,
+      profileId: existingProfile.id,
+      shouldSendInviteEmail: !existingProfile.first_seen_at,
+      status: "ok",
+    }
   }
 
-  const { data, error } = await input.adminSupabase.auth.admin.createUser({
+  const inviteResult = await sendSupabaseInviteEmail({
+    adminSupabase: input.adminSupabase,
     email: input.email,
-    email_confirm: true,
-    user_metadata: buildUserNameMetadata({
-      firstName: input.firstName,
-      lastName: input.lastName,
-    }),
+    firstName: input.firstName,
+    lastName: input.lastName,
+    role: input.role,
   })
 
-  if (error || !data.user) {
-    return null
+  if (!inviteResult?.userId) {
+    return {
+      error: "invite_email_failed",
+      status: "error",
+    }
   }
 
   const { error: profileUpsertError } = await input.adminSupabase
     .from("profiles")
     .upsert(
       {
-        id: data.user.id,
+        id: inviteResult.userId,
         email: input.email,
         first_name: input.firstName,
         last_name: input.lastName,
+        first_seen_at: null,
         photo_url: input.avatarUrl,
         is_active: true,
       },
@@ -231,10 +310,23 @@ async function ensureCrewMemberProfile(input: {
     )
 
   if (profileUpsertError) {
-    return null
+    await cleanupInvitedAuthUser({
+      adminSupabase: input.adminSupabase,
+      authUserId: inviteResult.userId,
+    })
+
+    return {
+      error: "create_failed",
+      status: "error",
+    }
   }
 
-  return data.user.id
+  return {
+    cleanupAuthUserId: inviteResult.userId,
+    profileId: inviteResult.userId,
+    shouldSendInviteEmail: false,
+    status: "ok",
+  }
 }
 
 async function syncCrewMemberProfile(input: {
@@ -294,6 +386,76 @@ async function getTeamMembershipsForProfile(input: {
   return data ?? []
 }
 
+async function getOrganizationMembershipForProfile(input: {
+  adminSupabase: AdminSupabaseClient
+  organizationId: string
+  profileId: string
+}): Promise<{ id: string } | null> {
+  const { data, error } = await input.adminSupabase
+    .from("organization_memberships")
+    .select("id")
+    .eq("organization_id", input.organizationId)
+    .eq("profile_id", input.profileId)
+    .eq("role", "organization_admin")
+    .maybeSingle()
+
+  if (error) {
+    return null
+  }
+
+  return data
+}
+
+async function buildInviteRedirectTo(): Promise<string> {
+  const origin = await resolveCurrentRequestOrigin()
+  const callbackUrl = new URL("/auth/callback", origin)
+  callbackUrl.searchParams.set("next", "/post-auth")
+
+  return callbackUrl.toString()
+}
+
+async function sendSupabaseInviteEmail(input: {
+  adminSupabase: AdminSupabaseClient
+  email: string
+  firstName: string
+  lastName: string
+  role: string
+}): Promise<SupabaseInviteEmailResult | null> {
+  const redirectTo = await buildInviteRedirectTo()
+  const { data, error } = await input.adminSupabase.auth.admin.inviteUserByEmail(
+    input.email,
+    {
+      redirectTo,
+      data: {
+        ...buildUserNameMetadata({
+          firstName: input.firstName,
+          lastName: input.lastName,
+        }),
+        invited_role: input.role,
+      },
+    },
+  )
+
+  if (error) {
+    return null
+  }
+
+  return {
+    userId: data.user?.id ?? null,
+  }
+}
+
+async function cleanupInvitedAuthUser(input: {
+  adminSupabase: AdminSupabaseClient
+  authUserId: string | null
+}): Promise<void> {
+  if (!input.authUserId) {
+    return
+  }
+
+  await input.adminSupabase.auth.admin.deleteUser(input.authUserId)
+}
+
 export async function createCrewMemberAction(formData: FormData): Promise<void> {
   const context = await requireAuthenticatedAccessContext()
   const scope = getScopeFromFormData(formData)
@@ -324,18 +486,34 @@ export async function createCrewMemberAction(formData: FormData): Promise<void> 
     )
   }
 
-  const validTargetTeam = await isValidTargetTeam({
-    scopeOrgId: scope.scopeOrgId,
+  const inviteTarget = resolveMemberInviteTarget({
+    role: parsedInput.data.role,
     teamId: parsedInput.data.teamId,
   })
 
-  if (!validTargetTeam) {
+  if (!inviteTarget) {
     redirect(
       buildUsersRedirectPath({
         error: "invalid_input",
         ...scope,
       }),
     )
+  }
+
+  if (inviteTarget.kind === "team") {
+    const validTargetTeam = await isValidTargetTeam({
+      scopeOrgId: scope.scopeOrgId,
+      teamId: inviteTarget.teamId,
+    })
+
+    if (!validTargetTeam) {
+      redirect(
+        buildUsersRedirectPath({
+          error: "invalid_input",
+          ...scope,
+        }),
+      )
+    }
   }
 
   let adminSupabase: AdminSupabaseClient
@@ -351,15 +529,16 @@ export async function createCrewMemberAction(formData: FormData): Promise<void> 
   }
 
   const avatarUrl = normalizeAvatarUrl(parsedInput.data.avatarUrl)
-  let profileId: string | null = null
+  let profileResult: EnsureCrewMemberProfileResult | null = null
 
   try {
-    profileId = await ensureCrewMemberProfile({
+    profileResult = await ensureCrewMemberProfile({
       adminSupabase,
       email: parsedInput.data.email,
       firstName: parsedInput.data.firstName,
       lastName: parsedInput.data.lastName,
       avatarUrl,
+      role: parsedInput.data.role,
     })
   } catch {
     redirect(
@@ -370,10 +549,26 @@ export async function createCrewMemberAction(formData: FormData): Promise<void> 
     )
   }
 
-  if (!profileId) {
+  if (!profileResult || profileResult.status === "error") {
     redirect(
       buildUsersRedirectPath({
-        error: "create_failed",
+        error: profileResult?.status === "error" ? profileResult.error : "create_failed",
+        ...scope,
+      }),
+    )
+  }
+
+  const profileId = profileResult.profileId
+  const cleanupAuthUserId = profileResult.cleanupAuthUserId
+  async function redirectAfterProvisioningFailure(error: string): Promise<never> {
+    await cleanupInvitedAuthUser({
+      adminSupabase,
+      authUserId: cleanupAuthUserId,
+    })
+
+    redirect(
+      buildUsersRedirectPath({
+        error,
         ...scope,
       }),
     )
@@ -389,94 +584,113 @@ export async function createCrewMemberAction(formData: FormData): Promise<void> 
   })
 
   if (!syncedProfile) {
-    redirect(
-      buildUsersRedirectPath({
-        error: "create_failed",
-        ...scope,
-      }),
-    )
+    await redirectAfterProvisioningFailure("create_failed")
   }
 
-  const existingMemberships = await getTeamMembershipsForProfile({
-    adminSupabase,
-    teamId: parsedInput.data.teamId,
-    profileId,
-  })
+  if (inviteTarget.kind === "organization") {
+    const existingOrganizationMembership = await getOrganizationMembershipForProfile({
+      adminSupabase,
+      organizationId: scope.scopeOrgId,
+      profileId,
+    })
 
-  if (!existingMemberships) {
-    redirect(
-      buildUsersRedirectPath({
-        error: "create_failed",
-        ...scope,
-      }),
-    )
-  }
+    if (existingOrganizationMembership) {
+      await redirectAfterProvisioningFailure("member_exists")
+    }
 
-  const activeMembership = existingMemberships.find(
-    (membership) => membership.is_active,
-  )
-
-  if (activeMembership) {
-    redirect(
-      buildUsersRedirectPath({
-        error: "member_exists",
-        ...scope,
-      }),
-    )
-  }
-
-  const reusableMembership = existingMemberships.find(
-    (membership) =>
-      !membership.is_active && membership.role === parsedInput.data.role,
-  )
-  const joinedAt = new Date().toISOString()
-
-  if (reusableMembership) {
-    const { error: membershipUpdateError } = await adminSupabase
-      .from("team_memberships")
-      .update({
-        is_active: true,
-        joined_at: joinedAt,
-        left_at: null,
+    const { error: organizationMembershipInsertError } = await adminSupabase
+      .from("organization_memberships")
+      .insert({
+        organization_id: scope.scopeOrgId,
+        profile_id: profileId,
+        role: "organization_admin",
       })
-      .eq("id", reusableMembership.id)
 
-    if (membershipUpdateError) {
-      redirect(
-        buildUsersRedirectPath({
-          error: "create_failed",
-          ...scope,
-        }),
-      )
+    if (organizationMembershipInsertError) {
+      await redirectAfterProvisioningFailure("create_failed")
     }
   } else {
-    const { error: membershipInsertError } = await adminSupabase
-      .from("team_memberships")
-      .insert({
-        team_id: parsedInput.data.teamId,
-        profile_id: profileId,
-        role: parsedInput.data.role,
-        is_active: true,
-        joined_at: joinedAt,
-        left_at: null,
-      })
+    const existingMemberships = await getTeamMembershipsForProfile({
+      adminSupabase,
+      teamId: inviteTarget.teamId,
+      profileId,
+    })
 
-    if (membershipInsertError) {
-      redirect(
-        buildUsersRedirectPath({
-          error: "create_failed",
-          ...scope,
-        }),
-      )
+    if (!existingMemberships) {
+      await redirectAfterProvisioningFailure("create_failed")
+    }
+
+    const resolvedMemberships = existingMemberships ?? []
+    const activeMembership = resolvedMemberships.find(
+      (membership) => membership.is_active,
+    )
+
+    if (activeMembership) {
+      await redirectAfterProvisioningFailure("member_exists")
+    }
+
+    const reusableMembership = resolvedMemberships.find(
+      (membership) =>
+        !membership.is_active && membership.role === inviteTarget.teamRole,
+    )
+    const joinedAt = new Date().toISOString()
+
+    if (reusableMembership) {
+      const { error: membershipUpdateError } = await adminSupabase
+        .from("team_memberships")
+        .update({
+          is_active: true,
+          joined_at: joinedAt,
+          left_at: null,
+        })
+        .eq("id", reusableMembership.id)
+
+      if (membershipUpdateError) {
+        await redirectAfterProvisioningFailure("create_failed")
+      }
+    } else {
+      const { error: membershipInsertError } = await adminSupabase
+        .from("team_memberships")
+        .insert({
+          team_id: inviteTarget.teamId,
+          profile_id: profileId,
+          role: inviteTarget.teamRole,
+          is_active: true,
+          joined_at: joinedAt,
+          left_at: null,
+        })
+
+      if (membershipInsertError) {
+        await redirectAfterProvisioningFailure("create_failed")
+      }
     }
   }
 
   revalidatePath("/users")
   revalidatePath("/team-home")
 
+  if (profileResult.shouldSendInviteEmail) {
+    const inviteEmailResult = await sendSupabaseInviteEmail({
+      adminSupabase,
+      email: parsedInput.data.email,
+      firstName: parsedInput.data.firstName,
+      lastName: parsedInput.data.lastName,
+      role: parsedInput.data.role,
+    })
+
+    if (!inviteEmailResult) {
+      redirect(
+        buildUsersRedirectPath({
+          error: "invite_email_failed",
+          ...scope,
+        }),
+      )
+    }
+  }
+
   redirect(
     buildUsersRedirectPath({
-      status: "created",
+      status: "invited",
       ...scope,
     }),
   )

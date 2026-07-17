@@ -9,7 +9,10 @@ import {
   deleteCrewMemberAction,
   updateCrewMemberAction,
 } from "@/features/users/actions"
-import type { CrewListItem, CrewTeamOption } from "@/features/users/data"
+import type {
+  CrewTeamOption,
+  TeamCrewListItem,
+} from "@/features/users/data"
 import type { NavigationScope } from "@/lib/navigation/types"
 import { cn } from "@/lib/utils"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -38,12 +41,15 @@ import {
 
 type CrewMemberFormSurface = "drawer" | "sheet"
 type CrewMemberFormMode = "create" | "edit"
+type TeamRole = TeamCrewListItem["role"]
+type InviteRole = TeamRole | "organization_admin"
+type InviteTargetMode = "all" | "team"
 
 type CrewMemberFormValues = {
   email?: string
   firstName: string
   lastName: string
-  role: CrewListItem["role"]
+  role: InviteRole
   teamId: string
   avatarUrl: string
 }
@@ -66,11 +72,13 @@ function getDefaultTeamId(
 function UsersScopeHiddenInputs({
   currentPage,
   loadMoreMode,
+  redirectTo,
   scope,
   selectedTeamId,
 }: {
   currentPage?: number
   loadMoreMode?: boolean
+  redirectTo?: "/team-home" | "/users"
   scope: NavigationScope
   selectedTeamId?: string
 }) {
@@ -88,6 +96,9 @@ function UsersScopeHiddenInputs({
       ) : null}
       {loadMoreMode === true && typeof currentPage === "number" && currentPage > 1 ? (
         <input type="hidden" name="scopeLoadMoreMode" value="1" />
+      ) : null}
+      {redirectTo ? (
+        <input type="hidden" name="redirectTo" value={redirectTo} />
       ) : null}
     </>
   )
@@ -180,24 +191,28 @@ function CrewMemberDialogFooter({
 
 function CrewMemberDialogForm({
   action,
+  allowedInviteTargets,
   crew,
   currentPage,
   idPrefix,
   initialValues,
   loadMoreMode,
   mode,
+  redirectTo,
   scope,
   selectedTeamId,
   surface,
   teamOptions,
 }: {
   action: (formData: FormData) => void | Promise<void>
-  crew?: CrewListItem
+  allowedInviteTargets: InviteTargetMode
+  crew?: TeamCrewListItem
   currentPage?: number
   idPrefix: string
   initialValues: CrewMemberFormValues
   loadMoreMode?: boolean
   mode: CrewMemberFormMode
+  redirectTo?: "/team-home" | "/users"
   scope: NavigationScope
   selectedTeamId?: string
   surface: CrewMemberFormSurface
@@ -206,19 +221,23 @@ function CrewMemberDialogForm({
   const [email, setEmail] = React.useState(initialValues.email ?? "")
   const [firstName, setFirstName] = React.useState(initialValues.firstName)
   const [lastName, setLastName] = React.useState(initialValues.lastName)
-  const [role, setRole] = React.useState<CrewListItem["role"]>(
-    initialValues.role,
-  )
+  const [role, setRole] = React.useState<InviteRole>(initialValues.role)
   const [teamId, setTeamId] = React.useState(initialValues.teamId)
   const [avatarUrl, setAvatarUrl] = React.useState(initialValues.avatarUrl)
 
   const isDrawerSurface = surface === "drawer"
+  const isOrganizationInvite = mode === "create" && role === "organization_admin"
+  const canSelectOrganizationInvite = mode === "create" && allowedInviteTargets === "all"
+  const shouldHideTeamSelect =
+    mode === "create" &&
+    allowedInviteTargets === "team" &&
+    teamOptions.length === 1
   const canSubmit =
     (mode === "edit" || email.trim().length > 0) &&
     normalizeNameInput(firstName).length > 0 &&
     normalizeNameInput(lastName).length > 0 &&
     role.length > 0 &&
-    teamId.length > 0
+    (isOrganizationInvite || teamId.length > 0)
   const inputClassName = isDrawerSurface ? "h-11 px-3 text-base md:text-sm" : undefined
   const selectClassName = cn(
     "w-full rounded-lg border border-input bg-background outline-none ring-ring/50 focus-visible:ring-[3px]",
@@ -236,9 +255,13 @@ function CrewMemberDialogForm({
       <UsersScopeHiddenInputs
         currentPage={currentPage}
         loadMoreMode={loadMoreMode}
+        redirectTo={redirectTo}
         scope={scope}
         selectedTeamId={selectedTeamId}
       />
+      {shouldHideTeamSelect ? (
+        <input type="hidden" name="teamId" value={teamId} />
+      ) : null}
 
       <CrewMemberDialogFieldset className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {mode === "create" ? (
@@ -290,33 +313,45 @@ function CrewMemberDialogForm({
               required
               value={role}
               onChange={(event) => {
-                setRole(event.target.value as CrewListItem["role"])
+                const nextRole = event.target.value as InviteRole
+                setRole(nextRole)
+
+                if (nextRole === "organization_admin") {
+                  setTeamId("")
+                } else if (!teamId) {
+                  setTeamId(getDefaultTeamId(teamOptions, selectedTeamId))
+                }
               }}
               className={selectClassName}
             >
+              {canSelectOrganizationInvite ? (
+                <option value="organization_admin">Organization Admin</option>
+              ) : null}
               <option value="team_admin">Team Admin</option>
               <option value="coach">Coach</option>
               <option value="crew">Crew</option>
             </select>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor={`${idPrefix}-team`}>Team</Label>
-            <select
-              id={`${idPrefix}-team`}
-              name="teamId"
-              required
-              value={teamId}
-              onChange={(event) => setTeamId(event.target.value)}
-              className={selectClassName}
-            >
-              {teamOptions.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {!isOrganizationInvite && !shouldHideTeamSelect ? (
+            <div className="space-y-2">
+              <Label htmlFor={`${idPrefix}-team`}>Team</Label>
+              <select
+                id={`${idPrefix}-team`}
+                name="teamId"
+                required
+                value={teamId}
+                onChange={(event) => setTeamId(event.target.value)}
+                className={selectClassName}
+              >
+                {teamOptions.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
         </div>
 
         <div className="space-y-2">
@@ -335,8 +370,8 @@ function CrewMemberDialogForm({
 
       <CrewMemberDialogFooter
         canSubmit={canSubmit}
-        pendingLabel={mode === "create" ? "Creating..." : "Saving..."}
-        submitLabel={mode === "create" ? "Create member" : "Save"}
+        pendingLabel={mode === "create" ? "Inviting..." : "Saving..."}
+        submitLabel={mode === "create" ? "Invite member" : "Save"}
         surface={surface}
       />
     </form>
@@ -344,33 +379,41 @@ function CrewMemberDialogForm({
 }
 
 export function CreateCrewMemberDialog({
+  allowedInviteTargets = "all",
   currentPage,
   disabled,
   loadMoreMode,
+  redirectTo,
   scope,
   selectedTeamId,
   surface = "sheet",
   teamOptions,
+  triggerClassName,
   triggerVariant = "default",
 }: {
+  allowedInviteTargets?: InviteTargetMode
   currentPage?: number
   disabled: boolean
   loadMoreMode?: boolean
+  redirectTo?: "/team-home" | "/users"
   scope: NavigationScope
   selectedTeamId?: string
   surface?: CrewMemberFormSurface
   teamOptions: CrewTeamOption[]
+  triggerClassName?: string
   triggerVariant?: "default" | "fab"
 }) {
   const [open, setOpen] = React.useState(false)
   const [formResetKey, setFormResetKey] = React.useState(0)
   const defaultTeamId = getDefaultTeamId(teamOptions, selectedTeamId)
   const isFabTrigger = triggerVariant === "fab"
-  const isDisabled = disabled || teamOptions.length === 0
+  const isDisabled =
+    disabled || (allowedInviteTargets === "team" && teamOptions.length === 0)
   const createForm = (
     <CrewMemberDialogForm
       key={formResetKey}
       action={createCrewMemberAction}
+      allowedInviteTargets={allowedInviteTargets}
       currentPage={currentPage}
       idPrefix={`create-crew-${surface}`}
       initialValues={{
@@ -383,6 +426,7 @@ export function CreateCrewMemberDialog({
       }}
       loadMoreMode={loadMoreMode}
       mode="create"
+      redirectTo={redirectTo}
       scope={scope}
       selectedTeamId={selectedTeamId}
       surface={surface}
@@ -401,7 +445,7 @@ export function CreateCrewMemberDialog({
         <button
           type="button"
           disabled={isDisabled}
-          aria-label={isFabTrigger ? "New member" : undefined}
+          aria-label={isFabTrigger ? "Invite member" : undefined}
           aria-haspopup="dialog"
           aria-expanded={open}
           className={cn(
@@ -412,16 +456,17 @@ export function CreateCrewMemberDialog({
             isFabTrigger
               ? "mobile-floating-action size-14 rounded-full shadow-lg shadow-black/20 md:hidden"
               : "h-11 px-3",
+            triggerClassName,
           )}
           onClick={openCreateSurface}
         >
           <PlusIcon className={isFabTrigger ? "size-6" : "size-4"} />
-          {isFabTrigger ? <span className="sr-only">New member</span> : "New"}
+          {isFabTrigger ? <span className="sr-only">Invite member</span> : "Invite"}
         </button>
 
         <DrawerContent className="flex h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
           <DrawerHeader className="shrink-0 border-b px-4 text-left">
-            <DrawerTitle>Create member</DrawerTitle>
+            <DrawerTitle>Invite member</DrawerTitle>
           </DrawerHeader>
           {createForm}
         </DrawerContent>
@@ -440,14 +485,14 @@ export function CreateCrewMemberDialog({
         onClick={openCreateSurface}
       >
         <PlusIcon className="size-4" />
-        New
+        Invite
       </button>
       <SheetContent
         side="right"
         className="flex h-full flex-col gap-0 overflow-hidden sm:max-w-xl"
       >
         <SheetHeader className="shrink-0 border-b">
-          <SheetTitle>Create member</SheetTitle>
+          <SheetTitle>Invite member</SheetTitle>
         </SheetHeader>
         {createForm}
       </SheetContent>
@@ -466,7 +511,7 @@ function EditCrewSurface({
   surface,
   teamOptions,
 }: {
-  crew: CrewListItem
+  crew: TeamCrewListItem
   currentPage?: number
   loadMoreMode?: boolean
   open: boolean
@@ -481,6 +526,7 @@ function EditCrewSurface({
     <CrewMemberDialogForm
       key={formResetKey}
       action={updateCrewMemberAction}
+      allowedInviteTargets="team"
       crew={crew}
       currentPage={currentPage}
       idPrefix={`edit-crew-${crew.membershipId}-${surface}`}
@@ -613,7 +659,7 @@ function DeleteCrewForm({
   surface,
 }: {
   currentPage?: number
-  crew: CrewListItem
+  crew: TeamCrewListItem
   loadMoreMode?: boolean
   onCancel: () => void
   scope: NavigationScope
@@ -655,7 +701,7 @@ function DeleteCrewSurface({
   selectedTeamId,
   surface,
 }: {
-  crew: CrewListItem
+  crew: TeamCrewListItem
   currentPage?: number
   loadMoreMode?: boolean
   open: boolean
@@ -714,7 +760,7 @@ export function CrewActionsMenu({
   teamOptions,
   triggerClassName,
 }: {
-  crew: CrewListItem
+  crew: TeamCrewListItem
   currentPage?: number
   loadMoreMode?: boolean
   scope: NavigationScope

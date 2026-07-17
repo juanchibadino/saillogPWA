@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import {
@@ -54,6 +55,10 @@ function getErrorMessage(error: string | undefined): string | null {
     return "The sign-in link could not be verified. Request a new one.";
   }
 
+  if (error === "google_failed") {
+    return "Google sign-in is not available right now. Try email instead.";
+  }
+
   return null;
 }
 
@@ -101,6 +106,23 @@ export default async function SignInPage({
             statusMessage={statusMessage}
             errorMessage={errorMessage}
           />
+          <p className="text-center text-xs leading-5 text-muted-foreground">
+            By continuing, you agree to the{" "}
+            <Link
+              href="/terms"
+              className="font-medium text-foreground underline-offset-4 hover:underline"
+            >
+              Terms of Service
+            </Link>{" "}
+            and acknowledge the{" "}
+            <Link
+              href="/privacy"
+              className="font-medium text-foreground underline-offset-4 hover:underline"
+            >
+              Privacy Policy
+            </Link>
+            .
+          </p>
         </CardContent>
       </Card>
     </main>

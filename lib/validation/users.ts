@@ -6,22 +6,45 @@ const requiredEmailSchema = z.string().trim().email().max(320).toLowerCase()
 const optionalAvatarUrlSchema = z
   .union([z.string().trim().url().max(2048), z.literal("")])
   .optional()
+const optionalTeamIdSchema = z.union([z.string().uuid(), z.literal("")]).optional()
 
-export const createCrewMemberInputSchema = z.object({
-  email: requiredEmailSchema,
-  firstName: requiredNameSchema,
-  lastName: requiredNameSchema,
-  role: z.enum(["team_admin", "coach", "crew"]),
-  teamId: z.string().uuid(),
-  avatarUrl: optionalAvatarUrlSchema,
-})
+const inviteRoleSchema = z.enum([
+  "organization_admin",
+  "team_admin",
+  "coach",
+  "crew",
+])
+const teamRoleSchema = z.enum(["team_admin", "coach", "crew"])
+
+export const createCrewMemberInputSchema = z
+  .object({
+    email: requiredEmailSchema,
+    firstName: requiredNameSchema,
+    lastName: requiredNameSchema,
+    role: inviteRoleSchema,
+    teamId: optionalTeamIdSchema,
+    avatarUrl: optionalAvatarUrlSchema,
+  })
+  .superRefine((value, context) => {
+    if (value.role === "organization_admin") {
+      return
+    }
+
+    if (!value.teamId) {
+      context.addIssue({
+        code: "custom",
+        path: ["teamId"],
+        message: "Team is required for team member invites.",
+      })
+    }
+  })
 
 export const updateCrewMemberInputSchema = z.object({
   membershipId: z.string().uuid(),
   profileId: z.string().uuid(),
   firstName: requiredNameSchema,
   lastName: requiredNameSchema,
-  role: z.enum(["team_admin", "coach", "crew"]),
+  role: teamRoleSchema,
   teamId: z.string().uuid(),
   avatarUrl: optionalAvatarUrlSchema,
 })

@@ -58,6 +58,47 @@ export async function resolveRequestOrigin(request: Request): Promise<string> {
   return requestOrigin;
 }
 
+export async function resolveCurrentRequestOrigin(): Promise<string> {
+  if (process.env.NODE_ENV === "production") {
+    const configuredAppOrigin = getOptionalAppUrlOrigin();
+    if (configuredAppOrigin) {
+      return configuredAppOrigin;
+    }
+  }
+
+  const headerStore = await headers();
+  const originHeader = getOriginIfValid(headerStore.get("origin"));
+  if (originHeader) {
+    return originHeader;
+  }
+
+  const forwardedHost = headerStore.get("x-forwarded-host");
+  const forwardedProto = headerStore.get("x-forwarded-proto") ?? "https";
+
+  if (forwardedHost) {
+    const forwardedOrigin = getOriginIfValid(`${forwardedProto}://${forwardedHost}`);
+    if (forwardedOrigin) {
+      return forwardedOrigin;
+    }
+  }
+
+  const host = headerStore.get("host");
+  if (host) {
+    const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
+    const hostOrigin = getOriginIfValid(`${protocol}://${host}`);
+    if (hostOrigin) {
+      return hostOrigin;
+    }
+  }
+
+  const configuredAppOrigin = getOptionalAppUrlOrigin();
+  if (configuredAppOrigin) {
+    return configuredAppOrigin;
+  }
+
+  return "http://localhost:3000";
+}
+
 export async function buildRequestUrl(path: string, request: Request): Promise<URL> {
   const origin = await resolveRequestOrigin(request);
   return new URL(path, origin);

@@ -292,7 +292,7 @@ export function UsersRouteShell({
   const isFilterNavigationBusy =
     isFilterNavigationPending ||
     pendingFilterNavigation?.fromHref === currentHref
-  const createDisabled = !canManageUsers || chromeData.teamOptions.length === 0
+  const createDisabled = !canManageUsers
   const selectedTeamId = chromeData.selectedTeamId ?? ""
   const teamFilterDisabled = chromeData.teamOptions.length === 0
   const teamFilterOptions: UsersFilterOption[] = [
@@ -336,9 +336,9 @@ export function UsersRouteShell({
     <section className="space-y-4">
       <header className="flex items-center justify-between gap-3">
         <h1 className="min-w-0 text-2xl font-semibold tracking-tight md:hidden">
-          Team Members
+          Organization Members
         </h1>
-        <h2 className="hidden text-lg font-semibold md:block">Team Members</h2>
+        <h2 className="hidden text-lg font-semibold md:block">Organization Members</h2>
 
         <div className="hidden items-center justify-end gap-2 md:flex">
           <UsersFilterDropdown

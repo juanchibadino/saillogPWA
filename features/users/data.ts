@@ -14,12 +14,27 @@ type TeamMembershipRow = Pick<
   "id" | "team_id" | "profile_id" | "role" | "is_active"
 >
 
-type ProfileRow = Pick<
-  Database["public"]["Tables"]["profiles"]["Row"],
-  "id" | "first_name" | "last_name" | "email" | "photo_url" | "is_active"
+type OrganizationMembershipRow = Pick<
+  Database["public"]["Tables"]["organization_memberships"]["Row"],
+  "id" | "organization_id" | "profile_id" | "role"
 >
 
-export type CrewListItem = {
+type ProfileRow = Pick<
+  Database["public"]["Tables"]["profiles"]["Row"],
+  | "id"
+  | "first_name"
+  | "last_name"
+  | "email"
+  | "photo_url"
+  | "is_active"
+  | "first_seen_at"
+>
+
+type TeamRole = Database["public"]["Enums"]["team_role_type"]
+type OrganizationRole = Database["public"]["Enums"]["organization_role_type"]
+
+export type TeamCrewListItem = {
+  membershipKind: "team"
   membershipId: string
   profileId: string
   firstName: string
@@ -27,10 +42,28 @@ export type CrewListItem = {
   email: string
   fullName: string
   avatarUrl: string | null
+  firstSeenAt: string | null
   teamId: string
   teamName: string
-  role: Database["public"]["Enums"]["team_role_type"]
+  role: TeamRole
 }
+
+export type OrganizationCrewListItem = {
+  membershipKind: "organization"
+  membershipId: string
+  profileId: string
+  firstName: string
+  lastName: string
+  email: string
+  fullName: string
+  avatarUrl: string | null
+  firstSeenAt: string | null
+  teamId: null
+  teamName: string
+  role: OrganizationRole
+}
+
+export type CrewListItem = TeamCrewListItem | OrganizationCrewListItem
 
 export type CrewTeamOption = {
   id: string
@@ -94,6 +127,7 @@ export async function getUsersPageData(input: {
 }): Promise<UsersPageData> {
   const chromeData = await getUsersChromeData(input)
   const resultsData = await getUsersResultsData({
+    activeOrganizationId: input.activeOrganizationId,
     page: 1,
     teamOptions: chromeData.teamOptions,
     selectedTeamId: chromeData.selectedTeamId,
@@ -141,6 +175,7 @@ export async function getUsersChromeData(input: {
 
 export async function getUsersResultsData(input: {
   accumulatePages?: boolean
+  activeOrganizationId: string
   page: number
   selectedTeamId?: string
   teamOptions: CrewTeamOption[]
@@ -151,7 +186,46 @@ export async function getUsersResultsData(input: {
       ? [input.selectedTeamId]
       : input.teamOptions.map((team) => team.id)
 
-  if (targetTeamIds.length === 0) {
+  const [teamMembershipResult, organizationMembershipResult] = await Promise.all([
+    targetTeamIds.length > 0
+      ? adminSupabase
+          .from("team_memberships")
+          .select("id,team_id,profile_id,role,is_active")
+          .eq("is_active", true)
+          .in("team_id", targetTeamIds)
+          .order("team_id", { ascending: true })
+          .order("profile_id", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+    input.selectedTeamId === undefined
+      ? adminSupabase
+          .from("organization_memberships")
+          .select("id,organization_id,profile_id,role")
+          .eq("organization_id", input.activeOrganizationId)
+          .eq("role", "organization_admin")
+      : Promise.resolve({ data: [], error: null }),
+  ])
+
+  if (teamMembershipResult.error) {
+    throw new Error(
+      `Could not load team memberships: ${teamMembershipResult.error.message}`,
+    )
+  }
+
+  if (organizationMembershipResult.error) {
+    throw new Error(
+      `Could not load organization memberships: ${organizationMembershipResult.error.message}`,
+    )
+  }
+
+  const membershipRows: TeamMembershipRow[] = teamMembershipResult.data ?? []
+  const organizationMembershipRows: OrganizationMembershipRow[] =
+    organizationMembershipResult.data ?? []
+  const profileIds = uniqueIds([
+    ...membershipRows.map((row) => row.profile_id),
+    ...organizationMembershipRows.map((row) => row.profile_id),
+  ])
+
+  if (profileIds.length === 0) {
     return {
       crews: [],
       totalCount: 0,
@@ -162,63 +236,9 @@ export async function getUsersResultsData(input: {
     }
   }
 
-  const { count, error: countError } = await adminSupabase
-    .from("team_memberships")
-    .select("id", { count: "exact", head: true })
-    .eq("is_active", true)
-    .in("team_id", targetTeamIds)
-
-  if (countError) {
-    throw new Error(`Could not count team memberships: ${countError.message}`)
-  }
-
-  const totalCount = count ?? 0
-  const requestedPage = normalizePage(input.page)
-  const accumulatePages = input.accumulatePages === true
-  const pagination = resolveUsersPagination({
-    requestedPage,
-    totalItems: totalCount,
-    accumulatePages,
-    pageSize: USERS_PAGE_SIZE,
-  })
-  const visibleCount = accumulatePages
-    ? pagination.currentPage * USERS_PAGE_SIZE
-    : USERS_PAGE_SIZE
-  const rangeStart = accumulatePages
-    ? 0
-    : (pagination.currentPage - 1) * USERS_PAGE_SIZE
-  const rangeEnd = rangeStart + visibleCount - 1
-
-  const { data: membershipData, error: membershipError } = await adminSupabase
-    .from("team_memberships")
-    .select("id,team_id,profile_id,role,is_active")
-    .eq("is_active", true)
-    .in("team_id", targetTeamIds)
-    .order("team_id", { ascending: true })
-    .order("profile_id", { ascending: true })
-    .range(rangeStart, rangeEnd)
-
-  if (membershipError) {
-    throw new Error(`Could not load team memberships: ${membershipError.message}`)
-  }
-
-  const membershipRows: TeamMembershipRow[] = membershipData ?? []
-
-  if (membershipRows.length === 0) {
-    return {
-      crews: [],
-      totalCount,
-      currentPage: pagination.currentPage,
-      pageCount: pagination.pageCount,
-      hasPreviousPage: pagination.hasPreviousPage,
-      hasNextPage: pagination.hasNextPage,
-    }
-  }
-
-  const profileIds = uniqueIds(membershipRows.map((row) => row.profile_id))
   const { data: profileData, error: profileError } = await adminSupabase
     .from("profiles")
-    .select("id,first_name,last_name,email,photo_url,is_active")
+    .select("id,first_name,last_name,email,photo_url,is_active,first_seen_at")
     .in("id", profileIds)
 
   if (profileError) {
@@ -229,7 +249,7 @@ export async function getUsersResultsData(input: {
   const profileById = new Map(profileRows.map((profile) => [profile.id, profile]))
   const teamNameById = new Map(input.teamOptions.map((team) => [team.id, team.name]))
 
-  const crews = membershipRows
+  const teamCrews = membershipRows
     .map((membership) => {
       const profile = profileById.get(membership.profile_id)
       const teamName = teamNameById.get(membership.team_id)
@@ -239,6 +259,7 @@ export async function getUsersResultsData(input: {
       }
 
       return {
+        membershipKind: "team" as const,
         membershipId: membership.id,
         profileId: profile.id,
         firstName: (profile.first_name ?? "").trim(),
@@ -246,12 +267,40 @@ export async function getUsersResultsData(input: {
         email: (profile.email ?? "").trim(),
         fullName: buildProfileDisplayName(profile),
         avatarUrl: profile.photo_url,
+        firstSeenAt: profile.first_seen_at,
         teamId: membership.team_id,
         teamName,
         role: membership.role,
       }
     })
-    .filter((crew): crew is CrewListItem => crew !== null)
+    .filter((crew): crew is TeamCrewListItem => crew !== null)
+
+  const organizationCrews = organizationMembershipRows
+    .map((membership) => {
+      const profile = profileById.get(membership.profile_id)
+
+      if (!profile || !profile.is_active) {
+        return null
+      }
+
+      return {
+        membershipKind: "organization" as const,
+        membershipId: membership.id,
+        profileId: profile.id,
+        firstName: (profile.first_name ?? "").trim(),
+        lastName: (profile.last_name ?? "").trim(),
+        email: (profile.email ?? "").trim(),
+        fullName: buildProfileDisplayName(profile),
+        avatarUrl: profile.photo_url,
+        firstSeenAt: profile.first_seen_at,
+        teamId: null,
+        teamName: "Organization",
+        role: membership.role,
+      }
+    })
+    .filter((crew): crew is OrganizationCrewListItem => crew !== null)
+
+  const crews = [...organizationCrews, ...teamCrews]
     .sort((left, right) => {
       const teamDiff = left.teamName.localeCompare(right.teamName)
       if (teamDiff !== 0) {
@@ -260,9 +309,25 @@ export async function getUsersResultsData(input: {
 
       return left.fullName.localeCompare(right.fullName)
     })
+  const totalCount = crews.length
+  const requestedPage = normalizePage(input.page)
+  const accumulatePages = input.accumulatePages === true
+  const pagination = resolveUsersPagination({
+    requestedPage,
+    totalItems: totalCount,
+    accumulatePages,
+    pageSize: USERS_PAGE_SIZE,
+  })
+  const rangeStart = accumulatePages
+    ? 0
+    : (pagination.currentPage - 1) * USERS_PAGE_SIZE
+  const rangeEnd = accumulatePages
+    ? pagination.currentPage * USERS_PAGE_SIZE
+    : rangeStart + USERS_PAGE_SIZE
+  const visibleCrews = crews.slice(rangeStart, rangeEnd)
 
   return {
-    crews,
+    crews: visibleCrews,
     totalCount,
     currentPage: pagination.currentPage,
     pageCount: pagination.pageCount,

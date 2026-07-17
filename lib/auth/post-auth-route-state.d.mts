@@ -7,3 +7,9 @@ export declare function shouldTeamUserLandOnTeamHome(input: {
   organizationRoles: OrganizationRole[]
   teamRoles: TeamRole[]
 }): boolean
+
+export declare function resolvePostAuthLandingPath(input: {
+  globalRole: GlobalRole
+  organizationRoles: OrganizationRole[]
+  teamRoles: TeamRole[]
+}): "/team-home" | "/teams"

@@ -220,7 +220,7 @@ export async function completeOnboardingAction(
     context.organizationMemberships.length > 0 || context.teamMemberships.length > 0
 
   if (hasAppAccess(context) || hasAnyMembership) {
-    redirect("/dashboard")
+    redirect("/post-auth")
   }
 
   const parsedInput = onboardingFormInputSchema.safeParse({
@@ -228,7 +228,7 @@ export async function completeOnboardingAction(
     lastName: getFormString(formData, "lastName"),
     organizationName: getFormString(formData, "organizationName"),
     teamName: getFormString(formData, "teamName"),
-    isCoach: getFormString(formData, "isCoach"),
+    teamRole: getFormString(formData, "teamRole"),
     teamClass: getFormString(formData, "teamClass"),
   })
 
@@ -338,29 +338,28 @@ export async function completeOnboardingAction(
 
   const teamId = teamInsertResult.teamId
 
-  if (parsedInput.data.isCoach === "yes") {
-    const { error: coachMembershipError } = await adminSupabase
-      .from("team_memberships")
-      .upsert(
-        {
-          team_id: teamId,
-          profile_id: context.user.id,
-          role: "coach",
-          is_active: true,
-          left_at: null,
-        },
-        {
-          onConflict: "team_id,profile_id,role",
-        },
-      )
+  const { error: teamMembershipError } = await adminSupabase
+    .from("team_memberships")
+    .upsert(
+      {
+        team_id: teamId,
+        profile_id: context.user.id,
+        role: parsedInput.data.teamRole,
+        is_active: true,
+        left_at: null,
+      },
+      {
+        onConflict: "team_id,profile_id,role",
+      },
+    )
 
-    if (coachMembershipError) {
-      return {
-        error: CREATE_FAILED_ERROR_MESSAGE,
-      }
+  if (teamMembershipError) {
+    return {
+      error: CREATE_FAILED_ERROR_MESSAGE,
     }
   }
 
+  const completedAt = new Date().toISOString()
   const { error: completeProfileError } = await adminSupabase
     .from("profiles")
     .update({
@@ -368,7 +367,8 @@ export async function completeOnboardingAction(
       first_name: parsedInput.data.firstName,
       last_name: parsedInput.data.lastName,
       is_profile_complete: true,
-      profile_completed_at: new Date().toISOString(),
+      profile_completed_at: completedAt,
+      first_seen_at: completedAt,
     })
     .eq("id", context.user.id)
 
@@ -378,7 +378,7 @@ export async function completeOnboardingAction(
     }
   }
 
-  revalidatePath("/dashboard")
+  revalidatePath("/teams")
   revalidatePath("/team-home")
 
   const params = new URLSearchParams()

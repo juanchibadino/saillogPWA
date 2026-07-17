@@ -7,11 +7,8 @@ import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageOrganizationOperations } from "@/lib/auth/capabilities"
 import { resolveOrganizationWriteEntitlement } from "@/lib/billing/entitlements"
 import { generateUniqueTeamSlug } from "@/lib/db/slugs"
-import {
-  NAVIGATION_SCOPE_ORG_QUERY_KEY,
-  NAVIGATION_SCOPE_TEAM_QUERY_KEY,
-} from "@/lib/navigation/constants"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { buildTeamsRedirectPath } from "@/features/teams/list-route-state.mjs"
 import { scopeFormInputSchema } from "@/lib/validation/navigation"
 import { createTeamInputSchema } from "@/lib/validation/teams"
 
@@ -26,7 +23,9 @@ function getFormString(formData: FormData, key: string): string | undefined {
 }
 
 function getScopeFromFormData(formData: FormData): {
+  scopeLoadMoreMode?: boolean
   scopeOrgId?: string
+  scopePage?: number
   scopeTeamId?: string
 } {
   const parsedScope = scopeFormInputSchema.safeParse({
@@ -38,40 +37,22 @@ function getScopeFromFormData(formData: FormData): {
     return {}
   }
 
-  return parsedScope.data
-}
+  const scopePageValue = getFormString(formData, "scopePage")
+  const parsedScopePage = scopePageValue
+    ? Number.parseInt(scopePageValue, 10)
+    : Number.NaN
+  const scopePage =
+    Number.isFinite(parsedScopePage) && parsedScopePage > 1
+      ? Math.floor(parsedScopePage)
+      : undefined
 
-function buildTeamsRedirectPath(input: {
-  status?: "created"
-  error?:
-    | "invalid_input"
-    | "forbidden"
-    | "create_failed"
-    | "plan_limit_reached"
-    | "payment_required"
-  scopeOrgId?: string
-  scopeTeamId?: string
-}): string {
-  const params = new URLSearchParams()
-
-  if (input.status) {
-    params.set("status", input.status)
+  return {
+    ...parsedScope.data,
+    ...(scopePage ? { scopePage } : {}),
+    ...(getFormString(formData, "scopeLoadMoreMode") === "1"
+      ? { scopeLoadMoreMode: true }
+      : {}),
   }
-
-  if (input.error) {
-    params.set("error", input.error)
-  }
-
-  if (input.scopeOrgId) {
-    params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.scopeOrgId)
-  }
-
-  if (input.scopeTeamId) {
-    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scopeTeamId)
-  }
-
-  const query = params.toString()
-  return query.length > 0 ? `/teams?${query}` : "/teams"
 }
 
 async function insertTeamWithUniqueSlug(input: {

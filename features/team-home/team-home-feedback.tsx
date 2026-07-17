@@ -4,12 +4,12 @@ import * as React from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 
-export function TeamsFeedback({
-  statusMessage,
+export function TeamHomeFeedback({
   errorMessage,
+  statusMessage,
 }: {
-  statusMessage: string | null
   errorMessage: string | null
+  statusMessage: string | null
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -21,13 +21,13 @@ export function TeamsFeedback({
 
     if (statusMessage && status) {
       toast.success(statusMessage, {
-        id: `teams-feedback:${pathname}:status:${status}`,
+        id: `team-home-feedback:${pathname}:status:${status}`,
       })
     }
 
     if (errorMessage && error) {
       toast.error(errorMessage, {
-        id: `teams-feedback:${pathname}:error:${error}`,
+        id: `team-home-feedback:${pathname}:error:${error}`,
       })
     }
 

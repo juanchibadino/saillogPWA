@@ -649,7 +649,7 @@ export function AppSidebar({
 
   const canAccessOrganizationArea = canAccessOrganizationModules
   const scopedDefaultHomeHref = buildScopedHref(
-    canAccessOrganizationArea ? "/dashboard" : "/team-home",
+    canAccessOrganizationArea ? "/teams" : "/team-home",
     activeOrgId,
     activeTeamId,
   )
