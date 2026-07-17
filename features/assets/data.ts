@@ -554,6 +554,7 @@ function mapRpcRowsToAssets(input: {
     bucket: row.bucket,
     storage_path: row.storage_path,
     file_name: row.file_name,
+    description: row.description ?? null,
     mime_type: row.mime_type,
     size_bytes: row.size_bytes,
     thumbnail_bucket: row.thumbnail_bucket,

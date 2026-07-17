@@ -3291,6 +3291,7 @@ async function uploadSessionAssetMutation(
   const parsedInput = uploadSessionAssetInputSchema.safeParse({
     sessionId,
     assetType: getFormString(formData, "assetType"),
+    description: getFormString(formData, "description"),
   })
 
   const assetFile = getFormFile(formData, "assetFile")
@@ -3306,6 +3307,8 @@ async function uploadSessionAssetMutation(
       sessionId,
     })
   }
+
+  const normalizedDescription = normalizeOptionalText(parsedInput.data.description)
 
   if (
     !canManageTeamSessions({
@@ -3474,6 +3477,7 @@ async function uploadSessionAssetMutation(
     bucket: storageBucket,
     storage_path: storagePath,
     file_name: assetFile.name,
+    description: normalizedDescription,
     mime_type: assetFile.type || null,
     size_bytes: assetFile.size,
     thumbnail_bucket: thumbnailStoragePath ? storageBucket : null,

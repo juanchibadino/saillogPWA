@@ -1,5 +1,5 @@
-import { VenuesPageSkeleton } from "@/components/shared/page-skeletons"
+import { UsersPageSkeleton } from "@/components/shared/page-skeletons"
 
 export default function Loading() {
-  return <VenuesPageSkeleton />
+  return <UsersPageSkeleton />
 }

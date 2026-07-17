@@ -514,6 +514,7 @@ export function SessionAssetCard(input: {
   overlayActions?: React.ReactNode
 }) {
   const isImage = input.asset.asset_type === "photo"
+  const description = input.asset.description?.trim()
   const downloadUrl = buildAssetDownloadUrl(input.asset.contentUrl)
   const busyLabel = input.busyLabel ?? "Loading file"
 
@@ -554,6 +555,11 @@ export function SessionAssetCard(input: {
               <p>{formatAssetSize(input.asset.size_bytes)}</p>
               <p className="truncate">{formatAssetUploadedAt(input.asset.created_at)}</p>
             </div>
+            {description ? (
+              <p className="line-clamp-2 text-[0.7rem] leading-tight text-muted-foreground sm:text-xs">
+                {description}
+              </p>
+            ) : null}
           </div>
         </DialogTrigger>
         {input.overlayActions}
@@ -568,6 +574,11 @@ export function SessionAssetCard(input: {
             {getAssetExtension(input.asset.file_name)} · {formatAssetSize(input.asset.size_bytes)} ·{" "}
             {formatAssetUploadedAt(input.asset.created_at)}
           </DialogDescription>
+          {description ? (
+            <p className="line-clamp-3 whitespace-pre-wrap text-sm text-muted-foreground">
+              {description}
+            </p>
+          ) : null}
         </DialogHeader>
 
         <div className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto">

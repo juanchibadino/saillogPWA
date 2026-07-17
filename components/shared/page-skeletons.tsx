@@ -1,4 +1,4 @@
-import { ChevronDownIcon, PlusIcon, Settings2Icon } from "lucide-react"
+import { ChevronDownIcon, FilterIcon, PlusIcon, Settings2Icon } from "lucide-react"
 
 import { GradientCard } from "@/components/shared/gradient-card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -2112,6 +2112,124 @@ export function VenuesPageSkeleton() {
   )
 }
 
+export function UsersResultsSkeleton() {
+  return (
+    <section className="space-y-4">
+      <div className="space-y-2 md:hidden">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <GradientCard key={`users-mobile-row-${index}`} className="px-3 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                <Skeleton className="size-10 rounded-full" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-40" />
+                  <div className="flex items-center gap-2">
+                    <Skeleton className="h-3 w-24" />
+                    <Skeleton className="h-5 w-16 rounded-full" />
+                  </div>
+                </div>
+              </div>
+              <Skeleton className="h-11 w-11 rounded-lg" />
+            </div>
+          </GradientCard>
+        ))}
+        <button
+          type="button"
+          disabled
+          className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-md border border-border bg-background text-sm font-medium text-muted-foreground opacity-70"
+        >
+          Load more members
+        </button>
+      </div>
+
+      <GradientCard className="hidden overflow-hidden p-0 md:block">
+        <div className="grid grid-cols-[2.1fr_1.4fr_1fr_3rem] items-center gap-4 bg-muted/40 px-4 py-3 text-sm font-medium text-muted-foreground">
+          {["Full name", "Team", "Role", ""].map((header, index) => (
+            <span key={`users-header-${index}`} className="truncate">
+              {header}
+            </span>
+          ))}
+        </div>
+        <div className="divide-y divide-border">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div
+              key={`users-row-${index}`}
+              className="grid min-h-12 grid-cols-[2.1fr_1.4fr_1fr_3rem] items-center gap-4 px-4 py-3"
+            >
+              <div className="flex items-center gap-3">
+                <Skeleton className="size-8 rounded-full" />
+                <Skeleton className="h-4 w-full max-w-36" />
+              </div>
+              <Skeleton className="h-4 w-full max-w-32" />
+              <Skeleton className="h-4 w-full max-w-20" />
+              <Skeleton className="size-8 rounded-lg" />
+            </div>
+          ))}
+        </div>
+      </GradientCard>
+
+      <div className="hidden items-center gap-1 md:flex">
+        <Skeleton className="h-9 w-24" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-9" />
+        <Skeleton className="h-9 w-16" />
+      </div>
+    </section>
+  )
+}
+
+export function UsersPageSkeleton() {
+  return (
+    <div className="space-y-4">
+      <header className="flex items-center justify-between gap-3">
+        <Skeleton className="h-8 w-44 md:hidden" />
+        <Skeleton className="hidden h-6 w-32 md:block" />
+
+        <div className="hidden items-center gap-2 md:flex">
+          <button
+            type="button"
+            disabled
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium text-muted-foreground opacity-70"
+          >
+            <FilterIcon className="size-4" />
+            Team
+            <ChevronDownIcon className="size-4" />
+          </button>
+          <button
+            type="button"
+            disabled
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium text-muted-foreground opacity-70"
+          >
+            <PlusIcon className="size-4" />
+            New
+          </button>
+        </div>
+
+        <button
+          type="button"
+          disabled
+          aria-label="Loading filters"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-md bg-secondary text-secondary-foreground opacity-70 md:hidden"
+        >
+          <FilterIcon className="size-4" />
+        </button>
+      </header>
+
+      <UsersResultsSkeleton />
+
+      <button
+        type="button"
+        disabled
+        aria-label="New member"
+        className="mobile-floating-action inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground opacity-70 shadow-lg shadow-black/20 md:hidden"
+      >
+        <PlusIcon className="size-6" />
+      </button>
+    </div>
+  )
+}
 export type VenueDetailSkeletonTab =
   | "camps"
   | "sessions"

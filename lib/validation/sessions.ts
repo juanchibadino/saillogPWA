@@ -117,6 +117,7 @@ export const reorderTeamSetupMetricsInputSchema = z.object({
 export const uploadSessionAssetInputSchema = z.object({
   sessionId: z.string().uuid(),
   assetType: z.enum(["photo", "analytics_file"]),
+  description: optionalTrimmedTextSchema,
 })
 
 export const deleteSessionAssetInputSchema = z.object({

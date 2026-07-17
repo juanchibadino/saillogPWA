@@ -1,7 +1,21 @@
-import { TableFiltersToolbar } from "@/components/shared/table-filters-toolbar"
+import { Suspense } from "react"
+
+import {
+  UsersPageSkeleton,
+  UsersResultsSkeleton,
+} from "@/components/shared/page-skeletons"
 import { UsersFeedback } from "@/features/users/users-feedback"
 import { UsersTable } from "@/features/users/users-table"
-import { getUsersPageData, type UsersPageData } from "@/features/users/data"
+import { UsersRouteShell } from "@/features/users/users-route-shell"
+import {
+  getUsersChromeData,
+  getUsersResultsData,
+  type UsersChromeData,
+} from "@/features/users/data"
+import {
+  resolveUsersListRequest,
+  USERS_TEAM_FILTER_QUERY_KEY,
+} from "@/features/users/list-route-state.mjs"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageOrganizationOperations } from "@/lib/auth/capabilities"
 import { requireOrganizationRouteAccess } from "@/lib/auth/organization-route-guard"
@@ -12,8 +26,16 @@ import {
 type UsersSearchParams = Promise<
   Record<string, string | string[] | undefined>
 >
+type ResolvedUsersScope = NonNullable<
+  Awaited<ReturnType<typeof requireOrganizationRouteAccess>>["scope"]
+>
+type UsersChromeDataPromise = Promise<UsersChromeData>
 
 function getStatusMessage(status: string | undefined): string | null {
+  if (status === "created") {
+    return "Member created successfully."
+  }
+
   if (status === "updated") {
     return "Member updated successfully."
   }
@@ -34,6 +56,14 @@ function getErrorMessage(error: string | undefined): string | null {
     return "You do not have permission to manage members in the active organization."
   }
 
+  if (error === "member_exists") {
+    return "This member already belongs to the selected team."
+  }
+
+  if (error === "create_failed") {
+    return "Could not create member. Confirm the email and permissions, then try again."
+  }
+
   if (error === "update_failed") {
     return "Could not update member data. Confirm your permissions and try again."
   }
@@ -43,6 +73,90 @@ function getErrorMessage(error: string | undefined): string | null {
   }
 
   return null
+}
+
+async function UsersShellSlot(input: {
+  canManageUsers: boolean
+  chromeDataPromise: UsersChromeDataPromise
+  requestedLoadMoreMode: boolean
+  requestedPage: number
+  scope: ResolvedUsersScope
+}) {
+  let chromeData: UsersChromeData
+
+  try {
+    chromeData = await input.chromeDataPromise
+  } catch {
+    return (
+      <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
+        <h2 className="text-lg font-semibold text-amber-900">Member data unavailable</h2>
+        <p className="mt-2 text-sm text-amber-800">
+          Could not load member filters. Check server configuration and try again.
+        </p>
+      </section>
+    )
+  }
+
+  return (
+    <UsersRouteShell
+      canManageUsers={input.canManageUsers}
+      chromeData={chromeData}
+      currentPage={input.requestedPage}
+      loadMoreMode={input.requestedLoadMoreMode}
+      scope={input.scope}
+    >
+      <Suspense fallback={<UsersResultsSkeleton />}>
+        <UsersResultsContent
+          chromeData={chromeData}
+          requestedLoadMoreMode={input.requestedLoadMoreMode}
+          requestedPage={input.requestedPage}
+          scope={input.scope}
+        />
+      </Suspense>
+    </UsersRouteShell>
+  )
+}
+
+async function UsersResultsContent(input: {
+  chromeData: UsersChromeData
+  requestedLoadMoreMode: boolean
+  requestedPage: number
+  scope: ResolvedUsersScope
+}) {
+  let resultsData: Awaited<ReturnType<typeof getUsersResultsData>>
+
+  try {
+    resultsData = await getUsersResultsData({
+      accumulatePages: input.requestedLoadMoreMode,
+      page: input.requestedPage,
+      selectedTeamId: input.chromeData.selectedTeamId,
+      teamOptions: input.chromeData.teamOptions,
+    })
+  } catch {
+    return (
+      <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
+        <h2 className="text-lg font-semibold text-amber-900">Members unavailable</h2>
+        <p className="mt-2 text-sm text-amber-800">
+          Could not load member rows. Check server configuration and try again.
+        </p>
+      </section>
+    )
+  }
+
+  return (
+    <UsersTable
+      canManageUsers
+      crews={resultsData.crews}
+      currentPage={resultsData.currentPage}
+      hasNextPage={resultsData.hasNextPage}
+      hasPreviousPage={resultsData.hasPreviousPage}
+      loadMoreMode={input.requestedLoadMoreMode}
+      pageCount={resultsData.pageCount}
+      scope={input.scope}
+      selectedTeamId={input.chromeData.selectedTeamId}
+      teamOptions={input.chromeData.teamOptions}
+    />
+  )
 }
 
 export default async function UsersPage({
@@ -55,7 +169,16 @@ export default async function UsersPage({
 
   const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
-  const requestedTeamId = getSingleSearchParamValue(resolvedSearchParams.team)
+  const requestedTeamId = getSingleSearchParamValue(
+    resolvedSearchParams[USERS_TEAM_FILTER_QUERY_KEY],
+  )
+  const {
+    requestedLoadMoreMode,
+    requestedPage,
+  } = resolveUsersListRequest({
+    pageParam: getSingleSearchParamValue(resolvedSearchParams.page),
+    loadMoreParam: getSingleSearchParamValue(resolvedSearchParams.loadMore),
+  })
 
   const statusMessage = getStatusMessage(status)
   const errorMessage = getErrorMessage(error)
@@ -96,29 +219,15 @@ export default async function UsersPage({
   }
 
   const canManageUsers = canManageOrganizationOperations(context, scope.activeOrgId)
-  let usersData: UsersPageData = { crews: [], teamOptions: [], selectedTeamId: undefined }
-  let usersLoadError: string | null = null
-
-  if (canManageUsers) {
-    try {
-      usersData = await getUsersPageData({
+  const chromeDataPromise = canManageUsers
+    ? getUsersChromeData({
         activeOrganizationId: scope.activeOrgId,
         requestedTeamId,
       })
-    } catch {
-      usersLoadError = "Could not load member data. Check server configuration and try again."
-    }
-  }
+    : null
 
   return (
     <div className="space-y-6">
-      <header className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Members</h1>
-        <p className="text-sm text-muted-foreground">
-          Showing team members for <strong>{activeOrganization.name}</strong>.
-        </p>
-      </header>
-
       <UsersFeedback statusMessage={statusMessage} errorMessage={errorMessage} />
 
       {!canManageUsers ? (
@@ -130,43 +239,17 @@ export default async function UsersPage({
         </section>
       ) : null}
 
-      {usersLoadError ? (
-        <section className="rounded-xl border border-amber-300 bg-amber-50 p-6">
-          <h2 className="text-lg font-semibold text-amber-900">Member data unavailable</h2>
-          <p className="mt-2 text-sm text-amber-800">{usersLoadError}</p>
-        </section>
-      ) : null}
-
-      <UsersTable
-        crews={usersData.crews}
-        teamOptions={usersData.teamOptions}
-        canManageUsers={canManageUsers}
-        scope={scope}
-        selectedTeamId={usersData.selectedTeamId}
-        toolbar={
-          <TableFiltersToolbar
+      {chromeDataPromise ? (
+        <Suspense fallback={<UsersPageSkeleton />}>
+          <UsersShellSlot
+            canManageUsers={canManageUsers}
+            chromeDataPromise={chromeDataPromise}
+            requestedLoadMoreMode={requestedLoadMoreMode}
+            requestedPage={requestedPage}
             scope={scope}
-            fields={[
-              {
-                id: "users-team",
-                name: "team",
-                label: "Team",
-                allLabel: "Teams",
-                selectedValue: usersData.selectedTeamId,
-                disabled: usersData.teamOptions.length === 0,
-                controlClassName: "min-w-[11rem]",
-                options: usersData.teamOptions.map((team) => ({
-                  value: team.id,
-                  label: team.name,
-                })),
-              },
-            ]}
-            embedded
-            autoSubmit
-            className="rounded-none border-0 bg-transparent p-0"
           />
-        }
-      />
+        </Suspense>
+      ) : null}
     </div>
   )
 }

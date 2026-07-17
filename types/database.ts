@@ -898,6 +898,7 @@ export type Database = {
           bucket: string;
           storage_path: string;
           file_name: string;
+          description: string | null;
           mime_type: string | null;
           size_bytes: number | null;
           thumbnail_bucket: string | null;
@@ -914,6 +915,7 @@ export type Database = {
           bucket: string;
           storage_path: string;
           file_name: string;
+          description?: string | null;
           mime_type?: string | null;
           size_bytes?: number | null;
           thumbnail_bucket?: string | null;
@@ -929,6 +931,7 @@ export type Database = {
           bucket?: string;
           storage_path?: string;
           file_name?: string;
+          description?: string | null;
           mime_type?: string | null;
           size_bytes?: number | null;
           thumbnail_bucket?: string | null;
@@ -1614,6 +1617,7 @@ export type Database = {
           bucket: string;
           storage_path: string;
           file_name: string;
+          description: string | null;
           mime_type: string | null;
           size_bytes: number | null;
           thumbnail_bucket: string | null;

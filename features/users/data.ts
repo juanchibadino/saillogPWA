@@ -1,5 +1,6 @@
 import "server-only"
 
+import { resolveUsersPagination } from "@/features/users/list-route-state.mjs"
 import { createAdminSupabaseClient } from "@/lib/supabase/admin"
 import type { Database } from "@/types/database"
 
@@ -23,6 +24,7 @@ export type CrewListItem = {
   profileId: string
   firstName: string
   lastName: string
+  email: string
   fullName: string
   avatarUrl: string | null
   teamId: string
@@ -41,8 +43,32 @@ export type UsersPageData = {
   selectedTeamId?: string
 }
 
+export type UsersChromeData = {
+  teamOptions: CrewTeamOption[]
+  selectedTeamId?: string
+}
+
+export type UsersResultsData = {
+  crews: CrewListItem[]
+  totalCount: number
+  currentPage: number
+  pageCount: number
+  hasPreviousPage: boolean
+  hasNextPage: boolean
+}
+
+export const USERS_PAGE_SIZE = 25
+
 function uniqueIds(values: string[]): string[] {
   return [...new Set(values)]
+}
+
+function normalizePage(value: number): number {
+  if (!Number.isFinite(value) || value < 1) {
+    return 1
+  }
+
+  return Math.floor(value)
 }
 
 function buildProfileDisplayName(profile: ProfileRow): string {
@@ -66,6 +92,24 @@ export async function getUsersPageData(input: {
   activeOrganizationId: string
   requestedTeamId?: string
 }): Promise<UsersPageData> {
+  const chromeData = await getUsersChromeData(input)
+  const resultsData = await getUsersResultsData({
+    page: 1,
+    teamOptions: chromeData.teamOptions,
+    selectedTeamId: chromeData.selectedTeamId,
+  })
+
+  return {
+    crews: resultsData.crews,
+    teamOptions: chromeData.teamOptions,
+    selectedTeamId: chromeData.selectedTeamId,
+  }
+}
+
+export async function getUsersChromeData(input: {
+  activeOrganizationId: string
+  requestedTeamId?: string
+}): Promise<UsersChromeData> {
   const adminSupabase = createAdminSupabaseClient()
 
   const { data: teamsData, error: teamsError } = await adminSupabase
@@ -89,24 +133,70 @@ export async function getUsersPageData(input: {
     ? input.requestedTeamId
     : undefined
 
+  return {
+    teamOptions,
+    selectedTeamId,
+  }
+}
+
+export async function getUsersResultsData(input: {
+  accumulatePages?: boolean
+  page: number
+  selectedTeamId?: string
+  teamOptions: CrewTeamOption[]
+}): Promise<UsersResultsData> {
+  const adminSupabase = createAdminSupabaseClient()
   const targetTeamIds =
-    selectedTeamId !== undefined
-      ? [selectedTeamId]
-      : teamOptions.map((team) => team.id)
+    input.selectedTeamId !== undefined
+      ? [input.selectedTeamId]
+      : input.teamOptions.map((team) => team.id)
 
   if (targetTeamIds.length === 0) {
     return {
       crews: [],
-      teamOptions,
-      selectedTeamId,
+      totalCount: 0,
+      currentPage: 1,
+      pageCount: 1,
+      hasPreviousPage: false,
+      hasNextPage: false,
     }
   }
+
+  const { count, error: countError } = await adminSupabase
+    .from("team_memberships")
+    .select("id", { count: "exact", head: true })
+    .eq("is_active", true)
+    .in("team_id", targetTeamIds)
+
+  if (countError) {
+    throw new Error(`Could not count team memberships: ${countError.message}`)
+  }
+
+  const totalCount = count ?? 0
+  const requestedPage = normalizePage(input.page)
+  const accumulatePages = input.accumulatePages === true
+  const pagination = resolveUsersPagination({
+    requestedPage,
+    totalItems: totalCount,
+    accumulatePages,
+    pageSize: USERS_PAGE_SIZE,
+  })
+  const visibleCount = accumulatePages
+    ? pagination.currentPage * USERS_PAGE_SIZE
+    : USERS_PAGE_SIZE
+  const rangeStart = accumulatePages
+    ? 0
+    : (pagination.currentPage - 1) * USERS_PAGE_SIZE
+  const rangeEnd = rangeStart + visibleCount - 1
 
   const { data: membershipData, error: membershipError } = await adminSupabase
     .from("team_memberships")
     .select("id,team_id,profile_id,role,is_active")
     .eq("is_active", true)
     .in("team_id", targetTeamIds)
+    .order("team_id", { ascending: true })
+    .order("profile_id", { ascending: true })
+    .range(rangeStart, rangeEnd)
 
   if (membershipError) {
     throw new Error(`Could not load team memberships: ${membershipError.message}`)
@@ -117,8 +207,11 @@ export async function getUsersPageData(input: {
   if (membershipRows.length === 0) {
     return {
       crews: [],
-      teamOptions,
-      selectedTeamId,
+      totalCount,
+      currentPage: pagination.currentPage,
+      pageCount: pagination.pageCount,
+      hasPreviousPage: pagination.hasPreviousPage,
+      hasNextPage: pagination.hasNextPage,
     }
   }
 
@@ -134,7 +227,7 @@ export async function getUsersPageData(input: {
 
   const profileRows: ProfileRow[] = profileData ?? []
   const profileById = new Map(profileRows.map((profile) => [profile.id, profile]))
-  const teamNameById = new Map(teamOptions.map((team) => [team.id, team.name]))
+  const teamNameById = new Map(input.teamOptions.map((team) => [team.id, team.name]))
 
   const crews = membershipRows
     .map((membership) => {
@@ -150,6 +243,7 @@ export async function getUsersPageData(input: {
         profileId: profile.id,
         firstName: (profile.first_name ?? "").trim(),
         lastName: (profile.last_name ?? "").trim(),
+        email: (profile.email ?? "").trim(),
         fullName: buildProfileDisplayName(profile),
         avatarUrl: profile.photo_url,
         teamId: membership.team_id,
@@ -169,7 +263,10 @@ export async function getUsersPageData(input: {
 
   return {
     crews,
-    teamOptions,
-    selectedTeamId,
+    totalCount,
+    currentPage: pagination.currentPage,
+    pageCount: pagination.pageCount,
+    hasPreviousPage: pagination.hasPreviousPage,
+    hasNextPage: pagination.hasNextPage,
   }
 }

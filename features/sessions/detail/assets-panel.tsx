@@ -5,11 +5,14 @@ import * as React from "react"
 import {
   DownloadIcon,
   ExternalLinkIcon,
+  FileIcon,
+  ImageIcon,
   Loader2Icon,
   MoreVerticalIcon,
   PlusIcon,
   Trash2Icon,
   UploadIcon,
+  XIcon,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -23,21 +26,40 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  Drawer,
+  DrawerContent,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer"
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLinkItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Sheet,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Textarea } from "@/components/ui/textarea"
 import {
   deleteSessionAssetAction,
   saveSessionAssetAction,
 } from "@/features/sessions/detail-actions"
 import {
   buildAssetDownloadUrl,
+  formatAssetSize,
   SessionAssetCard,
 } from "@/features/assets/asset-browser-grid"
+import { useIsMobile } from "@/hooks/use-mobile"
 import type { SessionDetailAsset } from "@/features/sessions/detail-types"
 import type { NavigationScope } from "@/lib/navigation/types"
 
@@ -50,8 +72,14 @@ const SESSION_PHOTO_QUALITY_LADDER = [0.55, 0.48, 0.42] as const
 const SESSION_PHOTO_THUMBNAIL_QUALITY_LADDER = [0.5, 0.44, 0.38] as const
 
 type PendingAssetUpload = {
+  id: string
   fileName: string
   statusLabel: string
+}
+
+type SelectedAssetUploadFile = {
+  file: File
+  id: string
 }
 
 type DecodedImageSource = {
@@ -91,6 +119,33 @@ function getUploadBlockedMessage(reason: SessionAssetUploadBlockReason): string 
   }
 
   return "Uploads are unavailable for this organization."
+}
+
+function buildSelectedAssetUploadFile(file: File, index: number): SelectedAssetUploadFile {
+  return {
+    file,
+    id: `${file.name}-${file.size}-${file.lastModified}-${index}`,
+  }
+}
+
+function getAssetUploadPluralLabel(assetType: "photo" | "analytics_file", count: number): string {
+  if (assetType === "photo") {
+    return count === 1 ? "image" : "images"
+  }
+
+  return count === 1 ? "file" : "files"
+}
+
+function getAssetUploadSurfaceTitle(assetType: "photo" | "analytics_file"): string {
+  return assetType === "photo" ? "Upload images" : "Upload files"
+}
+
+function getAssetUploadSelectLabel(assetType: "photo" | "analytics_file"): string {
+  return assetType === "photo" ? "Choose images" : "Choose files"
+}
+
+function normalizeAssetUploadDescription(value: string): string {
+  return value.trim()
 }
 
 function buildCompressedPhotoFileName(fileName: string, suffix = ""): string {
@@ -438,16 +493,422 @@ function PendingAssetCard(input: {
   )
 }
 
+function SessionAssetUploadSurface(input: {
+  accept: string
+  assetType: "photo" | "analytics_file"
+  buttonLabel: string
+  onAssetsChanged: () => Promise<void> | void
+  onPendingUploadsChange: (pendingUploads: PendingAssetUpload[]) => void
+  scope: NavigationScope
+  sessionId: string
+  tab: "images" | "analytics"
+}) {
+  const inputId = React.useId()
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const isMobile = useIsMobile()
+  const [isOpen, setIsOpen] = React.useState(false)
+  const [isUploading, setIsUploading] = React.useState(false)
+  const [description, setDescription] = React.useState("")
+  const [selectedFiles, setSelectedFiles] = React.useState<SelectedAssetUploadFile[]>([])
+  const [fileStatuses, setFileStatuses] = React.useState<Record<string, string>>({})
+  const fileStatusesRef = React.useRef<Record<string, string>>({})
+  const selectedFileCount = selectedFiles.length
+  const surfaceTitle = getAssetUploadSurfaceTitle(input.assetType)
+  const selectLabel = getAssetUploadSelectLabel(input.assetType)
+  const uploadLabel =
+    selectedFileCount > 0
+      ? `Upload ${selectedFileCount} ${getAssetUploadPluralLabel(input.assetType, selectedFileCount)}`
+      : "Upload"
+
+  function resetUploadForm(): void {
+    setSelectedFiles([])
+    setDescription("")
+    fileStatusesRef.current = {}
+    setFileStatuses({})
+    input.onPendingUploadsChange([])
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }
+
+  function handleOpenChange(nextOpen: boolean): void {
+    if (isUploading) {
+      return
+    }
+
+    setIsOpen(nextOpen)
+
+    if (!nextOpen) {
+      resetUploadForm()
+    }
+  }
+
+  function handleFileInputChange(event: React.ChangeEvent<HTMLInputElement>): void {
+    const files = Array.from(event.currentTarget.files ?? [])
+    event.currentTarget.value = ""
+
+    if (files.length === 0 || isUploading) {
+      return
+    }
+
+    setSelectedFiles((currentFiles) => {
+      const existingSignatures = new Set(
+        currentFiles.map(
+          (selectedFile) =>
+            `${selectedFile.file.name}-${selectedFile.file.size}-${selectedFile.file.lastModified}`,
+        ),
+      )
+      const nextFiles = files
+        .map((file, index) => buildSelectedAssetUploadFile(file, currentFiles.length + index))
+        .filter((selectedFile) => {
+          const signature = `${selectedFile.file.name}-${selectedFile.file.size}-${selectedFile.file.lastModified}`
+
+          if (existingSignatures.has(signature)) {
+            return false
+          }
+
+          existingSignatures.add(signature)
+          return true
+        })
+
+      return [...currentFiles, ...nextFiles]
+    })
+  }
+
+  function removeSelectedFile(fileId: string): void {
+    if (isUploading) {
+      return
+    }
+
+    setSelectedFiles((currentFiles) => currentFiles.filter((selectedFile) => selectedFile.id !== fileId))
+    setFileStatuses((currentStatuses) => {
+      const nextStatuses = { ...currentStatuses }
+      delete nextStatuses[fileId]
+      fileStatusesRef.current = nextStatuses
+      return nextStatuses
+    })
+  }
+
+  function updateFileStatus(inputStatus: {
+    fileId: string
+    fileName?: string
+    statusLabel: string
+  }): void {
+    const nextStatuses = {
+      ...fileStatusesRef.current,
+      [inputStatus.fileId]: inputStatus.statusLabel,
+    }
+
+    fileStatusesRef.current = nextStatuses
+    setFileStatuses(nextStatuses)
+    input.onPendingUploadsChange(
+      selectedFiles.map((selectedFile) => ({
+        id: selectedFile.id,
+        fileName:
+          selectedFile.id === inputStatus.fileId
+            ? inputStatus.fileName ?? selectedFile.file.name
+            : selectedFile.file.name,
+        statusLabel: nextStatuses[selectedFile.id] ?? "Queued",
+      })),
+    )
+  }
+
+  async function uploadSelectedFiles(): Promise<void> {
+    if (selectedFiles.length === 0) {
+      toast.error(
+        input.assetType === "photo" ? "Choose at least one image." : "Choose at least one file.",
+      )
+      return
+    }
+
+    const normalizedDescription = normalizeAssetUploadDescription(description)
+    const initialStatuses = Object.fromEntries(
+      selectedFiles.map((selectedFile) => [selectedFile.id, "Queued"]),
+    )
+    let uploadedCount = 0
+    const failedFiles: SelectedAssetUploadFile[] = []
+
+    setIsUploading(true)
+    fileStatusesRef.current = initialStatuses
+    setFileStatuses(initialStatuses)
+    input.onPendingUploadsChange(
+      selectedFiles.map((selectedFile) => ({
+        id: selectedFile.id,
+        fileName: selectedFile.file.name,
+        statusLabel: "Queued",
+      })),
+    )
+
+    for (const selectedFile of selectedFiles) {
+      try {
+        updateFileStatus({
+          fileId: selectedFile.id,
+          statusLabel: input.assetType === "photo" ? "Compressing..." : "Uploading...",
+        })
+
+        const compressedPhotoFiles =
+          input.assetType === "photo" ? await compressSessionPhotoFiles(selectedFile.file) : null
+        const assetFile = compressedPhotoFiles?.displayFile ?? selectedFile.file
+
+        updateFileStatus({
+          fileId: selectedFile.id,
+          fileName: assetFile.name,
+          statusLabel: "Uploading...",
+        })
+
+        const formData = new FormData()
+        formData.set("sessionId", input.sessionId)
+        formData.set("assetType", input.assetType)
+        formData.set("scopeOrgId", input.scope.activeOrgId)
+        if (input.scope.activeTeamId) {
+          formData.set("scopeTeamId", input.scope.activeTeamId)
+        }
+        formData.set("scopeTab", input.tab)
+        formData.set("assetFile", assetFile)
+        if (normalizedDescription.length > 0) {
+          formData.set("description", normalizedDescription)
+        }
+        if (compressedPhotoFiles) {
+          formData.set("thumbnailFile", compressedPhotoFiles.thumbnailFile)
+        }
+
+        const result = await saveSessionAssetAction(formData)
+
+        if (!result.ok) {
+          failedFiles.push(selectedFile)
+          updateFileStatus({
+            fileId: selectedFile.id,
+            statusLabel: "Failed",
+          })
+          toast.error(`${selectedFile.file.name}: ${result.message}`)
+          continue
+        }
+
+        uploadedCount += 1
+        updateFileStatus({
+          fileId: selectedFile.id,
+          statusLabel: "Uploaded",
+        })
+      } catch (error) {
+        failedFiles.push(selectedFile)
+        updateFileStatus({
+          fileId: selectedFile.id,
+          statusLabel: "Failed",
+        })
+        toast.error(
+          `${selectedFile.file.name}: ${
+            error instanceof Error ? error.message : "Could not upload this file."
+          }`,
+        )
+      }
+    }
+
+    if (uploadedCount > 0) {
+      toast.success(
+        `${uploadedCount} ${getAssetUploadPluralLabel(input.assetType, uploadedCount)} uploaded.`,
+      )
+      try {
+        await input.onAssetsChanged()
+      } catch {
+        toast.error("Assets uploaded, but the list could not refresh.")
+      }
+    }
+
+    input.onPendingUploadsChange([])
+    setIsUploading(false)
+
+    if (failedFiles.length === 0) {
+      resetUploadForm()
+      setIsOpen(false)
+      return
+    }
+
+    setSelectedFiles(failedFiles)
+    fileStatusesRef.current = Object.fromEntries(
+      failedFiles.map((failedFile) => [failedFile.id, "Failed"]),
+    )
+    setFileStatuses(fileStatusesRef.current)
+  }
+
+  const content = (
+    <>
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-4">
+        <input
+          ref={fileInputRef}
+          id={inputId}
+          type="file"
+          multiple
+          accept={input.accept}
+          disabled={isUploading}
+          onChange={handleFileInputChange}
+          className="hidden"
+          aria-label={selectLabel}
+        />
+
+        <div className="space-y-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isUploading}
+            className={isMobile ? "h-11 w-full" : undefined}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <PlusIcon className="size-4" />
+            {selectLabel}
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            {selectedFileCount === 0
+              ? "No assets selected."
+              : `${selectedFileCount} ${getAssetUploadPluralLabel(
+                  input.assetType,
+                  selectedFileCount,
+                )} selected.`}
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor={`${inputId}-description`} className="text-sm font-medium">
+            Description
+          </label>
+          <Textarea
+            id={`${inputId}-description`}
+            value={description}
+            maxLength={4000}
+            disabled={isUploading}
+            placeholder="Add one description for all selected assets."
+            className={isMobile ? "min-h-28 resize-none text-base" : "min-h-24 resize-none"}
+            onChange={(event) => setDescription(event.currentTarget.value)}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Selected assets</p>
+          {selectedFiles.length === 0 ? (
+            <div className="rounded-lg border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
+              Choose one or more assets before uploading.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {selectedFiles.map((selectedFile) => {
+                const isImage = input.assetType === "photo"
+                const status = fileStatuses[selectedFile.id] ?? "Ready"
+
+                return (
+                  <div
+                    key={selectedFile.id}
+                    className="flex min-w-0 items-center gap-3 rounded-lg border bg-card p-2.5"
+                  >
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                      {isImage ? <ImageIcon className="size-4" /> : <FileIcon className="size-4" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{selectedFile.file.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {formatAssetSize(selectedFile.file.size)} · {status}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size={isMobile ? "icon" : "icon-sm"}
+                      className={isMobile ? "h-11 w-11" : undefined}
+                      disabled={isUploading}
+                      onClick={() => removeSelectedFile(selectedFile.id)}
+                    >
+                      <XIcon className="size-4" />
+                      <span className="sr-only">Remove {selectedFile.file.name}</span>
+                    </Button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {isMobile ? (
+        <DrawerFooter className="shrink-0 border-t">
+          <Button
+            type="button"
+            className="h-11 w-full"
+            disabled={isUploading || selectedFiles.length === 0}
+            onClick={() => {
+              void uploadSelectedFiles()
+            }}
+          >
+            {isUploading ? <Loader2Icon className="size-4 animate-spin" /> : <UploadIcon className="size-4" />}
+            {uploadLabel}
+          </Button>
+        </DrawerFooter>
+      ) : (
+        <SheetFooter className="shrink-0 border-t sm:justify-end">
+          <Button
+            type="button"
+            size="sm"
+            disabled={isUploading || selectedFiles.length === 0}
+            onClick={() => {
+              void uploadSelectedFiles()
+            }}
+          >
+            {isUploading ? <Loader2Icon className="size-4 animate-spin" /> : <UploadIcon className="size-4" />}
+            {uploadLabel}
+          </Button>
+        </SheetFooter>
+      )}
+    </>
+  )
+
+  if (isMobile) {
+    return (
+      <Drawer open={isOpen} onOpenChange={handleOpenChange}>
+        <DrawerTrigger asChild>
+          <Button
+            type="button"
+            size="default"
+            disabled={isUploading}
+            className="h-11 w-full sm:h-7 sm:w-auto"
+          >
+            <UploadIcon className="size-4" />
+            {input.buttonLabel}
+          </Button>
+        </DrawerTrigger>
+        <DrawerContent className="flex max-h-[85dvh] min-h-0 flex-col overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+          <DrawerHeader className="shrink-0 border-b px-4 py-3">
+            <DrawerTitle>{surfaceTitle}</DrawerTitle>
+          </DrawerHeader>
+          {content}
+        </DrawerContent>
+      </Drawer>
+    )
+  }
+
+  return (
+    <Sheet open={isOpen} onOpenChange={handleOpenChange}>
+      <SheetTrigger render={<Button type="button" variant="default" size="sm" disabled={isUploading} />}>
+        <UploadIcon className="size-4" />
+        {input.buttonLabel}
+      </SheetTrigger>
+      <SheetContent side="right" className="h-full overflow-hidden sm:max-w-xl">
+        <SheetHeader className="shrink-0">
+          <SheetTitle>{surfaceTitle}</SheetTitle>
+        </SheetHeader>
+        {content}
+      </SheetContent>
+    </Sheet>
+  )
+}
+
 function AssetGrid(input: {
   assets: SessionDetailAsset[]
   canManageSession: boolean
   emptyMessage: string
   onAssetsChanged: () => Promise<void> | void
-  pendingUpload: PendingAssetUpload | null
+  pendingUploads: PendingAssetUpload[]
   scope: NavigationScope
   sessionId: string
 }) {
-  if (input.assets.length === 0 && !input.pendingUpload) {
+  if (input.assets.length === 0 && input.pendingUploads.length === 0) {
     return (
       <div className="rounded-lg border border-dashed bg-muted/20 p-6 text-sm text-muted-foreground">
         {input.emptyMessage}
@@ -457,7 +918,9 @@ function AssetGrid(input: {
 
   return (
     <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
-      {input.pendingUpload ? <PendingAssetCard pendingUpload={input.pendingUpload} /> : null}
+      {input.pendingUploads.map((pendingUpload) => (
+        <PendingAssetCard key={pendingUpload.id} pendingUpload={pendingUpload} />
+      ))}
       {input.assets.map((asset) => (
         <AssetCard
           key={asset.id}
@@ -492,75 +955,11 @@ export function SessionAssetsPanel(input: {
   onLoadMore?: () => void
   onAssetsChanged: () => Promise<void> | void
 }) {
-  const inputId = React.useId()
-  const fileInputRef = React.useRef<HTMLInputElement>(null)
-  const [pendingUpload, setPendingUpload] = React.useState<PendingAssetUpload | null>(null)
-  const isUploading = pendingUpload !== null
+  const [pendingUploads, setPendingUploads] = React.useState<PendingAssetUpload[]>([])
   const description = input.description?.trim()
   const hasMoreAssets = input.assets.length < input.assetTotalCount
   const canUploadAssets = input.canManageSession && input.canUploadAssets
   const subscriptionHref = buildSubscriptionHref(input.scope)
-
-  async function handleSelectedFile(file: File): Promise<void> {
-    if (!canUploadAssets) {
-      toast.error(getUploadBlockedMessage(input.assetUploadBlockReason ?? null))
-      return
-    }
-
-    setPendingUpload({
-      fileName: file.name,
-      statusLabel: input.assetType === "photo" ? "Compressing..." : "Uploading...",
-    })
-
-    try {
-      const compressedPhotoFiles =
-        input.assetType === "photo" ? await compressSessionPhotoFiles(file) : null
-      const assetFile = compressedPhotoFiles?.displayFile ?? file
-
-      setPendingUpload({
-        fileName: assetFile.name,
-        statusLabel: "Uploading...",
-      })
-
-      const formData = new FormData()
-      formData.set("sessionId", input.sessionId)
-      formData.set("assetType", input.assetType)
-      formData.set("scopeOrgId", input.scope.activeOrgId)
-      if (input.scope.activeTeamId) {
-        formData.set("scopeTeamId", input.scope.activeTeamId)
-      }
-      formData.set("scopeTab", input.tab)
-      formData.set("assetFile", assetFile)
-      if (compressedPhotoFiles) {
-        formData.set("thumbnailFile", compressedPhotoFiles.thumbnailFile)
-      }
-
-      const result = await saveSessionAssetAction(formData)
-
-      if (!result.ok) {
-        toast.error(result.message)
-        return
-      }
-
-      toast.success(input.assetType === "photo" ? "Image uploaded." : "File uploaded.")
-      await input.onAssetsChanged()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not upload this file.")
-    } finally {
-      setPendingUpload(null)
-    }
-  }
-
-  function handleFileInputChange(event: React.ChangeEvent<HTMLInputElement>): void {
-    const file = event.currentTarget.files?.[0]
-    event.currentTarget.value = ""
-
-    if (!file || isUploading) {
-      return
-    }
-
-    void handleSelectedFile(file)
-  }
 
   return (
     <div className="space-y-4">
@@ -573,31 +972,16 @@ export function SessionAssetsPanel(input: {
         </div>
 
         {canUploadAssets ? (
-          <div>
-            <input
-              ref={fileInputRef}
-              id={inputId}
-              type="file"
-              accept={input.accept}
-              disabled={isUploading}
-              onChange={handleFileInputChange}
-              className="hidden"
-              aria-label={input.buttonLabel}
-            />
-            <Button
-              type="button"
-              size="sm"
-              disabled={isUploading}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {isUploading ? (
-                <Loader2Icon className="size-4 animate-spin" />
-              ) : (
-                <UploadIcon className="size-4" />
-              )}
-              {input.buttonLabel}
-            </Button>
-          </div>
+          <SessionAssetUploadSurface
+            accept={input.accept}
+            assetType={input.assetType}
+            buttonLabel={input.buttonLabel}
+            onAssetsChanged={input.onAssetsChanged}
+            onPendingUploadsChange={setPendingUploads}
+            scope={input.scope}
+            sessionId={input.sessionId}
+            tab={input.tab}
+          />
         ) : null}
       </div>
 
@@ -624,7 +1008,7 @@ export function SessionAssetsPanel(input: {
         canManageSession={input.canManageSession}
         emptyMessage={input.emptyMessage}
         onAssetsChanged={input.onAssetsChanged}
-        pendingUpload={pendingUpload}
+        pendingUploads={pendingUploads}
         scope={input.scope}
         sessionId={input.sessionId}
       />

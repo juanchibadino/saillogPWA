@@ -94,7 +94,7 @@ export function TableFiltersToolbar({
                     disabled={field.disabled}
                     onChange={handleSelectChange}
                     className={cn(
-                      "h-7 min-w-[8.5rem] rounded-md border-0 bg-transparent pr-6 pl-1 text-xs font-medium text-foreground outline-none ring-0 disabled:cursor-not-allowed disabled:opacity-50",
+                      "h-11 min-w-[8.5rem] rounded-md border-0 bg-transparent pr-6 pl-1 text-sm font-medium text-foreground outline-none ring-0 disabled:cursor-not-allowed disabled:opacity-50 md:h-7 md:text-xs",
                       field.controlClassName,
                     )}
                     aria-label={field.label}

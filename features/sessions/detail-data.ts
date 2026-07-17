@@ -151,8 +151,10 @@ const SESSION_SETUP_SELECT_COLUMNS = "session_id,free_notes"
 const SESSION_REGATTA_RESULTS_SELECT_COLUMNS = "session_id,result_notes"
 const SESSION_ASSETS_BASE_SELECT_COLUMNS =
   "id,asset_type,bucket,storage_path,file_name,mime_type,size_bytes,created_at"
+const SESSION_ASSETS_WITH_DESCRIPTION_SELECT_COLUMNS =
+  "id,asset_type,bucket,storage_path,file_name,description,mime_type,size_bytes,created_at"
 const SESSION_ASSETS_WITH_THUMBNAILS_SELECT_COLUMNS =
-  "id,asset_type,bucket,storage_path,file_name,mime_type,size_bytes,thumbnail_bucket,thumbnail_storage_path,thumbnail_mime_type,thumbnail_size_bytes,created_at"
+  "id,asset_type,bucket,storage_path,file_name,description,mime_type,size_bytes,thumbnail_bucket,thumbnail_storage_path,thumbnail_mime_type,thumbnail_size_bytes,created_at"
 const GEAR_ITEMS_SELECT_COLUMNS = "id,name,gear_type,status,condition,serial_number,barcode"
 const SESSION_GEAR_USAGE_SELECT_COLUMNS = "gear_item_id"
 const TEAM_SETUP_ITEMS_SELECT_COLUMNS =
@@ -195,13 +197,17 @@ const SESSION_DETAIL_GEAR_TYPE_FILTERS: SessionDetailGearTypeFilter[] = [
 
 type ServerSupabaseClient = Awaited<ReturnType<typeof createServerSupabaseClient>>
 
-type SessionAssetThumbnailColumns = Pick<
+type SessionAssetOptionalColumns = Pick<
   SessionAssetRow,
-  "thumbnail_bucket" | "thumbnail_storage_path" | "thumbnail_mime_type" | "thumbnail_size_bytes"
+  | "description"
+  | "thumbnail_bucket"
+  | "thumbnail_storage_path"
+  | "thumbnail_mime_type"
+  | "thumbnail_size_bytes"
 >
 
-type SessionAssetQueryRow = Omit<SessionAssetRow, keyof SessionAssetThumbnailColumns> &
-  Partial<SessionAssetThumbnailColumns>
+type SessionAssetQueryRow = Omit<SessionAssetRow, keyof SessionAssetOptionalColumns> &
+  Partial<SessionAssetOptionalColumns>
 
 type SessionAssetTypeFilter = "photo" | "non_photo"
 
@@ -314,9 +320,19 @@ function isMissingSessionAssetThumbnailColumnError(message: string): boolean {
   )
 }
 
+function isMissingSessionAssetDescriptionColumnError(message: string): boolean {
+  const normalizedMessage = message.toLowerCase()
+
+  return (
+    normalizedMessage.includes("session_assets.description") &&
+    normalizedMessage.includes("does not exist")
+  )
+}
+
 function normalizeSessionAssetRow(row: SessionAssetQueryRow): SessionAssetRow {
   return {
     ...row,
+    description: row.description ?? null,
     thumbnail_bucket: row.thumbnail_bucket ?? null,
     thumbnail_storage_path: row.thumbnail_storage_path ?? null,
     thumbnail_mime_type: row.thumbnail_mime_type ?? null,
@@ -371,8 +387,30 @@ async function loadSessionAssetPage(input: {
     }
   }
 
-  if (!isMissingSessionAssetThumbnailColumnError(thumbnailResult.error.message)) {
+  if (
+    !isMissingSessionAssetThumbnailColumnError(thumbnailResult.error.message) &&
+    !isMissingSessionAssetDescriptionColumnError(thumbnailResult.error.message)
+  ) {
     throw new Error(thumbnailResult.error.message)
+  }
+
+  const descriptionResult = await buildSessionAssetsQuery({
+    ...input,
+    selectColumns: SESSION_ASSETS_WITH_DESCRIPTION_SELECT_COLUMNS,
+  })
+
+  if (!descriptionResult.error) {
+    return {
+      assetTotalCount: descriptionResult.count ?? descriptionResult.data?.length ?? 0,
+      assets: ((descriptionResult.data ?? []) as unknown as SessionAssetQueryRow[]).map(
+        normalizeSessionAssetRow,
+      ),
+      thumbnailColumnsAvailable: false,
+    }
+  }
+
+  if (!isMissingSessionAssetDescriptionColumnError(descriptionResult.error.message)) {
+    throw new Error(descriptionResult.error.message)
   }
 
   const baseResult = await buildSessionAssetsQuery({

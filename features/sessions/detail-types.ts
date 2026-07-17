@@ -73,6 +73,7 @@ export type SessionDetailAssetMetadata = Pick<
   | "bucket"
   | "storage_path"
   | "file_name"
+  | "description"
   | "mime_type"
   | "size_bytes"
   | "thumbnail_bucket"
