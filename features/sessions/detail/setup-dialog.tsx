@@ -59,6 +59,7 @@ const WEATHER_METRIC_KEYS = [
   "twd",
   "tws",
   "sea_state",
+  "conditions",
   "type_of_day",
   "currents",
 ] as const
