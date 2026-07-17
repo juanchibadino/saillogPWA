@@ -7,7 +7,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import type {
   CrewListItem,
   CrewTeamOption,
-  TeamCrewListItem,
 } from "@/features/users/data"
 import { CrewActionsMenu } from "@/features/users/user-form-dialogs"
 import { buildUsersPageHref } from "@/features/users/list-route-state.mjs"
@@ -58,11 +57,9 @@ function getInitials(name: string): string {
   return `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}`.toUpperCase()
 }
 
-function formatRoleLabel(role: CrewListItem["role"]): string {
-  if (role === "organization_admin") {
-    return "Organization Admin"
-  }
-
+function formatTeamRoleLabel(
+  role: CrewListItem["linkedTeams"][number]["role"],
+): string {
   if (role === "team_admin") {
     return "Team Admin"
   }
@@ -74,22 +71,6 @@ function formatRoleLabel(role: CrewListItem["role"]): string {
   return "Crew"
 }
 
-function RoleBadge({ role }: { role: CrewListItem["role"] }) {
-  if (role === "organization_admin") {
-    return <Badge variant="secondary">Organization Admin</Badge>
-  }
-
-  if (role === "team_admin") {
-    return <Badge variant="secondary">Team Admin</Badge>
-  }
-
-  if (role === "coach") {
-    return <Badge variant="outline">Coach</Badge>
-  }
-
-  return <Badge>Crew</Badge>
-}
-
 function InviteStatusBadge({ firstSeenAt }: { firstSeenAt: string | null }) {
   if (firstSeenAt) {
     return null
@@ -98,8 +79,46 @@ function InviteStatusBadge({ firstSeenAt }: { firstSeenAt: string | null }) {
   return <Badge variant="outline">Invited</Badge>
 }
 
-function isTeamCrewListItem(crew: CrewListItem): crew is TeamCrewListItem {
-  return crew.membershipKind === "team"
+function TeamsAndRolesBadges({
+  crew,
+}: {
+  crew: CrewListItem
+}) {
+  const hasOrganizationRole = crew.membershipKind === "organization"
+
+  if (!hasOrganizationRole && crew.linkedTeams.length === 0) {
+    return (
+      <Badge variant="secondary" className="max-w-full truncate">
+        No teams
+      </Badge>
+    )
+  }
+
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+      {hasOrganizationRole ? (
+        <Badge variant="secondary" className="max-w-full truncate">
+          Organization Admin
+        </Badge>
+      ) : null}
+      {crew.linkedTeams.map((team) => {
+        const roleLabel = formatTeamRoleLabel(team.role)
+
+        return (
+          <Badge
+            key={team.id}
+            variant="outline"
+            className="max-w-full gap-1 truncate"
+            title={`${team.name} · ${roleLabel}`}
+          >
+            <span className="min-w-0 truncate">{team.name}</span>
+            <span className="shrink-0 text-muted-foreground">·</span>
+            <span className="shrink-0">{roleLabel}</span>
+          </Badge>
+        )
+      })}
+    </div>
+  )
 }
 
 function buildUsersPaginationItems(
@@ -227,16 +246,15 @@ export function UsersTable({
                       ) : null}
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span className="truncate">{crew.teamName}</span>
-                      <RoleBadge role={crew.role} />
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <TeamsAndRolesBadges crew={crew} />
                       <InviteStatusBadge firstSeenAt={crew.firstSeenAt} />
                     </div>
                   </div>
                 </div>
 
                 <div className="shrink-0">
-                  {canManageUsers && isTeamCrewListItem(crew) ? (
+                  {canManageUsers ? (
                     <CrewActionsMenu
                       crew={crew}
                       currentPage={currentPage}
@@ -299,23 +317,21 @@ export function UsersTable({
         >
           <Table className="table-fixed">
             <colgroup>
-              <col className="w-[42%]" />
-              <col className="w-[28%]" />
-              <col className="w-[20%]" />
+              <col className="w-[40%]" />
+              <col className="w-[50%]" />
               <col className="w-[10%]" />
             </colgroup>
             <TableHeader className="bg-muted/40">
               <TableRow className="hover:bg-transparent">
                 <TableHead>Full name</TableHead>
-                <TableHead>Team</TableHead>
-                <TableHead>Role</TableHead>
+                <TableHead>Teams / Roles</TableHead>
                 <TableHead className="text-right" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {crews.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="py-6 text-sm text-muted-foreground">
+                  <TableCell colSpan={3} className="py-6 text-sm text-muted-foreground">
                     No members found for this scope.
                   </TableCell>
                 </TableRow>
@@ -333,17 +349,14 @@ export function UsersTable({
                         <span className="truncate font-medium">{crew.fullName}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="truncate" title={crew.teamName}>
-                      {crew.teamName}
-                    </TableCell>
                     <TableCell>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span>{formatRoleLabel(crew.role)}</span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <TeamsAndRolesBadges crew={crew} />
                         <InviteStatusBadge firstSeenAt={crew.firstSeenAt} />
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      {canManageUsers && isTeamCrewListItem(crew) ? (
+                      {canManageUsers ? (
                         <CrewActionsMenu
                           crew={crew}
                           currentPage={currentPage}

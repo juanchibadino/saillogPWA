@@ -106,6 +106,7 @@ export default async function SetPasswordPage({
                 autoComplete="new-password"
                 minLength={6}
                 placeholder="Minimum 6 characters"
+                className="h-11 px-3 md:h-8 md:px-2.5"
               />
             </div>
 
@@ -119,12 +120,13 @@ export default async function SetPasswordPage({
                 autoComplete="new-password"
                 minLength={6}
                 placeholder="Repeat the password"
+                className="h-11 px-3 md:h-8 md:px-2.5"
               />
             </div>
 
             <button
               type="submit"
-              className={buttonVariants({ className: "w-full" })}
+              className={buttonVariants({ className: "h-11 w-full md:h-8" })}
             >
               Save password
             </button>

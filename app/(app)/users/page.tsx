@@ -44,8 +44,12 @@ function getStatusMessage(status: string | undefined): string | null {
     return "Member updated successfully."
   }
 
+  if (status === "unlinked") {
+    return "Member unlinked from team."
+  }
+
   if (status === "deleted") {
-    return "Member removed successfully."
+    return "User deleted successfully."
   }
 
   return null
@@ -76,8 +80,16 @@ function getErrorMessage(error: string | undefined): string | null {
     return "Could not update member data. Confirm your permissions and try again."
   }
 
+  if (error === "unlink_failed") {
+    return "Could not unlink member from this team. Confirm your permissions and try again."
+  }
+
   if (error === "delete_failed") {
-    return "Could not remove member from this team. Confirm your permissions and try again."
+    return "Could not delete user. Confirm your permissions and try again."
+  }
+
+  if (error === "delete_blocked_linked_elsewhere") {
+    return "This user has active access outside this organization. Remove those links before deleting the user."
   }
 
   return null

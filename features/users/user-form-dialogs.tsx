@@ -6,16 +6,26 @@ import { useFormStatus } from "react-dom"
 
 import {
   createCrewMemberAction,
-  deleteCrewMemberAction,
+  deleteUserAction,
+  unlinkCrewMemberAction,
   updateCrewMemberAction,
 } from "@/features/users/actions"
 import type {
+  CrewListItem,
   CrewTeamOption,
   TeamCrewListItem,
 } from "@/features/users/data"
 import type { NavigationScope } from "@/lib/navigation/types"
 import { cn } from "@/lib/utils"
 import { Button, buttonVariants } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Drawer,
   DrawerContent,
@@ -54,6 +64,18 @@ type CrewMemberFormValues = {
   avatarUrl: string
 }
 
+type DecodedAvatarImageSource = {
+  cleanup: () => void
+  height: number
+  source: CanvasImageSource
+  width: number
+}
+
+const CREW_AVATAR_DIMENSION = 96
+const CREW_AVATAR_MAX_BYTES = 32 * 1024
+const CREW_AVATAR_WEBP_TYPE = "image/webp"
+const CREW_AVATAR_QUALITY_LADDER = [0.56, 0.46, 0.36, 0.28] as const
+
 function normalizeNameInput(value: string): string {
   return value.trim()
 }
@@ -67,6 +89,151 @@ function getDefaultTeamId(
   }
 
   return teamOptions[0]?.id ?? ""
+}
+
+function buildCompressedAvatarFileName(fileName: string): string {
+  const normalizedName = fileName.trim()
+  const baseName =
+    normalizedName.length > 0
+      ? normalizedName.replace(/\.[^/.]+$/, "")
+      : "avatar"
+
+  return `${baseName || "avatar"}.webp`
+}
+
+async function decodeAvatarImageSource(file: File): Promise<DecodedAvatarImageSource> {
+  if ("createImageBitmap" in window) {
+    try {
+      const bitmap = await window.createImageBitmap(file)
+
+      return {
+        source: bitmap,
+        width: bitmap.width,
+        height: bitmap.height,
+        cleanup: () => bitmap.close(),
+      }
+    } catch {
+      // Fall through to the image element path.
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file)
+    const image = new Image()
+
+    image.onload = () => {
+      resolve({
+        source: image,
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+        cleanup: () => URL.revokeObjectURL(objectUrl),
+      })
+    }
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl)
+      reject(new Error("Could not read this image."))
+    }
+    image.src = objectUrl
+  })
+}
+
+function canvasToAvatarWebpBlob(
+  canvas: HTMLCanvasElement,
+  quality: number,
+): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error("Could not compress this avatar."))
+          return
+        }
+
+        resolve(blob)
+      },
+      CREW_AVATAR_WEBP_TYPE,
+      quality,
+    )
+  })
+}
+
+async function compressCrewAvatarFile(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Select an image file.")
+  }
+
+  const decodedImage = await decodeAvatarImageSource(file)
+
+  try {
+    const sourceSize = Math.min(decodedImage.width, decodedImage.height)
+    const sourceX = Math.max(0, Math.floor((decodedImage.width - sourceSize) / 2))
+    const sourceY = Math.max(0, Math.floor((decodedImage.height - sourceSize) / 2))
+    const canvas = document.createElement("canvas")
+    canvas.width = CREW_AVATAR_DIMENSION
+    canvas.height = CREW_AVATAR_DIMENSION
+
+    const context = canvas.getContext("2d")
+    if (!context) {
+      throw new Error("Could not prepare this avatar.")
+    }
+
+    context.drawImage(
+      decodedImage.source,
+      sourceX,
+      sourceY,
+      sourceSize,
+      sourceSize,
+      0,
+      0,
+      CREW_AVATAR_DIMENSION,
+      CREW_AVATAR_DIMENSION,
+    )
+
+    let compressedBlob: Blob | null = null
+
+    for (const quality of CREW_AVATAR_QUALITY_LADDER) {
+      compressedBlob = await canvasToAvatarWebpBlob(canvas, quality)
+
+      if (compressedBlob.size <= CREW_AVATAR_MAX_BYTES) {
+        break
+      }
+    }
+
+    if (!compressedBlob) {
+      throw new Error("Could not compress this avatar.")
+    }
+
+    if (compressedBlob.type !== CREW_AVATAR_WEBP_TYPE) {
+      throw new Error("This browser could not create a WebP avatar.")
+    }
+
+    if (compressedBlob.size > CREW_AVATAR_MAX_BYTES) {
+      throw new Error("This avatar is still too large after compression.")
+    }
+
+    return new File([compressedBlob], buildCompressedAvatarFileName(file.name), {
+      type: CREW_AVATAR_WEBP_TYPE,
+      lastModified: Date.now(),
+    })
+  } finally {
+    decodedImage.cleanup()
+  }
+}
+
+function isTeamCrewListItem(crew: CrewListItem): crew is TeamCrewListItem {
+  return crew.membershipKind === "team"
+}
+
+function formatLinkedTeamsLabel(crew: CrewListItem): string {
+  if (isTeamCrewListItem(crew)) {
+    return crew.teamName
+  }
+
+  if (crew.linkedTeams.length === 1) {
+    return crew.linkedTeams[0]?.name ?? "their linked team"
+  }
+
+  return `${crew.linkedTeams.length} linked teams`
 }
 
 function UsersScopeHiddenInputs({
@@ -223,7 +390,7 @@ function CrewMemberDialogForm({
   const [lastName, setLastName] = React.useState(initialValues.lastName)
   const [role, setRole] = React.useState<InviteRole>(initialValues.role)
   const [teamId, setTeamId] = React.useState(initialValues.teamId)
-  const [avatarUrl, setAvatarUrl] = React.useState(initialValues.avatarUrl)
+  const [avatarErrorMessage, setAvatarErrorMessage] = React.useState("")
 
   const isDrawerSurface = surface === "drawer"
   const isOrganizationInvite = mode === "create" && role === "organization_admin"
@@ -244,8 +411,33 @@ function CrewMemberDialogForm({
     isDrawerSurface ? "h-11 px-3 text-base md:text-sm" : "h-9 px-3 text-sm",
   )
 
+  async function submitCrewMemberForm(formData: FormData): Promise<void> {
+    setAvatarErrorMessage("")
+
+    const avatarFile = formData.get("avatarFile")
+
+    if (avatarFile instanceof File && avatarFile.size > 0) {
+      try {
+        const compressedAvatarFile = await compressCrewAvatarFile(avatarFile)
+        formData.set("avatarFile", compressedAvatarFile)
+      } catch (error) {
+        setAvatarErrorMessage(
+          error instanceof Error ? error.message : "Could not prepare this avatar.",
+        )
+        return
+      }
+    } else {
+      formData.delete("avatarFile")
+    }
+
+    await action(formData)
+  }
+
   return (
-    <form action={action} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <form
+      action={submitCrewMemberForm}
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
+    >
       {crew ? (
         <>
           <input type="hidden" name="membershipId" value={crew.membershipId} />
@@ -262,6 +454,7 @@ function CrewMemberDialogForm({
       {shouldHideTeamSelect ? (
         <input type="hidden" name="teamId" value={teamId} />
       ) : null}
+      <input type="hidden" name="avatarUrl" value={initialValues.avatarUrl} />
 
       <CrewMemberDialogFieldset className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {mode === "create" ? (
@@ -355,16 +548,18 @@ function CrewMemberDialogForm({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}-avatar`}>Avatar URL</Label>
+          <Label htmlFor={`${idPrefix}-avatar`}>Avatar</Label>
           <Input
             id={`${idPrefix}-avatar`}
-            name="avatarUrl"
-            type="url"
-            value={avatarUrl}
-            onChange={(event) => setAvatarUrl(event.target.value)}
-            placeholder="https://..."
+            name="avatarFile"
+            type="file"
+            accept="image/*"
+            onChange={() => setAvatarErrorMessage("")}
             className={inputClassName}
           />
+          {avatarErrorMessage ? (
+            <p className="text-xs text-destructive">{avatarErrorMessage}</p>
+          ) : null}
         </div>
       </CrewMemberDialogFieldset>
 
@@ -582,6 +777,151 @@ function EditCrewSurface({
   )
 }
 
+function UnlinkSubmitButton({
+  className,
+}: {
+  className?: string
+}) {
+  const { pending } = useFormStatus()
+
+  return (
+    <Button
+      type="submit"
+      variant="destructive"
+      disabled={pending}
+      aria-busy={pending}
+      className={className}
+    >
+      {pending ? (
+        <>
+          <Loader2Icon className="size-4 animate-spin" />
+          Unlinking...
+        </>
+      ) : (
+        "Unlink"
+      )}
+    </Button>
+  )
+}
+
+function UnlinkCrewFooter({
+  onCancel,
+}: {
+  onCancel: () => void
+}) {
+  const { pending } = useFormStatus()
+  const cancelButton = (
+    <Button
+      type="button"
+      variant="outline"
+      disabled={pending}
+      className="h-11 w-full sm:h-8 sm:w-auto"
+      onClick={onCancel}
+    >
+      Cancel
+    </Button>
+  )
+  const deleteButton = (
+    <UnlinkSubmitButton className="h-11 w-full sm:h-8 sm:w-auto" />
+  )
+
+  return (
+    <DialogFooter>
+      {cancelButton}
+      {deleteButton}
+    </DialogFooter>
+  )
+}
+
+function UnlinkCrewForm({
+  currentPage,
+  crew,
+  loadMoreMode,
+  onCancel,
+  redirectTo,
+  scope,
+  selectedTeamId,
+}: {
+  currentPage?: number
+  crew: CrewListItem
+  loadMoreMode?: boolean
+  onCancel: () => void
+  redirectTo?: "/team-home" | "/users"
+  scope: NavigationScope
+  selectedTeamId?: string
+}) {
+  return (
+    <form
+      action={unlinkCrewMemberAction}
+      className="space-y-4"
+    >
+      <input type="hidden" name="profileId" value={crew.profileId} />
+      {isTeamCrewListItem(crew) ? (
+        <input type="hidden" name="membershipId" value={crew.membershipId} />
+      ) : null}
+      <UsersScopeHiddenInputs
+        currentPage={currentPage}
+        loadMoreMode={loadMoreMode}
+        redirectTo={redirectTo}
+        scope={scope}
+        selectedTeamId={selectedTeamId}
+      />
+
+      <UnlinkCrewFooter onCancel={onCancel} />
+    </form>
+  )
+}
+
+function UnlinkCrewSurface({
+  crew,
+  currentPage,
+  loadMoreMode,
+  open,
+  onOpenChange,
+  redirectTo,
+  scope,
+  selectedTeamId,
+}: {
+  crew: CrewListItem
+  currentPage?: number
+  loadMoreMode?: boolean
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  redirectTo?: "/team-home" | "/users"
+  scope: NavigationScope
+  selectedTeamId?: string
+}) {
+  const unlinkForm = (
+    <UnlinkCrewForm
+      crew={crew}
+      currentPage={currentPage}
+      loadMoreMode={loadMoreMode}
+      onCancel={() => onOpenChange(false)}
+      redirectTo={redirectTo}
+      scope={scope}
+      selectedTeamId={selectedTeamId}
+    />
+  )
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="sm:max-w-md"
+        overlayClassName="bg-black/20 backdrop-blur-sm supports-backdrop-filter:backdrop-blur-sm"
+      >
+        <DialogHeader>
+          <DialogTitle>Unlink member</DialogTitle>
+          <DialogDescription>
+            Unlink <strong>{crew.fullName}</strong> from{" "}
+            {formatLinkedTeamsLabel(crew)}. Their user account remains active.
+          </DialogDescription>
+        </DialogHeader>
+        {unlinkForm}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function DeleteSubmitButton({
   className,
 }: {
@@ -609,144 +949,105 @@ function DeleteSubmitButton({
   )
 }
 
-function DeleteCrewFooter({
+function DeleteUserFooter({
   onCancel,
-  surface,
 }: {
   onCancel: () => void
-  surface: CrewMemberFormSurface
 }) {
   const { pending } = useFormStatus()
-  const cancelButton = (
-    <Button
-      type="button"
-      variant="outline"
-      disabled={pending}
-      className={surface === "drawer" ? "h-11 w-full" : undefined}
-      onClick={onCancel}
-    >
-      Cancel
-    </Button>
-  )
-  const deleteButton = (
-    <DeleteSubmitButton className={surface === "drawer" ? "h-11 w-full" : undefined} />
-  )
-
-  if (surface === "drawer") {
-    return (
-      <DrawerFooter className="shrink-0 border-t">
-        {cancelButton}
-        {deleteButton}
-      </DrawerFooter>
-    )
-  }
 
   return (
-    <SheetFooter className="shrink-0 border-t sm:flex-row sm:justify-end">
-      {cancelButton}
-      {deleteButton}
-    </SheetFooter>
+    <DialogFooter>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={pending}
+        className="h-11 w-full sm:h-8 sm:w-auto"
+        onClick={onCancel}
+      >
+        Cancel
+      </Button>
+      <DeleteSubmitButton className="h-11 w-full sm:h-8 sm:w-auto" />
+    </DialogFooter>
   )
 }
 
-function DeleteCrewForm({
+function DeleteUserForm({
   currentPage,
   crew,
   loadMoreMode,
   onCancel,
+  redirectTo,
   scope,
   selectedTeamId,
-  surface,
 }: {
   currentPage?: number
-  crew: TeamCrewListItem
+  crew: CrewListItem
   loadMoreMode?: boolean
   onCancel: () => void
+  redirectTo?: "/team-home" | "/users"
   scope: NavigationScope
   selectedTeamId?: string
-  surface: CrewMemberFormSurface
 }) {
   return (
-    <form
-      action={deleteCrewMemberAction}
-      className="flex min-h-0 flex-1 flex-col overflow-hidden"
-    >
-      <input type="hidden" name="membershipId" value={crew.membershipId} />
+    <form action={deleteUserAction} className="space-y-4">
+      <input type="hidden" name="profileId" value={crew.profileId} />
       <UsersScopeHiddenInputs
         currentPage={currentPage}
         loadMoreMode={loadMoreMode}
+        redirectTo={redirectTo}
         scope={scope}
         selectedTeamId={selectedTeamId}
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <p className="text-sm text-muted-foreground">
-          Remove <span className="font-medium text-foreground">{crew.fullName}</span>{" "}
-          from {crew.teamName}.
-        </p>
-      </div>
-
-      <DeleteCrewFooter surface={surface} onCancel={onCancel} />
+      <DeleteUserFooter onCancel={onCancel} />
     </form>
   )
 }
 
-function DeleteCrewSurface({
+function DeleteUserSurface({
   crew,
   currentPage,
   loadMoreMode,
   open,
   onOpenChange,
+  redirectTo,
   scope,
   selectedTeamId,
-  surface,
 }: {
-  crew: TeamCrewListItem
+  crew: CrewListItem
   currentPage?: number
   loadMoreMode?: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
+  redirectTo?: "/team-home" | "/users"
   scope: NavigationScope
   selectedTeamId?: string
-  surface: CrewMemberFormSurface
 }) {
-  const deleteForm = (
-    <DeleteCrewForm
-      crew={crew}
-      currentPage={currentPage}
-      loadMoreMode={loadMoreMode}
-      onCancel={() => onOpenChange(false)}
-      scope={scope}
-      selectedTeamId={selectedTeamId}
-      surface={surface}
-    />
-  )
-
-  if (surface === "drawer") {
-    return (
-      <Drawer open={open} onOpenChange={onOpenChange}>
-        <DrawerContent className="flex max-h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden">
-          <DrawerHeader className="shrink-0 border-b px-4 text-left">
-            <DrawerTitle>Delete member</DrawerTitle>
-          </DrawerHeader>
-          {deleteForm}
-        </DrawerContent>
-      </Drawer>
-    )
-  }
-
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        className="flex h-full flex-col gap-0 overflow-hidden sm:max-w-md"
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="sm:max-w-md"
+        overlayClassName="bg-black/20 backdrop-blur-sm supports-backdrop-filter:backdrop-blur-sm"
       >
-        <SheetHeader className="shrink-0 border-b">
-          <SheetTitle>Delete member</SheetTitle>
-        </SheetHeader>
-        {deleteForm}
-      </SheetContent>
-    </Sheet>
+        <DialogHeader>
+          <DialogTitle>Delete user</DialogTitle>
+          <DialogDescription>
+            Delete <strong>{crew.fullName}</strong>. This unlinks their team
+            connections in this organization and deletes their user account.
+          </DialogDescription>
+        </DialogHeader>
+        <DeleteUserForm
+          crew={crew}
+          currentPage={currentPage}
+          loadMoreMode={loadMoreMode}
+          onCancel={() => onOpenChange(false)}
+          redirectTo={redirectTo}
+          scope={scope}
+          selectedTeamId={selectedTeamId}
+        />
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -754,23 +1055,33 @@ export function CrewActionsMenu({
   crew,
   currentPage,
   loadMoreMode,
+  redirectTo,
   scope,
   selectedTeamId,
+  showEdit = true,
   surface = "sheet",
   teamOptions,
   triggerClassName,
+  unlinkLabel = "Unlink",
 }: {
-  crew: TeamCrewListItem
+  crew: CrewListItem
   currentPage?: number
   loadMoreMode?: boolean
+  redirectTo?: "/team-home" | "/users"
   scope: NavigationScope
   selectedTeamId?: string
+  showEdit?: boolean
   surface?: CrewMemberFormSurface
   teamOptions: CrewTeamOption[]
   triggerClassName?: string
+  unlinkLabel?: string
 }) {
   const [isEditOpen, setIsEditOpen] = React.useState(false)
+  const [isUnlinkOpen, setIsUnlinkOpen] = React.useState(false)
   const [isDeleteOpen, setIsDeleteOpen] = React.useState(false)
+  const editableCrew = isTeamCrewListItem(crew) ? crew : null
+  const canEditCrew = showEdit && editableCrew !== null
+  const canUnlinkCrew = crew.linkedTeams.length > 0
 
   return (
     <>
@@ -789,13 +1100,24 @@ export function CrewActionsMenu({
           <MoreHorizontalIcon className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem
-            onClick={() => {
-              setIsEditOpen(true)
-            }}
-          >
-            Edit
-          </DropdownMenuItem>
+          {canEditCrew ? (
+            <DropdownMenuItem
+              onClick={() => {
+                setIsEditOpen(true)
+              }}
+            >
+              Edit
+            </DropdownMenuItem>
+          ) : null}
+          {canUnlinkCrew ? (
+            <DropdownMenuItem
+              onClick={() => {
+                setIsUnlinkOpen(true)
+              }}
+            >
+              {unlinkLabel}
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem
             variant="destructive"
             onClick={() => {
@@ -807,25 +1129,40 @@ export function CrewActionsMenu({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <EditCrewSurface
-        crew={crew}
-        currentPage={currentPage}
-        loadMoreMode={loadMoreMode}
-        teamOptions={teamOptions}
-        scope={scope}
-        selectedTeamId={selectedTeamId}
-        surface={surface}
-        open={isEditOpen}
-        onOpenChange={setIsEditOpen}
-      />
+      {canEditCrew && editableCrew ? (
+        <EditCrewSurface
+          crew={editableCrew}
+          currentPage={currentPage}
+          loadMoreMode={loadMoreMode}
+          teamOptions={teamOptions}
+          scope={scope}
+          selectedTeamId={selectedTeamId}
+          surface={surface}
+          open={isEditOpen}
+          onOpenChange={setIsEditOpen}
+        />
+      ) : null}
 
-      <DeleteCrewSurface
+      {canUnlinkCrew ? (
+        <UnlinkCrewSurface
+          crew={crew}
+          currentPage={currentPage}
+          loadMoreMode={loadMoreMode}
+          redirectTo={redirectTo}
+          scope={scope}
+          selectedTeamId={selectedTeamId}
+          open={isUnlinkOpen}
+          onOpenChange={setIsUnlinkOpen}
+        />
+      ) : null}
+
+      <DeleteUserSurface
         crew={crew}
         currentPage={currentPage}
         loadMoreMode={loadMoreMode}
+        redirectTo={redirectTo}
         scope={scope}
         selectedTeamId={selectedTeamId}
-        surface={surface}
         open={isDeleteOpen}
         onOpenChange={setIsDeleteOpen}
       />

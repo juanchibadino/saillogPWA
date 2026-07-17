@@ -33,6 +33,12 @@ type ProfileRow = Pick<
 type TeamRole = Database["public"]["Enums"]["team_role_type"]
 type OrganizationRole = Database["public"]["Enums"]["organization_role_type"]
 
+export type CrewLinkedTeam = {
+  id: string
+  name: string
+  role: TeamRole
+}
+
 export type TeamCrewListItem = {
   membershipKind: "team"
   membershipId: string
@@ -45,6 +51,7 @@ export type TeamCrewListItem = {
   firstSeenAt: string | null
   teamId: string
   teamName: string
+  linkedTeams: CrewLinkedTeam[]
   role: TeamRole
 }
 
@@ -60,6 +67,7 @@ export type OrganizationCrewListItem = {
   firstSeenAt: string | null
   teamId: null
   teamName: string
+  linkedTeams: CrewLinkedTeam[]
   role: OrganizationRole
 }
 
@@ -119,6 +127,43 @@ function buildProfileDisplayName(profile: ProfileRow): string {
   }
 
   return "Unnamed member"
+}
+
+function buildLinkedTeamsByProfileId(input: {
+  membershipRows: TeamMembershipRow[]
+  teamNameById: Map<string, string>
+}): Map<string, CrewLinkedTeam[]> {
+  const linkedTeamsByProfileId = new Map<string, CrewLinkedTeam[]>()
+  const linkedTeamIdsByProfileId = new Map<string, Set<string>>()
+
+  for (const membership of input.membershipRows) {
+    const teamName = input.teamNameById.get(membership.team_id)
+
+    if (!teamName) {
+      continue
+    }
+
+    const existingTeamIds =
+      linkedTeamIdsByProfileId.get(membership.profile_id) ?? new Set<string>()
+
+    if (existingTeamIds.has(membership.team_id)) {
+      continue
+    }
+
+    existingTeamIds.add(membership.team_id)
+    linkedTeamIdsByProfileId.set(membership.profile_id, existingTeamIds)
+
+    const linkedTeams = linkedTeamsByProfileId.get(membership.profile_id) ?? []
+    linkedTeams.push({
+      id: membership.team_id,
+      name: teamName,
+      role: membership.role,
+    })
+    linkedTeams.sort((left, right) => left.name.localeCompare(right.name))
+    linkedTeamsByProfileId.set(membership.profile_id, linkedTeams)
+  }
+
+  return linkedTeamsByProfileId
 }
 
 export async function getUsersPageData(input: {
@@ -248,6 +293,10 @@ export async function getUsersResultsData(input: {
   const profileRows: ProfileRow[] = profileData ?? []
   const profileById = new Map(profileRows.map((profile) => [profile.id, profile]))
   const teamNameById = new Map(input.teamOptions.map((team) => [team.id, team.name]))
+  const linkedTeamsByProfileId = buildLinkedTeamsByProfileId({
+    membershipRows,
+    teamNameById,
+  })
 
   const teamCrews = membershipRows
     .map((membership) => {
@@ -270,6 +319,7 @@ export async function getUsersResultsData(input: {
         firstSeenAt: profile.first_seen_at,
         teamId: membership.team_id,
         teamName,
+        linkedTeams: linkedTeamsByProfileId.get(profile.id) ?? [],
         role: membership.role,
       }
     })
@@ -295,6 +345,7 @@ export async function getUsersResultsData(input: {
         firstSeenAt: profile.first_seen_at,
         teamId: null,
         teamName: "Organization",
+        linkedTeams: linkedTeamsByProfileId.get(profile.id) ?? [],
         role: membership.role,
       }
     })

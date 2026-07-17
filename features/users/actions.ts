@@ -14,15 +14,30 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin"
 import { scopeFormInputSchema } from "@/lib/validation/navigation"
 import {
   createCrewMemberInputSchema,
-  deleteCrewMemberInputSchema,
+  deleteUserInputSchema,
+  unlinkCrewMemberInputSchema,
   updateCrewMemberInputSchema,
 } from "@/lib/validation/users"
 import type { Database } from "@/types/database"
+
+const PROFILE_AVATARS_BUCKET = "profile-avatars"
+const PROFILE_AVATAR_MIME_TYPE = "image/webp"
+const MAX_PROFILE_AVATAR_BYTES = 64 * 1024
 
 function getFormString(formData: FormData, key: string): string | undefined {
   const value = formData.get(key)
 
   if (typeof value !== "string") {
+    return undefined
+  }
+
+  return value
+}
+
+function getFormFile(formData: FormData, key: string): File | undefined {
+  const value = formData.get(key)
+
+  if (!(value instanceof File) || value.size <= 0) {
     return undefined
   }
 
@@ -140,6 +155,80 @@ function buildUserNameMetadata(input: {
   }
 }
 
+function buildInviteEmailMetadata(input: {
+  firstName: string
+  inviteEmailContext: InviteEmailContext
+  lastName: string
+  role: string
+}): Record<string, string> {
+  const nameMetadata = buildUserNameMetadata({
+    firstName: input.firstName,
+    lastName: input.lastName,
+  })
+  const teamId = input.inviteEmailContext.teamId ?? ""
+  const teamName = input.inviteEmailContext.teamName ?? ""
+
+  return {
+    ...nameMetadata,
+    invite_name: nameMetadata.full_name,
+    invited_role: input.role,
+    organization: input.inviteEmailContext.organizationName,
+    organization_id: input.inviteEmailContext.organizationId,
+    organization_name: input.inviteEmailContext.organizationName,
+    invited_organization_id: input.inviteEmailContext.organizationId,
+    invited_organization_name: input.inviteEmailContext.organizationName,
+    team: teamName,
+    team_id: teamId,
+    team_name: teamName,
+    invited_team_id: teamId,
+    invited_team_name: teamName,
+  }
+}
+
+function uniqueIds(values: string[]): string[] {
+  return [...new Set(values)]
+}
+
+function sanitizeFileName(fileName: string): string {
+  return fileName.replace(/[^a-zA-Z0-9._-]+/g, "_")
+}
+
+function hasAsciiSignature(
+  fileBytes: Uint8Array,
+  offset: number,
+  signature: string,
+): boolean {
+  if (fileBytes.length < offset + signature.length) {
+    return false
+  }
+
+  for (let index = 0; index < signature.length; index += 1) {
+    if (fileBytes[offset + index] !== signature.charCodeAt(index)) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function hasWebpFileSignature(fileBytes: Uint8Array): boolean {
+  return (
+    fileBytes.length >= 12 &&
+    hasAsciiSignature(fileBytes, 0, "RIFF") &&
+    hasAsciiSignature(fileBytes, 8, "WEBP")
+  )
+}
+
+function buildProfileAvatarStoragePath(input: {
+  fileName: string
+  profileId: string
+}): string {
+  const safeName = sanitizeFileName(input.fileName) || "avatar.webp"
+  const timestamp = Date.now()
+  const randomPart = Math.random().toString(36).slice(2, 10)
+  return `profiles/${input.profileId}/${timestamp}-${randomPart}-${safeName}`
+}
+
 type ScopedMembership = {
   id: string
   profile_id: string
@@ -158,6 +247,32 @@ type MembershipLookupRow = Pick<
   "id" | "role" | "is_active"
 >
 
+type TeamMembershipScopeLookupRow = Pick<
+  Database["public"]["Tables"]["team_memberships"]["Row"],
+  "id" | "profile_id" | "team_id" | "is_active"
+>
+
+type OrganizationMembershipScopeLookupRow = Pick<
+  Database["public"]["Tables"]["organization_memberships"]["Row"],
+  "id" | "organization_id" | "profile_id"
+>
+
+type TeamOrganizationLookupRow = Pick<
+  Database["public"]["Tables"]["teams"]["Row"],
+  "id" | "organization_id"
+>
+
+type MemberInviteTarget = NonNullable<
+  ReturnType<typeof resolveMemberInviteTarget>
+>
+
+type InviteEmailContext = {
+  organizationId: string
+  organizationName: string
+  teamId: string | null
+  teamName: string | null
+}
+
 type EnsureCrewMemberProfileResult =
   | {
       cleanupAuthUserId: string | null
@@ -175,11 +290,12 @@ type SupabaseInviteEmailResult = {
 }
 
 async function resolveScopedMembership(input: {
+  adminSupabase?: AdminSupabaseClient
   membershipId: string
   scopeOrgId: string
 }): Promise<ScopedMembership | null> {
   try {
-    const adminSupabase = createAdminSupabaseClient()
+    const adminSupabase = input.adminSupabase ?? createAdminSupabaseClient()
 
     const { data: membershipRow, error: membershipError } = await adminSupabase
       .from("team_memberships")
@@ -210,6 +326,152 @@ async function resolveScopedMembership(input: {
   }
 }
 
+async function getTeamOrganizationById(input: {
+  adminSupabase: AdminSupabaseClient
+  teamIds: string[]
+}): Promise<Map<string, string> | null> {
+  const uniqueTeamIds = uniqueIds(input.teamIds)
+
+  if (uniqueTeamIds.length === 0) {
+    return new Map()
+  }
+
+  const { data, error } = await input.adminSupabase
+    .from("teams")
+    .select("id,organization_id")
+    .in("id", uniqueTeamIds)
+
+  if (error) {
+    return null
+  }
+
+  const teamRows: TeamOrganizationLookupRow[] = data ?? []
+  return new Map(teamRows.map((team) => [team.id, team.organization_id]))
+}
+
+async function getActiveTeamMembershipsForProfile(input: {
+  adminSupabase: AdminSupabaseClient
+  profileId: string
+}): Promise<TeamMembershipScopeLookupRow[] | null> {
+  const { data, error } = await input.adminSupabase
+    .from("team_memberships")
+    .select("id,profile_id,team_id,is_active")
+    .eq("profile_id", input.profileId)
+    .eq("is_active", true)
+
+  if (error) {
+    return null
+  }
+
+  return data ?? []
+}
+
+async function getScopedTeamMembershipsForProfile(input: {
+  adminSupabase: AdminSupabaseClient
+  profileId: string
+  scopeOrgId: string
+}): Promise<TeamMembershipScopeLookupRow[] | null> {
+  const membershipRows = await getActiveTeamMembershipsForProfile({
+    adminSupabase: input.adminSupabase,
+    profileId: input.profileId,
+  })
+
+  if (!membershipRows) {
+    return null
+  }
+
+  const teamOrganizationById = await getTeamOrganizationById({
+    adminSupabase: input.adminSupabase,
+    teamIds: membershipRows.map((membership) => membership.team_id),
+  })
+
+  if (!teamOrganizationById) {
+    return null
+  }
+
+  return membershipRows.filter(
+    (membership) => teamOrganizationById.get(membership.team_id) === input.scopeOrgId,
+  )
+}
+
+async function getOrganizationMembershipsForProfile(input: {
+  adminSupabase: AdminSupabaseClient
+  profileId: string
+}): Promise<OrganizationMembershipScopeLookupRow[] | null> {
+  const { data, error } = await input.adminSupabase
+    .from("organization_memberships")
+    .select("id,organization_id,profile_id")
+    .eq("profile_id", input.profileId)
+
+  if (error) {
+    return null
+  }
+
+  return data ?? []
+}
+
+async function resolveUserDeleteScope(input: {
+  adminSupabase: AdminSupabaseClient
+  profileId: string
+  scopeOrgId: string
+}): Promise<{
+  hasOutsideActiveAccess: boolean
+  hasScopedAccess: boolean
+  scopedOrganizationMembershipIds: string[]
+  scopedTeamMembershipIds: string[]
+} | null> {
+  const [teamMembershipRows, organizationMembershipRows] = await Promise.all([
+    getActiveTeamMembershipsForProfile({
+      adminSupabase: input.adminSupabase,
+      profileId: input.profileId,
+    }),
+    getOrganizationMembershipsForProfile({
+      adminSupabase: input.adminSupabase,
+      profileId: input.profileId,
+    }),
+  ])
+
+  if (!teamMembershipRows || !organizationMembershipRows) {
+    return null
+  }
+
+  const teamOrganizationById = await getTeamOrganizationById({
+    adminSupabase: input.adminSupabase,
+    teamIds: teamMembershipRows.map((membership) => membership.team_id),
+  })
+
+  if (!teamOrganizationById) {
+    return null
+  }
+
+  const scopedTeamMembershipIds = teamMembershipRows
+    .filter(
+      (membership) =>
+        teamOrganizationById.get(membership.team_id) === input.scopeOrgId,
+    )
+    .map((membership) => membership.id)
+  const outsideTeamMemberships = teamMembershipRows.filter(
+    (membership) => teamOrganizationById.get(membership.team_id) !== input.scopeOrgId,
+  )
+  const scopedOrganizationMembershipIds = organizationMembershipRows
+    .filter((membership) => membership.organization_id === input.scopeOrgId)
+    .map((membership) => membership.id)
+  const outsideOrganizationMemberships = organizationMembershipRows.filter(
+    (membership) => membership.organization_id !== input.scopeOrgId,
+  )
+
+  return {
+    hasOutsideActiveAccess:
+      outsideTeamMemberships.length > 0 ||
+      outsideOrganizationMemberships.length > 0,
+    hasScopedAccess:
+      scopedTeamMembershipIds.length > 0 ||
+      scopedOrganizationMembershipIds.length > 0,
+    scopedOrganizationMembershipIds,
+    scopedTeamMembershipIds,
+  }
+}
+
 async function isValidTargetTeam(input: {
   scopeOrgId: string
   teamId: string
@@ -231,6 +493,60 @@ async function isValidTargetTeam(input: {
     return Boolean(teamRow)
   } catch {
     return false
+  }
+}
+
+async function resolveInviteEmailContext(input: {
+  adminSupabase: AdminSupabaseClient
+  inviteTarget: MemberInviteTarget
+  scopeOrgId: string
+}): Promise<InviteEmailContext | null> {
+  const { data: organizationRow, error: organizationError } =
+    await input.adminSupabase
+      .from("organizations")
+      .select("id,name")
+      .eq("id", input.scopeOrgId)
+      .eq("is_active", true)
+      .maybeSingle()
+
+  if (organizationError) {
+    throw new Error(`Could not load invite organization: ${organizationError.message}`)
+  }
+
+  if (!organizationRow) {
+    return null
+  }
+
+  if (input.inviteTarget.kind === "organization") {
+    return {
+      organizationId: organizationRow.id,
+      organizationName: organizationRow.name,
+      teamId: null,
+      teamName: null,
+    }
+  }
+
+  const { data: teamRow, error: teamError } = await input.adminSupabase
+    .from("teams")
+    .select("id,name,organization_id")
+    .eq("id", input.inviteTarget.teamId)
+    .eq("organization_id", input.scopeOrgId)
+    .eq("is_active", true)
+    .maybeSingle()
+
+  if (teamError) {
+    throw new Error(`Could not load invite team: ${teamError.message}`)
+  }
+
+  if (!teamRow) {
+    return null
+  }
+
+  return {
+    organizationId: organizationRow.id,
+    organizationName: organizationRow.name,
+    teamId: teamRow.id,
+    teamName: teamRow.name,
   }
 }
 
@@ -261,6 +577,7 @@ async function ensureCrewMemberProfile(input: {
   firstName: string
   lastName: string
   avatarUrl: string | null
+  inviteEmailContext: InviteEmailContext
   role: string
 }): Promise<EnsureCrewMemberProfileResult> {
   const existingProfile = await getProfileByEmail({
@@ -281,6 +598,7 @@ async function ensureCrewMemberProfile(input: {
     adminSupabase: input.adminSupabase,
     email: input.email,
     firstName: input.firstName,
+    inviteEmailContext: input.inviteEmailContext,
     lastName: input.lastName,
     role: input.role,
   })
@@ -409,7 +727,6 @@ async function getOrganizationMembershipForProfile(input: {
 async function buildInviteRedirectTo(): Promise<string> {
   const origin = await resolveCurrentRequestOrigin()
   const callbackUrl = new URL("/auth/callback", origin)
-  callbackUrl.searchParams.set("next", "/post-auth")
 
   return callbackUrl.toString()
 }
@@ -418,6 +735,7 @@ async function sendSupabaseInviteEmail(input: {
   adminSupabase: AdminSupabaseClient
   email: string
   firstName: string
+  inviteEmailContext: InviteEmailContext
   lastName: string
   role: string
 }): Promise<SupabaseInviteEmailResult | null> {
@@ -426,13 +744,12 @@ async function sendSupabaseInviteEmail(input: {
     input.email,
     {
       redirectTo,
-      data: {
-        ...buildUserNameMetadata({
-          firstName: input.firstName,
-          lastName: input.lastName,
-        }),
-        invited_role: input.role,
-      },
+      data: buildInviteEmailMetadata({
+        firstName: input.firstName,
+        inviteEmailContext: input.inviteEmailContext,
+        lastName: input.lastName,
+        role: input.role,
+      }),
     },
   )
 
@@ -456,9 +773,83 @@ async function cleanupInvitedAuthUser(input: {
   await input.adminSupabase.auth.admin.deleteUser(input.authUserId)
 }
 
+async function resolveCrewMemberAvatarUrl(input: {
+  adminSupabase: AdminSupabaseClient
+  avatarFile: File | undefined
+  fallbackAvatarUrl: string | null
+  profileId: string
+}): Promise<
+  | {
+      avatarUrl: string | null
+      ok: true
+    }
+  | {
+      ok: false
+    }
+> {
+  if (!input.avatarFile) {
+    return {
+      avatarUrl: input.fallbackAvatarUrl,
+      ok: true,
+    }
+  }
+
+  if (
+    input.avatarFile.type !== PROFILE_AVATAR_MIME_TYPE ||
+    input.avatarFile.size > MAX_PROFILE_AVATAR_BYTES
+  ) {
+    return {
+      ok: false,
+    }
+  }
+
+  let fileBytes: Uint8Array
+
+  try {
+    fileBytes = new Uint8Array(await input.avatarFile.arrayBuffer())
+  } catch {
+    return {
+      ok: false,
+    }
+  }
+
+  if (!hasWebpFileSignature(fileBytes)) {
+    return {
+      ok: false,
+    }
+  }
+
+  const storagePath = buildProfileAvatarStoragePath({
+    fileName: input.avatarFile.name,
+    profileId: input.profileId,
+  })
+  const { error: storageError } = await input.adminSupabase.storage
+    .from(PROFILE_AVATARS_BUCKET)
+    .upload(storagePath, fileBytes, {
+      contentType: PROFILE_AVATAR_MIME_TYPE,
+      upsert: false,
+    })
+
+  if (storageError) {
+    return {
+      ok: false,
+    }
+  }
+
+  const { data } = input.adminSupabase.storage
+    .from(PROFILE_AVATARS_BUCKET)
+    .getPublicUrl(storagePath)
+
+  return {
+    avatarUrl: data.publicUrl,
+    ok: true,
+  }
+}
+
 export async function createCrewMemberAction(formData: FormData): Promise<void> {
   const context = await requireAuthenticatedAccessContext()
   const scope = getScopeFromFormData(formData)
+  const avatarFile = getFormFile(formData, "avatarFile")
   const parsedInput = createCrewMemberInputSchema.safeParse({
     email: getFormString(formData, "email"),
     firstName: getFormString(formData, "firstName"),
@@ -528,7 +919,32 @@ export async function createCrewMemberAction(formData: FormData): Promise<void> 
     )
   }
 
-  const avatarUrl = normalizeAvatarUrl(parsedInput.data.avatarUrl)
+  let inviteEmailContext: InviteEmailContext | null = null
+  try {
+    inviteEmailContext = await resolveInviteEmailContext({
+      adminSupabase,
+      inviteTarget,
+      scopeOrgId: scope.scopeOrgId,
+    })
+  } catch {
+    redirect(
+      buildUsersRedirectPath({
+        error: "create_failed",
+        ...scope,
+      }),
+    )
+  }
+
+  if (!inviteEmailContext) {
+    redirect(
+      buildUsersRedirectPath({
+        error: "invalid_input",
+        ...scope,
+      }),
+    )
+  }
+
+  const fallbackAvatarUrl = normalizeAvatarUrl(parsedInput.data.avatarUrl)
   let profileResult: EnsureCrewMemberProfileResult | null = null
 
   try {
@@ -537,7 +953,8 @@ export async function createCrewMemberAction(formData: FormData): Promise<void> 
       email: parsedInput.data.email,
       firstName: parsedInput.data.firstName,
       lastName: parsedInput.data.lastName,
-      avatarUrl,
+      avatarUrl: fallbackAvatarUrl,
+      inviteEmailContext,
       role: parsedInput.data.role,
     })
   } catch {
@@ -574,13 +991,24 @@ export async function createCrewMemberAction(formData: FormData): Promise<void> 
     )
   }
 
+  const avatarResult = await resolveCrewMemberAvatarUrl({
+    adminSupabase,
+    avatarFile,
+    fallbackAvatarUrl,
+    profileId,
+  })
+
+  const resolvedAvatarUrl =
+    avatarResult.ok === true
+      ? avatarResult.avatarUrl
+      : await redirectAfterProvisioningFailure("create_failed")
   const syncedProfile = await syncCrewMemberProfile({
     adminSupabase,
     profileId,
     email: parsedInput.data.email,
     firstName: parsedInput.data.firstName,
     lastName: parsedInput.data.lastName,
-    avatarUrl,
+    avatarUrl: resolvedAvatarUrl,
   })
 
   if (!syncedProfile) {
@@ -674,6 +1102,7 @@ export async function createCrewMemberAction(formData: FormData): Promise<void> 
       adminSupabase,
       email: parsedInput.data.email,
       firstName: parsedInput.data.firstName,
+      inviteEmailContext,
       lastName: parsedInput.data.lastName,
       role: parsedInput.data.role,
     })
@@ -699,6 +1128,7 @@ export async function createCrewMemberAction(formData: FormData): Promise<void> 
 export async function updateCrewMemberAction(formData: FormData): Promise<void> {
   const context = await requireAuthenticatedAccessContext()
   const scope = getScopeFromFormData(formData)
+  const avatarFile = getFormFile(formData, "avatarFile")
   const parsedInput = updateCrewMemberInputSchema.safeParse({
     membershipId: getFormString(formData, "membershipId"),
     profileId: getFormString(formData, "profileId"),
@@ -767,12 +1197,29 @@ export async function updateCrewMemberAction(formData: FormData): Promise<void> 
     )
   }
 
+  const avatarResult = await resolveCrewMemberAvatarUrl({
+    adminSupabase,
+    avatarFile,
+    fallbackAvatarUrl: normalizeAvatarUrl(parsedInput.data.avatarUrl),
+    profileId: parsedInput.data.profileId,
+  })
+
+  const resolvedAvatarUrl =
+    avatarResult.ok === true
+      ? avatarResult.avatarUrl
+      : redirect(
+          buildUsersRedirectPath({
+            error: "update_failed",
+            ...scope,
+          }),
+        )
+
   const syncedProfile = await syncCrewMemberProfile({
     adminSupabase,
     profileId: parsedInput.data.profileId,
     firstName: parsedInput.data.firstName,
     lastName: parsedInput.data.lastName,
-    avatarUrl: normalizeAvatarUrl(parsedInput.data.avatarUrl),
+    avatarUrl: resolvedAvatarUrl,
   })
 
   if (!syncedProfile) {
@@ -812,11 +1259,12 @@ export async function updateCrewMemberAction(formData: FormData): Promise<void> 
   )
 }
 
-export async function deleteCrewMemberAction(formData: FormData): Promise<void> {
+export async function unlinkCrewMemberAction(formData: FormData): Promise<void> {
   const context = await requireAuthenticatedAccessContext()
   const scope = getScopeFromFormData(formData)
-  const parsedInput = deleteCrewMemberInputSchema.safeParse({
+  const parsedInput = unlinkCrewMemberInputSchema.safeParse({
     membershipId: getFormString(formData, "membershipId"),
+    profileId: getFormString(formData, "profileId"),
   })
 
   if (!parsedInput.success || !scope.scopeOrgId) {
@@ -837,15 +1285,117 @@ export async function deleteCrewMemberAction(formData: FormData): Promise<void> 
     )
   }
 
-  const scopedMembership = await resolveScopedMembership({
-    membershipId: parsedInput.data.membershipId,
-    scopeOrgId: scope.scopeOrgId,
-  })
+  let adminSupabase: AdminSupabaseClient
+  try {
+    adminSupabase = createAdminSupabaseClient()
+  } catch {
+    redirect(
+      buildUsersRedirectPath({
+        error: "unlink_failed",
+        ...scope,
+      }),
+    )
+  }
 
-  if (!scopedMembership) {
+  let membershipIdsToUnlink: string[] = []
+
+  if (parsedInput.data.membershipId) {
+    const scopedMembership = await resolveScopedMembership({
+      adminSupabase,
+      membershipId: parsedInput.data.membershipId,
+      scopeOrgId: scope.scopeOrgId,
+    })
+
+    if (
+      !scopedMembership ||
+      (parsedInput.data.profileId &&
+        scopedMembership.profile_id !== parsedInput.data.profileId)
+    ) {
+      redirect(
+        buildUsersRedirectPath({
+          error: "invalid_input",
+          ...scope,
+        }),
+      )
+    }
+
+    membershipIdsToUnlink = [scopedMembership.id]
+  } else if (parsedInput.data.profileId) {
+    const scopedMemberships = await getScopedTeamMembershipsForProfile({
+      adminSupabase,
+      profileId: parsedInput.data.profileId,
+      scopeOrgId: scope.scopeOrgId,
+    })
+
+    if (!scopedMemberships || scopedMemberships.length === 0) {
+      redirect(
+        buildUsersRedirectPath({
+          error: "invalid_input",
+          ...scope,
+        }),
+      )
+    }
+
+    membershipIdsToUnlink = scopedMemberships.map((membership) => membership.id)
+  }
+
+  if (membershipIdsToUnlink.length === 0) {
     redirect(
       buildUsersRedirectPath({
         error: "invalid_input",
+        ...scope,
+      }),
+    )
+  }
+
+  const { error: updateError } = await adminSupabase
+    .from("team_memberships")
+    .update({
+      is_active: false,
+      left_at: new Date().toISOString(),
+    })
+    .in("id", membershipIdsToUnlink)
+
+  if (updateError) {
+    redirect(
+      buildUsersRedirectPath({
+        error: "unlink_failed",
+        ...scope,
+      }),
+    )
+  }
+
+  revalidatePath("/users")
+  revalidatePath("/team-home")
+
+  redirect(
+    buildUsersRedirectPath({
+      status: "unlinked",
+      ...scope,
+    }),
+  )
+}
+
+export async function deleteUserAction(formData: FormData): Promise<void> {
+  const context = await requireAuthenticatedAccessContext()
+  const scope = getScopeFromFormData(formData)
+  const parsedInput = deleteUserInputSchema.safeParse({
+    profileId: getFormString(formData, "profileId"),
+  })
+
+  if (!parsedInput.success || !scope.scopeOrgId) {
+    redirect(
+      buildUsersRedirectPath({
+        error: "invalid_input",
+        ...scope,
+      }),
+    )
+  }
+
+  if (!canManageOrganizationOperations(context, scope.scopeOrgId)) {
+    redirect(
+      buildUsersRedirectPath({
+        error: "forbidden",
         ...scope,
       }),
     )
@@ -863,15 +1413,97 @@ export async function deleteCrewMemberAction(formData: FormData): Promise<void> 
     )
   }
 
-  const { error: updateError } = await adminSupabase
-    .from("team_memberships")
+  const deleteScope = await resolveUserDeleteScope({
+    adminSupabase,
+    profileId: parsedInput.data.profileId,
+    scopeOrgId: scope.scopeOrgId,
+  })
+
+  if (!deleteScope) {
+    redirect(
+      buildUsersRedirectPath({
+        error: "delete_failed",
+        ...scope,
+      }),
+    )
+  }
+
+  if (!deleteScope.hasScopedAccess) {
+    redirect(
+      buildUsersRedirectPath({
+        error: "invalid_input",
+        ...scope,
+      }),
+    )
+  }
+
+  if (deleteScope.hasOutsideActiveAccess) {
+    redirect(
+      buildUsersRedirectPath({
+        error: "delete_blocked_linked_elsewhere",
+        ...scope,
+      }),
+    )
+  }
+
+  const leftAt = new Date().toISOString()
+
+  if (deleteScope.scopedTeamMembershipIds.length > 0) {
+    const { error: teamMembershipUpdateError } = await adminSupabase
+      .from("team_memberships")
+      .update({
+        is_active: false,
+        left_at: leftAt,
+      })
+      .in("id", deleteScope.scopedTeamMembershipIds)
+
+    if (teamMembershipUpdateError) {
+      redirect(
+        buildUsersRedirectPath({
+          error: "delete_failed",
+          ...scope,
+        }),
+      )
+    }
+  }
+
+  if (deleteScope.scopedOrganizationMembershipIds.length > 0) {
+    const { error: organizationMembershipDeleteError } = await adminSupabase
+      .from("organization_memberships")
+      .delete()
+      .in("id", deleteScope.scopedOrganizationMembershipIds)
+
+    if (organizationMembershipDeleteError) {
+      redirect(
+        buildUsersRedirectPath({
+          error: "delete_failed",
+          ...scope,
+        }),
+      )
+    }
+  }
+
+  const { error: profileUpdateError } = await adminSupabase
+    .from("profiles")
     .update({
       is_active: false,
-      left_at: new Date().toISOString(),
     })
-    .eq("id", parsedInput.data.membershipId)
+    .eq("id", parsedInput.data.profileId)
 
-  if (updateError) {
+  if (profileUpdateError) {
+    redirect(
+      buildUsersRedirectPath({
+        error: "delete_failed",
+        ...scope,
+      }),
+    )
+  }
+
+  const { error: authDeleteError } = await adminSupabase.auth.admin.deleteUser(
+    parsedInput.data.profileId,
+  )
+
+  if (authDeleteError) {
     redirect(
       buildUsersRedirectPath({
         error: "delete_failed",

@@ -48,7 +48,6 @@ export async function POST(request: Request) {
   const supabase = await createServerSupabaseClient();
   const origin = await resolveRequestOrigin(request);
   const callbackUrl = new URL("/auth/callback", origin);
-  callbackUrl.searchParams.set("next", "/post-auth");
 
   const { error } = await supabase.auth.signInWithOtp({
     email,

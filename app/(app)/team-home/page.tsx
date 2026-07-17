@@ -28,7 +28,11 @@ import {
   type TeamHomeTeamMemberLive,
 } from "@/features/team-home/data"
 import { TeamHomeFeedback } from "@/features/team-home/team-home-feedback"
-import { CreateCrewMemberDialog } from "@/features/users/user-form-dialogs"
+import type { TeamCrewListItem } from "@/features/users/data"
+import {
+  CreateCrewMemberDialog,
+  CrewActionsMenu,
+} from "@/features/users/user-form-dialogs"
 import {
   formatTeamHomeTimingError,
   logTeamHomeTiming,
@@ -38,7 +42,10 @@ import {
 } from "@/features/team-home/timing"
 import { buildVenueDetailHref } from "@/features/venues/navigation"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
-import { canManageTeamStructure } from "@/lib/auth/capabilities"
+import {
+  canManageOrganizationOperations,
+  canManageTeamStructure,
+} from "@/lib/auth/capabilities"
 import {
   NAVIGATION_SCOPE_ORG_QUERY_KEY,
   NAVIGATION_SCOPE_TEAM_QUERY_KEY,
@@ -192,6 +199,33 @@ function getInitials(name: string): string {
   return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase()
 }
 
+function buildTeamHomeCrewActionItem(input: {
+  activeTeamName: string
+  member: TeamHomeTeamMemberLive
+}): TeamCrewListItem {
+  return {
+    membershipKind: "team",
+    membershipId: input.member.membershipId,
+    profileId: input.member.profileId,
+    firstName: input.member.firstName,
+    lastName: input.member.lastName,
+    email: input.member.email,
+    fullName: input.member.fullName,
+    avatarUrl: input.member.avatarUrl,
+    firstSeenAt: input.member.firstSeenAt,
+    teamId: input.member.teamId,
+    teamName: input.activeTeamName,
+    linkedTeams: [
+      {
+        id: input.member.teamId,
+        name: input.activeTeamName,
+        role: input.member.role,
+      },
+    ],
+    role: input.member.role,
+  }
+}
+
 function buildScopedHref(
   path: string,
   scope: {
@@ -308,6 +342,18 @@ function getTeamHomeErrorMessage(error: string | undefined): string | null {
     return "Access was created, but the invite email could not be sent."
   }
 
+  if (error === "unlink_failed") {
+    return "Could not unlink member from this team. Confirm your permissions and try again."
+  }
+
+  if (error === "delete_failed") {
+    return "Could not delete user. Confirm your permissions and try again."
+  }
+
+  if (error === "delete_blocked_linked_elsewhere") {
+    return "This user has active access outside this organization. Remove those links before deleting the user."
+  }
+
   if (error === "plan_limit_reached") {
     return null
   }
@@ -322,6 +368,14 @@ function getTeamHomeErrorMessage(error: string | undefined): string | null {
 function getTeamHomeStatusMessage(status: string | undefined): string | null {
   if (status === "invited") {
     return "Invite created successfully."
+  }
+
+  if (status === "unlinked") {
+    return "Member unlinked from team."
+  }
+
+  if (status === "deleted") {
+    return "User deleted successfully."
   }
 
   return null
@@ -784,11 +838,13 @@ function TeamHomeSailingClassCard({
 async function TeamHomeRosterSection({
   activeTeamName,
   canInviteMembers,
+  canManageMemberActions,
   scope,
   teamMembersPromise,
 }: {
   activeTeamName: string
   canInviteMembers: boolean
+  canManageMemberActions: boolean
   scope: ActiveTeamHomeScope
   teamMembersPromise: Promise<TeamHomeTeamMemberLive[]>
 }) {
@@ -827,6 +883,10 @@ async function TeamHomeRosterSection({
           <ul className="space-y-2">
             {teamMembers.map((person) => {
               const badgeLabel = resolveTeamMemberBadgeLabel(person.role)
+              const crewActionItem = buildTeamHomeCrewActionItem({
+                activeTeamName,
+                member: person,
+              })
 
               return (
                 <li
@@ -853,6 +913,19 @@ async function TeamHomeRosterSection({
 
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                     <TeamHomeRoleBadge label={badgeLabel} />
+                    {canManageMemberActions ? (
+                      <CrewActionsMenu
+                        crew={crewActionItem}
+                        redirectTo="/team-home"
+                        scope={scope}
+                        selectedTeamId={scope.activeTeamId}
+                        showEdit={false}
+                        surface="drawer"
+                        teamOptions={teamOptions}
+                        triggerClassName="h-11 w-11"
+                        unlinkLabel="Unlink"
+                      />
+                    ) : null}
                   </div>
                 </li>
               )
@@ -954,6 +1027,10 @@ export default async function TeamHomePage({
     organizationId: scope.activeOrgId,
     teamId: activeTeamId,
   })
+  const canManageTeamMemberActions = canManageOrganizationOperations(
+    context,
+    scope.activeOrgId,
+  )
   const teamSessionsHref = buildScopedHref("/team-sessions", activeTeamScope)
   const teamCampsHref = buildScopedHref("/team-camps", activeTeamScope)
   const teamVenuesHref = buildScopedHref("/team-venues", activeTeamScope)
@@ -1084,6 +1161,7 @@ export default async function TeamHomePage({
           <TeamHomeRosterSection
             activeTeamName={activeTeamName}
             canInviteMembers={canInviteTeamMembers}
+            canManageMemberActions={canManageTeamMemberActions}
             scope={activeTeamScope}
             teamMembersPromise={teamMembersPromise}
           />

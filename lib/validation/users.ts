@@ -49,10 +49,26 @@ export const updateCrewMemberInputSchema = z.object({
   avatarUrl: optionalAvatarUrlSchema,
 })
 
-export const deleteCrewMemberInputSchema = z.object({
-  membershipId: z.string().uuid(),
+export const unlinkCrewMemberInputSchema = z
+  .object({
+    membershipId: z.string().uuid().optional(),
+    profileId: z.string().uuid().optional(),
+  })
+  .superRefine((value, context) => {
+    if (!value.membershipId && !value.profileId) {
+      context.addIssue({
+        code: "custom",
+        path: ["membershipId"],
+        message: "A membership or profile is required to unlink a member.",
+      })
+    }
+  })
+
+export const deleteUserInputSchema = z.object({
+  profileId: z.string().uuid(),
 })
 
 export type CreateCrewMemberInput = z.infer<typeof createCrewMemberInputSchema>
 export type UpdateCrewMemberInput = z.infer<typeof updateCrewMemberInputSchema>
-export type DeleteCrewMemberInput = z.infer<typeof deleteCrewMemberInputSchema>
+export type UnlinkCrewMemberInput = z.infer<typeof unlinkCrewMemberInputSchema>
+export type DeleteUserInput = z.infer<typeof deleteUserInputSchema>

@@ -97,7 +97,7 @@ type TeamHomeSessionNetTimeRow = Pick<
 
 type TeamMembershipRow = Pick<
   Database["public"]["Tables"]["team_memberships"]["Row"],
-  "profile_id" | "role" | "joined_at" | "created_at" | "is_active"
+  "id" | "team_id" | "profile_id" | "role" | "joined_at" | "created_at" | "is_active"
 >
 
 type ProfileRow = Pick<
@@ -149,7 +149,14 @@ export type TeamHomeLatestCampLive = {
 
 export type TeamHomeTeamMemberLive = {
   id: string
+  membershipId: string
+  profileId: string
+  firstName: string
+  lastName: string
+  email: string
+  fullName: string
   name: string
+  teamId: string
   role: Database["public"]["Enums"]["team_role_type"]
   roleLabel: string
   avatarUrl: string | null
@@ -645,7 +652,7 @@ export async function getTeamHomeTeamMembers(input: {
 
   const { data: membershipData, error: membershipError } = await supabase
     .from("team_memberships")
-    .select("profile_id,role,joined_at,created_at,is_active")
+    .select("id,team_id,profile_id,role,joined_at,created_at,is_active")
     .eq("team_id", input.activeTeamId)
     .eq("is_active", true)
 
@@ -680,9 +687,20 @@ export async function getTeamHomeTeamMembers(input: {
         return null
       }
 
+      const firstName = (profile.first_name ?? "").trim()
+      const lastName = (profile.last_name ?? "").trim()
+      const fullName = buildProfileDisplayName(profile)
+
       return {
         id: profile.id,
-        name: buildProfileDisplayName(profile),
+        membershipId: membership.id,
+        profileId: profile.id,
+        firstName,
+        lastName,
+        email: (profile.email ?? "").trim(),
+        fullName,
+        name: fullName,
+        teamId: membership.team_id,
         role: membership.role,
         roleLabel: formatTeamRoleLabel(membership.role),
         avatarUrl: profile.photo_url,

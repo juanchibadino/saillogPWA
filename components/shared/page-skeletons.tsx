@@ -2237,9 +2237,9 @@ export function UsersResultsSkeleton() {
                 <div className="min-w-0 flex-1 space-y-2">
                   <Skeleton className="h-4 w-32" />
                   <Skeleton className="h-3 w-40" />
-                  <div className="flex items-center gap-2">
-                    <Skeleton className="h-3 w-24" />
-                    <Skeleton className="h-5 w-16 rounded-full" />
+                  <div className="flex items-center gap-1.5">
+                    <Skeleton className="h-5 w-28 rounded-full" />
+                    <Skeleton className="h-5 w-20 rounded-full" />
                   </div>
                 </div>
               </div>
@@ -2257,8 +2257,8 @@ export function UsersResultsSkeleton() {
       </div>
 
       <GradientCard className="hidden overflow-hidden p-0 md:block">
-        <div className="grid grid-cols-[2.1fr_1.4fr_1fr_3rem] items-center gap-4 bg-muted/40 px-4 py-3 text-sm font-medium text-muted-foreground">
-          {["Full name", "Team", "Role", ""].map((header, index) => (
+        <div className="grid grid-cols-[2fr_2.5fr_3rem] items-center gap-4 bg-muted/40 px-4 py-3 text-sm font-medium text-muted-foreground">
+          {["Full name", "Teams / Roles", ""].map((header, index) => (
             <span key={`users-header-${index}`} className="truncate">
               {header}
             </span>
@@ -2268,14 +2268,16 @@ export function UsersResultsSkeleton() {
           {Array.from({ length: 6 }).map((_, index) => (
             <div
               key={`users-row-${index}`}
-              className="grid min-h-12 grid-cols-[2.1fr_1.4fr_1fr_3rem] items-center gap-4 px-4 py-3"
+              className="grid min-h-12 grid-cols-[2fr_2.5fr_3rem] items-center gap-4 px-4 py-3"
             >
               <div className="flex items-center gap-3">
                 <Skeleton className="size-8 rounded-full" />
                 <Skeleton className="h-4 w-full max-w-36" />
               </div>
-              <Skeleton className="h-4 w-full max-w-32" />
-              <Skeleton className="h-4 w-full max-w-20" />
+              <div className="flex items-center gap-1.5">
+                <Skeleton className="h-5 w-20 rounded-full" />
+                <Skeleton className="h-5 w-16 rounded-full" />
+              </div>
               <Skeleton className="size-8 rounded-lg" />
             </div>
           ))}
