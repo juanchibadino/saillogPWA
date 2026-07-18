@@ -1,4 +1,10 @@
-import { ChevronDownIcon, FilterIcon, PlusIcon, Settings2Icon } from "lucide-react"
+import {
+  ChevronDownIcon,
+  FilterIcon,
+  PlusIcon,
+  SearchIcon,
+  Settings2Icon,
+} from "lucide-react"
 
 import { GradientCard } from "@/components/shared/gradient-card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -767,14 +773,44 @@ export function TeamGearPageSkeleton() {
   )
 }
 
-export function TeamNotesPageSkeleton() {
+export function TeamNotesChromeSkeleton() {
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-        <Skeleton className="h-10 w-full sm:w-96" />
-        <Skeleton className="h-9 w-full sm:w-28" />
-      </div>
+    <section className="space-y-4" aria-busy="true">
+      <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex w-full items-center gap-2 md:max-w-md">
+          <Skeleton className="h-11 min-w-0 flex-1 md:h-8" />
+          <button
+            type="button"
+            disabled
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-primary text-primary-foreground opacity-70 md:h-8 md:w-20 md:px-3"
+            aria-label="Loading notes search"
+          >
+            <SearchIcon className="size-4" />
+            <span className="hidden md:ml-1.5 md:inline">Search</span>
+          </button>
+          <button
+            type="button"
+            disabled
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground opacity-70 md:hidden"
+            aria-label="Loading notes filters"
+          >
+            <FilterIcon className="size-4" />
+          </button>
+        </div>
 
+        <div className="hidden items-center justify-end gap-2 md:flex">
+          <Skeleton className="h-8 w-24" />
+          <Skeleton className="h-8 w-20" />
+          <Skeleton className="h-8 w-32" />
+        </div>
+      </header>
+    </section>
+  )
+}
+
+export function TeamNotesResultsSkeleton() {
+  return (
+    <section className="space-y-4" aria-busy="true">
       <div className="space-y-4">
         {Array.from({ length: 3 }).map((_, index) => (
           <div key={`team-notes-card-${index}`} className="rounded-2xl border bg-card p-5">
@@ -810,7 +846,9 @@ export function TeamNotesPageSkeleton() {
 
             <div className="mt-4 rounded-xl border p-4">
               <Skeleton className="h-4 w-20" />
-              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-16 w-full" />
                 <Skeleton className="h-16 w-full" />
                 <Skeleton className="h-16 w-full" />
                 <Skeleton className="h-16 w-full" />
@@ -819,6 +857,19 @@ export function TeamNotesPageSkeleton() {
           </div>
         ))}
       </div>
+
+      <div className="pb-4 pt-3">
+        <Skeleton className="h-11 w-full md:mx-auto md:max-w-xs" />
+      </div>
+    </section>
+  )
+}
+
+export function TeamNotesPageSkeleton() {
+  return (
+    <div className="space-y-4">
+      <TeamNotesChromeSkeleton />
+      <TeamNotesResultsSkeleton />
     </div>
   )
 }

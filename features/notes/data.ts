@@ -133,8 +133,7 @@ export type TeamNoteCard = {
   }
 }
 
-export type TeamNotesPageData = {
-  cards: TeamNoteCard[]
+export type TeamNotesChromeData = {
   venueFilterOptions: TeamNoteVenueFilterOption[]
   twsFilterOptions: string[]
   conditionsFilterOptions: string[]
@@ -142,9 +141,15 @@ export type TeamNotesPageData = {
   selectedTwsValues: string[]
   selectedConditionsValues: string[]
   searchQuery: string
+}
+
+export type TeamNotesResultsData = {
+  cards: TeamNoteCard[]
   currentPage: number
   hasNextPage: boolean
 }
+
+export type TeamNotesPageData = TeamNotesChromeData & TeamNotesResultsData
 
 function normalizeText(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
@@ -285,6 +290,151 @@ function buildSearchIndex(card: TeamNoteCard): string {
   ]
     .join(" ")
     .toLowerCase()
+}
+
+export async function getTeamNotesChromeData(input: {
+  activeTeamId: string
+  selectedVenueId?: string
+  selectedTwsValues: string[]
+  selectedConditionsValues: string[]
+  searchQuery?: string
+}): Promise<TeamNotesChromeData> {
+  const supabase = await createServerSupabaseClient()
+  const searchQuery = normalizeSearchQuery(input.searchQuery)
+
+  const { data: setupItemData, error: setupItemsError } = await supabase
+    .from("team_setup_items")
+    .select(TEAM_SETUP_ITEM_SELECT_COLUMNS)
+    .eq("team_id", input.activeTeamId)
+    .eq("is_active", true)
+    .order("position", { ascending: true })
+
+  if (setupItemsError) {
+    throw new Error(`Could not load team setup items for notes: ${setupItemsError.message}`)
+  }
+
+  const setupItems: TeamSetupItemRow[] = setupItemData ?? []
+  const setupItemIds = setupItems.map((item) => item.id)
+  const optionsByItemId = new Map<string, TeamSetupItemOptionRow[]>()
+
+  if (setupItemIds.length > 0) {
+    const { data: setupOptionData, error: setupOptionsError } = await supabase
+      .from("team_setup_item_options")
+      .select(TEAM_SETUP_ITEM_OPTION_SELECT_COLUMNS)
+      .in("team_setup_item_id", setupItemIds)
+      .eq("is_active", true)
+      .order("position", { ascending: true })
+
+    if (setupOptionsError) {
+      throw new Error(
+        `Could not load team setup item options for notes: ${setupOptionsError.message}`,
+      )
+    }
+
+    for (const option of setupOptionData ?? []) {
+      const existingOptions = optionsByItemId.get(option.team_setup_item_id) ?? []
+      existingOptions.push(option)
+      optionsByItemId.set(option.team_setup_item_id, existingOptions)
+    }
+  }
+
+  const twsItem = setupItems.find((item) => item.key === "tws")
+  const conditionsItem = setupItems.find((item) => item.key === "conditions")
+  const twsFilterOptions = (twsItem ? optionsByItemId.get(twsItem.id) ?? [] : []).map(
+    (option) => option.label,
+  )
+  const conditionsFilterOptions = (
+    conditionsItem ? optionsByItemId.get(conditionsItem.id) ?? [] : []
+  ).map((option) => option.label)
+  const selectedTwsValues = normalizeSelectedValues({
+    values: input.selectedTwsValues,
+    allowedValues: new Set(twsFilterOptions),
+  })
+  const selectedConditionsValues = normalizeSelectedValues({
+    values: input.selectedConditionsValues,
+    allowedValues: new Set(conditionsFilterOptions),
+  })
+
+  const { data: teamVenueData, error: teamVenueError } = await supabase
+    .from("team_venues")
+    .select(TEAM_VENUE_SELECT_COLUMNS)
+    .eq("team_id", input.activeTeamId)
+
+  if (teamVenueError) {
+    throw new Error(`Could not load team venues for notes: ${teamVenueError.message}`)
+  }
+
+  const teamVenueRows: TeamVenueRow[] = teamVenueData ?? []
+  const venueIds = uniqueIds(teamVenueRows.map((row) => row.venue_id))
+  let venueRows: VenueRow[] = []
+
+  if (venueIds.length > 0) {
+    const { data, error: venueError } = await supabase
+      .from("venues")
+      .select(VENUE_SELECT_COLUMNS)
+      .in("id", venueIds)
+      .order("name", { ascending: true })
+
+    if (venueError) {
+      throw new Error(`Could not load venues for notes: ${venueError.message}`)
+    }
+
+    venueRows = data ?? []
+  }
+
+  const venueById = new Map(venueRows.map((row) => [row.id, row]))
+  const venueFilterOptions: TeamNoteVenueFilterOption[] = teamVenueRows
+    .map((teamVenue) => {
+      const venue = venueById.get(teamVenue.venue_id)
+
+      if (!venue) {
+        return null
+      }
+
+      return {
+        venueId: venue.id,
+        venueName: venue.name,
+        venueLocation: buildLocation(venue.city, venue.country),
+      }
+    })
+    .filter((option): option is TeamNoteVenueFilterOption => option !== null)
+    .sort((left, right) => left.venueName.localeCompare(right.venueName))
+
+  const selectedVenueId = normalizeSelectedId({
+    selectedId: input.selectedVenueId,
+    allowedIds: new Set(venueFilterOptions.map((option) => option.venueId)),
+  })
+
+  return {
+    venueFilterOptions,
+    twsFilterOptions,
+    conditionsFilterOptions,
+    selectedVenueId,
+    selectedTwsValues,
+    selectedConditionsValues,
+    searchQuery,
+  }
+}
+
+export async function getTeamNotesResultsData(input: {
+  activeTeamId: string
+  chromeData: TeamNotesChromeData
+  page: number
+}): Promise<TeamNotesResultsData> {
+  const pageData = await getTeamNotesPageData({
+    activeTeamId: input.activeTeamId,
+    selectedVenueId: input.chromeData.selectedVenueId,
+    selectedTwsValues: input.chromeData.selectedTwsValues,
+    selectedConditionsValues: input.chromeData.selectedConditionsValues,
+    searchQuery: input.chromeData.searchQuery,
+    page: input.page,
+  })
+
+  return {
+    cards: pageData.cards,
+    currentPage: pageData.currentPage,
+    hasNextPage: pageData.hasNextPage,
+  }
 }
 
 export async function getTeamNotesPageData(input: {

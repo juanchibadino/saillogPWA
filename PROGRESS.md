@@ -1,8 +1,35 @@
 # PROGRESS.md
 
-Last updated: 2026-07-15
+Last updated: 2026-07-17
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
+
+## 2026-07-17 - Team Notes route implementation
+
+- Added `AUDIT_TEAM_NOTES.md` for the current `/team-notes` route state against
+  `LOADING_PATTERNS.md`, `MOBILE_UI_PATTERNS.md`, and `DESKTOP_UI_PATTERNS.md`.
+- Kept Notes as cards on both mobile and desktop while fixing filter trigger
+  wiring, mobile filter Drawer behavior, mobile search height/labeling, and
+  phase-one mobile header handling for `/team-notes`.
+- Split `/team-notes` into chrome/results loading, added a local results retry
+  surface, card-list loading overlay, pending `Load more sessions`, card-top
+  scroll/focus after load more completes, and active search highlighting across
+  visible card text.
+- Added `features/notes/list-route-state.mjs` with Node coverage and included
+  the new test in `npm test`.
+- Data bounding remains the next follow-up: the current UX pass preserves the
+  existing card hydration behavior while making the route responsive.
+- Follow-up UI polish removed the local desktop `Notes` content title from the
+  route shell/skeleton and reduced the mobile Weather value size while keeping
+  the desktop emphasis.
+- Follow-up search/card UX made note search explicit with a button/Enter submit
+  and collapsed Boat Setup by default on mobile cards while preserving the open
+  desktop card.
+- Initial validation: `node --test features/notes/list-route-state.test.mjs`,
+  `./node_modules/.bin/tsc --noEmit`, `npm run lint`, `npm test`,
+  `npm run build`, and `git diff --check` passed.
+- Follow-up validation: `./node_modules/.bin/tsc --noEmit`, `npm run lint`,
+  `git diff --check`, and `npm run build` passed.
 
 ## 2026-07-15 - Onboarding sign-in routing and class options
 

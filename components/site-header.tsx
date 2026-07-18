@@ -119,7 +119,7 @@ function getSectionTitle(pathname: string): string {
   }
 
   if (pathname.startsWith("/team-notes")) {
-    return "Team Notes"
+    return "Notes"
   }
 
   if (pathname.startsWith("/team-standard-moves")) {
@@ -647,6 +647,10 @@ function shouldUsePhaseOneMobileHeader(pathname: string): boolean {
     return true
   }
 
+  if (pathname.startsWith("/team-notes")) {
+    return true
+  }
+
   if (pathname.startsWith("/team-standard-moves")) {
     return true
   }
@@ -704,6 +708,10 @@ function resolveMobileBackFallbackPath(pathname: string): string {
   }
 
   if (pathname.startsWith("/team-gear")) {
+    return "/team-home"
+  }
+
+  if (pathname.startsWith("/team-notes")) {
     return "/team-home"
   }
 
@@ -787,6 +795,7 @@ export function SiteHeader({
   const isTeamSessionsHeader = pathname.startsWith("/team-sessions")
   const isTeamAssessmentsHeader = pathname.startsWith("/team-assessments")
   const isTeamGearHeader = pathname.startsWith("/team-gear")
+  const isTeamNotesHeader = pathname.startsWith("/team-notes")
   const isTeamStandardMovesHeader = pathname.startsWith("/team-standard-moves")
   const isTeamWindPatternsHeader = pathname.startsWith("/team-wind-patterns")
   const isTeamAssetsHeader = pathname.startsWith("/team-assets")
@@ -1205,6 +1214,7 @@ export function SiteHeader({
       isTeamSessionsHeader ||
       isTeamAssessmentsHeader ||
       isTeamGearHeader ||
+      isTeamNotesHeader ||
       isTeamStandardMovesHeader ||
       isTeamWindPatternsHeader ||
       isTeamAssetsHeader ||
@@ -1356,6 +1366,7 @@ export function SiteHeader({
                 isTeamSessionsHeader ||
                 isTeamAssessmentsHeader ||
                 isTeamGearHeader ||
+                isTeamNotesHeader ||
                 isTeamStandardMovesHeader ||
                 isTeamWindPatternsHeader ||
                 isTeamAssetsHeader ||

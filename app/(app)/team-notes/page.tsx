@@ -1,11 +1,19 @@
-import { TeamNotesCards } from "@/features/notes/team-notes-cards"
-import { getTeamNotesPageData } from "@/features/notes/data"
-import { TeamNotesToolbar } from "@/features/notes/team-notes-toolbar"
-import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
+import { Suspense } from "react"
+
 import {
-  NAVIGATION_SCOPE_ORG_QUERY_KEY,
-  NAVIGATION_SCOPE_TEAM_QUERY_KEY,
-} from "@/lib/navigation/constants"
+  TeamNotesPageSkeleton,
+  TeamNotesResultsSkeleton,
+} from "@/components/shared/page-skeletons"
+import { TeamNotesCards } from "@/features/notes/team-notes-cards"
+import {
+  getTeamNotesChromeData,
+  getTeamNotesResultsData,
+  type TeamNotesChromeData,
+} from "@/features/notes/data"
+import { resolveTeamNotesListRequest } from "@/features/notes/list-route-state.mjs"
+import { TeamNotesResultsRetry } from "@/features/notes/team-notes-results-retry"
+import { TeamNotesRouteShell } from "@/features/notes/team-notes-route-shell"
+import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import {
   getSingleSearchParamValue,
   resolveNavigationScope,
@@ -14,73 +22,67 @@ import {
 type TeamNotesSearchParams = Promise<
   Record<string, string | string[] | undefined>
 >
+type ResolvedTeamNotesScope = NonNullable<
+  Awaited<ReturnType<typeof resolveNavigationScope>>["scope"]
+>
+type TeamNotesChromeDataPromise = Promise<TeamNotesChromeData>
 
-function parseRequestedPage(value: string | undefined): number {
-  if (!value) {
-    return 1
-  }
+async function TeamNotesShellSlot(input: {
+  activeTeamId: string
+  chromeDataPromise: TeamNotesChromeDataPromise
+  requestedPage: number
+  scope: ResolvedTeamNotesScope
+}) {
+  const chromeData = await input.chromeDataPromise
 
-  const parsed = Number.parseInt(value, 10)
-
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    return 1
-  }
-
-  return Math.floor(parsed)
+  return (
+    <TeamNotesRouteShell chromeData={chromeData} scope={input.scope}>
+      <Suspense fallback={<TeamNotesResultsSkeleton />}>
+        <TeamNotesResultsContent
+          activeTeamId={input.activeTeamId}
+          chromeData={chromeData}
+          requestedPage={input.requestedPage}
+        />
+      </Suspense>
+    </TeamNotesRouteShell>
+  )
 }
 
-function getMultiSearchParamValues(
-  value: string | string[] | undefined,
-): string[] {
-  if (!value) {
-    return []
+async function TeamNotesResultsContent(input: {
+  activeTeamId: string
+  chromeData: TeamNotesChromeData
+  requestedPage: number
+}) {
+  let resultsData: Awaited<ReturnType<typeof getTeamNotesResultsData>>
+
+  try {
+    resultsData = await getTeamNotesResultsData({
+      activeTeamId: input.activeTeamId,
+      chromeData: input.chromeData,
+      page: input.requestedPage,
+    })
+  } catch {
+    return <TeamNotesResultsRetry />
   }
 
-  const items = Array.isArray(value) ? value : [value]
-  return items
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0)
-}
+  const hasActiveFilters =
+    input.chromeData.searchQuery.length > 0 ||
+    Boolean(input.chromeData.selectedVenueId) ||
+    input.chromeData.selectedTwsValues.length > 0 ||
+    input.chromeData.selectedConditionsValues.length > 0
+  const emptyStateMessage = hasActiveFilters
+    ? "No sessions match the current notes filters."
+    : "No sessions with setup or notes data are available for this team yet."
 
-function buildTeamNotesHref(input: {
-  scope: {
-    activeOrgId: string
-    activeTeamId: string | null
-  }
-  searchQuery: string
-  venueId?: string
-  twsValues: string[]
-  conditionsValues: string[]
-  page: number
-}): string {
-  const params = new URLSearchParams()
-  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.scope.activeOrgId)
-
-  if (input.scope.activeTeamId) {
-    params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scope.activeTeamId)
-  }
-
-  if (input.searchQuery.trim().length > 0) {
-    params.set("q", input.searchQuery.trim())
-  }
-
-  if (input.venueId) {
-    params.set("venue", input.venueId)
-  }
-
-  for (const value of input.twsValues) {
-    params.append("tws", value)
-  }
-
-  for (const value of input.conditionsValues) {
-    params.append("conditions", value)
-  }
-
-  if (input.page > 1) {
-    params.set("page", String(input.page))
-  }
-
-  return `/team-notes?${params.toString()}`
+  return (
+    <TeamNotesCards
+      cards={resultsData.cards}
+      currentPage={resultsData.currentPage}
+      hasNextPage={resultsData.hasNextPage}
+      emptyStateMessage={emptyStateMessage}
+      searchQuery={input.chromeData.searchQuery}
+    />
+  )
 }
 
 export default async function TeamNotesPage({
@@ -90,16 +92,26 @@ export default async function TeamNotesPage({
 }) {
   const context = await requireAuthenticatedAccessContext()
   const resolvedSearchParams = await searchParams
-
-  const requestedSearchQuery = getSingleSearchParamValue(resolvedSearchParams.q) ?? ""
-  const requestedVenueId = getSingleSearchParamValue(resolvedSearchParams.venue)
-  const requestedTwsValues = getMultiSearchParamValues(resolvedSearchParams.tws)
-  const requestedConditionsValues = getMultiSearchParamValues(
-    resolvedSearchParams.conditions,
-  )
-  const requestedPage = parseRequestedPage(
-    getSingleSearchParamValue(resolvedSearchParams.page),
-  )
+  const {
+    requestedConditionsValues,
+    requestedPage,
+    requestedSearchQuery,
+    requestedTwsValues,
+    requestedVenueId,
+  } = resolveTeamNotesListRequest({
+    searchQueryParam: getSingleSearchParamValue(resolvedSearchParams.q),
+    venueParam: getSingleSearchParamValue(resolvedSearchParams.venue),
+    twsParam: resolvedSearchParams.tws,
+    conditionsParam: resolvedSearchParams.conditions,
+    pageParam: getSingleSearchParamValue(resolvedSearchParams.page),
+    loadMoreParam: getSingleSearchParamValue(resolvedSearchParams.loadMore),
+  }) as {
+    requestedConditionsValues: string[]
+    requestedPage: number
+    requestedSearchQuery: string
+    requestedTwsValues: string[]
+    requestedVenueId?: string
+  }
 
   const navigation = await resolveNavigationScope({
     context,
@@ -130,55 +142,22 @@ export default async function TeamNotesPage({
     )
   }
 
-  const pageData = await getTeamNotesPageData({
+  const chromeDataPromise: TeamNotesChromeDataPromise = getTeamNotesChromeData({
     activeTeamId: scope.activeTeamId,
     selectedVenueId: requestedVenueId,
     selectedTwsValues: requestedTwsValues,
     selectedConditionsValues: requestedConditionsValues,
     searchQuery: requestedSearchQuery,
-    page: requestedPage,
   })
 
-  const loadMoreHref = pageData.hasNextPage
-    ? buildTeamNotesHref({
-        scope,
-        searchQuery: pageData.searchQuery,
-        venueId: pageData.selectedVenueId,
-        twsValues: pageData.selectedTwsValues,
-        conditionsValues: pageData.selectedConditionsValues,
-        page: pageData.currentPage + 1,
-      })
-    : null
-
-  const hasActiveFilters =
-    pageData.searchQuery.length > 0 ||
-    Boolean(pageData.selectedVenueId) ||
-    pageData.selectedTwsValues.length > 0 ||
-    pageData.selectedConditionsValues.length > 0
-  const emptyStateMessage = hasActiveFilters
-    ? "No sessions match the current notes filters."
-    : "No sessions with setup or notes data are available for this team yet."
-
   return (
-    <div className="space-y-4">
-      <TeamNotesToolbar
+    <Suspense fallback={<TeamNotesPageSkeleton />}>
+      <TeamNotesShellSlot
+        activeTeamId={scope.activeTeamId}
+        chromeDataPromise={chromeDataPromise}
+        requestedPage={requestedPage}
         scope={scope}
-        searchQuery={pageData.searchQuery}
-        selectedVenueId={pageData.selectedVenueId}
-        selectedTwsValues={pageData.selectedTwsValues}
-        selectedConditionsValues={pageData.selectedConditionsValues}
-        venueFilterOptions={pageData.venueFilterOptions}
-        twsFilterOptions={pageData.twsFilterOptions}
-        conditionsFilterOptions={pageData.conditionsFilterOptions}
       />
-
-      <TeamNotesCards
-        scope={scope}
-        cards={pageData.cards}
-        hasNextPage={pageData.hasNextPage}
-        loadMoreHref={loadMoreHref}
-        emptyStateMessage={emptyStateMessage}
-      />
-    </div>
+    </Suspense>
   )
 }
