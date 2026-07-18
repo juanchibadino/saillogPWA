@@ -913,7 +913,8 @@ function UnlinkCrewSurface({
           <DialogTitle>Unlink member</DialogTitle>
           <DialogDescription>
             Unlink <strong>{crew.fullName}</strong> from{" "}
-            {formatLinkedTeamsLabel(crew)}. Their user account remains active.
+            {formatLinkedTeamsLabel(crew)}. Their user account remains active;
+            delete the user to remove their final access.
           </DialogDescription>
         </DialogHeader>
         {unlinkForm}

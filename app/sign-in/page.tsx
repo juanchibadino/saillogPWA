@@ -55,10 +55,6 @@ function getErrorMessage(error: string | undefined): string | null {
     return "The sign-in link could not be verified. Request a new one.";
   }
 
-  if (error === "google_failed") {
-    return "Google sign-in is not available right now. Try email instead.";
-  }
-
   return null;
 }
 

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
+import { wouldRemoveAllAccessAfterUnlink } from "@/features/users/action-rules.mjs"
 import { resolveMemberInviteTarget } from "@/features/users/invite-rules.mjs"
 import {
   buildUsersRedirectPath as buildUsersListRedirectPath,
@@ -408,6 +409,33 @@ async function getOrganizationMembershipsForProfile(input: {
   }
 
   return data ?? []
+}
+
+async function wouldUnlinkRemoveAllAccess(input: {
+  adminSupabase: AdminSupabaseClient
+  membershipIdsToUnlink: string[]
+  profileId: string
+}): Promise<boolean | null> {
+  const [teamMembershipRows, organizationMembershipRows] = await Promise.all([
+    getActiveTeamMembershipsForProfile({
+      adminSupabase: input.adminSupabase,
+      profileId: input.profileId,
+    }),
+    getOrganizationMembershipsForProfile({
+      adminSupabase: input.adminSupabase,
+      profileId: input.profileId,
+    }),
+  ])
+
+  if (!teamMembershipRows || !organizationMembershipRows) {
+    return null
+  }
+
+  return wouldRemoveAllAccessAfterUnlink({
+    activeTeamMembershipIds: teamMembershipRows.map((membership) => membership.id),
+    organizationMembershipCount: organizationMembershipRows.length,
+    unlinkMembershipIds: input.membershipIdsToUnlink,
+  })
 }
 
 async function resolveUserDeleteScope(input: {
@@ -1298,6 +1326,7 @@ export async function unlinkCrewMemberAction(formData: FormData): Promise<void> 
   }
 
   let membershipIdsToUnlink: string[] = []
+  let profileIdToUnlink: string | null = null
 
   if (parsedInput.data.membershipId) {
     const scopedMembership = await resolveScopedMembership({
@@ -1320,6 +1349,7 @@ export async function unlinkCrewMemberAction(formData: FormData): Promise<void> 
     }
 
     membershipIdsToUnlink = [scopedMembership.id]
+    profileIdToUnlink = scopedMembership.profile_id
   } else if (parsedInput.data.profileId) {
     const scopedMemberships = await getScopedTeamMembershipsForProfile({
       adminSupabase,
@@ -1337,12 +1367,37 @@ export async function unlinkCrewMemberAction(formData: FormData): Promise<void> 
     }
 
     membershipIdsToUnlink = scopedMemberships.map((membership) => membership.id)
+    profileIdToUnlink = parsedInput.data.profileId
   }
 
-  if (membershipIdsToUnlink.length === 0) {
+  if (membershipIdsToUnlink.length === 0 || !profileIdToUnlink) {
     redirect(
       buildUsersRedirectPath({
         error: "invalid_input",
+        ...scope,
+      }),
+    )
+  }
+
+  const removesAllAccess = await wouldUnlinkRemoveAllAccess({
+    adminSupabase,
+    membershipIdsToUnlink,
+    profileId: profileIdToUnlink,
+  })
+
+  if (removesAllAccess === null) {
+    redirect(
+      buildUsersRedirectPath({
+        error: "unlink_failed",
+        ...scope,
+      }),
+    )
+  }
+
+  if (removesAllAccess) {
+    redirect(
+      buildUsersRedirectPath({
+        error: "unlink_blocked_last_access",
         ...scope,
       }),
     )

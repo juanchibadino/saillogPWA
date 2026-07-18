@@ -7,6 +7,7 @@ import {
   buildUsersTeamFilterHref,
   resolveUsersListRequest,
   resolveUsersPagination,
+  shouldShowTeamMembershipInUsersList,
   USERS_TEAM_FILTER_QUERY_KEY,
 } from "./list-route-state.mjs"
 
@@ -67,6 +68,26 @@ test("resolves Users desktop pagination and mobile accumulation", () => {
       hasPreviousPage: false,
       hasNextPage: true,
     },
+  )
+})
+
+test("hides all-view team rows when an organization row already represents the profile", () => {
+  assert.equal(
+    shouldShowTeamMembershipInUsersList({
+      organizationProfileIds: ["profile-1"],
+      profileId: "profile-1",
+      selectedTeamId: undefined,
+    }),
+    false,
+  )
+
+  assert.equal(
+    shouldShowTeamMembershipInUsersList({
+      organizationProfileIds: ["profile-1"],
+      profileId: "profile-1",
+      selectedTeamId: "team-1",
+    }),
+    true,
   )
 })
 

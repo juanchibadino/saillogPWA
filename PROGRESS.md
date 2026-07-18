@@ -1,8 +1,15 @@
 # PROGRESS.md
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
+
+## 2026-07-18 - Sign-in Google option removal
+
+- Removed the Google sign-in option from `/sign-in` and deleted the unused
+  `/auth/google` route handler so the app no longer exposes that OAuth entry.
+- Validation: `npm run lint`, `npm run build`,
+  `./node_modules/.bin/tsc --noEmit`, and `git diff --check` passed.
 
 ## 2026-07-17 - Team Notes route implementation
 

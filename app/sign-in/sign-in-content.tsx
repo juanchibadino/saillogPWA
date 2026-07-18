@@ -20,12 +20,7 @@ export function SignInAuthContent({
   errorMessage,
 }: SignInAccessCodeProps) {
   const [isAccessCodeMode, setIsAccessCodeMode] = useState(false);
-  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
   const [isPasswordSubmitting, setIsPasswordSubmitting] = useState(false);
-
-  const handleGoogleSubmit = () => {
-    setIsGoogleSubmitting(true);
-  };
 
   const handlePasswordSubmit = (event: FormEvent<HTMLFormElement>) => {
     if (!event.currentTarget.checkValidity()) {
@@ -56,33 +51,6 @@ export function SignInAuthContent({
           {errorMessage}
         </p>
       ) : null}
-
-      <form action="/auth/google" method="post" onSubmit={handleGoogleSubmit}>
-        <button
-          type="submit"
-          className={buttonVariants({
-            variant: "outline",
-            className:
-              "h-11 w-full gap-3 border-neutral-700 !bg-neutral-950 text-base !text-white hover:!bg-neutral-900 md:h-10",
-          })}
-          disabled={isGoogleSubmitting}
-          aria-busy={isGoogleSubmitting}
-        >
-          {isGoogleSubmitting ? (
-            <Loader2 className="size-5 animate-spin" />
-          ) : (
-            <span className="text-2xl font-medium leading-none">G</span>
-          )}
-          {isGoogleSubmitting ? "Opening Google" : "Login with Google"}
-        </button>
-      </form>
-
-      <div className="relative">
-        <Separator />
-        <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
-          OR
-        </span>
-      </div>
 
       {!isAccessCodeMode ? (
         <>

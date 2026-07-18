@@ -346,6 +346,10 @@ function getTeamHomeErrorMessage(error: string | undefined): string | null {
     return "Could not unlink member from this team. Confirm your permissions and try again."
   }
 
+  if (error === "unlink_blocked_last_access") {
+    return "Unlink would leave this user without app access. Delete the user instead if you want to remove their account."
+  }
+
   if (error === "delete_failed") {
     return "Could not delete user. Confirm your permissions and try again."
   }

@@ -36,6 +36,14 @@ export function resolveUsersPagination(input) {
   }
 }
 
+export function shouldShowTeamMembershipInUsersList(input) {
+  if (input.selectedTeamId) {
+    return true
+  }
+
+  return !input.organizationProfileIds.includes(input.profileId)
+}
+
 export function buildUsersPageHref(input) {
   const search = input.search?.startsWith("?")
     ? input.search.slice(1)

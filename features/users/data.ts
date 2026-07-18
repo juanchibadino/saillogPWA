@@ -1,6 +1,9 @@
 import "server-only"
 
-import { resolveUsersPagination } from "@/features/users/list-route-state.mjs"
+import {
+  resolveUsersPagination,
+  shouldShowTeamMembershipInUsersList,
+} from "@/features/users/list-route-state.mjs"
 import { createAdminSupabaseClient } from "@/lib/supabase/admin"
 import type { Database } from "@/types/database"
 
@@ -265,6 +268,9 @@ export async function getUsersResultsData(input: {
   const membershipRows: TeamMembershipRow[] = teamMembershipResult.data ?? []
   const organizationMembershipRows: OrganizationMembershipRow[] =
     organizationMembershipResult.data ?? []
+  const organizationProfileIds = uniqueIds(
+    organizationMembershipRows.map((row) => row.profile_id),
+  )
   const profileIds = uniqueIds([
     ...membershipRows.map((row) => row.profile_id),
     ...organizationMembershipRows.map((row) => row.profile_id),
@@ -303,7 +309,16 @@ export async function getUsersResultsData(input: {
       const profile = profileById.get(membership.profile_id)
       const teamName = teamNameById.get(membership.team_id)
 
-      if (!profile || !profile.is_active || !teamName) {
+      if (
+        !profile ||
+        !profile.is_active ||
+        !teamName ||
+        !shouldShowTeamMembershipInUsersList({
+          organizationProfileIds,
+          profileId: profile.id,
+          selectedTeamId: input.selectedTeamId,
+        })
+      ) {
         return null
       }
 
