@@ -74,7 +74,7 @@ export function ProPlanCard() {
               Built for daily team operations and long-term performance tracking.
             </p>
             <p className="text-5xl font-semibold tracking-tight text-foreground">$120</p>
-            <p className="text-sm text-muted-foreground">USD</p>
+            <p className="text-sm text-muted-foreground">USD + applicable taxes</p>
           </CardHeader>
           <CardContent className="space-y-6">
             <Link
@@ -130,6 +130,10 @@ export function ProPlanCard() {
           </CardContent>
         </Card>
       </div>
+
+      <p className="text-center text-xs text-muted-foreground">
+        Prices are shown before applicable taxes.
+      </p>
     </section>
   );
 }

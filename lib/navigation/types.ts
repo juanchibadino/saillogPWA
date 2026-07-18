@@ -14,6 +14,7 @@ export type ScopeTeamOption = {
   id: string;
   name: string;
   organizationId: string;
+  teamType: string | null;
 };
 
 export type ScopeTeamPickerOption = ScopeTeamOption & {

@@ -311,6 +311,30 @@ function formatSessionTypeLabel(value: "training" | "regatta"): "Training" | "Re
   return value === "training" ? "Training" : "Regatta"
 }
 
+function formatTeamHomeClassLabel(teamType: string | null): string {
+  const normalizedTeamType = teamType?.trim()
+
+  if (!normalizedTeamType) {
+    return "49er class"
+  }
+
+  if (normalizedTeamType.toLowerCase().endsWith("class")) {
+    return normalizedTeamType
+  }
+
+  return `${normalizedTeamType} class`
+}
+
+function resolveTeamHomeBoatLogoSrc(teamType: string | null): string {
+  const normalizedTeamType = teamType?.trim().toLowerCase() ?? ""
+
+  if (normalizedTeamType.includes("nacra")) {
+    return "/SVG/BlackNacra.svg"
+  }
+
+  return "/Black_49er.svg"
+}
+
 function formatDurationLabel(minutes: number | null): string {
   if (minutes === null || minutes < 0) {
     return "—"
@@ -802,26 +826,18 @@ async function TeamHomeLatestVenuesSection({
 function TeamHomeSailingClassCard({
   classLabel,
   logoSrc,
-  sailNumber,
   teamLabel,
 }: {
   classLabel: string
   logoSrc: string
-  sailNumber: string
   teamLabel: string
 }) {
   return (
     <GradientCard className="relative flex h-full flex-col overflow-hidden lg:col-span-1">
       <CardContent className="relative flex min-h-[18rem] flex-1 p-6">
-        <div className="relative z-10 max-w-[62%] space-y-1">
-          <p className="text-5xl font-semibold leading-none tracking-tight">
-            {sailNumber}
-          </p>
-          <p className="text-xl font-light leading-tight text-muted-foreground">
-            {classLabel}
-          </p>
-          <p className="text-sm text-muted-foreground mt-1">
-            {teamLabel}
+        <div className="relative z-10 max-w-[68%]">
+          <p className="break-words text-4xl font-semibold leading-none tracking-normal text-foreground sm:text-5xl">
+            {classLabel} {teamLabel}
           </p>
         </div>
 
@@ -1025,6 +1041,7 @@ export default async function TeamHomePage({
       (team) => team.id === scope.activeTeamId,
     ) ?? null
   const activeTeamName = activeTeam?.name ?? "No team selected"
+  const activeTeamType = activeTeam?.teamType ?? null
   const activeTeamId = activeTeamScope.activeTeamId
   const canInviteTeamMembers = canManageTeamStructure({
     context,
@@ -1117,10 +1134,9 @@ export default async function TeamHomePage({
   )
   // Temporary static class card until the sailing classes table is wired to teams.
   const sailingClassSummary = {
-    sailNumber: "USA31",
     teamLabel: activeTeamName,
-    classLabel: "49er class",
-    logoSrc: "/Black_49er.svg",
+    classLabel: formatTeamHomeClassLabel(activeTeamType),
+    logoSrc: resolveTeamHomeBoatLogoSrc(activeTeamType),
   }
 
   return (
@@ -1157,7 +1173,6 @@ export default async function TeamHomePage({
         <TeamHomeSailingClassCard
           classLabel={sailingClassSummary.classLabel}
           logoSrc={sailingClassSummary.logoSrc}
-          sailNumber={sailingClassSummary.sailNumber}
           teamLabel={sailingClassSummary.teamLabel}
         />
 

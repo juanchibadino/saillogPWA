@@ -8,7 +8,9 @@ export const metadata: Metadata = {
     "Terms of Service for Dockout, a mobile-first sailing data workspace for teams.",
 };
 
-const LAST_UPDATED = "July 17, 2026";
+const LAST_UPDATED = "July 18, 2026";
+
+const CONTACT_EMAIL = "juan@dockout.app";
 
 const TERMS_SECTIONS = [
   {
@@ -188,8 +190,8 @@ const TERMS_SECTIONS = [
     children: (
       <>
         <p>
-          Questions about these terms can be sent to{" "}
-          <a href="mailto:billing@dockout.app">billing@dockout.app</a>.
+          Any inquiry about these terms can be sent to{" "}
+          <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
         </p>
       </>
     ),

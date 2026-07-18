@@ -8,7 +8,9 @@ export const metadata: Metadata = {
     "Privacy Policy for Dockout, a mobile-first sailing data workspace for teams.",
 };
 
-const LAST_UPDATED = "July 17, 2026";
+const LAST_UPDATED = "July 18, 2026";
+
+const CONTACT_EMAIL = "juan@dockout.app";
 
 const PRIVACY_SECTIONS = [
   {
@@ -149,8 +151,8 @@ const PRIVACY_SECTIONS = [
         </p>
         <p>
           If your data belongs to a team workspace, we may need to coordinate the request
-          with the organization that controls that workspace. Contact us at{" "}
-          <a href="mailto:billing@dockout.app">billing@dockout.app</a>.
+          with the organization that controls that workspace. For any privacy inquiry,
+          contact us at <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
         </p>
       </>
     ),

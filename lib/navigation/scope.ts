@@ -28,7 +28,7 @@ import type { Database } from "@/types/database";
 
 type TeamRow = Pick<
   Database["public"]["Tables"]["teams"]["Row"],
-  "id" | "name" | "organization_id"
+  "id" | "name" | "organization_id" | "team_type"
 >;
 
 type OrganizationRow = Pick<
@@ -113,6 +113,7 @@ function mapTeams(rows: TeamRow[]): ScopeTeamOption[] {
     id: row.id,
     name: row.name,
     organizationId: row.organization_id,
+    teamType: row.team_type,
   }));
 }
 
@@ -196,7 +197,7 @@ const loadNavigationBaseDataCached = cache(
     if (!isSuperAdmin && directTeamIds.length > 0) {
       const { data: directTeamRows, error: directTeamsError } = await supabase
         .from("teams")
-        .select("id, name, organization_id")
+        .select("id, name, organization_id, team_type")
         .in("id", directTeamIds)
         .eq("is_active", true);
 
@@ -283,7 +284,7 @@ const loadNavigationBaseDataCached = cache(
     if (orgIdsWithAllTeamsAccess.length > 0) {
       const { data: orgWideTeamRows, error: orgWideTeamsError } = await supabase
         .from("teams")
-        .select("id, name, organization_id")
+        .select("id, name, organization_id, team_type")
         .in("organization_id", orgIdsWithAllTeamsAccess)
         .eq("is_active", true)
         .order("name", { ascending: true });
@@ -359,7 +360,7 @@ const loadOrganizationTeamsCached = cache(
     const supabase = await createServerSupabaseClient();
     const { data: teamRows, error: teamsError } = await supabase
       .from("teams")
-      .select("id, name, organization_id")
+      .select("id, name, organization_id, team_type")
       .eq("organization_id", organizationId)
       .eq("is_active", true)
       .order("name", { ascending: true });
@@ -377,7 +378,7 @@ const loadAccessibleTeamByIdCached = cache(
     const supabase = await createServerSupabaseClient();
     const { data: teamRow, error: teamError } = await supabase
       .from("teams")
-      .select("id, name, organization_id")
+      .select("id, name, organization_id, team_type")
       .eq("id", teamId)
       .eq("is_active", true)
       .maybeSingle();
@@ -394,6 +395,7 @@ const loadAccessibleTeamByIdCached = cache(
       id: teamRow.id,
       name: teamRow.name,
       organizationId: teamRow.organization_id,
+      teamType: teamRow.team_type,
     };
   },
 );
