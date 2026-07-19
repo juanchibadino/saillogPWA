@@ -77,6 +77,8 @@ type TeamAssetSessionGroup = {
   sessionDate: string
   sessionId: string
   sessionType: TeamAssetListItem["sessionType"]
+  venueId: string
+  venueName: string
 }
 
 type TeamAssetVenueGroup = {
@@ -127,19 +129,37 @@ function getEmptyMessage(input: {
     : "No files uploaded for this team yet."
 }
 
+function compareSessionGroupsNewestFirst(
+  left: TeamAssetSessionGroup,
+  right: TeamAssetSessionGroup,
+): number {
+  const dateOrder = right.sessionDate.localeCompare(left.sessionDate)
+
+  if (dateOrder !== 0) {
+    return dateOrder
+  }
+
+  return 0
+}
+
+function compareAssetsNewestFirst(
+  left: TeamAssetListItem,
+  right: TeamAssetListItem,
+): number {
+  const createdAtOrder = right.created_at.localeCompare(left.created_at)
+
+  if (createdAtOrder !== 0) {
+    return createdAtOrder
+  }
+
+  return left.id.localeCompare(right.id)
+}
+
 function buildGroups(assets: TeamAssetListItem[]): TeamAssetVenueGroup[] {
-  const venueGroups = new Map<string, TeamAssetVenueGroup>()
+  const sessionGroups = new Map<string, TeamAssetSessionGroup>()
 
   for (const asset of assets) {
-    const venueGroup =
-      venueGroups.get(asset.venueId) ?? {
-        sessions: [],
-        venueId: asset.venueId,
-        venueName: asset.venueName,
-      }
-    let sessionGroup = venueGroup.sessions.find(
-      (group) => group.sessionId === asset.sessionId,
-    )
+    let sessionGroup = sessionGroups.get(asset.sessionId)
 
     if (!sessionGroup) {
       sessionGroup = {
@@ -149,15 +169,37 @@ function buildGroups(assets: TeamAssetListItem[]): TeamAssetVenueGroup[] {
         sessionDate: asset.sessionDate,
         sessionId: asset.sessionId,
         sessionType: asset.sessionType,
+        venueId: asset.venueId,
+        venueName: asset.venueName,
       }
-      venueGroup.sessions.push(sessionGroup)
+      sessionGroups.set(asset.sessionId, sessionGroup)
     }
 
     sessionGroup.assets.push(asset)
-    venueGroups.set(asset.venueId, venueGroup)
   }
 
-  return Array.from(venueGroups.values())
+  const orderedSessionGroups = Array.from(sessionGroups.values()).sort(
+    compareSessionGroupsNewestFirst,
+  )
+  const venueGroups: TeamAssetVenueGroup[] = []
+
+  for (const session of orderedSessionGroups) {
+    session.assets.sort(compareAssetsNewestFirst)
+
+    const lastVenueGroup = venueGroups[venueGroups.length - 1]
+
+    if (lastVenueGroup?.venueId === session.venueId) {
+      lastVenueGroup.sessions.push(session)
+    } else {
+      venueGroups.push({
+        sessions: [session],
+        venueId: session.venueId,
+        venueName: session.venueName,
+      })
+    }
+  }
+
+  return venueGroups
 }
 
 function buildHref(input: {
@@ -919,7 +961,10 @@ function TeamAssetsGroups(input: {
   return (
     <div className="space-y-8">
       {groups.map((venueGroup) => (
-        <section key={venueGroup.venueId} className="space-y-4">
+        <section
+          key={`${venueGroup.venueId}:${venueGroup.sessions[0]?.sessionId ?? "empty"}`}
+          className="space-y-4"
+        >
           <header className="border-b pb-3">
             <h3 className="text-base font-semibold">{venueGroup.venueName}</h3>
           </header>

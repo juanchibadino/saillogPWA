@@ -47,6 +47,7 @@ const PROFILE_SELECT_COLUMNS = "id,first_name,last_name,email"
 
 export const TEAM_ASSESSMENTS_PAGE_SIZE = 10
 const DETAIL_COMPARISON_RUN_LIMIT = 50
+const SUPABASE_SELECT_PAGE_SIZE = 1000
 
 type TeamVenueRow = Pick<
   Database["public"]["Tables"]["team_venues"]["Row"],
@@ -156,6 +157,11 @@ type ProfileDisplayRow = Pick<
 >
 
 type ServerSupabaseClient = Awaited<ReturnType<typeof createServerSupabaseClient>>
+type SupabasePageError = { message: string }
+type SupabasePageResult<Row> = {
+  data: Row[] | null
+  error: SupabasePageError | null
+}
 
 export type TeamAssessmentScaleOption = {
   id: string
@@ -330,6 +336,33 @@ type TeamVenueContext = {
 
 function uniqueIds(values: Array<string | null>): string[] {
   return [...new Set(values.filter((value): value is string => Boolean(value)))]
+}
+
+async function loadPagedRows<Row>(input: {
+  errorMessage: string
+  loadPage: (from: number, to: number) => Promise<SupabasePageResult<Row>>
+}): Promise<Row[]> {
+  const rows: Row[] = []
+  let from = 0
+
+  while (true) {
+    const { data, error } = await input.loadPage(
+      from,
+      from + SUPABASE_SELECT_PAGE_SIZE - 1,
+    )
+
+    if (error) {
+      throw new Error(`${input.errorMessage}: ${error.message}`)
+    }
+
+    rows.push(...(data ?? []))
+
+    if (!data || data.length < SUPABASE_SELECT_PAGE_SIZE) {
+      return rows
+    }
+
+    from += SUPABASE_SELECT_PAGE_SIZE
+  }
 }
 
 function formatProfileLabel(profile: ProfileDisplayRow): string {
@@ -941,95 +974,159 @@ async function loadRunsByIds(input: {
 
   const answerSupabase = input.answerSupabase ?? input.supabase
   const [
-    { data: scaleOptionData, error: scaleOptionError },
-    { data: categoryData, error: categoryError },
-    { data: runCampData, error: runCampError },
-    { data: respondentData, error: respondentError },
-    { data: answerData, error: answerError },
+    scaleOptionData,
+    categoryData,
+    runCampData,
+    respondentData,
+    answerData,
   ] = await Promise.all([
-    input.supabase
-      .from("assessment_run_scale_options")
-      .select(ASSESSMENT_RUN_SCALE_OPTION_SELECT_COLUMNS)
-      .in("assessment_run_id", input.runIds),
-    input.supabase
-      .from("assessment_run_categories")
-      .select(ASSESSMENT_RUN_CATEGORY_SELECT_COLUMNS)
-      .in("assessment_run_id", input.runIds),
-    input.supabase
-      .from("assessment_run_camps")
-      .select(ASSESSMENT_RUN_CAMP_SELECT_COLUMNS)
-      .in("assessment_run_id", input.runIds),
-    input.supabase
-      .from("assessment_run_respondents")
-      .select(ASSESSMENT_RUN_RESPONDENT_SELECT_COLUMNS)
-      .in("assessment_run_id", input.runIds),
-    answerSupabase
-      .from("assessment_run_answers")
-      .select(ASSESSMENT_RUN_ANSWER_SELECT_COLUMNS)
-      .in("assessment_run_id", input.runIds),
+    loadPagedRows<AssessmentRunScaleOptionRow>({
+      errorMessage: "Could not load assessment run scale options",
+      loadPage: async (from, to) => {
+        const { data, error } = await input.supabase
+          .from("assessment_run_scale_options")
+          .select(ASSESSMENT_RUN_SCALE_OPTION_SELECT_COLUMNS)
+          .in("assessment_run_id", input.runIds)
+          .order("assessment_run_id", { ascending: true })
+          .order("position", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to)
+
+        return {
+          data: data as AssessmentRunScaleOptionRow[] | null,
+          error,
+        }
+      },
+    }),
+    loadPagedRows<AssessmentRunCategoryRow>({
+      errorMessage: "Could not load assessment run categories",
+      loadPage: async (from, to) => {
+        const { data, error } = await input.supabase
+          .from("assessment_run_categories")
+          .select(ASSESSMENT_RUN_CATEGORY_SELECT_COLUMNS)
+          .in("assessment_run_id", input.runIds)
+          .order("assessment_run_id", { ascending: true })
+          .order("position", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to)
+
+        return {
+          data: data as AssessmentRunCategoryRow[] | null,
+          error,
+        }
+      },
+    }),
+    loadPagedRows<AssessmentRunCampRow>({
+      errorMessage: "Could not load assessment run camps",
+      loadPage: async (from, to) => {
+        const { data, error } = await input.supabase
+          .from("assessment_run_camps")
+          .select(ASSESSMENT_RUN_CAMP_SELECT_COLUMNS)
+          .in("assessment_run_id", input.runIds)
+          .order("assessment_run_id", { ascending: true })
+          .order("camp_id", { ascending: true })
+          .range(from, to)
+
+        return {
+          data: data as AssessmentRunCampRow[] | null,
+          error,
+        }
+      },
+    }),
+    loadPagedRows<AssessmentRunRespondentRow>({
+      errorMessage: "Could not load assessment run respondents",
+      loadPage: async (from, to) => {
+        const { data, error } = await input.supabase
+          .from("assessment_run_respondents")
+          .select(ASSESSMENT_RUN_RESPONDENT_SELECT_COLUMNS)
+          .in("assessment_run_id", input.runIds)
+          .order("assessment_run_id", { ascending: true })
+          .order("profile_id", { ascending: true })
+          .range(from, to)
+
+        return {
+          data: data as AssessmentRunRespondentRow[] | null,
+          error,
+        }
+      },
+    }),
+    loadPagedRows<AssessmentRunAnswerRow>({
+      errorMessage: "Could not load assessment run answers",
+      loadPage: async (from, to) => {
+        const { data, error } = await answerSupabase
+          .from("assessment_run_answers")
+          .select(ASSESSMENT_RUN_ANSWER_SELECT_COLUMNS)
+          .in("assessment_run_id", input.runIds)
+          .order("assessment_run_id", { ascending: true })
+          .order("respondent_profile_id", { ascending: true })
+          .order("assessment_run_question_id", { ascending: true })
+          .range(from, to)
+
+        return {
+          data: data as AssessmentRunAnswerRow[] | null,
+          error,
+        }
+      },
+    }),
   ])
 
-  if (scaleOptionError) {
-    throw new Error(`Could not load assessment run scale options: ${scaleOptionError.message}`)
-  }
-
-  if (categoryError) {
-    throw new Error(`Could not load assessment run categories: ${categoryError.message}`)
-  }
-
-  if (runCampError) {
-    throw new Error(`Could not load assessment run camps: ${runCampError.message}`)
-  }
-
-  if (respondentError) {
-    throw new Error(`Could not load assessment run respondents: ${respondentError.message}`)
-  }
-
-  if (answerError) {
-    throw new Error(`Could not load assessment run answers: ${answerError.message}`)
-  }
-
-  const categories = (categoryData ?? []) as AssessmentRunCategoryRow[]
+  const categories = categoryData
   const categoryIds = categories.map((category) => category.id)
   let modes: AssessmentRunModeRow[] = []
   let questions: AssessmentRunQuestionRow[] = []
 
   if (categoryIds.length > 0) {
-    const [
-      { data: modeData, error: modeError },
-      { data: questionData, error: questionError },
-    ] = await Promise.all([
-      input.supabase
-        .from("assessment_run_modes")
-        .select(ASSESSMENT_RUN_MODE_SELECT_COLUMNS)
-        .in("assessment_run_category_id", categoryIds),
-      input.supabase
-        .from("assessment_run_questions")
-        .select(ASSESSMENT_RUN_QUESTION_SELECT_COLUMNS)
-        .in("assessment_run_category_id", categoryIds),
+    const [loadedModes, loadedQuestions] = await Promise.all([
+      loadPagedRows<AssessmentRunModeRow>({
+        errorMessage: "Could not load assessment run modes",
+        loadPage: async (from, to) => {
+          const { data, error } = await input.supabase
+            .from("assessment_run_modes")
+            .select(ASSESSMENT_RUN_MODE_SELECT_COLUMNS)
+            .in("assessment_run_category_id", categoryIds)
+            .order("assessment_run_category_id", { ascending: true })
+            .order("position", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to)
+
+          return {
+            data: data as AssessmentRunModeRow[] | null,
+            error,
+          }
+        },
+      }),
+      loadPagedRows<AssessmentRunQuestionRow>({
+        errorMessage: "Could not load assessment run questions",
+        loadPage: async (from, to) => {
+          const { data, error } = await input.supabase
+            .from("assessment_run_questions")
+            .select(ASSESSMENT_RUN_QUESTION_SELECT_COLUMNS)
+            .in("assessment_run_category_id", categoryIds)
+            .order("assessment_run_category_id", { ascending: true })
+            .order("position", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to)
+
+          return {
+            data: data as AssessmentRunQuestionRow[] | null,
+            error,
+          }
+        },
+      }),
     ])
-
-    if (modeError) {
-      throw new Error(`Could not load assessment run modes: ${modeError.message}`)
-    }
-
-    if (questionError) {
-      throw new Error(`Could not load assessment run questions: ${questionError.message}`)
-    }
-
-    modes = (modeData ?? []) as AssessmentRunModeRow[]
-    questions = (questionData ?? []) as AssessmentRunQuestionRow[]
+    modes = loadedModes
+    questions = loadedQuestions
   }
 
   return buildRuns({
     runs: input.runs,
-    runScaleOptions: (scaleOptionData ?? []) as AssessmentRunScaleOptionRow[],
+    runScaleOptions: scaleOptionData,
     runCategories: categories,
     runModes: modes,
     runQuestions: questions,
-    runCamps: (runCampData ?? []) as AssessmentRunCampRow[],
-    runRespondents: (respondentData ?? []) as AssessmentRunRespondentRow[],
-    runAnswers: (answerData ?? []) as AssessmentRunAnswerRow[],
+    runCamps: runCampData,
+    runRespondents: respondentData,
+    runAnswers: answerData,
     campById: input.context.campById,
     teamVenueById: input.context.teamVenueById,
     venueById: input.context.venueById,

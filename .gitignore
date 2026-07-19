@@ -47,10 +47,16 @@ passwords.txt
 /reports/
 /scripts/import-raw-data.mjs
 /scripts/import-raw-data.test.mjs
+/scripts/copy-assessment-template.mjs
+/scripts/seed-usa31-assessment-runs.mjs
 /scripts/seed-49erfx-setup.mjs
 /supabase/migrations/042_49erfx_setup_seed.sql
 
 # local-only audit and pattern docs
+/AUDIT/
+/AUDITS/
+/PATTERN/
+/PATTERNS/
 /AUDIT*.md
 /AUDIT*.MD
 /*PATTERNS*.md

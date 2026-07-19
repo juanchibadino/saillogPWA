@@ -835,9 +835,12 @@ function TeamHomeSailingClassCard({
   return (
     <GradientCard className="relative flex h-full flex-col overflow-hidden lg:col-span-1">
       <CardContent className="relative flex min-h-[18rem] flex-1 p-6">
-        <div className="relative z-10 max-w-[68%]">
-          <p className="break-words text-4xl font-semibold leading-none tracking-normal text-foreground sm:text-5xl">
-            {classLabel} {teamLabel}
+        <div className="relative z-10 max-w-[62%] space-y-2">
+          <p className="break-words text-3xl font-semibold leading-tight tracking-normal text-foreground sm:text-4xl">
+            {teamLabel}
+          </p>
+          <p className="text-lg font-light leading-tight text-muted-foreground sm:text-xl">
+            {classLabel}
           </p>
         </div>
 
