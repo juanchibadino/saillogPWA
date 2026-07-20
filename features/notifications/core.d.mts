@@ -3,6 +3,8 @@ export const NOTIFICATION_EVENT_TYPES: Readonly<{
   SESSION_REVIEW_ADDED: "session_review_added"
   SESSION_GOALS_ADDED: "session_goals_added"
   ASSESSMENT_RUN_CREATED: "assessment_run_created"
+  GEAR_WARNING: "gear_warning"
+  GEAR_CRITICAL: "gear_critical"
 }>
 
 export function normalizeNotificationText(value: unknown): string
@@ -25,6 +27,7 @@ export function buildScopedNotificationHref(input: {
   orgId?: string | null
   teamId?: string | null
   tab?: string | null
+  extraParams?: Record<string, string | null | undefined>
 }): string
 
 export function buildCampGoalsMessage(input: {
@@ -42,6 +45,11 @@ export function buildAssessmentRequestMessage(input: {
   actorName: string
   venueName: string
   campNames: string
+}): string
+
+export function buildGearAlertMessage(input: {
+  gearName: string
+  alertState: "warning" | "critical"
 }): string
 
 export function buildSessionReviewFieldLabel(input: {

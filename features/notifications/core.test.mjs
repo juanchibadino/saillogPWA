@@ -7,6 +7,7 @@ import {
   applyNotificationReadState,
   buildAssessmentRequestMessage,
   buildCampGoalsMessage,
+  buildGearAlertMessage,
   buildScopedNotificationHref,
   buildSessionReviewFieldLabel,
   buildSessionUpdateMessage,
@@ -48,6 +49,13 @@ test("builds final human notification copy", () => {
     }),
     "Alex Coach is asking you to complete the Marseille assessment for Camp Alpha & Camp Beta. Complete it.",
   )
+  assert.equal(
+    buildGearAlertMessage({
+      gearName: "Sail SN1020",
+      alertState: "warning",
+    }),
+    "Sail SN1020 is in warning mode. Review the Gear thresholds.",
+  )
 })
 
 test("builds scoped target hrefs for camp session and assessment notifications", () => {
@@ -76,6 +84,17 @@ test("builds scoped target hrefs for camp session and assessment notifications",
       teamId: "team-1",
     }),
     "/team-assessments/run-1?org=org-1&team=team-1",
+  )
+  assert.equal(
+    buildScopedNotificationHref({
+      pathname: "/team-gear",
+      orgId: "org-1",
+      teamId: "team-1",
+      extraParams: {
+        alert: "critical",
+      },
+    }),
+    "/team-gear?org=org-1&team=team-1&alert=critical",
   )
 })
 

@@ -6,6 +6,8 @@ export const NOTIFICATION_EVENT_TYPES = Object.freeze({
   SESSION_REVIEW_ADDED: "session_review_added",
   SESSION_GOALS_ADDED: "session_goals_added",
   ASSESSMENT_RUN_CREATED: "assessment_run_created",
+  GEAR_WARNING: "gear_warning",
+  GEAR_CRITICAL: "gear_critical",
 })
 
 export function normalizeNotificationText(value) {
@@ -73,6 +75,19 @@ export function buildScopedNotificationHref(input) {
     params.set("tab", input.tab)
   }
 
+  if (input.extraParams && typeof input.extraParams === "object") {
+    for (const [key, value] of Object.entries(input.extraParams)) {
+      if (
+        typeof key === "string" &&
+        key.length > 0 &&
+        typeof value === "string" &&
+        value.length > 0
+      ) {
+        params.set(key, value)
+      }
+    }
+  }
+
   const query = params.toString()
   return query.length > 0 ? `${input.pathname}?${query}` : input.pathname
 }
@@ -92,6 +107,13 @@ export function buildSessionUpdateMessage(input) {
 
 export function buildAssessmentRequestMessage(input) {
   return `${input.actorName} is asking you to complete the ${input.venueName} assessment for ${input.campNames}. Complete it.`
+}
+
+export function buildGearAlertMessage(input) {
+  const gearName = normalizeNotificationText(input.gearName) || "Gear item"
+  const mode = input.alertState === "critical" ? "critical" : "warning"
+
+  return `${gearName} is in ${mode} mode. Review the Gear thresholds.`
 }
 
 export function buildSessionReviewFieldLabel(input) {

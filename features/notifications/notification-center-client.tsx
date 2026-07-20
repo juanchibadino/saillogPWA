@@ -54,9 +54,17 @@ function getNotificationTitle(eventType: NotificationListItem["eventType"]): str
       return "Session goals"
     case "assessment_run_created":
       return "Assessment request"
+    case "gear_warning":
+      return "Gear warning"
+    case "gear_critical":
+      return "Gear critical"
     default:
       return "Notification"
   }
+}
+
+function canMutateNotification(notification: NotificationListItem): boolean {
+  return notification.source === "persisted"
 }
 
 function formatNotificationDate(value: string): string {
@@ -136,7 +144,11 @@ export function NotificationCenterClient({
   }
 
   function handleMarkRead(notification: NotificationListItem): void {
-    if (notification.readAt || pendingIds.has(notification.id)) {
+    if (
+      !canMutateNotification(notification) ||
+      notification.readAt ||
+      pendingIds.has(notification.id)
+    ) {
       return
     }
 
@@ -155,7 +167,11 @@ export function NotificationCenterClient({
   }
 
   function handleMarkUnread(notification: NotificationListItem): void {
-    if (!notification.readAt || pendingIds.has(notification.id)) {
+    if (
+      !canMutateNotification(notification) ||
+      !notification.readAt ||
+      pendingIds.has(notification.id)
+    ) {
       return
     }
 
@@ -173,7 +189,7 @@ export function NotificationCenterClient({
   }
 
   function handleDelete(notification: NotificationListItem): void {
-    if (pendingIds.has(notification.id)) {
+    if (!canMutateNotification(notification) || pendingIds.has(notification.id)) {
       return
     }
 
@@ -207,7 +223,7 @@ export function NotificationCenterClient({
   }
 
   function handleRowNavigate(notification: NotificationListItem): void {
-    if (!notification.readAt) {
+    if (canMutateNotification(notification) && !notification.readAt) {
       handleMarkRead(notification)
     }
 
@@ -261,6 +277,7 @@ export function NotificationCenterClient({
           {visibleNotifications.map((notification) => {
             const isUnread = !notification.readAt
             const isPending = pendingIds.has(notification.id)
+            const canMutate = canMutateNotification(notification)
 
             return (
               <div
@@ -297,60 +314,62 @@ export function NotificationCenterClient({
                     {notification.message}
                   </p>
                 </div>
-                <div
-                  onClick={(event) => {
-                    event.stopPropagation()
-                  }}
-                  onKeyDown={(event) => {
-                    event.stopPropagation()
-                  }}
-                >
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
+                {canMutate ? (
+                  <div
+                    onClick={(event) => {
+                      event.stopPropagation()
+                    }}
+                    onKeyDown={(event) => {
+                      event.stopPropagation()
+                    }}
+                  >
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            disabled={isPending}
+                          />
+                        }
+                        aria-label="Notification actions"
+                      >
+                        <MoreHorizontalIcon className="size-4" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="min-w-36">
+                        <DropdownMenuItem
+                          disabled={isPending || !isUnread}
+                          onClick={() => {
+                            handleMarkRead(notification)
+                          }}
+                        >
+                          <MailOpenIcon className="size-4" />
+                          Read
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={isPending || isUnread}
+                          onClick={() => {
+                            handleMarkUnread(notification)
+                          }}
+                        >
+                          <MailIcon className="size-4" />
+                          Unread
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          variant="destructive"
                           disabled={isPending}
-                        />
-                      }
-                      aria-label="Notification actions"
-                    >
-                      <MoreHorizontalIcon className="size-4" />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="min-w-36">
-                      <DropdownMenuItem
-                        disabled={isPending || !isUnread}
-                        onClick={() => {
-                          handleMarkRead(notification)
-                        }}
-                      >
-                        <MailOpenIcon className="size-4" />
-                        Read
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        disabled={isPending || isUnread}
-                        onClick={() => {
-                          handleMarkUnread(notification)
-                        }}
-                      >
-                        <MailIcon className="size-4" />
-                        Unread
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        variant="destructive"
-                        disabled={isPending}
-                        onClick={() => {
-                          handleDelete(notification)
-                        }}
-                      >
-                        <Trash2Icon className="size-4" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+                          onClick={() => {
+                            handleDelete(notification)
+                          }}
+                        >
+                          <Trash2Icon className="size-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                ) : null}
               </div>
             )
           })}

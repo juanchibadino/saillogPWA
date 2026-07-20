@@ -16,7 +16,6 @@ import { GearActionsMenu } from "@/features/gear/gear-form-dialogs"
 import type { NavigationScope } from "@/lib/navigation/types"
 import { cn } from "@/lib/utils"
 import { GradientCard } from "@/components/shared/gradient-card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Pagination,
@@ -27,6 +26,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination"
+import { Progress } from "@/components/ui/progress"
 import {
   Table,
   TableBody,
@@ -35,6 +35,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 const GEAR_TYPE_LABEL_BY_VALUE = new Map(
   TEAM_GEAR_TYPE_OPTIONS.map((option) => [option.value, option.label]),
@@ -44,48 +45,154 @@ const GEAR_STATUS_LABEL_BY_VALUE = new Map(
   TEAM_GEAR_STATUS_OPTIONS.map((option) => [option.value, option.label]),
 )
 
-const GEAR_CONDITION_LABEL_BY_VALUE = new Map(
-  TEAM_GEAR_CONDITION_OPTIONS.map((option) => [option.value, option.label]),
-)
-
 type TeamGearPaginationItem = number | "ellipsis-start" | "ellipsis-end"
 
-function formatUsage(input: { usageCount: number; usageMinutes: number }): string {
-  const roundedMinutes = Math.round(input.usageMinutes)
-  const hours = Math.floor(roundedMinutes / 60)
-  const minutes = roundedMinutes % 60
-  const formattedCount = new Intl.NumberFormat("en", {
+function formatBarcodeLine(gearItem: TeamGearListItem): string | null {
+  return gearItem.barcode?.trim() ? gearItem.barcode.trim() : null
+}
+
+function formatPercent(value: number): string {
+  const safeValue = Number.isFinite(value) ? value : 0
+  return `${Math.round(safeValue)}%`
+}
+
+function formatMetricName(
+  metric: TeamGearListItem["alertRules"][number]["metric"],
+): string {
+  return metric === "usage_minutes" ? "Minutes" : "Used"
+}
+
+function formatMetricUsageValue(input: {
+  metric: TeamGearListItem["alertRules"][number]["metric"]
+  value: number
+}): string {
+  if (input.metric === "usage_minutes") {
+    return `${Math.round(input.value)}m`
+  }
+
+  const formattedValue = new Intl.NumberFormat("en", {
     maximumFractionDigits: 2,
-  }).format(input.usageCount)
-  const usageLabel = `${formattedCount} ${input.usageCount === 1 ? "use" : "uses"}`
-  const timeLabel = `${String(hours).padStart(2, "0")}h ${String(minutes).padStart(2, "0")}m`
+  }).format(input.value)
 
-  return `${usageLabel} · ${timeLabel}`
+  return `${formattedValue}u`
 }
 
-function formatIdentifierLine(gearItem: TeamGearListItem): string | null {
-  const parts = [
-    gearItem.serialNumber ? `SN ${gearItem.serialNumber}` : null,
-    gearItem.barcode ? `BC ${gearItem.barcode}` : null,
-  ].filter((part): part is string => part !== null)
+type GearProgressRule = TeamGearListItem["alertRules"][number]
 
-  return parts.length > 0 ? parts.join(" · ") : null
+type GearProgressModel = {
+  rule: GearProgressRule | null
+  usageValue: number
+  thresholdValue: number
+  rawPercent: number
+  visualPercent: number
+  indicatorClassName: string
 }
 
-function renderAlertBadge(gearItem: TeamGearListItem) {
-  if (gearItem.alertState === "critical") {
-    return <Badge variant="destructive">Critical ({gearItem.triggeredAlertCount})</Badge>
+function getRuleUsageValue(gearItem: TeamGearListItem, rule: GearProgressRule): number {
+  return rule.metric === "usage_minutes" ? gearItem.usageMinutes : gearItem.usageCount
+}
+
+function isRuleApplicable(gearItem: TeamGearListItem, rule: GearProgressRule): boolean {
+  return !rule.isRefurbishedRule || gearItem.condition === "refurbished"
+}
+
+function getProgressIndicatorClassName(
+  alertState: TeamGearListItem["alertState"],
+): string {
+  if (alertState === "critical") {
+    return "bg-amber-400"
   }
 
-  if (gearItem.alertState === "warning") {
-    return (
-      <Badge className="border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-50">
-        Warning ({gearItem.triggeredAlertCount})
-      </Badge>
-    )
+  if (alertState === "warning") {
+    return "bg-red-500"
   }
 
-  return <span className="text-muted-foreground">None</span>
+  return "bg-emerald-500"
+}
+
+function buildGearProgressModel(gearItem: TeamGearListItem): GearProgressModel {
+  let selectedRule: GearProgressRule | null = null
+  let selectedUsageValue = 0
+  let selectedRatio = 0
+
+  for (const rule of gearItem.alertRules) {
+    if (!isRuleApplicable(gearItem, rule) || rule.thresholdValue <= 0) {
+      continue
+    }
+
+    const usageValue = getRuleUsageValue(gearItem, rule)
+    const ratio = usageValue / rule.thresholdValue
+
+    if (!selectedRule || ratio > selectedRatio) {
+      selectedRule = rule
+      selectedUsageValue = usageValue
+      selectedRatio = ratio
+    }
+  }
+
+  const rawPercent = selectedRule ? selectedRatio * 100 : 0
+  const visualPercent = Math.min(100, Math.max(0, rawPercent))
+
+  return {
+    rule: selectedRule,
+    usageValue: selectedUsageValue,
+    thresholdValue: selectedRule?.thresholdValue ?? 0,
+    rawPercent,
+    visualPercent,
+    indicatorClassName: getProgressIndicatorClassName(gearItem.alertState),
+  }
+}
+
+function GearUsageProgress({ gearItem }: { gearItem: TeamGearListItem }) {
+  const model = buildGearProgressModel(gearItem)
+  const progressLabel = model.rule ? formatPercent(model.rawPercent) : "0%"
+  const ariaLabel = model.rule
+    ? `${gearItem.name} usage ${progressLabel}.`
+    : `${gearItem.name} usage. No threshold configured.`
+  const tooltipMetric = model.rule?.metric ?? "usage_minutes"
+  const tooltipUsageValue = model.rule ? model.usageValue : gearItem.usageMinutes
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <div
+            role="button"
+            tabIndex={0}
+            className="w-full rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          />
+        }
+        aria-label={ariaLabel}
+      >
+        <div className="min-w-32 space-y-1">
+          <div className="flex items-center gap-2">
+            <Progress
+              value={model.visualPercent}
+              indicatorClassName={model.indicatorClassName}
+              className="h-2 min-w-24 flex-1"
+            />
+            <span className="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+              {progressLabel}
+            </span>
+          </div>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent align="start" className="block max-w-72 space-y-1">
+        <p>
+          {formatMetricName(tooltipMetric)}:{" "}
+          {formatMetricUsageValue({
+            metric: tooltipMetric,
+            value: tooltipUsageValue,
+          })}{" "}
+          /{" "}
+          {formatMetricUsageValue({
+            metric: tooltipMetric,
+            value: model.thresholdValue,
+          })}
+        </p>
+      </TooltipContent>
+    </Tooltip>
+  )
 }
 
 function resolveEmptyMessage(input: { noTeamSelected: boolean }): string {
@@ -223,7 +330,7 @@ export function TeamGearTable({
           </GradientCard>
         ) : (
           gearItems.map((gearItem) => {
-            const identifierLine = formatIdentifierLine(gearItem)
+            const barcodeLine = formatBarcodeLine(gearItem)
 
             return (
               <GradientCard key={gearItem.id} className="px-3 py-3">
@@ -237,24 +344,11 @@ export function TeamGearTable({
                       </p>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span>
-                        {GEAR_CONDITION_LABEL_BY_VALUE.get(gearItem.condition) ??
-                          "Unknown condition"}
-                      </span>
-                      <span className="tabular-nums">
-                        {formatUsage({
-                          usageCount: gearItem.usageCount,
-                          usageMinutes: gearItem.usageMinutes,
-                        })}
-                      </span>
-                    </div>
+                    <GearUsageProgress gearItem={gearItem} />
 
-                    <div>{renderAlertBadge(gearItem)}</div>
-
-                    {identifierLine ? (
+                    {barcodeLine ? (
                       <p className="break-words text-xs text-muted-foreground">
-                        {identifierLine}
+                        {barcodeLine}
                       </p>
                     ) : null}
                   </div>
@@ -324,30 +418,28 @@ export function TeamGearTable({
                 <TableHead>Type</TableHead>
                 <TableHead>Usage</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Condition</TableHead>
-                <TableHead>Alerts</TableHead>
                 <TableHead className="w-24 text-right" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {gearItems.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-6 text-sm text-muted-foreground">
+                  <TableCell colSpan={5} className="py-6 text-sm text-muted-foreground">
                     {emptyMessage}
                   </TableCell>
                 </TableRow>
               ) : (
                 gearItems.map((gearItem) => {
-                  const identifierLine = formatIdentifierLine(gearItem)
+                  const barcodeLine = formatBarcodeLine(gearItem)
 
                   return (
                     <TableRow key={gearItem.id}>
                       <TableCell>
                         <div className="space-y-1">
                           <p className="font-medium">{gearItem.name}</p>
-                          {identifierLine ? (
+                          {barcodeLine ? (
                             <p className="text-xs text-muted-foreground">
-                              {identifierLine}
+                              {barcodeLine}
                             </p>
                           ) : null}
                         </div>
@@ -355,19 +447,12 @@ export function TeamGearTable({
                       <TableCell>
                         {GEAR_TYPE_LABEL_BY_VALUE.get(gearItem.gearType) ?? "—"}
                       </TableCell>
-                      <TableCell className="tabular-nums">
-                        {formatUsage({
-                          usageCount: gearItem.usageCount,
-                          usageMinutes: gearItem.usageMinutes,
-                        })}
+                      <TableCell className="min-w-44">
+                        <GearUsageProgress gearItem={gearItem} />
                       </TableCell>
                       <TableCell>
                         {GEAR_STATUS_LABEL_BY_VALUE.get(gearItem.status) ?? "—"}
                       </TableCell>
-                      <TableCell>
-                        {GEAR_CONDITION_LABEL_BY_VALUE.get(gearItem.condition) ?? "—"}
-                      </TableCell>
-                      <TableCell>{renderAlertBadge(gearItem)}</TableCell>
                       <TableCell className="text-right">
                         <GearActionsMenu
                           gearItem={gearItem}

@@ -1761,7 +1761,9 @@ export type Database = {
         | "camp_goals_added"
         | "session_review_added"
         | "session_goals_added"
-        | "assessment_run_created";
+        | "assessment_run_created"
+        | "gear_warning"
+        | "gear_critical";
       organization_role_type: "organization_admin";
       plan_tier: "free" | "pro" | "premium";
       session_type: "training" | "regatta";

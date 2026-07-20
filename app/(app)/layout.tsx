@@ -73,6 +73,8 @@ export default async function AppLayout({
     try {
       notificationData = await getNotificationCenterData({
         currentProfileId: context.user.id,
+        activeOrgId: navigation.scope?.activeOrgId ?? null,
+        activeTeamId: navigation.scope?.activeTeamId ?? null,
         limit: 20,
       });
     } catch (error) {
