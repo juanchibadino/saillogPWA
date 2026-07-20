@@ -15,6 +15,19 @@ export type TeamGearAlertRuleItem = {
   isRefurbishedRule: boolean
 }
 
+export type TeamGearTwsOption = {
+  id: string
+  value: string
+  label: string
+  position: number
+}
+
+export type TeamGearTwsMultiplier = {
+  optionId: string
+  usageMinutesMultiplier: number
+  usageCountMultiplier: number
+}
+
 export type TeamGearListItem = {
   id: string
   name: string
@@ -28,6 +41,7 @@ export type TeamGearListItem = {
   alertState: TeamGearAlertState
   triggeredAlertCount: number
   alertRules: TeamGearAlertRuleItem[]
+  twsMultipliers: TeamGearTwsMultiplier[]
 }
 
 export const TEAM_GEAR_TYPE_OPTIONS: Array<{ value: GearType; label: string }> = [

@@ -3,6 +3,9 @@ import { resolveTeamGearListRowsPage } from "./data-loader-core.mjs"
 
 const GEAR_ALERT_RULES_SELECT_COLUMNS =
   "id,gear_item_id,metric,severity,threshold_value,is_refurbished_rule"
+const GEAR_TWS_MULTIPLIERS_SELECT_COLUMNS =
+  "gear_item_id,team_setup_item_option_id,usage_minutes_multiplier,usage_count_multiplier"
+const TWS_OPTIONS_SELECT_COLUMNS = "id,value,label,position"
 
 async function getAlertRulesByGearItemId(input) {
   if (input.gearItemIds.length === 0) {
@@ -51,6 +54,73 @@ async function getAlertRulesByGearItemId(input) {
   return alertRulesByGearItemId
 }
 
+async function getTwsOptions(input) {
+  const { data: twsItem, error: twsItemError } = await input.supabase
+    .from("team_setup_items")
+    .select("id")
+    .eq("team_id", input.activeTeamId)
+    .eq("key", "tws")
+    .eq("metric_group", "weather")
+    .eq("input_kind", "multi_select")
+    .eq("is_active", true)
+    .maybeSingle()
+
+  if (twsItemError) {
+    throw new Error(`Could not load TWS setup item: ${twsItemError.message}`)
+  }
+
+  if (!twsItem) {
+    return []
+  }
+
+  const { data, error } = await input.supabase
+    .from("team_setup_item_options")
+    .select(TWS_OPTIONS_SELECT_COLUMNS)
+    .eq("team_setup_item_id", twsItem.id)
+    .eq("is_active", true)
+    .order("position", { ascending: true })
+
+  if (error) {
+    throw new Error(`Could not load TWS setup options: ${error.message}`)
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    value: row.value,
+    label: row.label,
+    position: row.position,
+  }))
+}
+
+async function getTwsMultipliersByGearItemId(input) {
+  if (input.gearItemIds.length === 0) {
+    return new Map()
+  }
+
+  const { data, error } = await input.supabase
+    .from("gear_tws_option_multipliers")
+    .select(GEAR_TWS_MULTIPLIERS_SELECT_COLUMNS)
+    .in("gear_item_id", input.gearItemIds)
+
+  if (error) {
+    throw new Error(`Could not load gear TWS multipliers: ${error.message}`)
+  }
+
+  const multipliersByGearItemId = new Map()
+
+  for (const row of data ?? []) {
+    const existingMultipliers = multipliersByGearItemId.get(row.gear_item_id) ?? []
+    existingMultipliers.push({
+      optionId: row.team_setup_item_option_id,
+      usageMinutesMultiplier: Number(row.usage_minutes_multiplier),
+      usageCountMultiplier: Number(row.usage_count_multiplier),
+    })
+    multipliersByGearItemId.set(row.gear_item_id, existingMultipliers)
+  }
+
+  return multipliersByGearItemId
+}
+
 function mapTeamGearListRows(input) {
   return input.rows.map((row) => {
     return {
@@ -66,6 +136,7 @@ function mapTeamGearListRows(input) {
       alertState: row.alert_state,
       triggeredAlertCount: Number(row.triggered_alert_count),
       alertRules: input.alertRulesByGearItemId.get(row.gear_item_id) ?? [],
+      twsMultipliers: input.twsMultipliersByGearItemId.get(row.gear_item_id) ?? [],
     }
   })
 }
@@ -86,13 +157,23 @@ export async function getTeamGearResultsDataForSupabase(input) {
     supabase: input.supabase,
     gearItemIds: listRowsPage.rows.map((row) => row.gear_item_id),
   })
+  const twsOptions = await getTwsOptions({
+    supabase: input.supabase,
+    activeTeamId: input.activeTeamId,
+  })
+  const twsMultipliersByGearItemId = await getTwsMultipliersByGearItemId({
+    supabase: input.supabase,
+    gearItemIds: listRowsPage.rows.map((row) => row.gear_item_id),
+  })
   const pagination = listRowsPage.pagination
 
   return {
     gearItems: mapTeamGearListRows({
       rows: listRowsPage.rows,
       alertRulesByGearItemId,
+      twsMultipliersByGearItemId,
     }),
+    twsOptions,
     currentPage: pagination.currentPage,
     pageCount: pagination.pageCount,
     hasPreviousPage: pagination.hasPreviousPage,

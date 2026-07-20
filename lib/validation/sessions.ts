@@ -91,6 +91,7 @@ export const updateSessionSetupInputSchema = z.object({
 
 export const createTeamSetupMetricInputSchema = z.object({
   sessionId: z.string().uuid(),
+  metricGroup: z.enum(["weather", "boat"]),
   inputKind: z.enum(["single_select", "multi_select", "text"]),
   label: z.string().trim().min(1).max(120),
   options: z.array(z.string().trim().min(1).max(120)).max(200).default([]),
@@ -99,6 +100,7 @@ export const createTeamSetupMetricInputSchema = z.object({
 export const updateTeamSetupMetricInputSchema = z.object({
   sessionId: z.string().uuid(),
   itemId: z.string().uuid(),
+  metricGroup: z.enum(["weather", "boat"]),
   inputKind: z.enum(["single_select", "multi_select", "text"]),
   label: z.string().trim().min(1).max(120),
   options: z.array(z.string().trim().min(1).max(120)).max(200).default([]),
@@ -111,6 +113,7 @@ export const deleteTeamSetupMetricInputSchema = z.object({
 
 export const reorderTeamSetupMetricsInputSchema = z.object({
   sessionId: z.string().uuid(),
+  metricGroup: z.enum(["weather", "boat"]),
   orderedItemIds: z.array(z.string().uuid()).min(1).max(500),
 })
 

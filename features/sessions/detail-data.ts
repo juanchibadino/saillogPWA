@@ -94,6 +94,7 @@ type TeamSetupItemRow = Pick<
   | "input_kind"
   | "metric_group"
   | "is_fixed"
+  | "is_required"
   | "position"
   | "is_active"
 >
@@ -158,7 +159,7 @@ const SESSION_ASSETS_WITH_THUMBNAILS_SELECT_COLUMNS =
 const GEAR_ITEMS_SELECT_COLUMNS = "id,name,gear_type,status,condition,serial_number,barcode"
 const SESSION_GEAR_USAGE_SELECT_COLUMNS = "gear_item_id"
 const TEAM_SETUP_ITEMS_SELECT_COLUMNS =
-  "id,key,label,input_kind,metric_group,is_fixed,position,is_active"
+  "id,key,label,input_kind,metric_group,is_fixed,is_required,position,is_active"
 const TEAM_SETUP_ITEM_OPTIONS_SELECT_COLUMNS =
   "id,team_setup_item_id,value,label,position,is_active"
 const SESSION_SETUP_ITEM_VALUES_SELECT_COLUMNS = "id,team_setup_item_id,text_value"
@@ -1062,6 +1063,7 @@ function buildSetupDialogItems(input: {
         inputKind: item.input_kind,
         metricGroup: item.metric_group,
         isFixed: item.is_fixed,
+        isRequired: item.is_required,
         position: item.position,
         options: (optionsByItemId.get(item.id) ?? [])
           .filter((option) => option.is_active)

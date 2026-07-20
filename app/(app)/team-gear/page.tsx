@@ -37,6 +37,10 @@ function getStatusMessage(status: string | undefined): string | null {
     return "Gear item marked as retired/spare."
   }
 
+  if (status === "tws_multipliers_updated") {
+    return "Gear TWS multipliers updated successfully."
+  }
+
   return null
 }
 
@@ -66,6 +70,7 @@ function getEmptyTeamGearResults(input: {
 }): TeamGearResultsData {
   return {
     gearItems: [],
+    twsOptions: [],
     currentPage: input.requestedPage,
     pageCount: 1,
     hasPreviousPage: input.requestedLoadMoreMode ? false : input.requestedPage > 1,
@@ -104,6 +109,7 @@ async function TeamGearResultsContent(input: {
   return (
     <TeamGearTable
       gearItems={resultsData.gearItems}
+      twsOptions={resultsData.twsOptions}
       canManageGear={input.canManageGear}
       noTeamSelected={input.noTeamSelected}
       scope={input.scope}

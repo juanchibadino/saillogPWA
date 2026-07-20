@@ -10,6 +10,10 @@ function cloneRow(row) {
 
 function rowMatchesFilters(row, filters) {
   return filters.every((filter) => {
+    if (filter.operator === "in") {
+      return filter.values.includes(row[filter.column])
+    }
+
     if (filter.operator === "ilike") {
       const value = row[filter.column]
 
@@ -125,6 +129,11 @@ class MockSupabaseQuery {
 
   ilike(column, value) {
     this.filters.push({ column, operator: "ilike", value })
+    return this
+  }
+
+  in(column, values) {
+    this.filters.push({ column, operator: "in", values })
     return this
   }
 

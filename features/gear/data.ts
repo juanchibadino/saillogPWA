@@ -12,6 +12,7 @@ import {
   type GearType,
   type TeamGearAlertStateFilter,
   type TeamGearListItem,
+  type TeamGearTwsOption,
 } from "@/features/gear/shared"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 
@@ -30,6 +31,7 @@ export type TeamGearChromeData = {
 
 export type TeamGearResultsData = {
   gearItems: TeamGearListItem[]
+  twsOptions: TeamGearTwsOption[]
   currentPage: number
   pageCount: number
   hasPreviousPage: boolean

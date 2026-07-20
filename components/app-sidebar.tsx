@@ -1076,19 +1076,23 @@ export function AppSidebar({
                           {getInitials(user.name)}
                         </AvatarFallback>
                       </Avatar>
-                      <div className="grid flex-1 text-left text-sm leading-tight">
-                        <span className="truncate font-medium">{user.name}</span>
+                      <div className="grid min-w-0 flex-1 gap-1 text-left text-sm leading-tight">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="min-w-0 flex-1 truncate font-medium">
+                            {user.name}
+                          </span>
+                          {canAccessOrganizationModules ? (
+                            <Badge
+                              variant="secondary"
+                              className="shrink-0 text-[10px] font-medium"
+                            >
+                              {planBadgeLabel}
+                            </Badge>
+                          ) : null}
+                        </div>
                         <span className="truncate text-xs text-muted-foreground/80">
                           {user.role}
                         </span>
-                        {canAccessOrganizationModules ? (
-                          <Badge
-                            variant="secondary"
-                            className="mt-1 inline-flex w-fit text-[10px] font-medium"
-                          >
-                            {planBadgeLabel}
-                          </Badge>
-                        ) : null}
                       </div>
                     </div>
                   </DropdownMenuLabel>

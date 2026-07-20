@@ -209,7 +209,7 @@ type SessionSetupAtomicValueInput = {
 
 type TeamSetupItemMutationRow = Pick<
   Database["public"]["Tables"]["team_setup_items"]["Row"],
-  "id" | "key" | "input_kind" | "metric_group" | "is_fixed"
+  "id" | "key" | "input_kind" | "metric_group" | "is_fixed" | "is_required"
 >
 
 function parseSessionSetupPayload(value: string): SessionSetupPayloadEntry[] | null {
@@ -331,22 +331,76 @@ function parseSessionSetupPayload(value: string): SessionSetupPayloadEntry[] | n
   return entries
 }
 
-async function persistBoatSetupMetricOrder(input: {
+async function persistSetupMetricOrder(input: {
   supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>
   teamId: string
-  sessionId: string
+  metricGroup: Database["public"]["Enums"]["setup_metric_group"]
   orderedItemIds: string[]
 }): Promise<{ error: "invalid_input" | "update_failed" } | { error: null }> {
-  const { error } = await input.supabase.rpc("save_session_setup_atomic", {
-    p_delete_item_ids: [],
-    p_ordered_item_ids: input.orderedItemIds,
-    p_session_id: input.sessionId,
-    p_team_id: input.teamId,
-    p_values: [],
-  })
+  const { data: currentRows, error: currentRowsError } = await input.supabase
+    .from("team_setup_items")
+    .select("id,position")
+    .eq("team_id", input.teamId)
+    .eq("metric_group", input.metricGroup)
+    .eq("is_active", true)
+    .eq("is_fixed", false)
+    .eq("is_required", false)
+    .order("position", { ascending: true })
 
-  if (error) {
+  if (currentRowsError || !currentRows) {
     return { error: "update_failed" }
+  }
+
+  const currentItemIds = currentRows.map((row) => row.id)
+  const orderedItemIdSet = new Set(input.orderedItemIds)
+
+  if (
+    orderedItemIdSet.size !== input.orderedItemIds.length ||
+    currentItemIds.length !== input.orderedItemIds.length ||
+    currentItemIds.some((itemId) => !orderedItemIdSet.has(itemId))
+  ) {
+    return { error: "invalid_input" }
+  }
+
+  if (currentItemIds.every((itemId, index) => itemId === input.orderedItemIds[index])) {
+    return { error: null }
+  }
+
+  const { data: allPositionRows, error: allPositionRowsError } = await input.supabase
+    .from("team_setup_items")
+    .select("position")
+    .eq("team_id", input.teamId)
+
+  if (allPositionRowsError || !allPositionRows) {
+    return { error: "update_failed" }
+  }
+
+  const temporaryBasePosition =
+    Math.max(0, ...allPositionRows.map((row) => row.position)) + 1000
+  const finalPositions = currentRows.map((row) => row.position)
+
+  for (let index = 0; index < input.orderedItemIds.length; index += 1) {
+    const { error: temporaryUpdateError } = await input.supabase
+      .from("team_setup_items")
+      .update({ position: temporaryBasePosition + index })
+      .eq("team_id", input.teamId)
+      .eq("id", input.orderedItemIds[index])
+
+    if (temporaryUpdateError) {
+      return { error: "update_failed" }
+    }
+  }
+
+  for (let index = 0; index < input.orderedItemIds.length; index += 1) {
+    const { error: finalUpdateError } = await input.supabase
+      .from("team_setup_items")
+      .update({ position: finalPositions[index] ?? index + 1 })
+      .eq("team_id", input.teamId)
+      .eq("id", input.orderedItemIds[index])
+
+    if (finalUpdateError) {
+      return { error: "update_failed" }
+    }
   }
 
   return { error: null }
@@ -483,6 +537,75 @@ function normalizeTwsSelectedOptions(input: {
   }))
 }
 
+async function sessionHasSavedTwsSelection(input: {
+  sessionId: string
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>
+  teamId: string
+}): Promise<boolean | null> {
+  const { data: twsItem, error: twsItemError } = await input.supabase
+    .from("team_setup_items")
+    .select("id,input_kind")
+    .eq("team_id", input.teamId)
+    .eq("key", "tws")
+    .eq("metric_group", "weather")
+    .eq("is_active", true)
+    .maybeSingle()
+
+  if (twsItemError) {
+    return null
+  }
+
+  if (!twsItem || twsItem.input_kind !== "multi_select") {
+    return false
+  }
+
+  const { data: valueRow, error: valueRowError } = await input.supabase
+    .from("session_setup_item_values")
+    .select("id")
+    .eq("session_id", input.sessionId)
+    .eq("team_setup_item_id", twsItem.id)
+    .maybeSingle()
+
+  if (valueRowError) {
+    return null
+  }
+
+  if (!valueRow) {
+    return false
+  }
+
+  const { data: selectedRows, error: selectedRowsError } = await input.supabase
+    .from("session_setup_item_selected_options")
+    .select("team_setup_item_option_id")
+    .eq("session_setup_item_value_id", valueRow.id)
+
+  if (selectedRowsError) {
+    return null
+  }
+
+  const selectedOptionIds = [
+    ...new Set((selectedRows ?? []).map((row) => row.team_setup_item_option_id)),
+  ]
+
+  if (selectedOptionIds.length === 0) {
+    return false
+  }
+
+  const { data: activeSelectedOptionRows, error: activeSelectedOptionRowsError } =
+    await input.supabase
+      .from("team_setup_item_options")
+      .select("id")
+      .eq("team_setup_item_id", twsItem.id)
+      .eq("is_active", true)
+      .in("id", selectedOptionIds)
+
+  if (activeSelectedOptionRowsError) {
+    return null
+  }
+
+  return (activeSelectedOptionRows ?? []).length > 0
+}
+
 function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[^a-zA-Z0-9._-]+/g, "_")
 }
@@ -612,6 +735,7 @@ function buildSessionDetailRedirectPath(input: {
   error?:
     | "invalid_input"
     | "forbidden"
+    | "tws_required"
     | "update_failed"
     | "upload_failed"
     | "plan_limit_reached"
@@ -1950,7 +2074,7 @@ export async function updateSessionResultsAction(formData: FormData): Promise<vo
   )
 }
 
-type SessionSetupActionError = "invalid_input" | "forbidden" | "update_failed"
+type SessionSetupActionError = "invalid_input" | "forbidden" | "tws_required" | "update_failed"
 
 export type UpdateSessionSetupActionResult =
   | {
@@ -1970,6 +2094,7 @@ export type TeamSetupMetricActionItem = Pick<
   | "inputKind"
   | "metricGroup"
   | "isFixed"
+  | "isRequired"
   | "position"
   | "options"
 >
@@ -2013,6 +2138,7 @@ type UpdateSessionSetupMutationResult =
 const SESSION_SETUP_ERROR_MESSAGES: Record<SessionSetupActionError, string> = {
   invalid_input: "The submitted setup data is invalid. Review the form and try again.",
   forbidden: "You do not have permission to manage this session in the active scope.",
+  tws_required: "TWS is required. Select at least one TWS option before continuing.",
   update_failed: "Could not update this session setup. Confirm permissions and try again.",
 }
 
@@ -2057,7 +2183,7 @@ async function fetchTeamSetupMetricActionItem(input: {
 }): Promise<TeamSetupMetricActionItem | null> {
   const { data: itemRow, error: itemRowError } = await input.supabase
     .from("team_setup_items")
-    .select("id,key,label,input_kind,metric_group,is_fixed,position")
+    .select("id,key,label,input_kind,metric_group,is_fixed,is_required,position")
     .eq("id", input.itemId)
     .eq("team_id", input.teamId)
     .eq("is_active", true)
@@ -2085,6 +2211,7 @@ async function fetchTeamSetupMetricActionItem(input: {
     inputKind: itemRow.input_kind,
     metricGroup: itemRow.metric_group,
     isFixed: itemRow.is_fixed,
+    isRequired: itemRow.is_required,
     position: itemRow.position,
     options: optionRows.map((optionRow) => ({
       id: optionRow.id,
@@ -2192,13 +2319,14 @@ async function updateSessionSetupMutation(
   const supabase = await createServerSupabaseClient()
   const itemIdsToDelete: string[] = []
   const setupValuesToSave: SessionSetupAtomicValueInput[] = []
+  let hasPayloadTwsValue = false
 
   if (hasValueChanges) {
     const payloadEntries = Array.from(payloadByItemId.values())
     const payloadItemIds = payloadEntries.map((entry) => entry.itemId)
     const { data: itemRowsData, error: itemsError } = await supabase
       .from("team_setup_items")
-      .select("id,key,input_kind,metric_group,is_fixed")
+      .select("id,key,input_kind,metric_group,is_fixed,is_required")
       .eq("team_id", scope.scopeTeamId)
       .eq("is_active", true)
       .in("id", payloadItemIds)
@@ -2265,6 +2393,17 @@ async function updateSessionSetupMutation(
       const hasSelectedOptions = payloadEntry.selectedOptions.length > 0
       const shouldPersist = hasTextValue || hasSelectedOptions
 
+      if (
+        item.key === "tws" &&
+        (item.metric_group !== "weather" || item.input_kind !== "multi_select")
+      ) {
+        return buildSessionSetupActionError({
+          error: "tws_required",
+          scope,
+          sessionId: parsedInput.data.sessionId,
+        })
+      }
+
       if (item.input_kind === "text" && hasSelectedOptions) {
         return buildSessionSetupActionError({
           error: "invalid_input",
@@ -2302,6 +2441,14 @@ async function updateSessionSetupMutation(
         })
       }
 
+      if (item.key === "tws" && !shouldPersist) {
+        return buildSessionSetupActionError({
+          error: "tws_required",
+          scope,
+          sessionId: parsedInput.data.sessionId,
+        })
+      }
+
       if (!shouldPersist) {
         itemIdsToDelete.push(payloadEntry.itemId)
         continue
@@ -2325,6 +2472,18 @@ async function updateSessionSetupMutation(
         })
       }
 
+      if (item.key === "tws") {
+        if (normalizedSelectedOptions.length === 0) {
+          return buildSessionSetupActionError({
+            error: "tws_required",
+            scope,
+            sessionId: parsedInput.data.sessionId,
+          })
+        }
+
+        hasPayloadTwsValue = true
+      }
+
       setupValuesToSave.push({
         team_setup_item_id: payloadEntry.itemId,
         text_value: item.input_kind === "text" ? payloadEntry.textValue : null,
@@ -2336,6 +2495,22 @@ async function updateSessionSetupMutation(
                 allocation_percent: selectedOption.allocationPercent,
               })),
       })
+    }
+
+    if (!hasPayloadTwsValue) {
+      const hasSavedTwsSelection = await sessionHasSavedTwsSelection({
+        sessionId: parsedInput.data.sessionId,
+        supabase,
+        teamId: scope.scopeTeamId,
+      })
+
+      if (hasSavedTwsSelection !== true) {
+        return buildSessionSetupActionError({
+          error: hasSavedTwsSelection === null ? "update_failed" : "tws_required",
+          scope,
+          sessionId: parsedInput.data.sessionId,
+        })
+      }
     }
   }
 
@@ -2426,7 +2601,7 @@ export async function updateSessionSetupAction(formData: FormData): Promise<void
     if (!result.sessionId) {
       redirect(
         buildTeamSessionsRedirectPath({
-          error: result.error,
+          error: result.error === "tws_required" ? "invalid_input" : result.error,
           ...result.scope,
         }),
       )
@@ -2524,6 +2699,7 @@ export async function createTeamSetupMetricAction(formData: FormData): Promise<v
 
   const parsedInput = createTeamSetupMetricInputSchema.safeParse({
     sessionId,
+    metricGroup: getFormString(formData, "metricGroup"),
     inputKind: getFormString(formData, "inputKind"),
     label: getFormString(formData, "label"),
     options: parsedOptions,
@@ -2582,7 +2758,6 @@ export async function createTeamSetupMetricAction(formData: FormData): Promise<v
     .from("team_setup_items")
     .select("position")
     .eq("team_id", scope.scopeTeamId)
-    .eq("is_active", true)
 
   if (existingRowsError) {
     redirect(
@@ -2609,8 +2784,9 @@ export async function createTeamSetupMetricAction(formData: FormData): Promise<v
       key: metricKey,
       label: normalizedLabel,
       input_kind: parsedInput.data.inputKind,
-      metric_group: "boat",
+      metric_group: parsedInput.data.metricGroup,
       is_fixed: false,
+      is_required: false,
       position: nextPosition,
       is_active: true,
     })
@@ -2683,6 +2859,7 @@ export async function updateTeamSetupMetricAction(
   const parsedInput = updateTeamSetupMetricInputSchema.safeParse({
     sessionId,
     itemId: getFormString(formData, "itemId"),
+    metricGroup: getFormString(formData, "metricGroup"),
     inputKind: getFormString(formData, "inputKind"),
     label: getFormString(formData, "label"),
     options: parsedOptions,
@@ -2715,27 +2892,45 @@ export async function updateTeamSetupMetricAction(
   const supabase = await createServerSupabaseClient()
   const { data: itemRow, error: itemRowError } = await supabase
     .from("team_setup_items")
-    .select("id,metric_group,is_fixed")
+    .select("id,key,label,metric_group,is_fixed,is_required")
     .eq("id", parsedInput.data.itemId)
     .eq("team_id", scope.scopeTeamId)
     .maybeSingle()
 
-  if (itemRowError || !itemRow || itemRow.metric_group !== "boat" || itemRow.is_fixed) {
+  if (itemRowError || !itemRow || itemRow.metric_group !== parsedInput.data.metricGroup) {
     return buildUpdateTeamSetupMetricActionError("forbidden")
   }
 
-  const { error: updateItemError } = await supabase
-    .from("team_setup_items")
-    .update({
-      label: normalizedLabel,
-      input_kind: parsedInput.data.inputKind,
-      metric_group: "boat",
-      is_fixed: false,
-    })
-    .eq("id", parsedInput.data.itemId)
+  const isRequiredTws = itemRow.is_required && itemRow.key === "tws"
 
-  if (updateItemError) {
-    return buildUpdateTeamSetupMetricActionError("update_failed")
+  if (itemRow.is_fixed || (itemRow.is_required && !isRequiredTws)) {
+    return buildUpdateTeamSetupMetricActionError("forbidden")
+  }
+
+  if (
+    isRequiredTws &&
+    (parsedInput.data.metricGroup !== "weather" ||
+      parsedInput.data.inputKind !== "multi_select" ||
+      normalizedLabel !== itemRow.label)
+  ) {
+    return buildUpdateTeamSetupMetricActionError("forbidden")
+  }
+
+  if (!isRequiredTws) {
+    const { error: updateItemError } = await supabase
+      .from("team_setup_items")
+      .update({
+        label: normalizedLabel,
+        input_kind: parsedInput.data.inputKind,
+        metric_group: itemRow.metric_group,
+        is_fixed: false,
+        is_required: false,
+      })
+      .eq("id", parsedInput.data.itemId)
+
+    if (updateItemError) {
+      return buildUpdateTeamSetupMetricActionError("update_failed")
+    }
   }
 
   const { error: deactivateOptionsError } = await supabase
@@ -2819,12 +3014,12 @@ export async function deleteTeamSetupMetricAction(
   const supabase = await createServerSupabaseClient()
   const { data: itemRow, error: itemRowError } = await supabase
     .from("team_setup_items")
-    .select("id,metric_group,is_fixed")
+    .select("id,metric_group,is_fixed,is_required")
     .eq("id", parsedInput.data.itemId)
     .eq("team_id", scope.scopeTeamId)
     .maybeSingle()
 
-  if (itemRowError || !itemRow || itemRow.metric_group !== "boat" || itemRow.is_fixed) {
+  if (itemRowError || !itemRow || itemRow.is_fixed || itemRow.is_required) {
     return buildDeleteTeamSetupMetricActionError("forbidden")
   }
 
@@ -2861,6 +3056,7 @@ export async function reorderTeamSetupMetricsAction(formData: FormData): Promise
 
   const parsedInput = reorderTeamSetupMetricsInputSchema.safeParse({
     sessionId,
+    metricGroup: getFormString(formData, "metricGroup"),
     orderedItemIds,
   })
 
@@ -2890,10 +3086,10 @@ export async function reorderTeamSetupMetricsAction(formData: FormData): Promise
   }
 
   const supabase = await createServerSupabaseClient()
-  const reorderResult = await persistBoatSetupMetricOrder({
+  const reorderResult = await persistSetupMetricOrder({
     supabase,
-    sessionId: parsedInput.data.sessionId,
     teamId: scope.scopeTeamId,
+    metricGroup: parsedInput.data.metricGroup,
     orderedItemIds: parsedInput.data.orderedItemIds,
   })
 
@@ -2922,7 +3118,7 @@ export async function reorderTeamSetupMetricsAction(formData: FormData): Promise
   )
 }
 
-type SessionGearActionError = "invalid_input" | "forbidden" | "update_failed"
+type SessionGearActionError = "invalid_input" | "forbidden" | "tws_required" | "update_failed"
 
 export type UpdateSessionGearUsageActionResult =
   | {
@@ -2951,6 +3147,7 @@ type UpdateSessionGearUsageMutationResult =
 const SESSION_GEAR_ERROR_MESSAGES: Record<SessionGearActionError, string> = {
   invalid_input: "The submitted gear selection is invalid. Review the form and try again.",
   forbidden: "You do not have permission to manage gear in the active scope.",
+  tws_required: "Select at least one TWS option in Session Setup before linking gear.",
   update_failed: "Could not update session gear. Confirm permissions and try again.",
 }
 
@@ -3045,6 +3242,20 @@ async function updateSessionGearUsageMutation(
     if (!scopedGearRows || scopedGearRows.length !== parsedInput.data.gearItemIds.length) {
       return buildSessionGearUsageActionError({
         error: "invalid_input",
+        scope,
+        sessionId: parsedInput.data.sessionId,
+      })
+    }
+
+    const hasSavedTwsSelection = await sessionHasSavedTwsSelection({
+      sessionId: parsedInput.data.sessionId,
+      supabase,
+      teamId: scope.scopeTeamId,
+    })
+
+    if (hasSavedTwsSelection !== true) {
+      return buildSessionGearUsageActionError({
+        error: hasSavedTwsSelection === null ? "update_failed" : "tws_required",
         scope,
         sessionId: parsedInput.data.sessionId,
       })
@@ -3150,7 +3361,7 @@ export async function updateSessionGearUsageAction(formData: FormData): Promise<
     if (!result.sessionId) {
       redirect(
         buildTeamSessionsRedirectPath({
-          error: result.error,
+          error: result.error === "tws_required" ? "invalid_input" : result.error,
           ...result.scope,
         }),
       )

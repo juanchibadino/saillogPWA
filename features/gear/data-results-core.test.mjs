@@ -2,6 +2,22 @@ import assert from "node:assert/strict"
 import test from "node:test"
 
 import { getTeamGearResultsDataForSupabase } from "./data-results-core.mjs"
+import { getDefaultTwsMultiplier } from "./tws-multiplier-defaults.mjs"
+
+function buildDefaultTwsMultiplierList(optionCount) {
+  return Array.from({ length: optionCount }, (_, index) =>
+    getDefaultTwsMultiplier(index + 1, optionCount),
+  )
+}
+
+test("resolves ordered TWS default multiplier ladders", () => {
+  assert.deepEqual(buildDefaultTwsMultiplierList(1), [1])
+  assert.deepEqual(buildDefaultTwsMultiplierList(2), [0.5, 1])
+  assert.deepEqual(buildDefaultTwsMultiplierList(3), [0.4, 0.6, 1])
+  assert.deepEqual(buildDefaultTwsMultiplierList(4), [0.3, 0.5, 0.7, 1])
+  assert.deepEqual(buildDefaultTwsMultiplierList(5), [0.2, 0.4, 0.6, 0.8, 1])
+  assert.deepEqual(buildDefaultTwsMultiplierList(6), [0.1, 0.28, 0.46, 0.64, 0.82, 1])
+})
 
 function createResultsLoaderSupabase() {
   const calls = []
@@ -11,15 +27,53 @@ function createResultsLoaderSupabase() {
     from(tableName) {
       calls.push({ type: "from", tableName })
 
-      assert.equal(tableName, "gear_alert_rules")
-
       return {
+        filters: [],
         select(columns) {
           calls.push({ type: "select", tableName, columns })
           return this
         },
+        eq(column, value) {
+          calls.push({ type: "eq", tableName, column, value })
+          this.filters.push({ column, value })
+          return this
+        },
+        order(column, options) {
+          calls.push({ type: "order", tableName, column, options })
+          return this
+        },
+        maybeSingle() {
+          calls.push({ type: "maybeSingle", tableName })
+
+          if (tableName === "team_setup_items") {
+            return Promise.resolve({
+              data: {
+                id: "tws-item-1",
+              },
+              error: null,
+            })
+          }
+
+          return Promise.resolve({ data: null, error: null })
+        },
         in(column, values) {
           calls.push({ type: "in", tableName, column, values })
+
+          if (tableName === "gear_tws_option_multipliers") {
+            return Promise.resolve({
+              data: [
+                {
+                  gear_item_id: "gear-26",
+                  team_setup_item_option_id: "tws-option-1",
+                  usage_count_multiplier: 1.25,
+                  usage_minutes_multiplier: 0.2,
+                },
+              ],
+              error: null,
+            })
+          }
+
+          assert.equal(tableName, "gear_alert_rules")
 
           return Promise.resolve({
             data: [
@@ -42,6 +96,34 @@ function createResultsLoaderSupabase() {
             ],
             error: null,
           })
+        },
+        then(resolve, reject) {
+          try {
+            if (tableName === "team_setup_item_options") {
+              Promise.resolve({
+                data: [
+                  {
+                    id: "tws-option-1",
+                    label: "ST 0-4",
+                    position: 1,
+                    value: "ST 0-4",
+                  },
+                  {
+                    id: "tws-option-2",
+                    label: "DT 5-8",
+                    position: 2,
+                    value: "DT 5-8",
+                  },
+                ],
+                error: null,
+              }).then(resolve, reject)
+              return
+            }
+
+            Promise.resolve({ data: [], error: null }).then(resolve, reject)
+          } catch (error) {
+            reject(error)
+          }
         },
       }
     },
@@ -122,10 +204,17 @@ test("loads Team Gear results through the computed RPC and hydrates only visible
   })
   assert.deepEqual(
     supabase.calls.filter((call) => call.type === "from").map((call) => call.tableName),
-    ["gear_alert_rules"],
+    [
+      "gear_alert_rules",
+      "team_setup_items",
+      "team_setup_item_options",
+      "gear_tws_option_multipliers",
+    ],
   )
   assert.deepEqual(
-    supabase.calls.find((call) => call.type === "in"),
+    supabase.calls.find(
+      (call) => call.type === "in" && call.tableName === "gear_alert_rules",
+    ),
     {
       type: "in",
       tableName: "gear_alert_rules",
@@ -161,6 +250,13 @@ test("loads Team Gear results through the computed RPC and hydrates only visible
         serialNumber: "SN-26",
         status: "active_training",
         triggeredAlertCount: 2,
+        twsMultipliers: [
+          {
+            optionId: "tws-option-1",
+            usageCountMultiplier: 1.25,
+            usageMinutesMultiplier: 0.2,
+          },
+        ],
         usageCount: 4,
         usageMinutes: 120,
       },
@@ -175,8 +271,23 @@ test("loads Team Gear results through the computed RPC and hydrates only visible
         serialNumber: null,
         status: "active_training",
         triggeredAlertCount: 1,
+        twsMultipliers: [],
         usageCount: 2,
         usageMinutes: 45,
+      },
+    ],
+    twsOptions: [
+      {
+        id: "tws-option-1",
+        label: "ST 0-4",
+        position: 1,
+        value: "ST 0-4",
+      },
+      {
+        id: "tws-option-2",
+        label: "DT 5-8",
+        position: 2,
+        value: "DT 5-8",
       },
     ],
     currentPage: 2,

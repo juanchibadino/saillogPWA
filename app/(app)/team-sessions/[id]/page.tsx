@@ -111,6 +111,10 @@ function getErrorMessage(error: string | undefined): string | null {
     return "You do not have permission to manage this session in the active scope."
   }
 
+  if (error === "tws_required") {
+    return "TWS is required. Select at least one TWS option in Session Setup before continuing."
+  }
+
   if (error === "update_failed") {
     return "Could not update this session. Confirm your permissions and try again."
   }

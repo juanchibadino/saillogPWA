@@ -60,6 +60,7 @@ export type SessionSetupDialogItem = {
   inputKind: "single_select" | "multi_select" | "text"
   metricGroup: "weather" | "boat"
   isFixed: boolean
+  isRequired: boolean
   position: number
   options: SessionSetupDialogOption[]
   selectedOptions: SessionSetupDialogSelectedOption[]

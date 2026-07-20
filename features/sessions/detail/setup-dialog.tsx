@@ -55,18 +55,6 @@ import type { SessionSetupDialogItem } from "@/features/sessions/detail-types"
 import { useIsMobile } from "@/hooks/use-mobile"
 import type { NavigationScope } from "@/lib/navigation/types"
 
-const WEATHER_METRIC_KEYS = [
-  "twd",
-  "tws",
-  "sea_state",
-  "conditions",
-  "type_of_day",
-  "currents",
-] as const
-const WEATHER_METRIC_ORDER = new Map<string, number>(
-  WEATHER_METRIC_KEYS.map((key, index) => [key, index]),
-)
-
 type SetupDraftSelectedOption = {
   optionId: string
   allocationPercent: number | null
@@ -86,7 +74,8 @@ type SetupPayloadEntry = {
   selectedOptions: SetupDraftSelectedOption[]
 }
 
-type SetupSurfaceView = "setup" | "boatMetrics"
+type SetupMetricGroup = SessionSetupDialogItem["metricGroup"]
+type SetupSurfaceView = "setup" | "weatherMetrics" | "boatMetrics"
 
 function formatSetupInputKindLabel(kind: SessionSetupDialogItem["inputKind"]): string {
   if (kind === "single_select") {
@@ -510,16 +499,7 @@ function groupSetupItems(items: SessionSetupDialogItem[]): {
 } {
   const weather = items
     .filter((item) => item.metricGroup === "weather")
-    .sort((left, right) => {
-      const leftOrder = WEATHER_METRIC_ORDER.get(left.key) ?? Number.MAX_SAFE_INTEGER
-      const rightOrder = WEATHER_METRIC_ORDER.get(right.key) ?? Number.MAX_SAFE_INTEGER
-
-      if (leftOrder !== rightOrder) {
-        return leftOrder - rightOrder
-      }
-
-      return left.position - right.position
-    })
+    .sort((left, right) => left.position - right.position)
   const boat = items
     .filter((item) => item.metricGroup === "boat")
     .sort((left, right) => left.position - right.position)
@@ -527,8 +507,57 @@ function groupSetupItems(items: SessionSetupDialogItem[]): {
   return { weather, boat }
 }
 
-function buildBoatSetupOrderIds(items: SessionSetupDialogItem[]): string[] {
-  return groupSetupItems(items).boat.map((item) => item.id)
+function buildSetupOrderIds(
+  items: SessionSetupDialogItem[],
+  metricGroup: SetupMetricGroup,
+): string[] {
+  return groupSetupItems(items)[metricGroup].map((item) => item.id)
+}
+
+function getSetupMetricGroupTitle(metricGroup: SetupMetricGroup): string {
+  return metricGroup === "weather" ? "Weather" : "Boat"
+}
+
+function getSetupSurfaceViewForMetricGroup(metricGroup: SetupMetricGroup): SetupSurfaceView {
+  return metricGroup === "weather" ? "weatherMetrics" : "boatMetrics"
+}
+
+function getSetupMetricGroupForSurfaceView(
+  surfaceView: SetupSurfaceView,
+): SetupMetricGroup | null {
+  if (surfaceView === "weatherMetrics") {
+    return "weather"
+  }
+
+  if (surfaceView === "boatMetrics") {
+    return "boat"
+  }
+
+  return null
+}
+
+function canEditSetupMetricDefinition(item: SessionSetupDialogItem): boolean {
+  return !item.isFixed && (!item.isRequired || item.key === "tws")
+}
+
+function hasRequiredTwsDraftSelection(input: {
+  draftByItemId: SetupDraftByItemId
+  items: SessionSetupDialogItem[]
+}): boolean {
+  const twsItem = input.items.find(
+    (item) =>
+      item.key === "tws" &&
+      item.metricGroup === "weather" &&
+      item.isRequired &&
+      item.inputKind === "multi_select",
+  )
+
+  if (!twsItem || twsItem.options.length === 0) {
+    return false
+  }
+
+  const draft = input.draftByItemId[twsItem.id]
+  return Boolean(draft && draft.selectedOptions.length > 0)
 }
 
 function hasSetupItemValue(item: SessionSetupDialogItem): boolean {
@@ -873,12 +902,15 @@ export function SetupDialog(input: {
     [setupItems],
   )
   const initialBoatOrderIds = React.useMemo(
-    () => buildBoatSetupOrderIds(setupItems),
+    () => buildSetupOrderIds(setupItems, "boat"),
     [setupItems],
   )
-  const boatItemById = React.useMemo(
-    () => new Map(groupedItems.boat.map((item) => [item.id, item])),
-    [groupedItems.boat],
+  const setupItemById = React.useMemo(
+    () =>
+      new Map(
+        [...groupedItems.weather, ...groupedItems.boat].map((item) => [item.id, item]),
+      ),
+    [groupedItems.boat, groupedItems.weather],
   )
 
   const router = useRouter()
@@ -1015,7 +1047,7 @@ export function SetupDialog(input: {
 
     if (!isOpen || !isEditMode) {
       setDraftByItemId(buildInitialSetupDraft(input.items))
-      setBoatOrderIds(buildBoatSetupOrderIds(input.items))
+      setBoatOrderIds(buildSetupOrderIds(input.items, "boat"))
     }
   }, [input.items, isEditMode, isOpen])
 
@@ -1036,13 +1068,13 @@ export function SetupDialog(input: {
   const orderedBoatItems = React.useMemo(
     () =>
       boatOrderIds
-        .map((itemId) => boatItemById.get(itemId) ?? null)
+        .map((itemId) => setupItemById.get(itemId) ?? null)
         .filter((item): item is SessionSetupDialogItem => item !== null),
-    [boatItemById, boatOrderIds],
+    [setupItemById, boatOrderIds],
   )
 
   const editingMetric =
-    editingMetricId !== null ? boatItemById.get(editingMetricId) ?? null : null
+    editingMetricId !== null ? setupItemById.get(editingMetricId) ?? null : null
   const isMetricPending = isSavingMetric || isDeletingMetric
   const visibleWeatherItems = isEditMode ? groupedItems.weather : valuedGroupedItems.weather
   const visibleBoatItems = isEditMode ? groupedItems.boat : valuedGroupedItems.boat
@@ -1061,7 +1093,7 @@ export function SetupDialog(input: {
 
   function resetDialogState() {
     setDraftByItemId(buildInitialSetupDraft(setupItems))
-    setBoatOrderIds(buildBoatSetupOrderIds(setupItems))
+    setBoatOrderIds(buildSetupOrderIds(setupItems, "boat"))
     setIsEditMode(false)
     setSetupSurfaceView("setup")
     setEditingMetricId(null)
@@ -1085,6 +1117,13 @@ export function SetupDialog(input: {
       return
     }
 
+    if (!hasRequiredTwsDraftSelection({ items: setupItems, draftByItemId })) {
+      toast.error("TWS is required. Select at least one TWS option before saving.", {
+        id: `session-setup-save:${input.sessionId}`,
+      })
+      return
+    }
+
     if (setupPayloadEntries.length === 0) {
       setIsEditMode(false)
       setSetupSurfaceView("setup")
@@ -1105,7 +1144,7 @@ export function SetupDialog(input: {
 
     setSetupItems(optimisticSetupItems)
     setDraftByItemId(buildInitialSetupDraft(optimisticSetupItems))
-    setBoatOrderIds(buildBoatSetupOrderIds(optimisticSetupItems))
+    setBoatOrderIds(buildSetupOrderIds(optimisticSetupItems, "boat"))
     setIsEditMode(false)
     setSetupSurfaceView("setup")
     setIsOpen(false)
@@ -1258,11 +1297,11 @@ export function SetupDialog(input: {
   }
 
   function openEditMetricDialog(item: SessionSetupDialogItem) {
-    if (item.metricGroup !== "boat" || item.isFixed) {
+    if (!canEditSetupMetricDefinition(item)) {
       return
     }
 
-    setSetupSurfaceView("boatMetrics")
+    setSetupSurfaceView(getSetupSurfaceViewForMetricGroup(item.metricGroup))
     setEditingMetricId(item.id)
     setEditingMetricLabel(item.label)
     setEditingMetricKind(item.inputKind)
@@ -1301,6 +1340,7 @@ export function SetupDialog(input: {
 
     const formData = new FormData(event.currentTarget)
     const toastId = `setup-metric-save:${editingMetric.id}`
+    const nextSurfaceView = getSetupSurfaceViewForMetricGroup(editingMetric.metricGroup)
 
     setIsSavingMetric(true)
 
@@ -1338,7 +1378,7 @@ export function SetupDialog(input: {
         }
       })
       closeMetricEditor()
-      setSetupSurfaceView("boatMetrics")
+      setSetupSurfaceView(nextSurfaceView)
       input.onRetry?.()
       invalidateSessionDetailRouteCache({
         scope: input.scope,
@@ -1361,8 +1401,16 @@ export function SetupDialog(input: {
       return
     }
 
+    if (editingMetric.isRequired) {
+      toast.error("TWS is required and cannot be deleted.", {
+        id: `setup-metric-delete:${editingMetric.id}`,
+      })
+      return
+    }
+
     const formData = buildMetricDeleteFormData(editingMetric.id)
     const toastId = `setup-metric-delete:${editingMetric.id}`
+    const nextSurfaceView = getSetupSurfaceViewForMetricGroup(editingMetric.metricGroup)
 
     setIsDeletingMetric(true)
 
@@ -1386,7 +1434,7 @@ export function SetupDialog(input: {
         previousOrderIds.filter((itemId) => itemId !== result.itemId),
       )
       closeMetricEditor()
-      setSetupSurfaceView("boatMetrics")
+      setSetupSurfaceView(nextSurfaceView)
       input.onRetry?.()
       invalidateSessionDetailRouteCache({
         scope: input.scope,
@@ -1609,7 +1657,14 @@ export function SetupDialog(input: {
           htmlFor={`setup-item-${item.id}`}
           className="min-w-0 text-xs uppercase text-muted-foreground"
         >
-          <span className="block truncate">{item.label}</span>
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="block truncate">{item.label}</span>
+            {item.isRequired ? (
+              <Badge variant="outline" className="h-5 normal-case">
+                Required
+              </Badge>
+            ) : null}
+          </span>
         </Label>
 
         <div className="min-w-0">{renderField(item)}</div>
@@ -1619,7 +1674,7 @@ export function SetupDialog(input: {
     )
   }
 
-  function renderBoatMetricDefinitionRow(item: SessionSetupDialogItem) {
+  function renderSetupMetricDefinitionRow(item: SessionSetupDialogItem) {
     return (
       <div
         key={item.id}
@@ -1636,10 +1691,15 @@ export function SetupDialog(input: {
                 Fixed
               </Badge>
             ) : null}
+            {item.isRequired ? (
+              <Badge variant="outline" className="h-5">
+                Required
+              </Badge>
+            ) : null}
           </div>
         </div>
 
-        {!item.isFixed ? (
+        {canEditSetupMetricDefinition(item) ? (
           <Button
             type="button"
             variant="outline"
@@ -1667,19 +1727,48 @@ export function SetupDialog(input: {
     )
   }
 
-  const boatMetricsManager = (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="no-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto px-4 pb-6 pr-5 scroll-pb-20 md:pb-4 md:scroll-pb-4">
-        {orderedBoatItems.length === 0 ? (
-          <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
-            No Boat metrics configured for this team yet.
-          </div>
-        ) : (
-          orderedBoatItems.map((item) => renderBoatMetricDefinitionRow(item))
-        )}
+  function renderManageMetricsButton(metricGroup: SetupMetricGroup) {
+    const title = getSetupMetricGroupTitle(metricGroup)
+
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className={
+          isMobile
+            ? "h-11 w-11 rounded-xl bg-muted hover:bg-muted/80"
+            : "size-9 rounded-xl bg-muted hover:bg-muted/80"
+        }
+        aria-label={`Manage ${title} metrics`}
+        onClick={() => {
+          setSetupSurfaceView(getSetupSurfaceViewForMetricGroup(metricGroup))
+          setEditingMetricId(null)
+        }}
+      >
+        <Settings2Icon className="size-4" />
+      </Button>
+    )
+  }
+
+  function renderSetupMetricsManager(metricGroup: SetupMetricGroup) {
+    const title = getSetupMetricGroupTitle(metricGroup)
+    const managerItems = metricGroup === "boat" ? orderedBoatItems : groupedItems.weather
+
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="no-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto px-4 pb-6 pr-5 scroll-pb-20 md:pb-4 md:scroll-pb-4">
+          {managerItems.length === 0 ? (
+            <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
+              No {title} metrics configured for this team yet.
+            </div>
+          ) : (
+            managerItems.map((item) => renderSetupMetricDefinitionRow(item))
+          )}
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   const setupLoadState = input.isLoading ? (
     <div className="flex min-h-44 flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-4 text-center">
@@ -1748,6 +1837,7 @@ export function SetupDialog(input: {
                         )
                       })}
                     </div>,
+                    renderManageMetricsButton("weather"),
                   )
                 : null}
 
@@ -1778,23 +1868,7 @@ export function SetupDialog(input: {
                         </div>
                       )}
                     </div>,
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className={
-                        isMobile
-                          ? "h-11 w-11 rounded-xl bg-muted hover:bg-muted/80"
-                          : "size-9 rounded-xl bg-muted hover:bg-muted/80"
-                      }
-                      aria-label="Manage Boat metrics"
-                      onClick={() => {
-                        setSetupSurfaceView("boatMetrics")
-                        setEditingMetricId(null)
-                      }}
-                    >
-                      <Settings2Icon className="size-4" />
-                    </Button>,
+                    renderManageMetricsButton("boat"),
                   )
                 : null}
             </>
@@ -1813,38 +1887,50 @@ export function SetupDialog(input: {
     </form>
   )
 
-  const metricEditFooterContent = (
-    <div className="grid w-full grid-cols-4 gap-2">
-      <Button
-        type="button"
-        variant="destructive"
-        disabled={isMetricPending}
-        className={`col-span-1 min-w-0 px-2 ${isMobile ? "h-11" : "h-10"}`}
-        aria-label="Delete metric"
-        onClick={handleMetricDelete}
-      >
-        {isDeletingMetric ? (
-          <Loader2Icon className="size-4 animate-spin" />
-        ) : (
-          <>
-            <Trash2Icon className="size-4" />
-            <span className="hidden sm:inline">Delete</span>
-          </>
-        )}
-      </Button>
+  const metricEditFooterContent = editingMetric ? (
+    <div
+      className={
+        editingMetric.isRequired ? "grid w-full grid-cols-1 gap-2" : "grid w-full grid-cols-4 gap-2"
+      }
+    >
+      {!editingMetric.isRequired ? (
+        <Button
+          type="button"
+          variant="destructive"
+          disabled={isMetricPending}
+          className={`col-span-1 min-w-0 px-2 ${isMobile ? "h-11" : "h-10"}`}
+          aria-label="Delete metric"
+          onClick={handleMetricDelete}
+        >
+          {isDeletingMetric ? (
+            <Loader2Icon className="size-4 animate-spin" />
+          ) : (
+            <>
+              <Trash2Icon className="size-4" />
+              <span className="hidden sm:inline">Delete</span>
+            </>
+          )}
+        </Button>
+      ) : null}
       <EditSetupMetricSubmitButton
-        className={`col-span-3 ${isMobile ? "h-11" : "h-10"}`}
+        className={`${editingMetric.isRequired ? "col-span-1" : "col-span-3"} ${
+          isMobile ? "h-11" : "h-10"
+        }`}
         disabled={isMetricPending}
         isSaving={isSavingMetric}
       />
     </div>
-  )
+  ) : null
 
   const metricEditForm = editingMetric ? (
     <form onSubmit={handleMetricSubmit} className="flex min-h-0 flex-1 flex-col">
       <SetupScopeHiddenFields sessionId={input.sessionId} scope={input.scope} />
       <input type="hidden" name="itemId" value={editingMetric.id} />
+      <input type="hidden" name="metricGroup" value={editingMetric.metricGroup} />
       <input type="hidden" name="optionsPayload" value={updateMetricOptionsPayload} />
+      {editingMetric.isRequired ? (
+        <input type="hidden" name="inputKind" value={editingMetricKind} />
+      ) : null}
 
       <EditSetupMetricFieldset isPending={isMetricPending}>
         <div className="no-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-6 pr-5 scroll-pb-28 md:pb-4 md:scroll-pb-4">
@@ -1858,6 +1944,7 @@ export function SetupDialog(input: {
               onFocus={keepMobileFieldVisible}
               className={isMobile ? "h-11 px-3" : undefined}
               maxLength={120}
+              readOnly={editingMetric.isRequired}
               required
             />
           </div>
@@ -1868,6 +1955,7 @@ export function SetupDialog(input: {
               id="edit-setup-metric-kind"
               name="inputKind"
               value={editingMetricKind}
+              disabled={editingMetric.isRequired}
               onChange={(event) =>
                 setEditingMetricKind(
                   event.target.value as "single_select" | "multi_select" | "text",
@@ -1909,22 +1997,26 @@ export function SetupDialog(input: {
     </form>
   ) : null
 
+  const activeMetricGroup = getSetupMetricGroupForSurfaceView(setupSurfaceView)
+  const activeMetricGroupTitle = activeMetricGroup
+    ? getSetupMetricGroupTitle(activeMetricGroup)
+    : null
   const setupSurfaceContent = editingMetric
     ? metricEditForm
-    : setupSurfaceView === "boatMetrics"
-      ? boatMetricsManager
+    : activeMetricGroup
+      ? renderSetupMetricsManager(activeMetricGroup)
       : setupForm
   const setupSurfaceTitle = editingMetric
     ? "Edit Setup Metric"
-    : setupSurfaceView === "boatMetrics"
-      ? "Boat Metrics"
+    : activeMetricGroupTitle
+      ? `${activeMetricGroupTitle} Metrics`
       : "Session Setup"
   const setupSurfaceDescription = editingMetric
     ? "Update the selected setup metric."
-    : setupSurfaceView === "boatMetrics"
-      ? "Manage Boat metric definitions."
+    : activeMetricGroupTitle
+      ? `Manage ${activeMetricGroupTitle} metric definitions.`
       : "Review and update session setup metrics."
-  const canNavigateBack = Boolean(editingMetric) || setupSurfaceView === "boatMetrics"
+  const canNavigateBack = Boolean(editingMetric) || activeMetricGroup !== null
   const handleSurfaceBack = () => {
     if (editingMetric) {
       closeMetricEditor()

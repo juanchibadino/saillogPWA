@@ -7,6 +7,7 @@ import {
   runCreateGearItemAction,
   runRetireGearItemAction,
   runUpdateGearItemAction,
+  runUpdateGearTwsMultipliersAction,
 } from "@/features/gear/action-core.mjs"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
@@ -28,4 +29,8 @@ export async function updateGearItemAction(formData: FormData): Promise<void> {
 
 export async function retireGearItemAction(formData: FormData): Promise<void> {
   await runRetireGearItemAction(formData, gearActionDependencies)
+}
+
+export async function updateGearTwsMultipliersAction(formData: FormData): Promise<void> {
+  await runUpdateGearTwsMultipliersAction(formData, gearActionDependencies)
 }

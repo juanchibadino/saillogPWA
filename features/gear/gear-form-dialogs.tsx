@@ -7,6 +7,7 @@ import {
   MoreHorizontalIcon,
   PencilIcon,
   PlusIcon,
+  Settings2Icon,
   Trash2Icon,
 } from "lucide-react"
 import { useFormStatus } from "react-dom"
@@ -15,8 +16,14 @@ import {
   createGearItemAction,
   retireGearItemAction,
   updateGearItemAction,
+  updateGearTwsMultipliersAction,
 } from "@/features/gear/actions"
-import type { TeamGearAlertRuleItem, TeamGearListItem } from "@/features/gear/shared"
+import { getDefaultTwsMultiplier } from "@/features/gear/tws-multiplier-defaults.mjs"
+import type {
+  TeamGearAlertRuleItem,
+  TeamGearListItem,
+  TeamGearTwsOption,
+} from "@/features/gear/shared"
 import type { NavigationScope } from "@/lib/navigation/types"
 import { cn } from "@/lib/utils"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -77,8 +84,22 @@ type GearFormInitialValues = {
 
 type EditableGearItem = Pick<
   TeamGearListItem,
-  "id" | "name" | "gearType" | "serialNumber" | "barcode" | "status" | "condition" | "alertRules"
+  | "id"
+  | "name"
+  | "gearType"
+  | "serialNumber"
+  | "barcode"
+  | "status"
+  | "condition"
+  | "alertRules"
+  | "twsMultipliers"
 >
+
+type GearTwsMultiplierDraft = {
+  optionId: string
+  usageMinutesMultiplier: number
+  usageCountMultiplier: number
+}
 
 type DetectedBarcodeLike = {
   rawValue?: string
@@ -452,6 +473,47 @@ function GearDialogFooter({
     <SheetFooter className="shrink-0 border-t sm:justify-end">
       {button}
     </SheetFooter>
+  )
+}
+
+function GearRouteScopeHiddenFields({
+  scope,
+  selectedType,
+  selectedStatusFilter,
+  selectedCondition,
+  selectedAlert,
+  currentPage,
+  loadMoreMode,
+}: {
+  scope: NavigationScope
+  selectedType?: string
+  selectedStatusFilter?: string
+  selectedCondition?: string
+  selectedAlert?: string
+  currentPage: number
+  loadMoreMode: boolean
+}) {
+  return (
+    <>
+      <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
+      {scope.activeTeamId ? (
+        <input type="hidden" name="scopeTeamId" value={scope.activeTeamId} />
+      ) : null}
+      {selectedType ? <input type="hidden" name="scopeType" value={selectedType} /> : null}
+      {selectedStatusFilter ? (
+        <input type="hidden" name="scopeStatus" value={selectedStatusFilter} />
+      ) : null}
+      {selectedCondition ? (
+        <input type="hidden" name="scopeCondition" value={selectedCondition} />
+      ) : null}
+      {selectedAlert ? <input type="hidden" name="scopeAlert" value={selectedAlert} /> : null}
+      {currentPage > 1 ? (
+        <input type="hidden" name="scopePage" value={String(currentPage)} />
+      ) : null}
+      {loadMoreMode && currentPage > 1 ? (
+        <input type="hidden" name="scopeLoadMore" value="1" />
+      ) : null}
+    </>
   )
 }
 
@@ -1042,8 +1104,238 @@ export function EditGearDialog({
   )
 }
 
+function buildTwsMultiplierDrafts(input: {
+  gearItem: EditableGearItem
+  twsOptions: TeamGearTwsOption[]
+}): GearTwsMultiplierDraft[] {
+  const multiplierByOptionId = new Map(
+    input.gearItem.twsMultipliers.map((multiplier) => [multiplier.optionId, multiplier]),
+  )
+
+  const optionCount = input.twsOptions.length
+
+  return input.twsOptions.map((option, index) => {
+    const multiplier = multiplierByOptionId.get(option.id)
+    const defaultMultiplier = getDefaultTwsMultiplier(index + 1, optionCount)
+
+    return {
+      optionId: option.id,
+      usageMinutesMultiplier: multiplier?.usageMinutesMultiplier ?? defaultMultiplier,
+      usageCountMultiplier: multiplier?.usageCountMultiplier ?? defaultMultiplier,
+    }
+  })
+}
+
+function GearTwsMultipliersDialog({
+  gearItem,
+  twsOptions,
+  scope,
+  selectedType,
+  selectedStatusFilter,
+  selectedCondition,
+  selectedAlert,
+  currentPage,
+  loadMoreMode,
+  surface,
+  triggerClassName,
+}: {
+  gearItem: EditableGearItem
+  twsOptions: TeamGearTwsOption[]
+  scope: NavigationScope
+  selectedType?: string
+  selectedStatusFilter?: string
+  selectedCondition?: string
+  selectedAlert?: string
+  currentPage: number
+  loadMoreMode: boolean
+  surface: GearFormSurface
+  triggerClassName?: string
+}) {
+  const [isOpen, setIsOpen] = React.useState(false)
+  const initialDrafts = React.useMemo(
+    () => buildTwsMultiplierDrafts({ gearItem, twsOptions }),
+    [gearItem, twsOptions],
+  )
+  const [drafts, setDrafts] = React.useState<GearTwsMultiplierDraft[]>(initialDrafts)
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setDrafts(initialDrafts)
+    }
+  }, [initialDrafts, isOpen])
+
+  function updateMultiplier(
+    optionId: string,
+    field: "usageMinutesMultiplier" | "usageCountMultiplier",
+    rawValue: string,
+  ) {
+    const parsedValue = Number.parseFloat(rawValue)
+    const nextValue = Number.isFinite(parsedValue) ? Math.max(0, parsedValue) : 0
+
+    setDrafts((currentDrafts) =>
+      currentDrafts.map((draft) =>
+        draft.optionId === optionId
+          ? {
+              ...draft,
+              [field]: nextValue,
+            }
+          : draft,
+      ),
+    )
+  }
+
+  const canSubmit =
+    twsOptions.length > 0 &&
+    drafts.every(
+      (draft) =>
+        Number.isFinite(draft.usageMinutesMultiplier) &&
+        draft.usageMinutesMultiplier >= 0 &&
+        Number.isFinite(draft.usageCountMultiplier) &&
+        draft.usageCountMultiplier >= 0,
+    )
+  const multipliersPayload = JSON.stringify(drafts)
+  const isDrawerSurface = surface === "drawer"
+  const inputClassName = isDrawerSurface ? "h-11 px-3 text-base md:text-sm" : undefined
+
+  const trigger = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      disabled={twsOptions.length === 0}
+      aria-label={`Edit TWS multipliers for ${gearItem.name}`}
+      className={triggerClassName}
+      onClick={() => setIsOpen(true)}
+    >
+      <Settings2Icon className="size-4" />
+    </Button>
+  )
+  const form = (
+    <form
+      action={updateGearTwsMultipliersAction}
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
+    >
+      <input type="hidden" name="id" value={gearItem.id} />
+      <GearRouteScopeHiddenFields
+        scope={scope}
+        selectedType={selectedType}
+        selectedStatusFilter={selectedStatusFilter}
+        selectedCondition={selectedCondition}
+        selectedAlert={selectedAlert}
+        currentPage={currentPage}
+        loadMoreMode={loadMoreMode}
+      />
+      <input type="hidden" name="multipliersPayload" value={multipliersPayload} />
+
+      <GearDialogFields className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        {twsOptions.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No active TWS options configured.</p>
+        ) : (
+          <div className="space-y-3">
+            {twsOptions.map((option, optionIndex) => {
+              const defaultMultiplier = getDefaultTwsMultiplier(optionIndex + 1, twsOptions.length)
+              const draft = drafts.find((item) => item.optionId === option.id) ?? {
+                optionId: option.id,
+                usageMinutesMultiplier: defaultMultiplier,
+                usageCountMultiplier: defaultMultiplier,
+              }
+
+              return (
+                <div key={option.id} className="space-y-3 rounded-lg border p-3">
+                  <p className="truncate text-sm font-medium">{option.label}</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor={`gear-tws-${gearItem.id}-${option.id}-minutes`}>
+                        Minutes
+                      </Label>
+                      <Input
+                        id={`gear-tws-${gearItem.id}-${option.id}-minutes`}
+                        type="number"
+                        min={0}
+                        max={9999}
+                        step={0.01}
+                        value={draft.usageMinutesMultiplier}
+                        onChange={(event) =>
+                          updateMultiplier(
+                            option.id,
+                            "usageMinutesMultiplier",
+                            event.target.value,
+                          )
+                        }
+                        className={inputClassName}
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor={`gear-tws-${gearItem.id}-${option.id}-count`}>
+                        Times Used
+                      </Label>
+                      <Input
+                        id={`gear-tws-${gearItem.id}-${option.id}-count`}
+                        type="number"
+                        min={0}
+                        max={9999}
+                        step={0.01}
+                        value={draft.usageCountMultiplier}
+                        onChange={(event) =>
+                          updateMultiplier(
+                            option.id,
+                            "usageCountMultiplier",
+                            event.target.value,
+                          )
+                        }
+                        className={inputClassName}
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </GearDialogFields>
+
+      <GearDialogFooter
+        submitLabel="Save"
+        pendingLabel="Saving..."
+        canSubmit={canSubmit}
+        surface={surface}
+      />
+    </form>
+  )
+
+  if (surface === "drawer") {
+    return (
+      <Drawer open={isOpen} onOpenChange={setIsOpen}>
+        {trigger}
+        <DrawerContent className="flex h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+          <DrawerHeader className="shrink-0 border-b text-left">
+            <DrawerTitle>TWS multipliers</DrawerTitle>
+          </DrawerHeader>
+          {form}
+        </DrawerContent>
+      </Drawer>
+    )
+  }
+
+  return (
+    <Sheet open={isOpen} onOpenChange={setIsOpen}>
+      {trigger}
+      <SheetContent side="right" className="flex h-full flex-col gap-0 overflow-hidden sm:max-w-xl">
+        <SheetHeader className="shrink-0 border-b">
+          <SheetTitle>TWS multipliers</SheetTitle>
+        </SheetHeader>
+        {form}
+      </SheetContent>
+    </Sheet>
+  )
+}
+
 export function GearActionsMenu({
   gearItem,
+  twsOptions,
   scope,
   selectedType,
   selectedStatusFilter,
@@ -1059,6 +1351,7 @@ export function GearActionsMenu({
   triggerClassName,
 }: {
   gearItem: EditableGearItem
+  twsOptions: TeamGearTwsOption[]
   scope: NavigationScope
   selectedType?: string
   selectedStatusFilter?: string
@@ -1079,20 +1372,44 @@ export function GearActionsMenu({
 
   if (!canManageGear) {
     return (
-      <Button
-        variant="ghost"
-        size="icon"
-        disabled
-        aria-label="More actions unavailable"
-        className={triggerClassName}
-      >
-        <MoreHorizontalIcon className="size-4" />
-      </Button>
+      <div className="flex items-center justify-end gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          disabled
+          aria-label="TWS multipliers unavailable"
+          className={triggerClassName}
+        >
+          <Settings2Icon className="size-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          disabled
+          aria-label="More actions unavailable"
+          className={triggerClassName}
+        >
+          <MoreHorizontalIcon className="size-4" />
+        </Button>
+      </div>
     )
   }
 
   return (
-    <>
+    <div className="flex items-center justify-end gap-1">
+      <GearTwsMultipliersDialog
+        gearItem={gearItem}
+        twsOptions={twsOptions}
+        scope={scope}
+        selectedType={selectedType}
+        selectedStatusFilter={selectedStatusFilter}
+        selectedCondition={selectedCondition}
+        selectedAlert={selectedAlert}
+        currentPage={currentPage}
+        loadMoreMode={loadMoreMode}
+        surface={surface}
+        triggerClassName={triggerClassName}
+      />
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
@@ -1179,6 +1496,6 @@ export function GearActionsMenu({
         surface={surface}
         hideTrigger
       />
-    </>
+    </div>
   )
 }

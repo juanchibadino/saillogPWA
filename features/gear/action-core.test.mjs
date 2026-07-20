@@ -10,6 +10,7 @@ import {
   runCreateGearItemAction,
   runRetireGearItemAction,
   runUpdateGearItemAction,
+  runUpdateGearTwsMultipliersAction,
 } from "./action-core.mjs"
 
 const ORG_1 = "11111111-1111-4111-8111-111111111111"
@@ -19,6 +20,9 @@ const GEAR_1 = "44444444-4444-4444-8444-444444444444"
 const ALERT_1 = "55555555-5555-4555-8555-555555555555"
 const PROFILE_1 = "66666666-6666-4666-8666-666666666666"
 const USER_1 = "77777777-7777-4777-8777-777777777777"
+const TWS_ITEM_1 = "88888888-8888-4888-8888-888888888888"
+const TWS_OPTION_1 = "99999999-9999-4999-8999-999999999999"
+const TWS_OPTION_2 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 const PRESERVED_ROUTE_STATE =
   `org=${ORG_1}&team=${TEAM_1}&type=sails&statusFilter=active_training&condition=used&alert=warning&page=3&loadMore=1`
 
@@ -68,6 +72,42 @@ function buildTables(overrides = {}) {
         name: "Old Sail",
         serial_number: "SN-1",
         status: "active_training",
+        team_id: TEAM_1,
+      },
+    ],
+    gear_tws_option_multipliers: [
+      {
+        gear_item_id: GEAR_1,
+        team_setup_item_option_id: TWS_OPTION_1,
+        usage_count_multiplier: 0.75,
+        usage_minutes_multiplier: 0.5,
+      },
+    ],
+    team_setup_item_options: [
+      {
+        id: TWS_OPTION_1,
+        is_active: true,
+        label: "ST 0-4",
+        position: 1,
+        team_setup_item_id: TWS_ITEM_1,
+        value: "ST 0-4",
+      },
+      {
+        id: TWS_OPTION_2,
+        is_active: true,
+        label: "DT 5-8",
+        position: 2,
+        team_setup_item_id: TWS_ITEM_1,
+        value: "DT 5-8",
+      },
+    ],
+    team_setup_items: [
+      {
+        id: TWS_ITEM_1,
+        input_kind: "multi_select",
+        is_active: true,
+        key: "tws",
+        metric_group: "weather",
         team_id: TEAM_1,
       },
     ],
@@ -146,6 +186,33 @@ function buildRetireForm(overrides = {}) {
   return formDataFromObject({
     id: GEAR_1,
     nextStatus: "retired_spare",
+    scopeAlert: "warning",
+    scopeCondition: "used",
+    scopeLoadMore: "1",
+    scopeOrgId: ORG_1,
+    scopePage: "3",
+    scopeStatus: "active_training",
+    scopeTeamId: TEAM_1,
+    scopeType: "sails",
+    ...overrides,
+  })
+}
+
+function buildTwsMultipliersForm(overrides = {}) {
+  return formDataFromObject({
+    id: GEAR_1,
+    multipliersPayload: JSON.stringify([
+      {
+        optionId: TWS_OPTION_1,
+        usageCountMultiplier: 1.25,
+        usageMinutesMultiplier: 0.2,
+      },
+      {
+        optionId: TWS_OPTION_2,
+        usageCountMultiplier: 1,
+        usageMinutesMultiplier: 1,
+      },
+    ]),
     scopeAlert: "warning",
     scopeCondition: "used",
     scopeLoadMore: "1",
@@ -251,6 +318,80 @@ test("retires Team Gear and preserves route state", async () => {
     revalidatedPaths: ["/team-gear"],
   })
   assert.equal(supabase.rowsByTable.gear_items[0].status, "retired_spare")
+})
+
+test("updates Gear TWS multipliers and preserves route state", async () => {
+  const { result, supabase } = await runGearAction(runUpdateGearTwsMultipliersAction, {
+    formData: buildTwsMultipliersForm(),
+  })
+
+  assert.deepEqual(result, {
+    type: "redirect",
+    path: `/team-gear?status=tws_multipliers_updated&${PRESERVED_ROUTE_STATE}`,
+    revalidatedPaths: ["/team-gear"],
+  })
+  assert.deepEqual(supabase.rowsByTable.gear_tws_option_multipliers, [
+    {
+      gear_item_id: GEAR_1,
+      team_setup_item_option_id: TWS_OPTION_1,
+      usage_count_multiplier: 1.25,
+      usage_minutes_multiplier: 0.2,
+    },
+  ])
+})
+
+test("removes Gear TWS override rows when submitted values match ordered defaults", async () => {
+  const { result, supabase } = await runGearAction(runUpdateGearTwsMultipliersAction, {
+    formData: buildTwsMultipliersForm({
+      multipliersPayload: JSON.stringify([
+        {
+          optionId: TWS_OPTION_1,
+          usageCountMultiplier: 0.5,
+          usageMinutesMultiplier: 0.5,
+        },
+        {
+          optionId: TWS_OPTION_2,
+          usageCountMultiplier: 1,
+          usageMinutesMultiplier: 1,
+        },
+      ]),
+    }),
+  })
+
+  assert.deepEqual(result, {
+    type: "redirect",
+    path: `/team-gear?status=tws_multipliers_updated&${PRESERVED_ROUTE_STATE}`,
+    revalidatedPaths: ["/team-gear"],
+  })
+  assert.deepEqual(supabase.rowsByTable.gear_tws_option_multipliers, [])
+})
+
+test("rejects Gear TWS multipliers for options outside active team TWS", async () => {
+  const { result, supabase } = await runGearAction(runUpdateGearTwsMultipliersAction, {
+    formData: buildTwsMultipliersForm({
+      multipliersPayload: JSON.stringify([
+        {
+          optionId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          usageCountMultiplier: 1,
+          usageMinutesMultiplier: 1,
+        },
+      ]),
+    }),
+  })
+
+  assert.deepEqual(result, {
+    type: "redirect",
+    path: `/team-gear?error=invalid_input&${PRESERVED_ROUTE_STATE}`,
+    revalidatedPaths: [],
+  })
+  assert.deepEqual(supabase.rowsByTable.gear_tws_option_multipliers, [
+    {
+      gear_item_id: GEAR_1,
+      team_setup_item_option_id: TWS_OPTION_1,
+      usage_count_multiplier: 0.75,
+      usage_minutes_multiplier: 0.5,
+    },
+  ])
 })
 
 test("redirects forbidden before create update and retire without Gear permission", async () => {

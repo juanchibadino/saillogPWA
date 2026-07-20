@@ -9,6 +9,7 @@ import {
   TEAM_GEAR_STATUS_OPTIONS,
   TEAM_GEAR_TYPE_OPTIONS,
   type TeamGearListItem,
+  type TeamGearTwsOption,
 } from "@/features/gear/shared"
 import { buildTeamGearPageHref } from "@/features/gear/list-route-state.mjs"
 import { GearActionsMenu } from "@/features/gear/gear-form-dialogs"
@@ -50,9 +51,13 @@ const GEAR_CONDITION_LABEL_BY_VALUE = new Map(
 type TeamGearPaginationItem = number | "ellipsis-start" | "ellipsis-end"
 
 function formatUsage(input: { usageCount: number; usageMinutes: number }): string {
-  const hours = Math.floor(input.usageMinutes / 60)
-  const minutes = input.usageMinutes % 60
-  const usageLabel = `${input.usageCount} ${input.usageCount === 1 ? "use" : "uses"}`
+  const roundedMinutes = Math.round(input.usageMinutes)
+  const hours = Math.floor(roundedMinutes / 60)
+  const minutes = roundedMinutes % 60
+  const formattedCount = new Intl.NumberFormat("en", {
+    maximumFractionDigits: 2,
+  }).format(input.usageCount)
+  const usageLabel = `${formattedCount} ${input.usageCount === 1 ? "use" : "uses"}`
   const timeLabel = `${String(hours).padStart(2, "0")}h ${String(minutes).padStart(2, "0")}m`
 
   return `${usageLabel} · ${timeLabel}`
@@ -127,6 +132,7 @@ type PendingPageNavigation = {
 
 export function TeamGearTable({
   gearItems,
+  twsOptions,
   canManageGear,
   noTeamSelected,
   toolbar,
@@ -143,6 +149,7 @@ export function TeamGearTable({
   hideChrome = false,
 }: {
   gearItems: TeamGearListItem[]
+  twsOptions: TeamGearTwsOption[]
   canManageGear: boolean
   noTeamSelected: boolean
   toolbar?: ReactNode
@@ -255,6 +262,7 @@ export function TeamGearTable({
                   <div className="shrink-0">
                     <GearActionsMenu
                       gearItem={gearItem}
+                      twsOptions={twsOptions}
                       scope={scope}
                       selectedType={selectedType}
                       selectedStatusFilter={selectedStatusFilter}
@@ -318,7 +326,7 @@ export function TeamGearTable({
                 <TableHead>Status</TableHead>
                 <TableHead>Condition</TableHead>
                 <TableHead>Alerts</TableHead>
-                <TableHead className="w-12 text-right" />
+                <TableHead className="w-24 text-right" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -363,6 +371,7 @@ export function TeamGearTable({
                       <TableCell className="text-right">
                         <GearActionsMenu
                           gearItem={gearItem}
+                          twsOptions={twsOptions}
                           scope={scope}
                           selectedType={selectedType}
                           selectedStatusFilter={selectedStatusFilter}

@@ -701,6 +701,7 @@ export type Database = {
           input_kind: Database["public"]["Enums"]["setup_input_kind"];
           metric_group: Database["public"]["Enums"]["setup_metric_group"];
           is_fixed: boolean;
+          is_required: boolean;
           position: number;
           is_active: boolean;
           created_at: string;
@@ -714,6 +715,7 @@ export type Database = {
           input_kind?: Database["public"]["Enums"]["setup_input_kind"];
           metric_group?: Database["public"]["Enums"]["setup_metric_group"];
           is_fixed?: boolean;
+          is_required?: boolean;
           position: number;
           is_active?: boolean;
           created_at?: string;
@@ -726,6 +728,7 @@ export type Database = {
           input_kind?: Database["public"]["Enums"]["setup_input_kind"];
           metric_group?: Database["public"]["Enums"]["setup_metric_group"];
           is_fixed?: boolean;
+          is_required?: boolean;
           position?: number;
           is_active?: boolean;
           created_at?: string;
@@ -775,6 +778,7 @@ export type Database = {
           input_kind: Database["public"]["Enums"]["setup_input_kind"];
           metric_group: Database["public"]["Enums"]["setup_metric_group"];
           is_fixed: boolean;
+          is_required: boolean;
           position: number;
           is_active: boolean;
           created_at: string;
@@ -789,6 +793,7 @@ export type Database = {
           input_kind: Database["public"]["Enums"]["setup_input_kind"];
           metric_group?: Database["public"]["Enums"]["setup_metric_group"];
           is_fixed?: boolean;
+          is_required?: boolean;
           position: number;
           is_active?: boolean;
           created_at?: string;
@@ -802,6 +807,7 @@ export type Database = {
           input_kind?: Database["public"]["Enums"]["setup_input_kind"];
           metric_group?: Database["public"]["Enums"]["setup_metric_group"];
           is_fixed?: boolean;
+          is_required?: boolean;
           position?: number;
           is_active?: boolean;
           created_at?: string;
@@ -1013,6 +1019,36 @@ export type Database = {
           severity?: Database["public"]["Enums"]["gear_alert_severity"];
           threshold_value?: number;
           is_refurbished_rule?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      gear_tws_option_multipliers: {
+        Row: {
+          id: string;
+          gear_item_id: string;
+          team_setup_item_option_id: string;
+          usage_minutes_multiplier: number;
+          usage_count_multiplier: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          gear_item_id: string;
+          team_setup_item_option_id: string;
+          usage_minutes_multiplier?: number;
+          usage_count_multiplier?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          gear_item_id?: string;
+          team_setup_item_option_id?: string;
+          usage_minutes_multiplier?: number;
+          usage_count_multiplier?: number;
           created_at?: string;
           updated_at?: string;
         };

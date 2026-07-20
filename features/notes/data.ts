@@ -29,7 +29,7 @@ type SessionRow = Pick<
 
 type TeamSetupItemRow = Pick<
   Database["public"]["Tables"]["team_setup_items"]["Row"],
-  "id" | "key" | "label" | "input_kind" | "position" | "is_active"
+  "id" | "key" | "label" | "input_kind" | "metric_group" | "position" | "is_active"
 >
 
 type TeamSetupItemOptionRow = Pick<
@@ -81,7 +81,7 @@ const TEAM_VENUE_SELECT_COLUMNS = "id,team_id,venue_id"
 const VENUE_SELECT_COLUMNS = "id,name,city,country"
 const CAMP_SELECT_COLUMNS = "id,team_venue_id,name"
 const SESSION_SELECT_COLUMNS = "id,camp_id,session_type,session_date,created_at"
-const TEAM_SETUP_ITEM_SELECT_COLUMNS = "id,key,label,input_kind,position,is_active"
+const TEAM_SETUP_ITEM_SELECT_COLUMNS = "id,key,label,input_kind,metric_group,position,is_active"
 const TEAM_SETUP_ITEM_OPTION_SELECT_COLUMNS =
   "id,team_setup_item_id,label,position,is_active"
 const SESSION_SETUP_ITEM_VALUE_SELECT_COLUMNS =
@@ -910,6 +910,10 @@ export async function getTeamNotesPageData(input: {
       }
 
       if (CONDITION_ITEM_KEYS.has(setupItem.key)) {
+        continue
+      }
+
+      if (setupItem.metric_group === "weather") {
         continue
       }
 
