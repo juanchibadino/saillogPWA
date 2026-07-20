@@ -18,6 +18,7 @@ import {
   LogOutIcon,
   MapPinIcon,
   SailboatIcon,
+  SettingsIcon,
   WalletCardsIcon,
   WindIcon,
   UserIcon,
@@ -658,6 +659,11 @@ export function AppSidebar({
     activeOrgId,
     activeTeamId,
   )
+  const scopedSettingsHref = buildScopedHref(
+    "/settings",
+    activeOrgId,
+    activeTeamId,
+  )
 
   return (
     <>
@@ -1109,6 +1115,25 @@ export function AppSidebar({
                     <span>Subscription</span>
                   </DropdownMenuItem>
                 ) : null}
+                <DropdownMenuItem
+                  nativeButton
+                  render={<button type="button" />}
+                  onClick={() => {
+                    setIsUserMenuOpen(false)
+                    router.push(scopedSettingsHref)
+                  }}
+                  onPointerDownCapture={(event) =>
+                    handleMobileMenuPointerDown(event, () => {
+                      setIsUserMenuOpen(false)
+                      setOpenMobile(false)
+                      router.push(scopedSettingsHref)
+                    })
+                  }
+                  className="min-h-11 w-full gap-3 px-2.5 py-2 text-left"
+                >
+                  <SettingsIcon className="size-4" />
+                  <span>Settings</span>
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   nativeButton
                   render={<button type="button" />}
