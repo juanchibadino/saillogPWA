@@ -90,6 +90,25 @@ export type SessionDetailAsset = SessionDetailAssetMetadata & {
   thumbnailSignedUrl: string | null
 }
 
+export type SessionDetailGpsFile = SessionDetailAsset & {
+  gpsArtifacts: {
+    series1HzUrl: string
+    summaryUrl: string
+    trackGeojsonUrl: string
+  }
+  vakaros: {
+    avgSogKts: number
+    distanceNm: number
+    durationHours: number
+    endAt: string | null
+    maxSogKts: number
+    p95SogKts: number
+    rows1Hz: number
+    rowsRaw: number
+    startAt: string | null
+  } | null
+}
+
 export type SessionDetailAssetPage = {
   assetLimit: number
   assetOffset: number
@@ -162,6 +181,7 @@ export type SessionDetailData = {
   setupDialogItems: SessionSetupDialogItem[]
   images: SessionDetailAsset[]
   analyticsFiles: SessionDetailAsset[]
+  gpsFiles: SessionDetailGpsFile[]
   gearItems: SessionDetailGearItem[]
   gearCatalogPage: SessionDetailCatalogPage
   gearType: SessionDetailGearTypeFilter
@@ -190,8 +210,13 @@ export type SessionDetailResultsTabData = Pick<SessionDetailData, "results">
 export type SessionDetailImagesTabData = Pick<SessionDetailData, "images"> &
   SessionDetailAssetPage
 
-export type SessionDetailAnalyticsTabData = Pick<SessionDetailData, "analyticsFiles"> &
-  SessionDetailAssetPage
+export type SessionDetailAnalyticsTabData = Pick<
+  SessionDetailData,
+  "analyticsFiles" | "gpsFiles"
+> &
+  SessionDetailAssetPage & {
+    gpsFileTotalCount: number
+  }
 
 export type SessionDetailGearTabData = Pick<
   SessionDetailData,

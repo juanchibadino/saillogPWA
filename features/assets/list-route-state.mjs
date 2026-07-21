@@ -1,10 +1,14 @@
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
-export const TEAM_ASSET_TABS = ["images", "files"]
+export const TEAM_ASSET_TABS = ["images", "files", "gps-files"]
 
 export function resolveTeamAssetTab(value) {
-  return value === "files" ? "files" : "images"
+  if (value === "files" || value === "gps-files") {
+    return value
+  }
+
+  return "images"
 }
 
 export function normalizeRequestedPage(value) {
@@ -69,8 +73,8 @@ export function buildTeamAssetsHref(input) {
   const params = new URLSearchParams()
   appendScopeParams(params, input.scope)
 
-  if (input.tab === "files") {
-    params.set("tab", "files")
+  if (input.tab === "files" || input.tab === "gps-files") {
+    params.set("tab", input.tab)
   }
 
   if (input.venueId) {

@@ -952,6 +952,71 @@ export type Database = {
         };
         Relationships: [];
       };
+      session_vakaros_uploads: {
+        Row: {
+          id: string;
+          session_id: string;
+          asset_id: string;
+          bucket: string;
+          raw_storage_path: string | null;
+          series_1hz_storage_path: string;
+          track_geojson_storage_path: string;
+          summary_storage_path: string;
+          rows_raw: number;
+          rows_1hz: number;
+          start_at: string | null;
+          end_at: string | null;
+          duration_hours: number;
+          distance_nm: number;
+          avg_sog_kts: number;
+          p95_sog_kts: number;
+          max_sog_kts: number;
+          uploaded_by_profile_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          session_id: string;
+          asset_id: string;
+          bucket: string;
+          raw_storage_path?: string | null;
+          series_1hz_storage_path: string;
+          track_geojson_storage_path: string;
+          summary_storage_path: string;
+          rows_raw: number;
+          rows_1hz: number;
+          start_at?: string | null;
+          end_at?: string | null;
+          duration_hours: number;
+          distance_nm: number;
+          avg_sog_kts: number;
+          p95_sog_kts: number;
+          max_sog_kts: number;
+          uploaded_by_profile_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          session_id?: string;
+          asset_id?: string;
+          bucket?: string;
+          raw_storage_path?: string | null;
+          series_1hz_storage_path?: string;
+          track_geojson_storage_path?: string;
+          summary_storage_path?: string;
+          rows_raw?: number;
+          rows_1hz?: number;
+          start_at?: string | null;
+          end_at?: string | null;
+          duration_hours?: number;
+          distance_nm?: number;
+          avg_sog_kts?: number;
+          p95_sog_kts?: number;
+          max_sog_kts?: number;
+          uploaded_by_profile_id?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       gear_items: {
         Row: {
           id: string;
@@ -1750,7 +1815,7 @@ export type Database = {
     };
     Enums: {
       assessment_run_status_type: "draft" | "published" | "closed";
-      asset_type: "photo" | "analytics_file" | "document";
+      asset_type: "photo" | "analytics_file" | "document" | "gps_file";
       billing_cycle: "monthly" | "yearly" | "none";
       camp_type: "training" | "regatta" | "mixed";
       calendar_event_type: "meeting" | "travel" | "logistics" | "other";

@@ -1,11 +1,19 @@
 import "server-only"
 
+import {
+  formatTeamAssetsTimingError,
+  logTeamAssetsTiming,
+  startTeamAssetsTiming,
+} from "@/features/assets/team-assets-timing"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import {
   NAVIGATION_SCOPE_ORG_QUERY_KEY,
   NAVIGATION_SCOPE_TEAM_QUERY_KEY,
 } from "@/lib/navigation/constants"
-import type { SessionDetailAsset } from "@/features/sessions/detail-types"
+import type {
+  SessionDetailAsset,
+  SessionDetailGpsFile,
+} from "@/features/sessions/detail-types"
 import type { Database } from "@/types/database"
 
 export const TEAM_ASSETS_PAGE_SIZE = 24
@@ -15,8 +23,10 @@ const TEAM_VENUE_SELECT_COLUMNS = "id,team_id,venue_id"
 const VENUE_SELECT_COLUMNS = "id,name,city,country"
 const CAMP_SELECT_COLUMNS = "id,team_venue_id,name,start_date,end_date"
 const SESSION_SELECT_COLUMNS = "id,camp_id,session_type,session_date,dock_out_at"
+const TEAM_VAKAROS_UPLOADS_SELECT_COLUMNS =
+  "asset_id,rows_raw,rows_1hz,start_at,end_at,duration_hours,distance_nm,avg_sog_kts,p95_sog_kts,max_sog_kts"
 
-export type TeamAssetTab = "images" | "files"
+export type TeamAssetTab = "images" | "files" | "gps-files"
 
 type TeamVenueRow = Pick<
   Database["public"]["Tables"]["team_venues"]["Row"],
@@ -40,6 +50,20 @@ type SessionRow = Pick<
 
 type TeamAssetRpcRow =
   Database["public"]["Functions"]["get_team_asset_page"]["Returns"][number]
+
+type TeamVakarosUploadRow = Pick<
+  Database["public"]["Tables"]["session_vakaros_uploads"]["Row"],
+  | "asset_id"
+  | "avg_sog_kts"
+  | "distance_nm"
+  | "duration_hours"
+  | "end_at"
+  | "max_sog_kts"
+  | "p95_sog_kts"
+  | "rows_1hz"
+  | "rows_raw"
+  | "start_at"
+>
 
 type ServerSupabaseClient = Awaited<ReturnType<typeof createServerSupabaseClient>>
 
@@ -104,6 +128,7 @@ export type TeamAssetsRequestedFilters = {
 export type TeamAssetListItem = SessionDetailAsset & {
   campId: string
   campName: string
+  gpsArtifacts?: SessionDetailGpsFile["gpsArtifacts"]
   sessionDate: string
   sessionId: string
   sessionType: Database["public"]["Enums"]["session_type"]
@@ -111,6 +136,7 @@ export type TeamAssetListItem = SessionDetailAsset & {
   venueId: string
   venueLocation: string
   venueName: string
+  vakaros?: SessionDetailGpsFile["vakaros"]
 }
 
 export type TeamAssetsPageData = {
@@ -126,6 +152,16 @@ export type TeamAssetsPageData = {
   selectedFilters: TeamAssetSelectedFilters
   tab: TeamAssetTab
 }
+
+export type TeamAssetsChromeData = Pick<
+  TeamAssetsPageData,
+  "canManageAssets" | "filterOptions" | "hasActiveFilters" | "selectedFilters" | "tab"
+>
+
+export type TeamAssetsResultsData = Pick<
+  TeamAssetsPageData,
+  "assetLimit" | "assetTotalCount" | "assets" | "currentPage" | "hasNextPage" | "pageCount"
+>
 
 function uniqueIds(values: string[]): string[] {
   return [...new Set(values)]
@@ -175,6 +211,25 @@ function buildAssetContentUrl(input: {
   params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.activeTeamId)
 
   return `/api/session-assets/${encodeURIComponent(input.assetId)}/content?${params.toString()}`
+}
+
+function buildGpsArtifactUrl(input: {
+  activeOrganizationId: string
+  activeTeamId: string
+  assetId: string
+  download?: boolean
+  kind: "series_1hz" | "summary" | "track_geojson"
+}): string {
+  const params = new URLSearchParams()
+  params.set("kind", input.kind)
+  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.activeOrganizationId)
+  params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.activeTeamId)
+
+  if (input.download) {
+    params.set("download", "1")
+  }
+
+  return `/api/session-gps-files/${encodeURIComponent(input.assetId)}/artifact?${params.toString()}`
 }
 
 function resolvePagination(input: {
@@ -543,6 +598,82 @@ async function attachTeamAssetUrls(input: {
   })
 }
 
+async function attachTeamGpsFileData(input: {
+  activeOrganizationId: string
+  activeTeamId: string
+  assets: TeamAssetListItem[]
+  supabase: ServerSupabaseClient
+  tab: TeamAssetTab
+}): Promise<TeamAssetListItem[]> {
+  if (input.tab !== "gps-files" || input.assets.length === 0) {
+    return input.assets
+  }
+
+  const gpsAssetIds = input.assets.map((asset) => asset.id)
+  const { data, error } = await input.supabase
+    .from("session_vakaros_uploads")
+    .select(TEAM_VAKAROS_UPLOADS_SELECT_COLUMNS)
+    .in("asset_id", gpsAssetIds)
+
+  if (error) {
+    throw new Error(`Could not load team GPS file metadata: ${error.message}`)
+  }
+
+  const rowsByAssetId = new Map<string, TeamVakarosUploadRow>()
+
+  for (const row of (data ?? []) as TeamVakarosUploadRow[]) {
+    rowsByAssetId.set(row.asset_id, row)
+  }
+
+  return input.assets.map((asset) => {
+    if (asset.asset_type !== "gps_file") {
+      return asset
+    }
+
+    const upload = rowsByAssetId.get(asset.id)
+    const series1HzUrl = buildGpsArtifactUrl({
+      activeOrganizationId: input.activeOrganizationId,
+      activeTeamId: input.activeTeamId,
+      assetId: asset.id,
+      kind: "series_1hz",
+    })
+
+    return {
+      ...asset,
+      contentUrl: series1HzUrl,
+      gpsArtifacts: {
+        series1HzUrl,
+        summaryUrl: buildGpsArtifactUrl({
+          activeOrganizationId: input.activeOrganizationId,
+          activeTeamId: input.activeTeamId,
+          assetId: asset.id,
+          download: true,
+          kind: "summary",
+        }),
+        trackGeojsonUrl: buildGpsArtifactUrl({
+          activeOrganizationId: input.activeOrganizationId,
+          activeTeamId: input.activeTeamId,
+          assetId: asset.id,
+          kind: "track_geojson",
+        }),
+      },
+      vakaros: upload
+        ? {
+            avgSogKts: Number(upload.avg_sog_kts),
+            distanceNm: Number(upload.distance_nm),
+            durationHours: Number(upload.duration_hours),
+            endAt: upload.end_at,
+            maxSogKts: Number(upload.max_sog_kts),
+            p95SogKts: Number(upload.p95_sog_kts),
+            rows1Hz: upload.rows_1hz,
+            rowsRaw: upload.rows_raw,
+            startAt: upload.start_at,
+          }
+        : null,
+    }
+  })
+}
+
 function mapRpcRowsToAssets(input: {
   activeOrganizationId: string
   activeTeamId: string
@@ -582,7 +713,240 @@ function mapRpcRowsToAssets(input: {
 }
 
 function getAssetTypeForTab(tab: TeamAssetTab): Database["public"]["Enums"]["asset_type"] {
-  return tab === "images" ? "photo" : "analytics_file"
+  if (tab === "images") {
+    return "photo"
+  }
+
+  return tab === "gps-files" ? "gps_file" : "analytics_file"
+}
+
+type LoadTeamAssetRpcPageInput = {
+  activeTeamId: string
+  limit: number
+  offset: number
+  selectedFilters: TeamAssetSelectedFilters
+  supabase: ServerSupabaseClient
+  tab: TeamAssetTab
+}
+
+async function loadTeamAssetRpcPage(input: LoadTeamAssetRpcPageInput): Promise<{
+  rows: TeamAssetRpcRow[]
+  totalCount: number
+}> {
+  const { data, error } = await input.supabase.rpc("get_team_asset_page", {
+    p_asset_type: getAssetTypeForTab(input.tab),
+    p_camp_id: input.selectedFilters.campId ?? null,
+    p_limit: input.limit,
+    p_offset: input.offset,
+    p_session_id: input.selectedFilters.sessionId ?? null,
+    p_team_id: input.activeTeamId,
+    p_venue_id: input.selectedFilters.venueId ?? null,
+    p_year: input.selectedFilters.year ?? null,
+  })
+
+  if (error) {
+    throw new Error(`Could not load team assets: ${error.message}`)
+  }
+
+  const rows = data ?? []
+
+  return {
+    rows,
+    totalCount: rows[0]?.total_count ?? 0,
+  }
+}
+
+export async function getTeamAssetsChromeData(input: {
+  activeTeamId: string
+  canManageAssets: boolean
+  requestedFilters: TeamAssetsRequestedFilters
+  tab: TeamAssetTab
+}): Promise<TeamAssetsChromeData> {
+  const startedAt = startTeamAssetsTiming()
+
+  try {
+    const supabase = await createServerSupabaseClient()
+    const context = await loadTeamAssetContext({
+      activeTeamId: input.activeTeamId,
+      supabase,
+    })
+    const {
+      filterOptions,
+      hasActiveFilters,
+      selectedFilters,
+    } = buildTeamAssetFilterState({
+      context,
+      requestedFilters: input.requestedFilters,
+    })
+
+    logTeamAssetsTiming({
+      activeTeamId: input.activeTeamId,
+      metadata: {
+        camps: filterOptions.camps.length,
+        hasActiveFilters,
+        sessions: filterOptions.sessions.length,
+        tab: input.tab,
+        venues: filterOptions.venues.length,
+        years: filterOptions.years.length,
+      },
+      phase: "chrome",
+      startedAt,
+      status: "success",
+    })
+
+    return {
+      canManageAssets: input.canManageAssets,
+      filterOptions,
+      hasActiveFilters,
+      selectedFilters,
+      tab: input.tab,
+    }
+  } catch (error) {
+    logTeamAssetsTiming({
+      activeTeamId: input.activeTeamId,
+      error: formatTeamAssetsTimingError(error),
+      metadata: {
+        tab: input.tab,
+      },
+      phase: "chrome",
+      startedAt,
+      status: "error",
+    })
+    throw error
+  }
+}
+
+export async function getTeamAssetsResultsData(input: {
+  activeOrganizationId: string
+  activeTeamId: string
+  accumulatePages?: boolean
+  page: number
+  selectedFilters: TeamAssetSelectedFilters
+  tab: TeamAssetTab
+}): Promise<TeamAssetsResultsData> {
+  const startedAt = startTeamAssetsTiming()
+
+  try {
+    const requestedPage = Math.max(1, Math.floor(input.page))
+    const supabase = await createServerSupabaseClient()
+    let effectiveRequestedPage = requestedPage
+    let limit = input.accumulatePages
+      ? requestedPage * TEAM_ASSETS_PAGE_SIZE
+      : TEAM_ASSETS_PAGE_SIZE
+    let offset = input.accumulatePages ? 0 : (requestedPage - 1) * TEAM_ASSETS_PAGE_SIZE
+    let clampedPageLoaded = false
+    let { rows, totalCount: assetTotalCount } = await loadTeamAssetRpcPage({
+      activeTeamId: input.activeTeamId,
+      limit,
+      offset,
+      selectedFilters: input.selectedFilters,
+      supabase,
+      tab: input.tab,
+    })
+
+    if (rows.length === 0 && requestedPage > 1) {
+      const firstPage = await loadTeamAssetRpcPage({
+        activeTeamId: input.activeTeamId,
+        limit: 1,
+        offset: 0,
+        selectedFilters: input.selectedFilters,
+        supabase,
+        tab: input.tab,
+      })
+      assetTotalCount = firstPage.totalCount
+      const clampedPagination = resolvePagination({
+        pageSize: TEAM_ASSETS_PAGE_SIZE,
+        requestedPage,
+        totalItems: assetTotalCount,
+      })
+
+      if (assetTotalCount > 0 && clampedPagination.currentPage !== requestedPage) {
+        effectiveRequestedPage = clampedPagination.currentPage
+        limit = input.accumulatePages
+          ? effectiveRequestedPage * TEAM_ASSETS_PAGE_SIZE
+          : TEAM_ASSETS_PAGE_SIZE
+        offset = input.accumulatePages
+          ? 0
+          : (effectiveRequestedPage - 1) * TEAM_ASSETS_PAGE_SIZE
+        const clampedPage = await loadTeamAssetRpcPage({
+          activeTeamId: input.activeTeamId,
+          limit,
+          offset,
+          selectedFilters: input.selectedFilters,
+          supabase,
+          tab: input.tab,
+        })
+        rows = clampedPage.rows
+        assetTotalCount = clampedPage.totalCount || assetTotalCount
+        clampedPageLoaded = true
+      } else {
+        effectiveRequestedPage = clampedPagination.currentPage
+      }
+    }
+
+    const pagination = resolvePagination({
+      pageSize: TEAM_ASSETS_PAGE_SIZE,
+      requestedPage: effectiveRequestedPage,
+      totalItems: assetTotalCount,
+    })
+    const mappedAssets = mapRpcRowsToAssets({
+      activeOrganizationId: input.activeOrganizationId,
+      activeTeamId: input.activeTeamId,
+      rows,
+    })
+    const assetsWithUrls = await attachTeamAssetUrls({
+      assets: mappedAssets,
+      supabase,
+      tab: input.tab,
+    })
+    const assets = await attachTeamGpsFileData({
+      activeOrganizationId: input.activeOrganizationId,
+      activeTeamId: input.activeTeamId,
+      assets: assetsWithUrls,
+      supabase,
+      tab: input.tab,
+    })
+
+    logTeamAssetsTiming({
+      activeTeamId: input.activeTeamId,
+      metadata: {
+        accumulatePages: input.accumulatePages ?? false,
+        assetTotalCount,
+        clampedPageLoaded,
+        currentPage: pagination.currentPage,
+        pageCount: pagination.pageCount,
+        requestedPage,
+        resultRows: assets.length,
+        tab: input.tab,
+      },
+      phase: "results",
+      startedAt,
+      status: "success",
+    })
+
+    return {
+      assetLimit: TEAM_ASSETS_PAGE_SIZE,
+      assetTotalCount,
+      assets,
+      currentPage: pagination.currentPage,
+      hasNextPage: pagination.hasNextPage,
+      pageCount: pagination.pageCount,
+    }
+  } catch (error) {
+    logTeamAssetsTiming({
+      activeTeamId: input.activeTeamId,
+      error: formatTeamAssetsTimingError(error),
+      metadata: {
+        accumulatePages: input.accumulatePages ?? false,
+        page: input.page,
+        tab: input.tab,
+      },
+      phase: "results",
+      startedAt,
+      status: "error",
+    })
+    throw error
+  }
 }
 
 export async function getTeamAssetsPageData(input: {
@@ -594,69 +958,24 @@ export async function getTeamAssetsPageData(input: {
   requestedFilters: TeamAssetsRequestedFilters
   tab: TeamAssetTab
 }): Promise<TeamAssetsPageData> {
-  const requestedPage = Math.max(1, Math.floor(input.page))
-  const supabase = await createServerSupabaseClient()
-  const context = await loadTeamAssetContext({
+  const chromeData = await getTeamAssetsChromeData({
     activeTeamId: input.activeTeamId,
-    supabase,
-  })
-  const {
-    filterOptions,
-    hasActiveFilters,
-    selectedFilters,
-  } = buildTeamAssetFilterState({
-    context,
+    canManageAssets: input.canManageAssets,
     requestedFilters: input.requestedFilters,
+    tab: input.tab,
   })
-  const limit = input.accumulatePages
-    ? requestedPage * TEAM_ASSETS_PAGE_SIZE
-    : TEAM_ASSETS_PAGE_SIZE
-  const offset = input.accumulatePages ? 0 : (requestedPage - 1) * TEAM_ASSETS_PAGE_SIZE
-  const { data, error } = await supabase.rpc("get_team_asset_page", {
-    p_asset_type: getAssetTypeForTab(input.tab),
-    p_camp_id: selectedFilters.campId ?? null,
-    p_limit: limit,
-    p_offset: offset,
-    p_session_id: selectedFilters.sessionId ?? null,
-    p_team_id: input.activeTeamId,
-    p_venue_id: selectedFilters.venueId ?? null,
-    p_year: selectedFilters.year ?? null,
-  })
-
-  if (error) {
-    throw new Error(`Could not load team assets: ${error.message}`)
-  }
-
-  const rows = data ?? []
-  const assetTotalCount = rows[0]?.total_count ?? 0
-  const pagination = resolvePagination({
-    pageSize: TEAM_ASSETS_PAGE_SIZE,
-    requestedPage,
-    totalItems: assetTotalCount,
-  })
-  const mappedAssets = mapRpcRowsToAssets({
+  const resultsData = await getTeamAssetsResultsData({
     activeOrganizationId: input.activeOrganizationId,
     activeTeamId: input.activeTeamId,
-    rows,
-  })
-  const assets = await attachTeamAssetUrls({
-    assets: mappedAssets,
-    supabase,
-    tab: input.tab,
+    accumulatePages: input.accumulatePages,
+    page: input.page,
+    selectedFilters: chromeData.selectedFilters,
+    tab: chromeData.tab,
   })
 
   return {
-    assetLimit: TEAM_ASSETS_PAGE_SIZE,
-    assetTotalCount,
-    assets,
-    canManageAssets: input.canManageAssets,
-    currentPage: pagination.currentPage,
-    filterOptions,
-    hasActiveFilters,
-    hasNextPage: pagination.hasNextPage,
-    pageCount: pagination.pageCount,
-    selectedFilters,
-    tab: input.tab,
+    ...chromeData,
+    ...resultsData,
   }
 }
 
@@ -670,5 +989,7 @@ export function buildTeamAssetsEmptyMessage(input: {
 
   return input.tab === "images"
     ? "No images uploaded for this team yet."
-    : "No files uploaded for this team yet."
+    : input.tab === "gps-files"
+      ? "No GPS files uploaded for this team yet."
+      : "No files uploaded for this team yet."
 }

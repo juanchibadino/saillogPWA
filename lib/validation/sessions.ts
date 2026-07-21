@@ -123,6 +123,11 @@ export const uploadSessionAssetInputSchema = z.object({
   description: optionalTrimmedTextSchema,
 })
 
+export const uploadSessionGpsFileInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  description: optionalTrimmedTextSchema,
+})
+
 export const deleteSessionAssetInputSchema = z.object({
   sessionId: z.string().uuid(),
   assetId: z.string().uuid(),
@@ -141,6 +146,7 @@ export type UpdateTeamSetupMetricInput = z.infer<typeof updateTeamSetupMetricInp
 export type DeleteTeamSetupMetricInput = z.infer<typeof deleteTeamSetupMetricInputSchema>
 export type ReorderTeamSetupMetricsInput = z.infer<typeof reorderTeamSetupMetricsInputSchema>
 export type UploadSessionAssetInput = z.infer<typeof uploadSessionAssetInputSchema>
+export type UploadSessionGpsFileInput = z.infer<typeof uploadSessionGpsFileInputSchema>
 export type DeleteSessionAssetInput = z.infer<typeof deleteSessionAssetInputSchema>
 
 export type SessionInfoJsonText = Json | null

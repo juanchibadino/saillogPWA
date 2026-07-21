@@ -22,8 +22,8 @@ export function buildTeamAssetsListApiUrl(input: {
     params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scope.activeTeamId)
   }
 
-  if (input.tab === "files") {
-    params.set("tab", "files")
+  if (input.tab === "files" || input.tab === "gps-files") {
+    params.set("tab", input.tab)
   }
 
   if (input.filters.venueId) {

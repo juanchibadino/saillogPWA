@@ -1,12 +1,25 @@
-import { getTeamAssetsPageData } from "@/features/assets/data"
+import { Suspense } from "react"
+
+import { TeamAssetsResultsSkeleton } from "@/components/shared/page-skeletons"
+import {
+  getTeamAssetsChromeData,
+  getTeamAssetsResultsData,
+  type TeamAssetsChromeData,
+  type TeamAssetsResultsData,
+} from "@/features/assets/data"
 import { resolveTeamAssetsListRequest } from "@/features/assets/list-route-state.mjs"
-import { TeamAssetsPageClient } from "@/features/assets/team-assets-page-client"
+import {
+  TeamAssetsResultsClient,
+  TeamAssetsResultsRetry,
+  TeamAssetsRouteShell,
+} from "@/features/assets/team-assets-page-client"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageTeamSessions } from "@/lib/auth/capabilities"
 import {
   getSingleSearchParamValue,
   resolveNavigationScope,
 } from "@/lib/navigation/scope"
+import type { NavigationScope } from "@/lib/navigation/types"
 
 type TeamAssetsSearchParams = Promise<
   Record<string, string | string[] | undefined>
@@ -63,18 +76,15 @@ export default async function TeamAssetsPage({
     venueParam: getSingleSearchParamValue(resolvedSearchParams.venue),
     yearParam: getSingleSearchParamValue(resolvedSearchParams.year),
   })
-  const requestedTab = rawRequestedTab === "files" ? "files" : "images"
+  const requestedTab = rawRequestedTab
   const canManageAssets = canManageTeamSessions({
     context,
     organizationId: navigation.scope.activeOrgId,
     teamId: navigation.scope.activeTeamId,
   })
-  const pageData = await getTeamAssetsPageData({
-    activeOrganizationId: navigation.scope.activeOrgId,
+  const chromeData = await getTeamAssetsChromeData({
     activeTeamId: navigation.scope.activeTeamId,
-    accumulatePages: requestedLoadMoreMode,
     canManageAssets,
-    page: requestedPage,
     requestedFilters: {
       campId: requestedCampId,
       sessionId: requestedSessionId,
@@ -85,9 +95,60 @@ export default async function TeamAssetsPage({
   })
 
   return (
-    <TeamAssetsPageClient
-      initialData={pageData}
+    <TeamAssetsRouteShell
+      chromeData={chromeData}
       scope={navigation.scope}
+    >
+      <Suspense fallback={<TeamAssetsResultsSkeleton />}>
+        <TeamAssetsResults
+          activeOrganizationId={navigation.scope.activeOrgId}
+          activeTeamId={navigation.scope.activeTeamId}
+          accumulatePages={requestedLoadMoreMode}
+          chromeData={chromeData}
+          page={requestedPage}
+          scope={navigation.scope}
+        />
+      </Suspense>
+    </TeamAssetsRouteShell>
+  )
+}
+
+async function TeamAssetsResults(input: {
+  activeOrganizationId: string
+  activeTeamId: string
+  accumulatePages: boolean
+  chromeData: TeamAssetsChromeData
+  page: number
+  scope: NavigationScope
+}) {
+  let resultsData: TeamAssetsResultsData | null = null
+  let errorMessage: string | null = null
+
+  try {
+    resultsData = await getTeamAssetsResultsData({
+      activeOrganizationId: input.activeOrganizationId,
+      activeTeamId: input.activeTeamId,
+      accumulatePages: input.accumulatePages,
+      page: input.page,
+      selectedFilters: input.chromeData.selectedFilters,
+      tab: input.chromeData.tab,
+    })
+  } catch (error) {
+    errorMessage =
+      error instanceof Error
+        ? error.message
+        : "Could not load asset results. Try again."
+  }
+
+  if (errorMessage || !resultsData) {
+    return <TeamAssetsResultsRetry message={errorMessage ?? undefined} />
+  }
+
+  return (
+    <TeamAssetsResultsClient
+      chromeData={input.chromeData}
+      initialResults={resultsData}
+      scope={input.scope}
     />
   )
 }

@@ -8,6 +8,7 @@ import {
 import { FreeTierQuotaDialog } from "@/features/billing/free-tier-quota-dialog"
 import { RouteCacheInvalidationOnSuccess } from "@/features/shared/route-cache-invalidation-on-success"
 import {
+  getSessionDetailHeaderGpsFile,
   getSessionDetailShellData,
   getSessionDetailTabData,
 } from "@/features/sessions/detail-data"
@@ -16,6 +17,7 @@ import type { SessionDetailTabPayload } from "@/features/sessions/detail-types"
 import {
   SessionDetailTabsClient,
   SessionHeaderActions,
+  SessionHeaderGpsPlayerAction,
 } from "@/features/sessions/session-detail-tabs-client"
 import { SessionsFeedback } from "@/features/sessions/sessions-feedback"
 import {
@@ -272,6 +274,44 @@ async function SessionHeaderActionsSlot(input: {
   )
 }
 
+async function SessionHeaderGpsPlayerSlot(input: {
+  detailDataPromise: SessionDetailShellDataPromise
+  scope: ResolvedSessionDetailScope
+  sessionId: string
+}) {
+  const detailData = await input.detailDataPromise
+
+  if (!detailData) {
+    return (
+      <SessionHeaderGpsPlayerAction
+        gpsFile={null}
+        scope={input.scope}
+        sessionId={input.sessionId}
+      />
+    )
+  }
+
+  let gpsFile: Awaited<ReturnType<typeof getSessionDetailHeaderGpsFile>> = null
+
+  try {
+    gpsFile = await getSessionDetailHeaderGpsFile({
+      activeOrganizationId: input.scope.activeOrgId,
+      activeTeamId: detailData.team.id,
+      sessionId: detailData.session.id,
+    })
+  } catch {
+    gpsFile = null
+  }
+
+  return (
+    <SessionHeaderGpsPlayerAction
+      gpsFile={gpsFile}
+      scope={input.scope}
+      sessionId={detailData.session.id}
+    />
+  )
+}
+
 async function SessionDetailResolvedContent(input: {
   canManageSession: boolean
   canUploadSessionAssets: boolean
@@ -435,8 +475,23 @@ export default async function SessionDetailPage({
 
       <section className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
+          <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-semibold tracking-tight">Team Session</h1>
+            <Suspense
+              fallback={
+                <SessionHeaderGpsPlayerAction
+                  gpsFile={null}
+                  scope={scope}
+                  sessionId={resolvedParams.id}
+                />
+              }
+            >
+              <SessionHeaderGpsPlayerSlot
+                detailDataPromise={detailDataPromise}
+                scope={scope}
+                sessionId={resolvedParams.id}
+              />
+            </Suspense>
           </div>
 
           {canManageSession ? (

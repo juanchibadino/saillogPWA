@@ -21,6 +21,7 @@ import type {
   SessionDetailGearTabData,
   SessionDetailGearTypeFilter,
   SessionDetailGoalsTabData,
+  SessionDetailGpsFile,
   SessionDetailImagesTabData,
   SessionDetailInfo,
   SessionDetailInfoTabData,
@@ -115,6 +116,24 @@ type SessionSetupItemSelectedOptionRow = Pick<
 >
 
 type SessionAssetRow = SessionDetailAssetMetadata
+type SessionVakarosUploadRow = Pick<
+  Database["public"]["Tables"]["session_vakaros_uploads"]["Row"],
+  | "asset_id"
+  | "avg_sog_kts"
+  | "bucket"
+  | "distance_nm"
+  | "duration_hours"
+  | "end_at"
+  | "max_sog_kts"
+  | "p95_sog_kts"
+  | "raw_storage_path"
+  | "rows_1hz"
+  | "rows_raw"
+  | "series_1hz_storage_path"
+  | "start_at"
+  | "summary_storage_path"
+  | "track_geojson_storage_path"
+>
 type GearItemRow = Pick<
   Database["public"]["Tables"]["gear_items"]["Row"],
   "id" | "name" | "gear_type" | "status" | "condition" | "serial_number" | "barcode"
@@ -161,6 +180,8 @@ const SESSION_ASSETS_WITH_DESCRIPTION_SELECT_COLUMNS =
   "id,asset_type,bucket,storage_path,file_name,description,mime_type,size_bytes,created_at"
 const SESSION_ASSETS_WITH_THUMBNAILS_SELECT_COLUMNS =
   "id,asset_type,bucket,storage_path,file_name,description,mime_type,size_bytes,thumbnail_bucket,thumbnail_storage_path,thumbnail_mime_type,thumbnail_size_bytes,created_at"
+const SESSION_VAKAROS_UPLOADS_SELECT_COLUMNS =
+  "asset_id,bucket,raw_storage_path,series_1hz_storage_path,track_geojson_storage_path,summary_storage_path,rows_raw,rows_1hz,start_at,end_at,duration_hours,distance_nm,avg_sog_kts,p95_sog_kts,max_sog_kts"
 const GEAR_ITEMS_SELECT_COLUMNS = "id,name,gear_type,status,condition,serial_number,barcode"
 const SESSION_GEAR_USAGE_SELECT_COLUMNS = "gear_item_id"
 const TEAM_SETUP_ITEMS_SELECT_COLUMNS =
@@ -215,7 +236,7 @@ type SessionAssetOptionalColumns = Pick<
 type SessionAssetQueryRow = Omit<SessionAssetRow, keyof SessionAssetOptionalColumns> &
   Partial<SessionAssetOptionalColumns>
 
-type SessionAssetTypeFilter = "photo" | "non_photo"
+type SessionAssetTypeFilter = "photo" | "analytics_file" | "gps_file"
 
 export type SessionDetailShellData = Pick<
   SessionDetailData,
@@ -269,6 +290,25 @@ function buildAssetContentUrl(input: {
   params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.activeTeamId)
 
   return `/api/session-assets/${encodeURIComponent(input.assetId)}/content?${params.toString()}`
+}
+
+function buildGpsArtifactUrl(input: {
+  activeOrganizationId: string
+  activeTeamId: string
+  assetId: string
+  kind: "raw" | "series_1hz" | "summary" | "track_geojson"
+  download?: boolean
+}): string {
+  const params = new URLSearchParams()
+  params.set("kind", input.kind)
+  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.activeOrganizationId)
+  params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.activeTeamId)
+
+  if (input.download) {
+    params.set("download", "1")
+  }
+
+  return `/api/session-gps-files/${encodeURIComponent(input.assetId)}/artifact?${params.toString()}`
 }
 
 function buildStorageKey(input: {
@@ -347,28 +387,30 @@ function normalizeSessionAssetRow(row: SessionAssetQueryRow): SessionAssetRow {
 }
 
 function buildSessionAssetsQuery(input: {
+  assetLimit?: number
   assetOffset: number
   assetTypeFilter: SessionAssetTypeFilter
   selectColumns: string
   sessionId: string
   supabase: ServerSupabaseClient
 }) {
+  const assetLimit = Math.max(
+    1,
+    Math.floor(input.assetLimit ?? SESSION_DETAIL_ASSET_PAGE_SIZE),
+  )
   const query = input.supabase
     .from("session_assets")
     .select(input.selectColumns, { count: "exact" })
     .eq("session_id", input.sessionId)
 
-  const filteredQuery =
-    input.assetTypeFilter === "photo"
-      ? query.eq("asset_type", "photo")
-      : query.neq("asset_type", "photo")
-
-  return filteredQuery
+  return query
+    .eq("asset_type", input.assetTypeFilter)
     .order("created_at", { ascending: false })
-    .range(input.assetOffset, input.assetOffset + SESSION_DETAIL_ASSET_PAGE_SIZE - 1)
+    .range(input.assetOffset, input.assetOffset + assetLimit - 1)
 }
 
 async function loadSessionAssetPage(input: {
+  assetLimit?: number
   assetOffset: number
   assetTypeFilter: SessionAssetTypeFilter
   sessionId: string
@@ -971,6 +1013,123 @@ function attachAssetContentUrls(input: {
   }))
 }
 
+function mapVakarosUploadsByAssetId(
+  rows: SessionVakarosUploadRow[],
+): Map<string, SessionVakarosUploadRow> {
+  const rowsByAssetId = new Map<string, SessionVakarosUploadRow>()
+
+  for (const row of rows) {
+    rowsByAssetId.set(row.asset_id, row)
+  }
+
+  return rowsByAssetId
+}
+
+function attachGpsFileContentUrls(input: {
+  activeOrganizationId: string
+  activeTeamId: string
+  assets: SessionAssetRow[]
+  vakarosUploads: SessionVakarosUploadRow[]
+}): SessionDetailGpsFile[] {
+  const uploadsByAssetId = mapVakarosUploadsByAssetId(input.vakarosUploads)
+
+  return input.assets.map((asset) => {
+    const upload = uploadsByAssetId.get(asset.id)
+
+    return {
+      ...asset,
+      contentUrl: buildGpsArtifactUrl({
+        activeOrganizationId: input.activeOrganizationId,
+        activeTeamId: input.activeTeamId,
+        assetId: asset.id,
+        kind: "series_1hz",
+      }),
+      gpsArtifacts: {
+        series1HzUrl: buildGpsArtifactUrl({
+          activeOrganizationId: input.activeOrganizationId,
+          activeTeamId: input.activeTeamId,
+          assetId: asset.id,
+          kind: "series_1hz",
+        }),
+        summaryUrl: buildGpsArtifactUrl({
+          activeOrganizationId: input.activeOrganizationId,
+          activeTeamId: input.activeTeamId,
+          assetId: asset.id,
+          kind: "summary",
+          download: true,
+        }),
+        trackGeojsonUrl: buildGpsArtifactUrl({
+          activeOrganizationId: input.activeOrganizationId,
+          activeTeamId: input.activeTeamId,
+          assetId: asset.id,
+          kind: "track_geojson",
+        }),
+      },
+      signedUrl: null,
+      thumbnailSignedUrl: null,
+      vakaros: upload
+        ? {
+            avgSogKts: Number(upload.avg_sog_kts),
+            distanceNm: Number(upload.distance_nm),
+            durationHours: Number(upload.duration_hours),
+            endAt: upload.end_at,
+            maxSogKts: Number(upload.max_sog_kts),
+            p95SogKts: Number(upload.p95_sog_kts),
+            rows1Hz: upload.rows_1hz,
+            rowsRaw: upload.rows_raw,
+            startAt: upload.start_at,
+          }
+        : null,
+    }
+  })
+}
+
+export async function getSessionDetailHeaderGpsFile(input: {
+  activeOrganizationId: string
+  activeTeamId: string
+  sessionId: string
+}): Promise<SessionDetailGpsFile | null> {
+  const supabase = await createServerSupabaseClient()
+  const gpsAssetPage = await loadSessionAssetPage({
+    assetLimit: 1,
+    assetOffset: 0,
+    assetTypeFilter: "gps_file",
+    sessionId: input.sessionId,
+    supabase,
+  })
+  const gpsAsset = gpsAssetPage.assets[0]
+
+  if (!gpsAsset) {
+    return null
+  }
+
+  const { data: vakarosRows, error: vakarosError } = await supabase
+    .from("session_vakaros_uploads")
+    .select(SESSION_VAKAROS_UPLOADS_SELECT_COLUMNS)
+    .eq("session_id", input.sessionId)
+    .eq("asset_id", gpsAsset.id)
+    .limit(1)
+
+  if (vakarosError) {
+    throw new Error(`Could not load header GPS file metadata: ${vakarosError.message}`)
+  }
+
+  const vakarosUploads = (vakarosRows ?? []) as SessionVakarosUploadRow[]
+
+  if (vakarosUploads.length === 0) {
+    return null
+  }
+
+  return (
+    attachGpsFileContentUrls({
+      activeOrganizationId: input.activeOrganizationId,
+      activeTeamId: input.activeTeamId,
+      assets: [gpsAsset],
+      vakarosUploads,
+    })[0] ?? null
+  )
+}
+
 async function createStorageSignedUrlMap(input: {
   supabase: ServerSupabaseClient
   targets: Array<{
@@ -1513,14 +1672,23 @@ export async function getSessionDetailAnalyticsTabData(
   })
   const supabase = await createServerSupabaseClient()
   let assetPage: Awaited<ReturnType<typeof loadSessionAssetPage>>
+  let gpsAssetPage: Awaited<ReturnType<typeof loadSessionAssetPage>>
 
   try {
-    assetPage = await loadSessionAssetPage({
-      assetOffset,
-      assetTypeFilter: "non_photo",
-      sessionId: input.sessionId,
-      supabase,
-    })
+    ;[assetPage, gpsAssetPage] = await Promise.all([
+      loadSessionAssetPage({
+        assetOffset,
+        assetTypeFilter: "analytics_file",
+        sessionId: input.sessionId,
+        supabase,
+      }),
+      loadSessionAssetPage({
+        assetOffset: 0,
+        assetTypeFilter: "gps_file",
+        sessionId: input.sessionId,
+        supabase,
+      }),
+    ])
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown asset query error"
     throwSessionDetailScopedTimingError(
@@ -1535,11 +1703,40 @@ export async function getSessionDetailAnalyticsTabData(
     activeTeamId: input.activeTeamId,
     assets: assetPage.assets,
   })
+  const gpsAssetIds = gpsAssetPage.assets.map((asset) => asset.id)
+  let vakarosUploads: SessionVakarosUploadRow[] = []
+
+  if (gpsAssetIds.length > 0) {
+    const { data: vakarosRows, error: vakarosError } = await supabase
+      .from("session_vakaros_uploads")
+      .select(SESSION_VAKAROS_UPLOADS_SELECT_COLUMNS)
+      .eq("session_id", input.sessionId)
+      .in("asset_id", gpsAssetIds)
+
+    if (vakarosError) {
+      throwSessionDetailScopedTimingError(
+        logTabTiming,
+        "vakaros_metadata_query_error",
+        `Could not load GPS file metadata for session detail: ${vakarosError.message}`,
+      )
+    }
+
+    vakarosUploads = (vakarosRows ?? []) as SessionVakarosUploadRow[]
+  }
+
+  const gpsFiles = attachGpsFileContentUrls({
+    activeOrganizationId: input.activeOrganizationId,
+    activeTeamId: input.activeTeamId,
+    assets: gpsAssetPage.assets,
+    vakarosUploads,
+  })
 
   logTabTiming("success", "loaded", undefined, {
     assetCount: analyticsFiles.length,
     assetOffset,
     assetTotalCount: assetPage.assetTotalCount,
+    gpsFileCount: gpsFiles.length,
+    gpsFileTotalCount: gpsAssetPage.assetTotalCount,
     signedUrlCount: 0,
     thumbnailColumnsAvailable: assetPage.thumbnailColumnsAvailable,
   })
@@ -1548,6 +1745,8 @@ export async function getSessionDetailAnalyticsTabData(
     assetLimit: SESSION_DETAIL_ASSET_PAGE_SIZE,
     assetOffset,
     assetTotalCount: assetPage.assetTotalCount,
+    gpsFiles,
+    gpsFileTotalCount: gpsAssetPage.assetTotalCount,
   }
 }
 
@@ -1811,6 +2010,7 @@ export async function getSessionDetailDeferredData(
     logDeferredTiming("success", "loaded", undefined, {
       imageCount: imagesData.images.length,
       analyticsFileCount: analyticsData.analyticsFiles.length,
+      gpsFileCount: analyticsData.gpsFiles.length,
       gearItemCount: gearData.gearItems.length,
       setupItemCount: setupData.setupDialogItems.length,
       standardMoveCount: infoData.availableStandardMoves.length,

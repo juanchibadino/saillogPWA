@@ -1503,7 +1503,7 @@ const SESSION_DETAIL_TABS: Array<{
   { label: "Goals", value: "goals" },
   { label: "Results", value: "results" },
   { label: "Images", value: "images" },
-  { label: "Analytics", value: "analytics" },
+  { label: "Files", value: "analytics" },
   { label: "Gear", value: "gear" },
 ]
 const SESSION_DETAIL_DEFAULT_MOBILE_TABS: SessionDetailSkeletonTab[] = [

@@ -24,7 +24,13 @@ const PRO_PLAN_FEATURES = [
   "Unlimited Venues",
   "Unlimited Camps",
   "Unlimited Sessions",
+  "Session media and file uploads",
 ]
+
+const PRO_FEATURE_BADGE_LABEL = "Pro feature"
+const PRO_FEATURE_TITLE = "This is a Pro feature"
+const PRO_FEATURE_DESCRIPTION =
+  "Upgrade to Pro to unlock higher creation limits, session uploads, and the full team workflow."
 
 function buildUpgradeHref(input: {
   organizationId: string
@@ -69,49 +75,83 @@ export function FreeTierQuotaDialog(input: {
         }
       }}
     >
-      <DialogContent
-        className="overflow-hidden p-0 sm:max-w-md"
-        overlayClassName="bg-black/35 backdrop-blur-sm supports-backdrop-filter:backdrop-blur-sm"
-      >
-        <DialogHeader className="gap-3 px-5 pt-5 pb-1">
-          <div className="w-fit rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-            Free tier quota reached
-          </div>
-          <div className="space-y-2">
-            <DialogTitle className="text-xl leading-tight">
-              Unlock all features with Pro Plan
-            </DialogTitle>
-            <DialogDescription>
-              Upgrade to continue creating and remove Free tier limits.
-            </DialogDescription>
-          </div>
-        </DialogHeader>
-
-        <div className="px-5 py-4">
-          <div className="grid gap-2 rounded-lg border border-border bg-muted/40 p-3">
-            {PRO_PLAN_FEATURES.map((feature) => (
-              <div key={feature} className="flex items-center gap-2 text-sm">
-                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-foreground text-background">
-                  <CheckIcon className="size-3" />
-                </span>
-                <span className="font-medium">{feature}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <DialogFooter className="mx-0 mb-0 px-5 pt-4 pb-5 sm:justify-end">
-          <Link
-            href={buildUpgradeHref({
-              organizationId: input.organizationId,
-              teamId: input.teamId,
-            })}
-            className={buttonVariants({ className: "h-9 w-full sm:w-auto" })}
-          >
-            Upgrade to Pro
-          </Link>
-        </DialogFooter>
-      </DialogContent>
+      <ProFeatureUpgradeDialogContent
+        organizationId={input.organizationId}
+        teamId={input.teamId}
+      />
     </Dialog>
+  )
+}
+
+export function ProFeatureUpgradeDialog(input: {
+  organizationId: string
+  teamId?: string | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  title?: string
+  description?: string
+}) {
+  return (
+    <Dialog open={input.open} onOpenChange={input.onOpenChange}>
+      <ProFeatureUpgradeDialogContent
+        organizationId={input.organizationId}
+        teamId={input.teamId}
+        title={input.title}
+        description={input.description}
+      />
+    </Dialog>
+  )
+}
+
+function ProFeatureUpgradeDialogContent(input: {
+  organizationId: string
+  teamId?: string | null
+  title?: string
+  description?: string
+}) {
+  return (
+    <DialogContent
+      className="overflow-hidden p-0 sm:max-w-md"
+      overlayClassName="bg-black/35 backdrop-blur-sm supports-backdrop-filter:backdrop-blur-sm"
+    >
+      <DialogHeader className="gap-3 px-5 pt-5 pb-1">
+        <div className="w-fit rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+          {PRO_FEATURE_BADGE_LABEL}
+        </div>
+        <div className="space-y-2">
+          <DialogTitle className="text-xl leading-tight">
+            {input.title ?? PRO_FEATURE_TITLE}
+          </DialogTitle>
+          <DialogDescription>
+            {input.description ?? PRO_FEATURE_DESCRIPTION}
+          </DialogDescription>
+        </div>
+      </DialogHeader>
+
+      <div className="px-5 py-4">
+        <div className="grid gap-2 rounded-lg border border-border bg-muted/40 p-3">
+          {PRO_PLAN_FEATURES.map((feature) => (
+            <div key={feature} className="flex items-center gap-2 text-sm">
+              <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-foreground text-background">
+                <CheckIcon className="size-3" />
+              </span>
+              <span className="font-medium">{feature}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <DialogFooter className="mx-0 mb-0 px-5 pt-4 pb-5 sm:justify-end">
+        <Link
+          href={buildUpgradeHref({
+            organizationId: input.organizationId,
+            teamId: input.teamId,
+          })}
+          className={buttonVariants({ className: "h-9 w-full sm:w-auto" })}
+        >
+          Upgrade to Pro
+        </Link>
+      </DialogFooter>
+    </DialogContent>
   )
 }

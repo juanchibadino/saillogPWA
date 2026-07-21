@@ -54,6 +54,7 @@ import {
   deleteSessionAssetAction,
   saveSessionAssetAction,
 } from "@/features/sessions/detail-actions"
+import { ProFeatureUpgradeDialog } from "@/features/billing/free-tier-quota-dialog"
 import {
   buildAssetDownloadUrl,
   formatAssetSize,
@@ -115,7 +116,7 @@ function getUploadBlockedMessage(reason: SessionAssetUploadBlockReason): string 
   }
 
   if (reason === "plan_limit_reached") {
-    return "Free tier quota reached. Upgrade to Pro to continue."
+    return "This is a Pro feature. Upgrade to Pro to continue uploading files."
   }
 
   return "Uploads are unavailable for this organization."
@@ -138,6 +139,14 @@ function getAssetUploadPluralLabel(assetType: "photo" | "analytics_file", count:
 
 function getAssetUploadSurfaceTitle(assetType: "photo" | "analytics_file"): string {
   return assetType === "photo" ? "Upload images" : "Upload files"
+}
+
+function getAssetUploadUpgradeDescription(assetType: "photo" | "analytics_file"): string {
+  if (assetType === "photo") {
+    return "Image uploads are available on Pro. Upgrade to attach session media and unlock higher creation limits."
+  }
+
+  return "Analytics file uploads are available on Pro. Upgrade to attach session files and unlock higher creation limits."
 }
 
 function getAssetUploadSelectLabel(assetType: "photo" | "analytics_file"): string {
@@ -956,9 +965,16 @@ export function SessionAssetsPanel(input: {
   onAssetsChanged: () => Promise<void> | void
 }) {
   const [pendingUploads, setPendingUploads] = React.useState<PendingAssetUpload[]>([])
+  const [isUpgradeDialogOpen, setIsUpgradeDialogOpen] = React.useState(false)
   const description = input.description?.trim()
   const hasMoreAssets = input.assets.length < input.assetTotalCount
   const canUploadAssets = input.canManageSession && input.canUploadAssets
+  const isPlanLimitBlocked =
+    input.canManageSession &&
+    !input.canUploadAssets &&
+    input.assetUploadBlockReason === "plan_limit_reached"
+  const shouldShowSubscriptionBlockMessage =
+    input.canManageSession && !input.canUploadAssets && !isPlanLimitBlocked
   const subscriptionHref = buildSubscriptionHref(input.scope)
 
   return (
@@ -982,10 +998,30 @@ export function SessionAssetsPanel(input: {
             sessionId={input.sessionId}
             tab={input.tab}
           />
+        ) : isPlanLimitBlocked ? (
+          <Button
+            type="button"
+            variant="outline"
+            aria-haspopup="dialog"
+            onClick={() => setIsUpgradeDialogOpen(true)}
+          >
+            <UploadIcon className="size-4" />
+            {input.buttonLabel}
+          </Button>
         ) : null}
       </div>
 
-      {input.canManageSession && !input.canUploadAssets ? (
+      {isPlanLimitBlocked ? (
+        <ProFeatureUpgradeDialog
+          organizationId={input.scope.activeOrgId}
+          teamId={input.scope.activeTeamId}
+          open={isUpgradeDialogOpen}
+          onOpenChange={setIsUpgradeDialogOpen}
+          description={getAssetUploadUpgradeDescription(input.assetType)}
+        />
+      ) : null}
+
+      {shouldShowSubscriptionBlockMessage ? (
         <div className="flex flex-col gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
           <p>{getUploadBlockedMessage(input.assetUploadBlockReason ?? null)}</p>
           <Link

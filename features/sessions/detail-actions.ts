@@ -35,6 +35,10 @@ import {
 import { resolveOrganizationSessionAssetUploadEntitlement } from "@/lib/billing/entitlements"
 import { createAdminSupabaseClient } from "@/lib/supabase/admin"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
+import {
+  assertValidVakarosCsvFileName,
+  parseVakarosCsv,
+} from "@/features/sessions/vakaros-parser.mjs"
 import { scopeFormInputSchema } from "@/lib/validation/navigation"
 import { updateSessionGearUsageInputSchema } from "@/lib/validation/gear"
 import { createTeamStandardMoveInputSchema } from "@/lib/validation/standard-moves"
@@ -50,6 +54,7 @@ import {
   updateSessionGoalsInputSchema,
   updateSessionResultsInputSchema,
   updateSessionSetupInputSchema,
+  uploadSessionGpsFileInputSchema,
   uploadSessionAssetInputSchema,
 } from "@/lib/validation/sessions"
 import type {
@@ -60,11 +65,13 @@ import type { Database } from "@/types/database"
 
 const SESSION_PHOTOS_BUCKET = "session-photos"
 const SESSION_FILES_BUCKET = "session-files"
+const SESSION_GPS_FILES_BUCKET = "session-gps-files"
 const MAX_ASSET_BYTES = 25 * 1024 * 1024
 const MAX_PHOTO_ASSET_BYTES = 2 * 1024 * 1024
 const MAX_PHOTO_THUMBNAIL_BYTES = 256 * 1024
 const COMPRESSED_PHOTO_MIME_TYPE = "image/webp"
 const ANALYTICS_FILE_MIME_TYPE = "application/pdf"
+const GPS_FILE_MIME_TYPE = "text/csv"
 
 type SessionActionScope = {
   scopeOrgId?: string
@@ -619,6 +626,30 @@ function sanitizeFileName(fileName: string): string {
 
 function getAssetBucket(assetType: "photo" | "analytics_file"): string {
   return assetType === "photo" ? SESSION_PHOTOS_BUCKET : SESSION_FILES_BUCKET
+}
+
+function buildGpsFileStorageBasePath(input: {
+  sessionId: string
+  fileName: string
+}): string {
+  const safeName = sanitizeFileName(input.fileName.replace(/\.csv$/i, ""))
+  const timestamp = Date.now()
+  const randomPart = Math.random().toString(36).slice(2, 10)
+  return `sessions/${input.sessionId}/gps_file/${timestamp}-${randomPart}-${safeName}`
+}
+
+function buildGpsFileArtifactStoragePaths(input: {
+  basePath: string
+}): {
+  series1HzStoragePath: string
+  summaryStoragePath: string
+  trackGeojsonStoragePath: string
+} {
+  return {
+    series1HzStoragePath: `${input.basePath}/series_1hz.csv`,
+    summaryStoragePath: `${input.basePath}/summary.csv`,
+    trackGeojsonStoragePath: `${input.basePath}/track.geojson`,
+  }
 }
 
 function buildAssetStoragePath(input: {
@@ -3498,7 +3529,7 @@ type UploadSessionAssetMutationResult =
 const SESSION_ASSET_UPLOAD_ERROR_MESSAGES: Record<UploadSessionAssetActionError, string> = {
   invalid_input: "The selected file is invalid. Review the file and try again.",
   forbidden: "You do not have permission to upload files in the active scope.",
-  plan_limit_reached: "Free tier quota reached. Upgrade to Pro to continue.",
+  plan_limit_reached: "This is a Pro feature. Upgrade to Pro to continue uploading files.",
   payment_required:
     "Your paid plan is inactive. Recover payment in Subscription to continue uploading files.",
   upload_failed: "Could not upload this file. Confirm storage is available and try again.",
@@ -3771,6 +3802,261 @@ async function uploadSessionAssetMutation(
   }
 }
 
+async function uploadSessionGpsFileMutation(
+  formData: FormData,
+): Promise<UploadSessionAssetMutationResult> {
+  const context = await requireAuthenticatedAccessContext()
+  const scope = getScopeFromFormData(formData)
+  const sessionId = getFormString(formData, "sessionId")
+
+  if (!sessionId || !scope.scopeOrgId || !scope.scopeTeamId) {
+    return buildUploadSessionAssetActionError({
+      error: "invalid_input",
+      scope,
+      sessionId,
+    })
+  }
+
+  const parsedInput = uploadSessionGpsFileInputSchema.safeParse({
+    sessionId,
+    description: getFormString(formData, "description"),
+  })
+  const gpsFile = getFormFile(formData, "gpsFile")
+
+  if (!parsedInput.success || !gpsFile) {
+    return buildUploadSessionAssetActionError({
+      error: "invalid_input",
+      scope,
+      sessionId,
+    })
+  }
+
+  const normalizedDescription = normalizeOptionalText(parsedInput.data.description)
+
+  if (
+    !canManageTeamSessions({
+      context,
+      organizationId: scope.scopeOrgId,
+      teamId: scope.scopeTeamId,
+    })
+  ) {
+    return buildUploadSessionAssetActionError({
+      error: "forbidden",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
+  }
+
+  const scopedSession = await resolveScopedSessionContext({
+    sessionId: parsedInput.data.sessionId,
+    scopeOrgId: scope.scopeOrgId,
+    scopeTeamId: scope.scopeTeamId,
+  })
+
+  if (!scopedSession) {
+    return buildUploadSessionAssetActionError({
+      error: "forbidden",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
+  }
+
+  const uploadEntitlement = await resolveOrganizationSessionAssetUploadEntitlement({
+    organizationId: scope.scopeOrgId,
+  })
+
+  if (!uploadEntitlement.allowed) {
+    return buildUploadSessionAssetActionError({
+      error: uploadEntitlement.reason ?? "forbidden",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
+  }
+
+  const hasValidFileName = assertValidVakarosCsvFileName(gpsFile.name)
+  const hasValidMimeType =
+    gpsFile.type.length === 0 ||
+    gpsFile.type === GPS_FILE_MIME_TYPE ||
+    gpsFile.type === "application/vnd.ms-excel" ||
+    gpsFile.type === "text/plain"
+
+  if (
+    gpsFile.size <= 0 ||
+    gpsFile.size > MAX_ASSET_BYTES ||
+    !hasValidFileName ||
+    !hasValidMimeType
+  ) {
+    return buildUploadSessionAssetActionError({
+      error: "invalid_input",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
+  }
+
+  let fileText: string
+
+  try {
+    fileText = await gpsFile.text()
+  } catch {
+    return buildUploadSessionAssetActionError({
+      error: "invalid_input",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
+  }
+
+  let parsedVakaros: ReturnType<typeof parseVakarosCsv>
+
+  try {
+    parsedVakaros = parseVakarosCsv(fileText)
+  } catch {
+    return buildUploadSessionAssetActionError({
+      error: "invalid_input",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
+  }
+
+  const artifactPaths = buildGpsFileArtifactStoragePaths({
+    basePath: buildGpsFileStorageBasePath({
+      sessionId: parsedInput.data.sessionId,
+      fileName: gpsFile.name,
+    }),
+  })
+  const textEncoder = new TextEncoder()
+  const series1HzFileBytes = textEncoder.encode(parsedVakaros.series1HzCsv)
+  const trackGeojsonFileBytes = textEncoder.encode(parsedVakaros.trackGeojson)
+  const summaryFileBytes = textEncoder.encode(parsedVakaros.summaryCsv)
+  const storageUploads = [
+    {
+      contentType: GPS_FILE_MIME_TYPE,
+      data: series1HzFileBytes,
+      path: artifactPaths.series1HzStoragePath,
+    },
+    {
+      contentType: "application/geo+json",
+      data: trackGeojsonFileBytes,
+      path: artifactPaths.trackGeojsonStoragePath,
+    },
+    {
+      contentType: GPS_FILE_MIME_TYPE,
+      data: summaryFileBytes,
+      path: artifactPaths.summaryStoragePath,
+    },
+  ]
+  const storageAdmin = createAdminSupabaseClient()
+  const uploadedStoragePaths: string[] = []
+
+  try {
+    for (const upload of storageUploads) {
+      const { error: storageError } = await storageAdmin.storage
+        .from(SESSION_GPS_FILES_BUCKET)
+        .upload(upload.path, upload.data, {
+          contentType: upload.contentType,
+          upsert: false,
+        })
+
+      if (storageError) {
+        throw storageError
+      }
+
+      uploadedStoragePaths.push(upload.path)
+    }
+  } catch {
+    if (uploadedStoragePaths.length > 0) {
+      try {
+        await storageAdmin.storage
+          .from(SESSION_GPS_FILES_BUCKET)
+          .remove(uploadedStoragePaths)
+      } catch {
+        // Best effort cleanup only.
+      }
+    }
+
+    return buildUploadSessionAssetActionError({
+      error: "upload_failed",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
+  }
+
+  const supabase = await createServerSupabaseClient()
+  const { data: assetRow, error: insertAssetError } = await supabase
+    .from("session_assets")
+    .insert({
+      session_id: parsedInput.data.sessionId,
+      asset_type: "gps_file",
+      bucket: SESSION_GPS_FILES_BUCKET,
+      storage_path: artifactPaths.series1HzStoragePath,
+      file_name: gpsFile.name,
+      description: normalizedDescription,
+      mime_type: GPS_FILE_MIME_TYPE,
+      size_bytes: series1HzFileBytes.byteLength,
+      uploaded_by_profile_id: context.profile?.id ?? null,
+    })
+    .select("id")
+    .single()
+
+  if (insertAssetError || !assetRow) {
+    try {
+      await storageAdmin.storage.from(SESSION_GPS_FILES_BUCKET).remove(uploadedStoragePaths)
+    } catch {
+      // Best effort cleanup only.
+    }
+
+    return buildUploadSessionAssetActionError({
+      error: "upload_failed",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
+  }
+
+  const { error: insertVakarosError } = await supabase
+    .from("session_vakaros_uploads")
+    .insert({
+      session_id: parsedInput.data.sessionId,
+      asset_id: assetRow.id,
+      bucket: SESSION_GPS_FILES_BUCKET,
+      raw_storage_path: null,
+      series_1hz_storage_path: artifactPaths.series1HzStoragePath,
+      track_geojson_storage_path: artifactPaths.trackGeojsonStoragePath,
+      summary_storage_path: artifactPaths.summaryStoragePath,
+      rows_raw: parsedVakaros.metadata.rowsRaw,
+      rows_1hz: parsedVakaros.metadata.rows1Hz,
+      start_at: parsedVakaros.metadata.startAt,
+      end_at: parsedVakaros.metadata.endAt,
+      duration_hours: parsedVakaros.metadata.durationHours,
+      distance_nm: parsedVakaros.metadata.distanceNm,
+      avg_sog_kts: parsedVakaros.metadata.avgSogKts,
+      p95_sog_kts: parsedVakaros.metadata.p95SogKts,
+      max_sog_kts: parsedVakaros.metadata.maxSogKts,
+      uploaded_by_profile_id: context.profile?.id ?? null,
+    })
+
+  if (insertVakarosError) {
+    try {
+      await supabase.from("session_assets").delete().eq("id", assetRow.id)
+      await storageAdmin.storage.from(SESSION_GPS_FILES_BUCKET).remove(uploadedStoragePaths)
+    } catch {
+      // Best effort cleanup only.
+    }
+
+    return buildUploadSessionAssetActionError({
+      error: "upload_failed",
+      scope,
+      sessionId: parsedInput.data.sessionId,
+    })
+  }
+
+  return {
+    ok: true,
+    sessionId: parsedInput.data.sessionId,
+    scope,
+    status: "asset_uploaded",
+    tab: "analytics",
+  }
+}
+
 export async function saveSessionAssetAction(
   formData: FormData,
 ): Promise<UploadSessionAssetActionResult> {
@@ -3810,6 +4096,55 @@ export async function saveSessionAssetAction(
     outcome: result.status,
     metadata: {
       assetType: assetType ?? null,
+      tab: result.tab,
+    },
+  })
+
+  return {
+    ok: true,
+    status: result.status,
+    tab: result.tab,
+  }
+}
+
+export async function saveSessionGpsFileAction(
+  formData: FormData,
+): Promise<UploadSessionAssetActionResult> {
+  const startedAt = startSessionDetailTiming()
+  const scope = getScopeFromFormData(formData)
+  const sessionId = getFormString(formData, "sessionId")
+  const result = await uploadSessionGpsFileMutation(formData)
+
+  if (!result.ok) {
+    logSessionActionTiming({
+      phase: "upload_session_gps_file",
+      startedAt,
+      scope,
+      sessionId: result.sessionId ?? sessionId,
+      status: "error",
+      outcome: result.error,
+      error: result.message,
+      metadata: {
+        assetType: "gps_file",
+      },
+    })
+
+    return {
+      ok: false,
+      error: result.error,
+      message: result.message,
+    }
+  }
+
+  logSessionActionTiming({
+    phase: "upload_session_gps_file",
+    startedAt,
+    scope,
+    sessionId,
+    status: "success",
+    outcome: result.status,
+    metadata: {
+      assetType: "gps_file",
       tab: result.tab,
     },
   })
@@ -3911,6 +4246,38 @@ export async function deleteSessionAssetAction(
     return buildDeleteSessionAssetActionError("invalid_input")
   }
 
+  let gpsStoragePaths: string[] = []
+
+  if (assetRow.asset_type === "gps_file") {
+    const { data: gpsRow, error: gpsError } = await supabase
+      .from("session_vakaros_uploads")
+      .select(
+        "raw_storage_path,series_1hz_storage_path,track_geojson_storage_path,summary_storage_path",
+      )
+      .eq("asset_id", assetRow.id)
+      .maybeSingle()
+
+    if (gpsError) {
+      logTiming({
+        assetType: assetRow.asset_type,
+        outcome: "gps_metadata_query_error",
+        sessionId: parsedInput.data.sessionId,
+        status: "error",
+        error: gpsError.message,
+      })
+      return buildDeleteSessionAssetActionError("delete_failed")
+    }
+
+    if (gpsRow) {
+      gpsStoragePaths = [
+        gpsRow.raw_storage_path,
+        gpsRow.series_1hz_storage_path,
+        gpsRow.track_geojson_storage_path,
+        gpsRow.summary_storage_path,
+      ].filter((storagePath): storagePath is string => Boolean(storagePath))
+    }
+  }
+
   const { error: deleteError } = await supabase
     .from("session_assets")
     .delete()
@@ -3930,7 +4297,12 @@ export async function deleteSessionAssetAction(
 
   try {
     const storageAdmin = createAdminSupabaseClient()
-    await storageAdmin.storage.from(assetRow.bucket).remove([assetRow.storage_path])
+    const storagePaths =
+      assetRow.asset_type === "gps_file"
+        ? [...new Set([assetRow.storage_path, ...gpsStoragePaths])]
+        : [assetRow.storage_path]
+
+    await storageAdmin.storage.from(assetRow.bucket).remove(storagePaths)
 
     if (assetRow.thumbnail_bucket && assetRow.thumbnail_storage_path) {
       await storageAdmin.storage

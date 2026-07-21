@@ -20,6 +20,7 @@ describe("team assets route state", () => {
     assert.equal(resolveTeamAssetTab(undefined), "images")
     assert.equal(resolveTeamAssetTab("analytics"), "images")
     assert.equal(resolveTeamAssetTab("files"), "files")
+    assert.equal(resolveTeamAssetTab("gps-files"), "gps-files")
   })
 
   it("normalizes invalid pagination and year values", () => {
@@ -83,6 +84,14 @@ describe("team assets route state", () => {
         loadMore: true,
       }),
       "/team-assets?org=11111111-1111-4111-8111-111111111111&team=22222222-2222-4222-8222-222222222222&tab=files&venue=33333333-3333-4333-8333-333333333333&year=2026&camp=44444444-4444-4444-8444-444444444444&session=55555555-5555-4555-8555-555555555555&page=3&loadMore=1",
+    )
+
+    assert.equal(
+      buildTeamAssetsHref({
+        scope,
+        tab: "gps-files",
+      }),
+      "/team-assets?org=11111111-1111-4111-8111-111111111111&team=22222222-2222-4222-8222-222222222222&tab=gps-files",
     )
   })
 })

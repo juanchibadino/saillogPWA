@@ -46,7 +46,7 @@ export async function GET(request: Request) {
     venueParam: getSingleSearchParamValue(requestUrl.searchParams.get("venue") ?? undefined),
     yearParam: getSingleSearchParamValue(requestUrl.searchParams.get("year") ?? undefined),
   })
-  const requestedTab = rawRequestedTab === "files" ? "files" : "images"
+  const requestedTab = rawRequestedTab
   const accessContext = await getCurrentAccessContext()
 
   if (!accessContext.user) {

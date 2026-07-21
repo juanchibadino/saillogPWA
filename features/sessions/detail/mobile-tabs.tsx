@@ -36,6 +36,10 @@ type MobileSessionDetailTabMetrics = {
 }
 
 export function formatSessionDetailTabLabel(tab: SessionDetailTab): string {
+  if (tab === "analytics") {
+    return "Files"
+  }
+
   return tab.charAt(0).toUpperCase() + tab.slice(1)
 }
 

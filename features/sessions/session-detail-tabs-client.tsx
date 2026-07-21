@@ -2,8 +2,8 @@
 
 import * as React from "react"
 import dynamic from "next/dynamic"
-import { usePathname, useSearchParams } from "next/navigation"
-import { Loader2Icon, MinusIcon, PlusIcon, Settings2Icon } from "lucide-react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { Loader2Icon, MinusIcon, PlayIcon, PlusIcon, Settings2Icon } from "lucide-react"
 import { useFormStatus } from "react-dom"
 import { toast } from "sonner"
 
@@ -46,6 +46,10 @@ import {
 import { useStaleRouteData } from "@/features/shared/use-stale-route-data"
 import type { SessionAssetsPanelProps } from "@/features/sessions/detail/assets-panel"
 import type { SessionGearTabPanelProps } from "@/features/sessions/detail/gear-panel"
+import type {
+  SessionGpsFilesPanelProps,
+  SessionGpsFilePlayerDialogProps,
+} from "@/features/sessions/detail/gps-files-panel"
 import type { GoalsPanelProps } from "@/features/sessions/detail/goals-panel"
 import type { SessionInfoPanelProps } from "@/features/sessions/detail/info-panel"
 import {
@@ -59,6 +63,7 @@ import type {
   SessionDetailAnalyticsTabData,
   SessionDetailGearTabData,
   SessionDetailGoalsTabData,
+  SessionDetailGpsFile,
   SessionDetailImagesTabData,
   SessionDetailInfoTabData,
   SessionDetailResultsTabData,
@@ -66,6 +71,7 @@ import type {
   SessionDetailTabPayload,
 } from "@/features/sessions/detail-types"
 import {
+  buildSessionDetailHref,
   SESSION_DETAIL_TABS,
   type SessionDetailTab,
 } from "@/features/sessions/navigation"
@@ -207,6 +213,22 @@ const ResultsPanel = dynamic<ResultsPanelProps>(
 const SessionAssetsPanel = dynamic<SessionAssetsPanelProps>(
   () => import("@/features/sessions/detail/assets-panel").then((module) => module.SessionAssetsPanel),
   { loading: () => <SessionDynamicPanelFallback selectedTab="images" /> },
+)
+
+const SessionGpsFilesPanel = dynamic<SessionGpsFilesPanelProps>(
+  () =>
+    import("@/features/sessions/detail/gps-files-panel").then(
+      (module) => module.SessionGpsFilesPanel,
+    ),
+  { loading: () => <SessionDynamicPanelFallback selectedTab="analytics" /> },
+)
+
+const SessionGpsFilePlayerDialog = dynamic<SessionGpsFilePlayerDialogProps>(
+  () =>
+    import("@/features/sessions/detail/gps-files-panel").then(
+      (module) => module.SessionGpsFilePlayerDialog,
+    ),
+  { loading: () => null },
 )
 
 const SessionGearTabPanel = dynamic<SessionGearTabPanelProps>(
@@ -454,6 +476,57 @@ function EditSessionMetadataDialog(input: {
   )
 }
 
+export function SessionHeaderGpsPlayerAction(input: {
+  gpsFile: SessionDetailGpsFile | null
+  scope: NavigationScope
+  sessionId: string
+}) {
+  const router = useRouter()
+  const [playerOpen, setPlayerOpen] = React.useState(false)
+  const hasGpsFile = Boolean(input.gpsFile)
+
+  return (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant={hasGpsFile ? "default" : "outline"}
+        className={cn(
+          "h-6 rounded-full px-2 text-[0.7rem] font-medium",
+          !hasGpsFile &&
+            "border-border bg-muted text-muted-foreground shadow-none hover:bg-muted hover:text-muted-foreground",
+        )}
+        aria-disabled={!hasGpsFile}
+        aria-label={hasGpsFile ? "Open GPS player" : "Open Files tab"}
+        onClick={() => {
+          if (!input.gpsFile) {
+            router.push(
+              buildSessionDetailHref({
+                scope: input.scope,
+                sessionId: input.sessionId,
+                tab: "analytics",
+              }),
+            )
+            return
+          }
+
+          setPlayerOpen(true)
+        }}
+      >
+        GPS
+        <PlayIcon className="ml-0.5 size-3" />
+      </Button>
+
+      {input.gpsFile ? (
+        <SessionGpsFilePlayerDialog
+          gpsFile={input.gpsFile}
+          open={playerOpen}
+          onOpenChange={setPlayerOpen}
+        />
+      ) : null}
+    </>
+  )
+}
 
 export function SessionHeaderActions(input: {
   sessionId: string
@@ -677,6 +750,7 @@ function appendSessionAssetTabData(input: {
         currentAnalyticsFiles,
         nextData.analyticsFiles,
       ),
+      gpsFiles: nextData.gpsFiles,
     },
   }
 }
@@ -853,9 +927,11 @@ function isSessionDetailTabPayload(
   if (tab === "analytics") {
     return (
       Array.isArray(value.analyticsFiles) &&
+      Array.isArray(value.gpsFiles) &&
       typeof value.assetLimit === "number" &&
       typeof value.assetOffset === "number" &&
-      typeof value.assetTotalCount === "number"
+      typeof value.assetTotalCount === "number" &&
+      typeof value.gpsFileTotalCount === "number"
     )
   }
 
@@ -1110,6 +1186,7 @@ export function SessionDetailTabsClient(input: {
   sessionAssetUploadBlockReason?: "plan_limit_reached" | "payment_required" | null
 }) {
   const pathname = usePathname()
+  const router = useRouter()
   const searchParams = useSearchParams()
   const status = searchParams.get("status")
   const scopeKey = `${input.scope.activeOrgId}:${input.scope.activeTeamId ?? ""}`
@@ -1449,6 +1526,9 @@ export function SessionDetailTabsClient(input: {
 
       if (selectedTab !== tab) {
         refreshSelectedTab()
+        if (tab === "analytics") {
+          router.refresh()
+        }
         return
       }
 
@@ -1484,12 +1564,16 @@ export function SessionDetailTabsClient(input: {
         staleMs: SESSION_DETAIL_ASSET_TAB_STALE_MS,
         maxAgeMs: SESSION_DETAIL_ASSET_TAB_MAX_AGE_MS,
       })
+      if (tab === "analytics") {
+        router.refresh()
+      }
     },
     [
       cacheScope,
       input.scope,
       input.sessionId,
       refreshSelectedTab,
+      router,
       selectedTab,
       selectedTabCache,
     ],
@@ -1630,25 +1714,38 @@ export function SessionDetailTabsClient(input: {
           {selectedTab === "analytics" ? (
             <TabsContent value="analytics" className="space-y-4">
               {tabData.analytics ? (
-                <SessionAssetsPanel
-                  title="Analytics"
-                  sessionId={input.sessionId}
-                  scope={input.scope}
-                  assetType="analytics_file"
-                  tab="analytics"
-                  accept="application/pdf,.pdf"
-                  buttonLabel="Upload PDF"
-                  assets={tabData.analytics.analyticsFiles}
-                  assetLimit={tabData.analytics.assetLimit}
-                  assetTotalCount={tabData.analytics.assetTotalCount}
-                  emptyMessage="No analytics PDFs uploaded for this session yet."
-                  isLoadingMore={loadingMoreAssetTab === "analytics"}
-                  onLoadMore={() => void loadMoreAssets("analytics")}
-                  onAssetsChanged={() => handleAssetsChanged("analytics")}
-                  canManageSession={input.canManageSession}
-                  canUploadAssets={input.canUploadSessionAssets}
-                  assetUploadBlockReason={input.sessionAssetUploadBlockReason}
-                />
+                <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+                  <SessionAssetsPanel
+                    title="PDF Files"
+                    sessionId={input.sessionId}
+                    scope={input.scope}
+                    assetType="analytics_file"
+                    tab="analytics"
+                    accept="application/pdf,.pdf"
+                    buttonLabel="Upload PDF"
+                    assets={tabData.analytics.analyticsFiles}
+                    assetLimit={tabData.analytics.assetLimit}
+                    assetTotalCount={tabData.analytics.assetTotalCount}
+                    emptyMessage="No analytics PDFs uploaded for this session yet."
+                    isLoadingMore={loadingMoreAssetTab === "analytics"}
+                    onLoadMore={() => void loadMoreAssets("analytics")}
+                    onAssetsChanged={() => handleAssetsChanged("analytics")}
+                    canManageSession={input.canManageSession}
+                    canUploadAssets={input.canUploadSessionAssets}
+                    assetUploadBlockReason={input.sessionAssetUploadBlockReason}
+                  />
+                  <SessionGpsFilesPanel
+                    sessionId={input.sessionId}
+                    scope={input.scope}
+                    gpsFiles={tabData.analytics.gpsFiles}
+                    gpsFileTotalCount={tabData.analytics.gpsFileTotalCount}
+                    emptyMessage="No GPS files uploaded for this session yet."
+                    onGpsFilesChanged={() => handleAssetsChanged("analytics")}
+                    canManageSession={input.canManageSession}
+                    canUploadAssets={input.canUploadSessionAssets}
+                    assetUploadBlockReason={input.sessionAssetUploadBlockReason}
+                  />
+                </div>
               ) : (
                 renderPendingTab("analytics")
               )}
