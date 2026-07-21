@@ -8,8 +8,6 @@ import {
   NAVIGATION_SCOPE_ORG_QUERY_KEY,
   NAVIGATION_SCOPE_TEAM_QUERY_KEY,
 } from "@/lib/navigation/constants"
-import { resolveNavigationScope } from "@/lib/navigation/scope"
-import type { ScopeSearchParams } from "@/lib/navigation/types"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 
 type RouteContext = {
@@ -33,16 +31,6 @@ function resolveGpsArtifactKind(value: string | null): GpsArtifactKind | null {
   return null
 }
 
-function buildScopeSearchParams(requestUrl: URL): ScopeSearchParams {
-  const searchParams: ScopeSearchParams = {}
-
-  requestUrl.searchParams.forEach((value, key) => {
-    searchParams[key] = value
-  })
-
-  return searchParams
-}
-
 function buildDownloadFileName(input: {
   fileName: string
   kind: GpsArtifactKind
@@ -62,6 +50,31 @@ function buildDownloadFileName(input: {
   }
 
   return `${baseName}-track.geojson`
+}
+
+function canReadRequestedScope(input: {
+  accessContext: AuthenticatedAccessContext
+  requestedOrgId: string
+  requestedTeamId: string
+}): boolean {
+  if (input.accessContext.effectiveRoles.globalRole === "super_admin") {
+    return true
+  }
+
+  if (
+    input.accessContext.organizationMemberships.some(
+      (membership) =>
+        membership.organization_id === input.requestedOrgId &&
+        membership.role === "organization_admin",
+    )
+  ) {
+    return true
+  }
+
+  return input.accessContext.teamMemberships.some(
+    (membership) =>
+      membership.team_id === input.requestedTeamId && membership.is_active,
+  )
 }
 
 export async function GET(request: Request, context: RouteContext) {
@@ -87,15 +100,12 @@ export async function GET(request: Request, context: RouteContext) {
     return new NextResponse(null, { status: 401 })
   }
 
-  const navigation = await resolveNavigationScope({
-    context: accessContext as AuthenticatedAccessContext,
-    searchParams: buildScopeSearchParams(requestUrl),
-  })
-
   if (
-    !navigation.scope ||
-    navigation.scope.activeOrgId !== requestedOrgId ||
-    navigation.scope.activeTeamId !== requestedTeamId
+    !canReadRequestedScope({
+      accessContext: accessContext as AuthenticatedAccessContext,
+      requestedOrgId,
+      requestedTeamId,
+    })
   ) {
     return new NextResponse(null, { status: 403 })
   }
@@ -111,13 +121,26 @@ export async function GET(request: Request, context: RouteContext) {
     return new NextResponse(null, { status: 404 })
   }
 
-  const { data: sessionRow, error: sessionError } = await supabase
-    .from("sessions")
-    .select("id,camp_id")
-    .eq("id", assetRow.session_id)
-    .maybeSingle()
+  const [
+    { data: sessionRow, error: sessionError },
+    { data: gpsRow, error: gpsError },
+  ] = await Promise.all([
+    supabase
+      .from("sessions")
+      .select("id,camp_id")
+      .eq("id", assetRow.session_id)
+      .maybeSingle(),
+    supabase
+      .from("session_vakaros_uploads")
+      .select(
+        "bucket,raw_storage_path,series_1hz_storage_path,track_geojson_storage_path,summary_storage_path",
+      )
+      .eq("asset_id", assetId)
+      .eq("session_id", assetRow.session_id)
+      .maybeSingle(),
+  ])
 
-  if (sessionError || !sessionRow) {
+  if (sessionError || !sessionRow || gpsError || !gpsRow) {
     return new NextResponse(null, { status: 404 })
   }
 
@@ -161,19 +184,6 @@ export async function GET(request: Request, context: RouteContext) {
   ])
 
   if (teamError || venueError || !teamRow || !venueRow) {
-    return new NextResponse(null, { status: 404 })
-  }
-
-  const { data: gpsRow, error: gpsError } = await supabase
-    .from("session_vakaros_uploads")
-    .select(
-      "bucket,raw_storage_path,series_1hz_storage_path,track_geojson_storage_path,summary_storage_path",
-    )
-    .eq("asset_id", assetId)
-    .eq("session_id", assetRow.session_id)
-    .maybeSingle()
-
-  if (gpsError || !gpsRow) {
     return new NextResponse(null, { status: 404 })
   }
 

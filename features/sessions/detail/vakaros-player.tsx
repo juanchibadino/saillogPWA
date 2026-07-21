@@ -205,6 +205,7 @@ export function VakarosPlayer(input: {
   const [trackMode, setTrackMode] = React.useState<TrackMode>("default")
   const [buoyMode, setBuoyMode] = React.useState<BuoyMode>(null)
   const [isPlaying, setIsPlaying] = React.useState(false)
+  const [isMapReady, setIsMapReady] = React.useState(false)
   const [loadError, setLoadError] = React.useState<string | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   const maxIndex = Math.max(0, series.length - 1)
@@ -276,7 +277,15 @@ export function VakarosPlayer(input: {
   React.useEffect(() => {
     let isMounted = true
 
+    if (isLoading || loadError) {
+      setIsMapReady(false)
+    }
+
     async function initMap() {
+      if (isLoading || loadError) {
+        return
+      }
+
       if (!mapElementRef.current || mapRef.current) {
         return
       }
@@ -319,6 +328,7 @@ export function VakarosPlayer(input: {
         marker.addTo(buoyLayerRef.current)
       })
       mapRef.current = map
+      setIsMapReady(true)
     }
 
     void initMap()
@@ -338,13 +348,13 @@ export function VakarosPlayer(input: {
       buoyLayerRef.current = null
       boatMarkerRef.current = null
     }
-  }, [])
+  }, [isLoading, loadError])
 
   React.useEffect(() => {
     const leaflet = leafletRef.current
     const map = mapRef.current
 
-    if (!leaflet || !map || trackLatLngs.length === 0 || series.length === 0) {
+    if (!isMapReady || !leaflet || !map || trackLatLngs.length === 0 || series.length === 0) {
       return
     }
 
@@ -417,13 +427,13 @@ export function VakarosPlayer(input: {
       padding: [20, 20],
     })
     window.setTimeout(() => map.invalidateSize(), 50)
-  }, [safeTrimEnd, safeTrimStart, series, trackLatLngs, trackMode])
+  }, [isMapReady, safeTrimEnd, safeTrimStart, series, trackLatLngs, trackMode])
 
   React.useEffect(() => {
     const leaflet = leafletRef.current
     const map = mapRef.current
 
-    if (!leaflet || !map || !currentPoint) {
+    if (!isMapReady || !leaflet || !map || !currentPoint) {
       return
     }
 
@@ -466,7 +476,7 @@ export function VakarosPlayer(input: {
         wakeSegment.addTo(wakeLayerRef.current)
       }
     }
-  }, [currentPoint, idx, safeTrimStart, series, trackMode])
+  }, [currentPoint, idx, isMapReady, safeTrimStart, series, trackMode])
 
   React.useEffect(() => {
     if (intervalRef.current) {
