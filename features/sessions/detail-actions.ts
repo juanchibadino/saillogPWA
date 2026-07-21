@@ -28,7 +28,10 @@ import {
   NOTIFICATION_EVENT_TYPES,
   shouldNotifyTextAdded,
 } from "@/features/notifications/core.mjs"
-import { createNotificationsForActiveTeamMembers } from "@/features/notifications/server"
+import {
+  createGearAlertNotificationsForActiveTeamMembers,
+  createNotificationsForActiveTeamMembers,
+} from "@/features/notifications/server"
 import { resolveOrganizationSessionAssetUploadEntitlement } from "@/lib/billing/entitlements"
 import { createAdminSupabaseClient } from "@/lib/supabase/admin"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
@@ -72,6 +75,10 @@ type SessionActionScope = {
   scopeTab?: string
   scopePage?: number
 }
+
+type ServerSupabaseClient = Awaited<ReturnType<typeof createServerSupabaseClient>>
+type TeamGearAlertRow =
+  Database["public"]["Functions"]["get_team_gear_alert_rows"]["Returns"][number]
 
 function logSessionActionTiming(input: {
   error?: string
@@ -3118,7 +3125,7 @@ export async function reorderTeamSetupMetricsAction(formData: FormData): Promise
   )
 }
 
-type SessionGearActionError = "invalid_input" | "forbidden" | "tws_required" | "update_failed"
+type SessionGearActionError = "invalid_input" | "forbidden" | "update_failed"
 
 export type UpdateSessionGearUsageActionResult =
   | {
@@ -3147,7 +3154,6 @@ type UpdateSessionGearUsageMutationResult =
 const SESSION_GEAR_ERROR_MESSAGES: Record<SessionGearActionError, string> = {
   invalid_input: "The submitted gear selection is invalid. Review the form and try again.",
   forbidden: "You do not have permission to manage gear in the active scope.",
-  tws_required: "Select at least one TWS option in Session Setup before linking gear.",
   update_failed: "Could not update session gear. Confirm permissions and try again.",
 }
 
@@ -3162,6 +3168,56 @@ function buildSessionGearUsageActionError(input: {
     message: SESSION_GEAR_ERROR_MESSAGES[input.error],
     scope: input.scope,
     sessionId: input.sessionId,
+  }
+}
+
+function isGearAlertNotificationRow(
+  row: TeamGearAlertRow,
+): row is TeamGearAlertRow & { alert_state: "warning" | "critical" } {
+  return row.alert_state === "warning" || row.alert_state === "critical"
+}
+
+async function persistGearAlertNotificationsForLinkedGear(input: {
+  actorProfileId: string
+  gearItemIds: string[]
+  orgId: string
+  supabase: ServerSupabaseClient
+  teamId: string
+}): Promise<void> {
+  if (input.gearItemIds.length === 0) {
+    return
+  }
+
+  try {
+    const { data, error } = await input.supabase.rpc("get_team_gear_alert_rows", {
+      p_gear_item_ids: input.gearItemIds,
+      p_team_id: input.teamId,
+    })
+
+    if (error) {
+      console.warn("Failed to load linked gear alert state", error)
+      return
+    }
+
+    const gearAlerts = (data ?? [])
+      .filter(isGearAlertNotificationRow)
+      .map((row) => ({
+        alertState: row.alert_state,
+        gearItemId: row.gear_item_id,
+        gearName: row.name,
+        triggeredAlertCount: Number(row.triggered_alert_count),
+        usageCount: Number(row.usage_count),
+        usageMinutes: Number(row.usage_minutes),
+      }))
+
+    await createGearAlertNotificationsForActiveTeamMembers({
+      actorProfileId: input.actorProfileId,
+      gearAlerts,
+      orgId: input.orgId,
+      teamId: input.teamId,
+    })
+  } catch (error) {
+    console.warn("Failed to persist linked gear alert notifications", error)
   }
 }
 
@@ -3246,20 +3302,6 @@ async function updateSessionGearUsageMutation(
         sessionId: parsedInput.data.sessionId,
       })
     }
-
-    const hasSavedTwsSelection = await sessionHasSavedTwsSelection({
-      sessionId: parsedInput.data.sessionId,
-      supabase,
-      teamId: scope.scopeTeamId,
-    })
-
-    if (hasSavedTwsSelection !== true) {
-      return buildSessionGearUsageActionError({
-        error: hasSavedTwsSelection === null ? "update_failed" : "tws_required",
-        scope,
-        sessionId: parsedInput.data.sessionId,
-      })
-    }
   }
 
   const { error: updateGearUsageError } = await supabase.rpc("replace_session_gear_usage_atomic", {
@@ -3276,6 +3318,14 @@ async function updateSessionGearUsageMutation(
       sessionId: parsedInput.data.sessionId,
     })
   }
+
+  await persistGearAlertNotificationsForLinkedGear({
+    actorProfileId: context.user.id,
+    gearItemIds: parsedInput.data.gearItemIds,
+    orgId: scope.scopeOrgId,
+    supabase,
+    teamId: scope.scopeTeamId,
+  })
 
   revalidateSessionSlices({
     sessionId: parsedInput.data.sessionId,
@@ -3361,7 +3411,7 @@ export async function updateSessionGearUsageAction(formData: FormData): Promise<
     if (!result.sessionId) {
       redirect(
         buildTeamSessionsRedirectPath({
-          error: result.error === "tws_required" ? "invalid_input" : result.error,
+          error: result.error,
           ...result.scope,
         }),
       )

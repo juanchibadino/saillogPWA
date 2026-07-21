@@ -12,6 +12,7 @@ import {
   buildSessionReviewFieldLabel,
   buildSessionUpdateMessage,
   formatActorName,
+  getNotificationEventTitle,
   formatSessionLabel,
   joinCampNames,
   shouldNotifyTextAdded,
@@ -54,8 +55,22 @@ test("builds final human notification copy", () => {
       gearName: "Sail SN1020",
       alertState: "warning",
     }),
-    "Sail SN1020 is in warning mode. Review the Gear thresholds.",
+    "Sail SN1020 is past due and needs review.",
   )
+  assert.equal(
+    buildGearAlertMessage({
+      gearName: "Sail SN1020",
+      alertState: "critical",
+    }),
+    "Sail SN1020 is approaching its usage limit.",
+  )
+})
+
+test("builds notification titles with Gear threshold naming", () => {
+  assert.equal(getNotificationEventTitle("gear_critical"), "Gear near limit")
+  assert.equal(getNotificationEventTitle("gear_warning"), "Gear past due")
+  assert.equal(getNotificationEventTitle("session_review_added"), "Session update")
+  assert.equal(getNotificationEventTitle("unknown"), "Notification")
 })
 
 test("builds scoped target hrefs for camp session and assessment notifications", () => {

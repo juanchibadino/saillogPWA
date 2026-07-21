@@ -1,8 +1,25 @@
 # PROGRESS.md
 
-Last updated: 2026-07-18
+Last updated: 2026-07-21
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
+
+## 2026-07-21 - Team Gear threshold naming and alerts
+
+- Updated `/team-gear` threshold editing so each item rule is grouped by metric
+  with required `Past Due at` and optional `Near Limit starts at`; removed the
+  item-level `Refurb only` rule flag from UI, payloads, validation, and types.
+- Reworked Gear alert display so `critical` remains the internal Near Limit
+  state, `warning` remains the internal Past Due state, Past Due wins in Gear
+  RPCs, and progress bars max/cap against the Past Due threshold.
+- Updated Gear notification titles/messages to `Gear near limit` and
+  `Gear past due`, plus migration cleanup for existing persisted notification
+  copy and the deprecated `gear_alert_rules.is_refurbished_rule` column.
+- Validation: `node --test features/gear/action-core.test.mjs
+  features/gear/data-results-core.test.mjs features/gear/progress-core.test.mjs
+  features/notifications/core.test.mjs`, `npm run lint`,
+  `npx tsc --noEmit`, `npm run build`, `npm test`, and `git diff --check`
+  passed.
 
 ## 2026-07-18 - Sign-in Google option removal
 

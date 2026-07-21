@@ -12,6 +12,7 @@ import {
   type TeamGearTwsOption,
 } from "@/features/gear/shared"
 import { buildTeamGearPageHref } from "@/features/gear/list-route-state.mjs"
+import { buildGearProgressModel } from "@/features/gear/progress-core.mjs"
 import { GearActionsMenu } from "@/features/gear/gear-form-dialogs"
 import type { NavigationScope } from "@/lib/navigation/types"
 import { cn } from "@/lib/utils"
@@ -88,64 +89,9 @@ type GearProgressModel = {
   indicatorClassName: string
 }
 
-function getRuleUsageValue(gearItem: TeamGearListItem, rule: GearProgressRule): number {
-  return rule.metric === "usage_minutes" ? gearItem.usageMinutes : gearItem.usageCount
-}
-
-function isRuleApplicable(gearItem: TeamGearListItem, rule: GearProgressRule): boolean {
-  return !rule.isRefurbishedRule || gearItem.condition === "refurbished"
-}
-
-function getProgressIndicatorClassName(
-  alertState: TeamGearListItem["alertState"],
-): string {
-  if (alertState === "critical") {
-    return "bg-amber-400"
-  }
-
-  if (alertState === "warning") {
-    return "bg-red-500"
-  }
-
-  return "bg-emerald-500"
-}
-
-function buildGearProgressModel(gearItem: TeamGearListItem): GearProgressModel {
-  let selectedRule: GearProgressRule | null = null
-  let selectedUsageValue = 0
-  let selectedRatio = 0
-
-  for (const rule of gearItem.alertRules) {
-    if (!isRuleApplicable(gearItem, rule) || rule.thresholdValue <= 0) {
-      continue
-    }
-
-    const usageValue = getRuleUsageValue(gearItem, rule)
-    const ratio = usageValue / rule.thresholdValue
-
-    if (!selectedRule || ratio > selectedRatio) {
-      selectedRule = rule
-      selectedUsageValue = usageValue
-      selectedRatio = ratio
-    }
-  }
-
-  const rawPercent = selectedRule ? selectedRatio * 100 : 0
-  const visualPercent = Math.min(100, Math.max(0, rawPercent))
-
-  return {
-    rule: selectedRule,
-    usageValue: selectedUsageValue,
-    thresholdValue: selectedRule?.thresholdValue ?? 0,
-    rawPercent,
-    visualPercent,
-    indicatorClassName: getProgressIndicatorClassName(gearItem.alertState),
-  }
-}
-
 function GearUsageProgress({ gearItem }: { gearItem: TeamGearListItem }) {
-  const model = buildGearProgressModel(gearItem)
-  const progressLabel = model.rule ? formatPercent(model.rawPercent) : "0%"
+  const model = buildGearProgressModel(gearItem) as GearProgressModel
+  const progressLabel = model.rule ? formatPercent(model.visualPercent) : "0%"
   const ariaLabel = model.rule
     ? `${gearItem.name} usage ${progressLabel}.`
     : `${gearItem.name} usage. No threshold configured.`

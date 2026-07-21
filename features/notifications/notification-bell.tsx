@@ -15,6 +15,8 @@ type NotificationBellProps = {
   className?: string
 }
 
+const NOTIFICATION_ACTIONS_MENU_SELECTOR = "[data-notification-actions-menu]"
+
 export function NotificationBell({
   initialData,
   notificationsHref,
@@ -35,10 +37,19 @@ export function NotificationBell({
     }
 
     function handlePointerDown(event: PointerEvent): void {
+      const target = event.target
+
+      if (
+        target instanceof Element &&
+        target.closest(NOTIFICATION_ACTIONS_MENU_SELECTOR)
+      ) {
+        return
+      }
+
       if (
         wrapperRef.current &&
-        event.target instanceof Node &&
-        !wrapperRef.current.contains(event.target)
+        target instanceof Node &&
+        !wrapperRef.current.contains(target)
       ) {
         setIsOpen(false)
       }

@@ -62,13 +62,13 @@ type GearTypeOption = { value: string; label: string }
 type GearStatusOption = { value: string; label: string }
 type GearConditionOption = { value: string; label: string }
 type GearFormSurface = "drawer" | "sheet"
+type GearRuleMetric = TeamGearListItem["alertRules"][number]["metric"]
 
 type GearRuleDraft = {
   draftKey: string
-  metric: "usage_count" | "usage_minutes"
-  severity: "warning" | "critical"
-  thresholdValue: number
-  isRefurbishedRule: boolean
+  metric: GearRuleMetric
+  pastDueThresholdValue: number
+  nearLimitThresholdValue: number | null
 }
 
 type GearFormInitialValues = {
@@ -128,6 +128,23 @@ const SUPPORTED_BARCODE_FORMATS = [
   "upc_a",
   "upc_e",
 ] as const
+
+const GEAR_RULE_METRIC_OPTIONS: Array<{
+  value: GearRuleMetric
+  label: string
+  defaultPastDueThresholdValue: number
+}> = [
+  {
+    value: "usage_minutes",
+    label: "Minutes",
+    defaultPastDueThresholdValue: 60,
+  },
+  {
+    value: "usage_count",
+    label: "Times Used",
+    defaultPastDueThresholdValue: 10,
+  },
+]
 
 function getBarcodeDetectorConstructor(): BarcodeDetectorConstructorLike | null {
   if (typeof window === "undefined") {
@@ -359,16 +376,6 @@ function BarcodeScannerDialog({
   )
 }
 
-function mapRulesForDraft(rules: TeamGearAlertRuleItem[]): GearRuleDraft[] {
-  return rules.map((rule) => ({
-    draftKey: rule.id,
-    metric: rule.metric,
-    severity: rule.severity,
-    thresholdValue: rule.thresholdValue,
-    isRefurbishedRule: rule.isRefurbishedRule,
-  }))
-}
-
 let nextRuleDraftId = 0
 
 function createRuleDraftKey(): string {
@@ -377,18 +384,114 @@ function createRuleDraftKey(): string {
   return `new-rule-${nextRuleDraftId}`
 }
 
-function createDefaultRule(): GearRuleDraft {
+function getMetricLabel(metric: GearRuleMetric): string {
+  return (
+    GEAR_RULE_METRIC_OPTIONS.find((option) => option.value === metric)?.label ??
+    "Usage"
+  )
+}
+
+function getDefaultPastDueThresholdValue(metric: GearRuleMetric): number {
+  return (
+    GEAR_RULE_METRIC_OPTIONS.find((option) => option.value === metric)
+      ?.defaultPastDueThresholdValue ?? 10
+  )
+}
+
+function mapRulesForDraft(rules: TeamGearAlertRuleItem[]): GearRuleDraft[] {
+  const draftsByMetric = new Map<
+    GearRuleMetric,
+    {
+      draftKey: string
+      metric: GearRuleMetric
+      pastDueThresholdValue: number | null
+      nearLimitThresholdValue: number | null
+    }
+  >()
+
+  for (const rule of rules) {
+    const existingDraft = draftsByMetric.get(rule.metric) ?? {
+      draftKey: rule.id,
+      metric: rule.metric,
+      pastDueThresholdValue: null,
+      nearLimitThresholdValue: null,
+    }
+
+    if (rule.severity === "warning") {
+      existingDraft.pastDueThresholdValue =
+        existingDraft.pastDueThresholdValue === null
+          ? rule.thresholdValue
+          : Math.min(existingDraft.pastDueThresholdValue, rule.thresholdValue)
+    } else {
+      existingDraft.nearLimitThresholdValue =
+        existingDraft.nearLimitThresholdValue === null
+          ? rule.thresholdValue
+          : Math.max(existingDraft.nearLimitThresholdValue, rule.thresholdValue)
+    }
+
+    draftsByMetric.set(rule.metric, existingDraft)
+  }
+
+  return GEAR_RULE_METRIC_OPTIONS.flatMap((option) => {
+    const draft = draftsByMetric.get(option.value)
+
+    if (!draft) {
+      return []
+    }
+
+    const pastDueThresholdValue =
+      draft.pastDueThresholdValue ??
+      draft.nearLimitThresholdValue ??
+      getDefaultPastDueThresholdValue(draft.metric)
+    const nearLimitThresholdValue =
+      draft.pastDueThresholdValue !== null &&
+      draft.nearLimitThresholdValue !== null &&
+      draft.nearLimitThresholdValue < pastDueThresholdValue
+        ? draft.nearLimitThresholdValue
+        : null
+
+    return [
+      {
+        draftKey: draft.draftKey,
+        metric: draft.metric,
+        pastDueThresholdValue,
+        nearLimitThresholdValue,
+      },
+    ]
+  })
+}
+
+function createDefaultRule(existingRules: GearRuleDraft[]): GearRuleDraft | null {
+  const usedMetrics = new Set(existingRules.map((rule) => rule.metric))
+  const nextMetric = GEAR_RULE_METRIC_OPTIONS.find(
+    (option) => !usedMetrics.has(option.value),
+  )?.value
+
+  if (!nextMetric) {
+    return null
+  }
+
   return {
     draftKey: createRuleDraftKey(),
-    metric: "usage_minutes",
-    severity: "warning",
-    thresholdValue: 60,
-    isRefurbishedRule: false,
+    metric: nextMetric,
+    pastDueThresholdValue: getDefaultPastDueThresholdValue(nextMetric),
+    nearLimitThresholdValue: null,
   }
 }
 
 function hasInvalidRule(rule: GearRuleDraft): boolean {
-  return !Number.isInteger(rule.thresholdValue) || rule.thresholdValue <= 0
+  return (
+    !Number.isInteger(rule.pastDueThresholdValue) ||
+    rule.pastDueThresholdValue <= 0 ||
+    (rule.nearLimitThresholdValue !== null &&
+      (!Number.isInteger(rule.nearLimitThresholdValue) ||
+        rule.nearLimitThresholdValue <= 0 ||
+        rule.nearLimitThresholdValue >= rule.pastDueThresholdValue))
+  )
+}
+
+function hasDuplicateRuleMetrics(rules: GearRuleDraft[]): boolean {
+  return new Set(rules.map((rule) => rule.metric)).size !== rules.length
 }
 
 function GearDialogFields({
@@ -565,6 +668,7 @@ function GearDialogForm({
     gearType.length > 0 &&
     status.length > 0 &&
     condition.length > 0 &&
+    !hasDuplicateRuleMetrics(alertRules) &&
     alertRules.every((rule) => !hasInvalidRule(rule))
   const isDrawerSurface = surface === "drawer"
   const inputClassName = isDrawerSurface ? "h-11 px-3 text-base md:text-sm" : undefined
@@ -578,6 +682,7 @@ function GearDialogForm({
     "h-11 w-full rounded-lg border border-input bg-background px-3 text-base outline-none ring-ring/50 focus-visible:ring-[3px] md:text-sm"
   const ruleDeleteButtonClassName =
     "h-11 w-11 shrink-0 border border-red-500/20 bg-red-500/10 text-red-600 hover:bg-red-500/15 hover:text-red-700 dark:border-red-400/25 dark:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/20"
+  const canAddRule = alertRules.length < GEAR_RULE_METRIC_OPTIONS.length
 
   return (
     <form action={action} className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -606,9 +711,8 @@ function GearDialogForm({
         value={JSON.stringify(
           alertRules.map((rule) => ({
             metric: rule.metric,
-            severity: rule.severity,
-            thresholdValue: rule.thresholdValue,
-            isRefurbishedRule: rule.isRefurbishedRule,
+            pastDueThresholdValue: rule.pastDueThresholdValue,
+            nearLimitThresholdValue: rule.nearLimitThresholdValue,
           })),
         )}
       />
@@ -722,136 +826,167 @@ function GearDialogForm({
         <div className="space-y-3 rounded-lg border p-4">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <h4 className="text-sm font-semibold">Threshold Rules</h4>
+              <h4 className="text-sm font-semibold">Usage Thresholds</h4>
             </div>
             <Button
               type="button"
               size="sm"
               variant="outline"
               className={compactButtonClassName}
+              disabled={!canAddRule}
               onClick={() => {
-                setAlertRules((existingRules) => [...existingRules, createDefaultRule()])
+                setAlertRules((existingRules) => {
+                  const nextRule = createDefaultRule(existingRules)
+
+                  return nextRule ? [...existingRules, nextRule] : existingRules
+                })
               }}
             >
               <PlusIcon className="size-4" />
-              Rule
+              Threshold
             </Button>
           </div>
 
           {alertRules.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No rules configured. This item will never show alerts.
+              No thresholds configured. This item will stay OK.
             </p>
           ) : (
             <div className="space-y-3">
-              {alertRules.map((rule, index) => (
-                <div
-                  key={rule.draftKey}
-                  className="space-y-3 rounded-md border p-3"
-                >
-                  <div className="space-y-1">
-                    <Label className="text-xs">Metric</Label>
-                    <select
-                      value={rule.metric}
-                      onChange={(event) => {
-                        const nextMetric = event.target.value as GearRuleDraft["metric"]
-                        setAlertRules((existingRules) => {
-                          const nextRules = [...existingRules]
-                          nextRules[index] = {
-                            ...nextRules[index],
-                            metric: nextMetric,
-                          }
-                          return nextRules
-                        })
-                      }}
-                      className={ruleSelectClassName}
-                    >
-                      <option value="usage_minutes">Minutes</option>
-                      <option value="usage_count">Times Used</option>
-                    </select>
-                  </div>
+              {alertRules.map((rule, index) => {
+                const usedMetrics = new Set(
+                  alertRules
+                    .filter((_, ruleIndex) => ruleIndex !== index)
+                    .map((existingRule) => existingRule.metric),
+                )
+                const nearLimitInputId = `${idPrefix}-threshold-${rule.draftKey}-near-limit`
+                const pastDueInputId = `${idPrefix}-threshold-${rule.draftKey}-past-due`
+                const metricInputId = `${idPrefix}-threshold-${rule.draftKey}-metric`
 
-                  <div className="space-y-1">
-                    <Label className="text-xs">Severity</Label>
-                    <select
-                      value={rule.severity}
-                      onChange={(event) => {
-                        const nextSeverity = event.target.value as GearRuleDraft["severity"]
-                        setAlertRules((existingRules) => {
-                          const nextRules = [...existingRules]
-                          nextRules[index] = {
-                            ...nextRules[index],
-                            severity: nextSeverity,
-                          }
-                          return nextRules
-                        })
-                      }}
-                      className={ruleSelectClassName}
-                    >
-                      <option value="warning">Warning</option>
-                      <option value="critical">Critical</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <Label className="text-xs">Threshold</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={String(rule.thresholdValue)}
-                      onChange={(event) => {
-                        const nextValue = Number.parseInt(event.target.value, 10)
-
-                        setAlertRules((existingRules) => {
-                          const nextRules = [...existingRules]
-                          nextRules[index] = {
-                            ...nextRules[index],
-                            thresholdValue: Number.isFinite(nextValue) ? nextValue : 0,
-                          }
-                          return nextRules
-                        })
-                      }}
-                      className={ruleInputClassName}
-                    />
-                  </div>
-
-                  <div className="flex min-h-11 items-center justify-between gap-3">
-                    <label className="inline-flex min-w-0 items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={rule.isRefurbishedRule}
+                return (
+                  <div key={rule.draftKey} className="space-y-3 rounded-md border p-3">
+                    <div className="space-y-1">
+                      <Label htmlFor={metricInputId} className="text-xs">
+                        Metric
+                      </Label>
+                      <select
+                        id={metricInputId}
+                        value={rule.metric}
                         onChange={(event) => {
+                          const nextMetric = event.target.value as GearRuleMetric
+
                           setAlertRules((existingRules) => {
                             const nextRules = [...existingRules]
                             nextRules[index] = {
                               ...nextRules[index],
-                              isRefurbishedRule: event.target.checked,
+                              metric: nextMetric,
+                              pastDueThresholdValue:
+                                nextRules[index]?.pastDueThresholdValue ??
+                                getDefaultPastDueThresholdValue(nextMetric),
                             }
                             return nextRules
                           })
                         }}
-                        className="size-4 rounded border-input"
-                      />
-                      <span>Refurb only</span>
-                    </label>
+                        className={ruleSelectClassName}
+                      >
+                        {GEAR_RULE_METRIC_OPTIONS.map((option) => (
+                          <option
+                            key={option.value}
+                            value={option.value}
+                            disabled={usedMetrics.has(option.value)}
+                          >
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className={ruleDeleteButtonClassName}
-                      aria-label={`Remove rule ${index + 1}`}
-                      onClick={() => {
-                        setAlertRules((existingRules) =>
-                          existingRules.filter((_, ruleIndex) => ruleIndex !== index),
-                        )
-                      }}
-                    >
-                      <Trash2Icon className="size-4" />
-                    </Button>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label htmlFor={pastDueInputId} className="text-xs">
+                          Past Due at
+                        </Label>
+                        <Input
+                          id={pastDueInputId}
+                          type="number"
+                          min={1}
+                          value={String(rule.pastDueThresholdValue)}
+                          onChange={(event) => {
+                            const nextValue = Number.parseInt(event.target.value, 10)
+
+                            setAlertRules((existingRules) => {
+                              const nextRules = [...existingRules]
+                              nextRules[index] = {
+                                ...nextRules[index],
+                                pastDueThresholdValue: Number.isFinite(nextValue)
+                                  ? nextValue
+                                  : 0,
+                              }
+                              return nextRules
+                            })
+                          }}
+                          className={ruleInputClassName}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label htmlFor={nearLimitInputId} className="text-xs">
+                          Near Limit starts at
+                        </Label>
+                        <Input
+                          id={nearLimitInputId}
+                          type="number"
+                          min={1}
+                          value={
+                            rule.nearLimitThresholdValue === null
+                              ? ""
+                              : String(rule.nearLimitThresholdValue)
+                          }
+                          onChange={(event) => {
+                            const rawValue = event.target.value
+                            const nextValue =
+                              rawValue.length > 0 ? Number.parseInt(rawValue, 10) : null
+
+                            setAlertRules((existingRules) => {
+                              const nextRules = [...existingRules]
+                              nextRules[index] = {
+                                ...nextRules[index],
+                                nearLimitThresholdValue:
+                                  nextValue !== null && Number.isFinite(nextValue)
+                                    ? nextValue
+                                    : null,
+                              }
+                              return nextRules
+                            })
+                          }}
+                          placeholder="Optional"
+                          className={ruleInputClassName}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex min-h-11 items-center justify-between gap-3">
+                      <p className="truncate text-xs text-muted-foreground">
+                        {getMetricLabel(rule.metric)}
+                      </p>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className={ruleDeleteButtonClassName}
+                        aria-label={`Remove rule ${index + 1}`}
+                        onClick={() => {
+                          setAlertRules((existingRules) =>
+                            existingRules.filter((_, ruleIndex) => ruleIndex !== index),
+                          )
+                        }}
+                      >
+                        <Trash2Icon className="size-4" />
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

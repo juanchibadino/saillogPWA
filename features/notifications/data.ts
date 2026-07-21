@@ -2,16 +2,12 @@ import "server-only"
 
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
-import {
-  buildGearAlertMessage,
-  buildScopedNotificationHref,
-  NOTIFICATION_EVENT_TYPES,
-} from "@/features/notifications/core.mjs"
+import { createGearAlertNotificationsForActiveTeamMembers } from "@/features/notifications/server"
 import type { Database } from "@/types/database"
 
 type NotificationRow = Database["public"]["Tables"]["notifications"]["Row"]
-type TeamGearListRow =
-  Database["public"]["Functions"]["get_team_gear_list_rows"]["Returns"][number]
+type TeamGearAlertRow =
+  Database["public"]["Functions"]["get_team_gear_alert_rows"]["Returns"][number]
 type ServerSupabaseClient = Awaited<ReturnType<typeof createServerSupabaseClient>>
 
 export type NotificationListItem = {
@@ -22,7 +18,6 @@ export type NotificationListItem = {
   metadata: NotificationRow["metadata"]
   readAt: string | null
   createdAt: string
-  source: "persisted" | "gear_alert"
 }
 
 export type NotificationCenterData = {
@@ -47,107 +42,53 @@ function toNotificationListItem(row: NotificationRow): NotificationListItem {
     metadata: row.metadata,
     readAt: row.read_at,
     createdAt: row.created_at,
-    source: "persisted",
   }
 }
 
 function isGearAlertRow(
-  row: TeamGearListRow,
-): row is TeamGearListRow & { alert_state: "warning" | "critical" } {
+  row: TeamGearAlertRow,
+): row is TeamGearAlertRow & { alert_state: "warning" | "critical" } {
   return row.alert_state === "warning" || row.alert_state === "critical"
 }
 
-function mapGearAlertNotification(input: {
-  row: TeamGearListRow & { alert_state: "warning" | "critical" }
-  activeOrgId: string
-  activeTeamId: string
-  createdAt: string
-}): NotificationListItem {
-  const metadata: NotificationRow["metadata"] = {
-    alertState: input.row.alert_state,
-    gearItemId: input.row.gear_item_id,
-    triggeredAlertCount: Number(input.row.triggered_alert_count),
-    usageCount: Number(input.row.usage_count),
-    usageMinutes: Number(input.row.usage_minutes),
-  }
-
-  return {
-    id: `gear-alert:${input.activeTeamId}:${input.row.gear_item_id}:${input.row.alert_state}`,
-    eventType:
-      input.row.alert_state === "critical"
-        ? NOTIFICATION_EVENT_TYPES.GEAR_CRITICAL
-        : NOTIFICATION_EVENT_TYPES.GEAR_WARNING,
-    message: buildGearAlertMessage({
-      gearName: input.row.name,
-      alertState: input.row.alert_state,
-    }),
-    targetHref: buildScopedNotificationHref({
-      pathname: "/team-gear",
-      orgId: input.activeOrgId,
-      teamId: input.activeTeamId,
-      extraParams: {
-        alert: input.row.alert_state,
-      },
-    }),
-    metadata,
-    readAt: input.createdAt,
-    createdAt: input.createdAt,
-    source: "gear_alert",
-  }
-}
-
-async function getActiveGearAlertNotifications(input: {
-  supabase: ServerSupabaseClient
+async function syncActiveGearAlertNotifications(input: {
   activeOrgId?: string | null
   activeTeamId?: string | null
-}): Promise<NotificationListItem[]> {
+  supabase: ServerSupabaseClient
+}): Promise<void> {
   const activeOrgId = input.activeOrgId
   const activeTeamId = input.activeTeamId
 
   if (!activeOrgId || !activeTeamId) {
-    return []
+    return
   }
 
-  const baseArgs = {
+  const { data, error } = await input.supabase.rpc("get_team_gear_alert_rows", {
+    p_gear_item_ids: null,
     p_team_id: activeTeamId,
-    p_type: null,
-    p_status: null,
-    p_condition: null,
-    p_limit: 8,
-    p_offset: 0,
-  }
-  const [criticalResult, warningResult] = await Promise.all([
-    input.supabase.rpc("get_team_gear_list_rows", {
-      ...baseArgs,
-      p_alert: "critical",
-    }),
-    input.supabase.rpc("get_team_gear_list_rows", {
-      ...baseArgs,
-      p_alert: "warning",
-    }),
-  ])
+  })
 
-  if (criticalResult.error) {
-    throw new Error(`Could not load critical gear alerts: ${criticalResult.error.message}`)
+  if (error) {
+    throw new Error(`Could not sync gear alerts: ${error.message}`)
   }
 
-  if (warningResult.error) {
-    throw new Error(`Could not load warning gear alerts: ${warningResult.error.message}`)
-  }
-
-  const createdAt = new Date().toISOString()
-  const rows = [...(criticalResult.data ?? []), ...(warningResult.data ?? [])]
-
-  return rows
+  const gearAlerts = (data ?? [])
     .filter(isGearAlertRow)
-    .map((row) =>
-      mapGearAlertNotification({
-        row,
-        activeOrgId,
-        activeTeamId,
-        createdAt,
-      }),
-    )
+    .map((row) => ({
+      alertState: row.alert_state,
+      gearItemId: row.gear_item_id,
+      gearName: row.name,
+      triggeredAlertCount: Number(row.triggered_alert_count),
+      usageCount: Number(row.usage_count),
+      usageMinutes: Number(row.usage_minutes),
+    }))
+
+  await createGearAlertNotificationsForActiveTeamMembers({
+    actorProfileId: null,
+    gearAlerts,
+    orgId: activeOrgId,
+    teamId: activeTeamId,
+  })
 }
 
 export function getEmptyNotificationCenterData(): NotificationCenterData {
@@ -171,6 +112,17 @@ export async function getNotificationCenterData(
 
   const supabase = await createServerSupabaseClient()
   const limit = Math.max(1, Math.min(input.limit ?? 30, 100))
+
+  try {
+    await syncActiveGearAlertNotifications({
+      activeOrgId: input.activeOrgId,
+      activeTeamId: input.activeTeamId,
+      supabase,
+    })
+  } catch (error) {
+    console.warn("Failed to sync gear alert notifications", error)
+  }
+
   let query = supabase
     .from("notifications")
     .select("*")
@@ -192,25 +144,9 @@ export async function getNotificationCenterData(
       .is("deleted_at", null)
       .is("read_at", null),
   ])
-  let activeGearAlertNotifications: NotificationListItem[] = []
-
-  if (!input.unreadOnly) {
-    try {
-      activeGearAlertNotifications = await getActiveGearAlertNotifications({
-        supabase,
-        activeOrgId: input.activeOrgId,
-        activeTeamId: input.activeTeamId,
-      })
-    } catch (error) {
-      console.error("Failed to load gear alert notifications", error)
-    }
-  }
 
   return {
-    notifications: [
-      ...activeGearAlertNotifications,
-      ...(notifications ?? []).map(toNotificationListItem),
-    ].slice(0, limit),
+    notifications: (notifications ?? []).map(toNotificationListItem),
     unreadCount: unreadCount ?? 0,
   }
 }

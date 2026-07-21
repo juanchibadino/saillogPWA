@@ -282,6 +282,10 @@ function buildInitialCampDetailTabResponse(input: {
     return null
   }
 
+  if (!isCampDetailTabPayload(input.initialTabData, input.initialTab)) {
+    return null
+  }
+
   return {
     cache: input.cache,
     data: input.initialTabData,
@@ -673,7 +677,16 @@ export function CampDetailTabsClient({
 
   const retrySelectedTab = routeData.retry
 
-  const selectedPayload = routeData.data ?? selectedInitialPayload
+  const selectedRoutePayload =
+    routeData.data &&
+    isValidCampDetailTabResponse({
+      expectedCache: selectedTabCache,
+      expectedTab: selectedTab,
+      payload: routeData.data,
+    })
+      ? routeData.data
+      : null
+  const selectedPayload = selectedRoutePayload ?? selectedInitialPayload
   const selectedTabData = selectedPayload?.data ?? null
   const notesDataFromRoute =
     selectedTab === "notes" && selectedTabData

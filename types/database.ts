@@ -998,7 +998,6 @@ export type Database = {
           metric: Database["public"]["Enums"]["gear_alert_metric"];
           severity: Database["public"]["Enums"]["gear_alert_severity"];
           threshold_value: number;
-          is_refurbished_rule: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -1008,7 +1007,6 @@ export type Database = {
           metric: Database["public"]["Enums"]["gear_alert_metric"];
           severity: Database["public"]["Enums"]["gear_alert_severity"];
           threshold_value: number;
-          is_refurbished_rule?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -1018,7 +1016,6 @@ export type Database = {
           metric?: Database["public"]["Enums"]["gear_alert_metric"];
           severity?: Database["public"]["Enums"]["gear_alert_severity"];
           threshold_value?: number;
-          is_refurbished_rule?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -1674,6 +1671,22 @@ export type Database = {
           session_type: Database["public"]["Enums"]["session_type"];
           session_date: string;
           total_count: number;
+        }[];
+      };
+      get_team_gear_alert_rows: {
+        Args: {
+          p_gear_item_ids?: string[] | null;
+          p_team_id: string;
+        };
+        Returns: {
+          gear_item_id: string;
+          team_id: string;
+          name: string;
+          gear_type: Database["public"]["Enums"]["gear_type"];
+          usage_count: number;
+          usage_minutes: number;
+          alert_state: Database["public"]["Enums"]["gear_alert_state"];
+          triggered_alert_count: number;
         }[];
       };
       get_team_gear_list_rows: {

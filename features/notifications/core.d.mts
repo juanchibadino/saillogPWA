@@ -47,6 +47,8 @@ export function buildAssessmentRequestMessage(input: {
   campNames: string
 }): string
 
+export function getNotificationEventTitle(eventType: string): string
+
 export function buildGearAlertMessage(input: {
   gearName: string
   alertState: "warning" | "critical"

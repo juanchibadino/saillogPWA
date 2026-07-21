@@ -1,9 +1,16 @@
 import "server-only"
 
 import { createAdminSupabaseClient } from "@/lib/supabase/admin"
+import {
+  buildGearAlertNotificationRowsForRecipients,
+  getUniqueTeamRecipientIds,
+  isGearAlertNotificationState,
+} from "@/features/notifications/gear-alert-core.mjs"
 import type { Database, Json } from "@/types/database"
 
 type NotificationEventType = Database["public"]["Enums"]["notification_event_type"]
+type NotificationInsert = Database["public"]["Tables"]["notifications"]["Insert"]
+type GearAlertNotificationState = "warning" | "critical"
 
 type CreateNotificationsInput = {
   recipientProfileIds: string[]
@@ -20,6 +27,20 @@ type CreateTeamNotificationsInput = Omit<
   "recipientProfileIds"
 > & {
   excludeProfileId?: string
+}
+
+type CreateGearAlertNotificationsInput = {
+  actorProfileId?: string | null
+  gearAlerts: Array<{
+    alertState: GearAlertNotificationState
+    gearItemId: string
+    gearName: string
+    triggeredAlertCount: number
+    usageCount: number
+    usageMinutes: number
+  }>
+  orgId: string
+  teamId: string
 }
 
 function uniqueRecipientIds(
@@ -101,5 +122,74 @@ export async function createNotificationsForActiveTeamMembers(
     })
   } catch (error) {
     console.error("Failed to create team notifications", error)
+  }
+}
+
+export async function createGearAlertNotificationsForActiveTeamMembers(
+  input: CreateGearAlertNotificationsInput,
+): Promise<void> {
+  const alertRows = input.gearAlerts.filter(
+    (alert) => isGearAlertNotificationState(alert.alertState),
+  )
+
+  if (alertRows.length === 0) {
+    return
+  }
+
+  try {
+    const adminSupabase = createAdminSupabaseClient()
+    const { data: memberships, error: membershipsError } = await adminSupabase
+      .from("team_memberships")
+      .select("profile_id")
+      .eq("team_id", input.teamId)
+      .eq("is_active", true)
+
+    if (membershipsError) {
+      console.warn("Failed to load gear alert notification recipients", membershipsError)
+      return
+    }
+
+    const recipientProfileIds = getUniqueTeamRecipientIds(
+      memberships?.map((membership) => membership.profile_id) ?? [],
+    )
+
+    if (recipientProfileIds.length === 0) {
+      return
+    }
+
+    const { data: existingRows, error: existingRowsError } = await adminSupabase
+      .from("notifications")
+      .select("recipient_profile_id,event_type,metadata")
+      .eq("team_id", input.teamId)
+      .in("recipient_profile_id", recipientProfileIds)
+
+    if (existingRowsError) {
+      console.warn("Failed to load existing gear alert notifications", existingRowsError)
+      return
+    }
+
+    const notificationRows: NotificationInsert[] =
+      buildGearAlertNotificationRowsForRecipients({
+        actorProfileId: input.actorProfileId,
+        existingRows: existingRows ?? [],
+        gearAlerts: alertRows,
+        orgId: input.orgId,
+        recipientProfileIds,
+        teamId: input.teamId,
+      })
+
+    if (notificationRows.length === 0) {
+      return
+    }
+
+    const { error: insertError } = await adminSupabase
+      .from("notifications")
+      .insert(notificationRows)
+
+    if (insertError) {
+      console.warn("Failed to create gear alert notifications", insertError)
+    }
+  } catch (error) {
+    console.warn("Failed to create gear alert notifications", error)
   }
 }

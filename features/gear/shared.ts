@@ -12,7 +12,6 @@ export type TeamGearAlertRuleItem = {
   metric: Database["public"]["Enums"]["gear_alert_metric"]
   severity: Database["public"]["Enums"]["gear_alert_severity"]
   thresholdValue: number
-  isRefurbishedRule: boolean
 }
 
 export type TeamGearTwsOption = {
@@ -68,7 +67,7 @@ export const TEAM_GEAR_ALERT_STATE_OPTIONS: Array<{
   value: TeamGearAlertStateFilter
   label: string
 }> = [
-  { value: "critical", label: "Critical" },
-  { value: "warning", label: "Warning" },
-  { value: "none", label: "No Alerts" },
+  { value: "critical", label: "Near Limit" },
+  { value: "warning", label: "Past Due" },
+  { value: "none", label: "OK" },
 ]

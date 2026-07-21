@@ -2,7 +2,13 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { CameraIcon, FilterIcon, Loader2Icon, SearchIcon } from "lucide-react"
+import {
+  CameraIcon,
+  FilterIcon,
+  Loader2Icon,
+  SearchIcon,
+  TriangleAlertIcon,
+} from "lucide-react"
 import { useFormStatus } from "react-dom"
 import { toast } from "sonner"
 
@@ -279,6 +285,30 @@ function formatGearSerialNumber(value: string | null): string | null {
   }
 
   return `SN ${serialNumber}`
+}
+
+function renderGearLinkAlertHint(gearItem: SessionDetailGearItem) {
+  if (gearItem.alertState === "none") {
+    return null
+  }
+
+  const isNearLimit = gearItem.alertState === "critical"
+
+  return (
+    <div
+      className={cn(
+        "mt-2 flex items-start gap-1.5 rounded-md border px-2 py-1 text-xs font-medium",
+        isNearLimit
+          ? "border-yellow-300 bg-yellow-50 text-yellow-900 dark:border-yellow-500/40 dark:bg-yellow-950/30 dark:text-yellow-100"
+          : "border-red-300 bg-red-50 text-red-900 dark:border-red-500/40 dark:bg-red-950/30 dark:text-red-100",
+      )}
+    >
+      <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
+      <span className="min-w-0">
+        {isNearLimit ? "Near Limit: review usage soon." : "Past Due: review usage now."}
+      </span>
+    </div>
+  )
 }
 
 function normalizeBarcodeValue(value: string): string {
@@ -911,6 +941,7 @@ function SessionGearLinkDialog(input: {
           {serialNumber ? (
             <p className="truncate text-xs text-muted-foreground">{serialNumber}</p>
           ) : null}
+          {renderGearLinkAlertHint(gearItem)}
         </div>
       </button>
     )

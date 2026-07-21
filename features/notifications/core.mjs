@@ -109,11 +109,33 @@ export function buildAssessmentRequestMessage(input) {
   return `${input.actorName} is asking you to complete the ${input.venueName} assessment for ${input.campNames}. Complete it.`
 }
 
+export function getNotificationEventTitle(eventType) {
+  switch (eventType) {
+    case NOTIFICATION_EVENT_TYPES.CAMP_GOALS_ADDED:
+      return "Camp goals"
+    case NOTIFICATION_EVENT_TYPES.SESSION_REVIEW_ADDED:
+      return "Session update"
+    case NOTIFICATION_EVENT_TYPES.SESSION_GOALS_ADDED:
+      return "Session goals"
+    case NOTIFICATION_EVENT_TYPES.ASSESSMENT_RUN_CREATED:
+      return "Assessment request"
+    case NOTIFICATION_EVENT_TYPES.GEAR_WARNING:
+      return "Gear past due"
+    case NOTIFICATION_EVENT_TYPES.GEAR_CRITICAL:
+      return "Gear near limit"
+    default:
+      return "Notification"
+  }
+}
+
 export function buildGearAlertMessage(input) {
   const gearName = normalizeNotificationText(input.gearName) || "Gear item"
-  const mode = input.alertState === "critical" ? "critical" : "warning"
 
-  return `${gearName} is in ${mode} mode. Review the Gear thresholds.`
+  if (input.alertState === "critical") {
+    return `${gearName} is approaching its usage limit.`
+  }
+
+  return `${gearName} is past due and needs review.`
 }
 
 export function buildSessionReviewFieldLabel(input) {

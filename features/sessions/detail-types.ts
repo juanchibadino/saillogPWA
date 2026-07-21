@@ -107,7 +107,12 @@ export type SessionDetailCatalogPage = {
 export type SessionDetailGearItem = Pick<
   GearItemRow,
   "id" | "name" | "gear_type" | "status" | "condition" | "serial_number" | "barcode"
->
+> & {
+  alertState: Database["public"]["Enums"]["gear_alert_state"]
+  triggeredAlertCount: number
+  usageCount: number
+  usageMinutes: number
+}
 
 export type SessionDetailGearTypeFilter = "all" | GearItemRow["gear_type"]
 

@@ -57,7 +57,6 @@ function buildTables(overrides = {}) {
       {
         gear_item_id: GEAR_1,
         id: ALERT_1,
-        is_refurbished_rule: false,
         metric: "usage_count",
         severity: "warning",
         threshold_value: 10,
@@ -129,10 +128,9 @@ function buildCreateForm(overrides = {}) {
   return formDataFromObject({
     alertRulesPayload: JSON.stringify([
       {
-        isRefurbishedRule: false,
         metric: "usage_count",
-        severity: "warning",
-        thresholdValue: 5,
+        nearLimitThresholdValue: 3,
+        pastDueThresholdValue: 5,
       },
     ]),
     barcode: "",
@@ -157,10 +155,9 @@ function buildUpdateForm(overrides = {}) {
   return formDataFromObject({
     alertRulesPayload: JSON.stringify([
       {
-        isRefurbishedRule: true,
         metric: "usage_minutes",
-        severity: "critical",
-        thresholdValue: 60,
+        nearLimitThresholdValue: 45,
+        pastDueThresholdValue: 60,
       },
     ]),
     barcode: "",
@@ -269,11 +266,43 @@ test("creates Team Gear and preserves route state", async () => {
   })
   assert.deepEqual(supabase.rowsByTable.gear_alert_rules[1], {
     gear_item_id: "gear_items-2",
-    is_refurbished_rule: false,
     metric: "usage_count",
     severity: "warning",
     threshold_value: 5,
   })
+  assert.deepEqual(supabase.rowsByTable.gear_alert_rules[2], {
+    gear_item_id: "gear_items-2",
+    metric: "usage_count",
+    severity: "critical",
+    threshold_value: 3,
+  })
+})
+
+test("creates Team Gear with optional Near Limit omitted", async () => {
+  const { result, supabase } = await runGearAction(runCreateGearItemAction, {
+    formData: buildCreateForm({
+      alertRulesPayload: JSON.stringify([
+        {
+          metric: "usage_minutes",
+          pastDueThresholdValue: 90,
+        },
+      ]),
+    }),
+  })
+
+  assert.deepEqual(result, {
+    type: "redirect",
+    path: `/team-gear?status=created&${PRESERVED_ROUTE_STATE}`,
+    revalidatedPaths: ["/team-gear"],
+  })
+  assert.deepEqual(supabase.rowsByTable.gear_alert_rules.slice(1), [
+    {
+      gear_item_id: "gear_items-2",
+      metric: "usage_minutes",
+      severity: "warning",
+      threshold_value: 90,
+    },
+  ])
 })
 
 test("updates Team Gear and replaces alert rules while preserving route state", async () => {
@@ -299,10 +328,15 @@ test("updates Team Gear and replaces alert rules while preserving route state", 
   assert.deepEqual(supabase.rowsByTable.gear_alert_rules, [
     {
       gear_item_id: GEAR_1,
-      is_refurbished_rule: true,
+      metric: "usage_minutes",
+      severity: "warning",
+      threshold_value: 60,
+    },
+    {
+      gear_item_id: GEAR_1,
       metric: "usage_minutes",
       severity: "critical",
-      threshold_value: 60,
+      threshold_value: 45,
     },
   ])
 })
@@ -476,10 +510,9 @@ test("redirects invalid input for invalid create and update alert-rule payloads"
     formData: buildCreateForm({
       alertRulesPayload: JSON.stringify([
         {
-          isRefurbishedRule: false,
           metric: "usage_count",
-          severity: "warning",
-          thresholdValue: 0,
+          nearLimitThresholdValue: 10,
+          pastDueThresholdValue: 10,
         },
       ]),
     }),
@@ -487,6 +520,20 @@ test("redirects invalid input for invalid create and update alert-rule payloads"
   const updateResult = await runGearAction(runUpdateGearItemAction, {
     formData: buildUpdateForm({
       alertRulesPayload: "{bad json",
+    }),
+  })
+  const duplicateMetricResult = await runGearAction(runCreateGearItemAction, {
+    formData: buildCreateForm({
+      alertRulesPayload: JSON.stringify([
+        {
+          metric: "usage_minutes",
+          pastDueThresholdValue: 90,
+        },
+        {
+          metric: "usage_minutes",
+          pastDueThresholdValue: 120,
+        },
+      ]),
     }),
   })
 
@@ -500,13 +547,18 @@ test("redirects invalid input for invalid create and update alert-rule payloads"
     path: `/team-gear?error=invalid_input&${PRESERVED_ROUTE_STATE}`,
     revalidatedPaths: [],
   })
+  assert.deepEqual(duplicateMetricResult.result, {
+    type: "redirect",
+    path: `/team-gear?error=invalid_input&${PRESERVED_ROUTE_STATE}`,
+    revalidatedPaths: [],
+  })
   assert.equal(createResult.supabase.rowsByTable.gear_items.length, 1)
+  assert.equal(duplicateMetricResult.supabase.rowsByTable.gear_items.length, 1)
   assert.equal(updateResult.supabase.rowsByTable.gear_items[0].name, "Old Sail")
   assert.deepEqual(updateResult.supabase.rowsByTable.gear_alert_rules, [
     {
       gear_item_id: GEAR_1,
       id: ALERT_1,
-      is_refurbished_rule: false,
       metric: "usage_count",
       severity: "warning",
       threshold_value: 10,

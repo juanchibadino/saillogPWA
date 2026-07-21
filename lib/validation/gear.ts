@@ -6,12 +6,28 @@ const optionalTrimmedIdentifierSchema = z
   .max(120, "Maximum length is 120 characters")
   .optional()
 
-export const gearAlertRuleInputSchema = z.object({
-  metric: z.enum(["usage_count", "usage_minutes"]),
-  severity: z.enum(["warning", "critical"]),
-  thresholdValue: z.number().int().positive(),
-  isRefurbishedRule: z.coerce.boolean(),
-})
+export const gearAlertRuleInputSchema = z
+  .object({
+    metric: z.enum(["usage_count", "usage_minutes"]),
+    pastDueThresholdValue: z.number().int().positive(),
+    nearLimitThresholdValue: z.number().int().positive().nullable().optional(),
+  })
+  .refine(
+    (rule) =>
+      rule.nearLimitThresholdValue == null ||
+      rule.nearLimitThresholdValue < rule.pastDueThresholdValue,
+    {
+      message: "Near Limit must be lower than Past Due",
+      path: ["nearLimitThresholdValue"],
+    },
+  )
+
+const gearAlertRulesInputSchema = z
+  .array(gearAlertRuleInputSchema)
+  .max(2, "Maximum number of rules exceeded")
+  .refine((rules) => new Set(rules.map((rule) => rule.metric)).size === rules.length, {
+    message: "Only one rule is allowed for each metric",
+  })
 
 const baseGearItemInputSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120, "Maximum length is 120 characters"),
@@ -25,7 +41,7 @@ const baseGearItemInputSchema = z.object({
   barcode: optionalTrimmedIdentifierSchema,
   status: z.enum(["active_regatta", "active_training", "retired_spare", "on_repair"]),
   condition: z.enum(["new", "used", "refurbished"]),
-  alertRules: z.array(gearAlertRuleInputSchema).max(40, "Maximum number of rules exceeded"),
+  alertRules: gearAlertRulesInputSchema,
 })
 
 export const createGearItemInputSchema = baseGearItemInputSchema

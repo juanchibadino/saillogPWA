@@ -2,7 +2,7 @@ import { TEAM_GEAR_PAGE_SIZE } from "./data-core.mjs"
 import { resolveTeamGearListRowsPage } from "./data-loader-core.mjs"
 
 const GEAR_ALERT_RULES_SELECT_COLUMNS =
-  "id,gear_item_id,metric,severity,threshold_value,is_refurbished_rule"
+  "id,gear_item_id,metric,severity,threshold_value"
 const GEAR_TWS_MULTIPLIERS_SELECT_COLUMNS =
   "gear_item_id,team_setup_item_option_id,usage_minutes_multiplier,usage_count_multiplier"
 const TWS_OPTIONS_SELECT_COLUMNS = "id,value,label,position"
@@ -30,7 +30,6 @@ async function getAlertRulesByGearItemId(input) {
       metric: row.metric,
       severity: row.severity,
       thresholdValue: row.threshold_value,
-      isRefurbishedRule: row.is_refurbished_rule,
     })
     alertRulesByGearItemId.set(row.gear_item_id, existingRules)
   }

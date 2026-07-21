@@ -13,12 +13,49 @@ const optionalTrimmedIdentifierSchema = z
   .max(120)
   .optional()
 
-const gearAlertRuleInputSchema = z.object({
+const gearAlertRuleRowInputSchema = z.object({
   metric: z.enum(["usage_count", "usage_minutes"]),
   severity: z.enum(["warning", "critical"]),
   thresholdValue: z.number().int().positive(),
-  isRefurbishedRule: z.coerce.boolean(),
 })
+
+const gearAlertRuleGroupInputSchema = z
+  .object({
+    metric: z.enum(["usage_count", "usage_minutes"]),
+    pastDueThresholdValue: z.number().int().positive(),
+    nearLimitThresholdValue: z.number().int().positive().nullable().optional(),
+  })
+  .refine(
+    (rule) =>
+      rule.nearLimitThresholdValue == null ||
+      rule.nearLimitThresholdValue < rule.pastDueThresholdValue,
+  )
+
+const gearAlertRuleGroupsInputSchema = z
+  .array(gearAlertRuleGroupInputSchema)
+  .max(2)
+  .refine((rules) => new Set(rules.map((rule) => rule.metric)).size === rules.length)
+  .transform((rules) =>
+    rules.flatMap((rule) => {
+      const expandedRules = [
+        {
+          metric: rule.metric,
+          severity: "warning",
+          thresholdValue: rule.pastDueThresholdValue,
+        },
+      ]
+
+      if (rule.nearLimitThresholdValue != null) {
+        expandedRules.push({
+          metric: rule.metric,
+          severity: "critical",
+          thresholdValue: rule.nearLimitThresholdValue,
+        })
+      }
+
+      return expandedRules
+    }),
+  )
 
 const gearTwsMultiplierInputSchema = z.object({
   optionId: z.string().uuid(),
@@ -38,7 +75,7 @@ const baseGearItemInputSchema = z.object({
   barcode: optionalTrimmedIdentifierSchema,
   status: z.enum(["active_regatta", "active_training", "retired_spare", "on_repair"]),
   condition: z.enum(["new", "used", "refurbished"]),
-  alertRules: z.array(gearAlertRuleInputSchema).max(40),
+  alertRules: z.array(gearAlertRuleRowInputSchema).max(4),
 })
 
 const createGearItemInputSchema = baseGearItemInputSchema
@@ -100,7 +137,7 @@ function parseAlertRulesPayload(value) {
     return null
   }
 
-  const parsedRules = z.array(gearAlertRuleInputSchema).safeParse(parsed)
+  const parsedRules = gearAlertRuleGroupsInputSchema.safeParse(parsed)
 
   if (!parsedRules.success) {
     return null
@@ -309,7 +346,6 @@ export async function runCreateGearItemAction(formData, dependencies) {
         metric: rule.metric,
         severity: rule.severity,
         threshold_value: rule.thresholdValue,
-        is_refurbished_rule: rule.isRefurbishedRule,
       })),
     )
 
@@ -423,7 +459,6 @@ export async function runUpdateGearItemAction(formData, dependencies) {
         metric: rule.metric,
         severity: rule.severity,
         threshold_value: rule.thresholdValue,
-        is_refurbished_rule: rule.isRefurbishedRule,
       })),
     )
 

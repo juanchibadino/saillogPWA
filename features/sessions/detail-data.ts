@@ -115,7 +115,12 @@ type SessionSetupItemSelectedOptionRow = Pick<
 >
 
 type SessionAssetRow = SessionDetailAssetMetadata
-type GearItemRow = SessionDetailGearItem
+type GearItemRow = Pick<
+  Database["public"]["Tables"]["gear_items"]["Row"],
+  "id" | "name" | "gear_type" | "status" | "condition" | "serial_number" | "barcode"
+>
+type TeamGearAlertRow =
+  Database["public"]["Functions"]["get_team_gear_alert_rows"]["Returns"][number]
 type SessionGearUsageRow = Pick<
   Database["public"]["Tables"]["session_gear_usage"]["Row"],
   "gear_item_id"
@@ -512,6 +517,52 @@ function mergeCatalogRowsById<T extends { id: string; name: string }>(
   return sortCatalogRowsByName([...rowsById.values()])
 }
 
+function mapGearAlertRowsByItemId(rows: TeamGearAlertRow[]): Map<string, TeamGearAlertRow> {
+  const rowsByItemId = new Map<string, TeamGearAlertRow>()
+
+  for (const row of rows) {
+    rowsByItemId.set(row.gear_item_id, row)
+  }
+
+  return rowsByItemId
+}
+
+function mapGearItem(row: GearItemRow, alertRow?: TeamGearAlertRow): SessionDetailGearItem {
+  return {
+    ...row,
+    alertState: alertRow?.alert_state ?? "none",
+    triggeredAlertCount: Number(alertRow?.triggered_alert_count ?? 0),
+    usageCount: Number(alertRow?.usage_count ?? 0),
+    usageMinutes: Number(alertRow?.usage_minutes ?? 0),
+  }
+}
+
+async function hydrateGearItemsWithAlertState(input: {
+  activeTeamId: string
+  gearItems: GearItemRow[]
+  supabase: ServerSupabaseClient
+}): Promise<SessionDetailGearItem[]> {
+  if (input.gearItems.length === 0) {
+    return []
+  }
+
+  const gearItemIds = input.gearItems.map((gearItem) => gearItem.id)
+  const { data, error } = await input.supabase.rpc("get_team_gear_alert_rows", {
+    p_gear_item_ids: gearItemIds,
+    p_team_id: input.activeTeamId,
+  })
+
+  if (error) {
+    throw new Error(`Could not load gear alert states: ${error.message}`)
+  }
+
+  const alertRowsByItemId = mapGearAlertRowsByItemId(data ?? [])
+
+  return input.gearItems.map((gearItem) =>
+    mapGearItem(gearItem, alertRowsByItemId.get(gearItem.id)),
+  )
+}
+
 function mapStandardMove(row: TeamStandardMoveRow): SessionDetailStandardMove {
   return {
     id: row.id,
@@ -806,6 +857,11 @@ async function querySessionDetailGearCatalog(input: {
 
   const pageRows = (pageRowsData ?? []) as GearItemRow[]
   const mergedRows = mergeCatalogRowsById(pageRows, linkedRows)
+  const gearItems = await hydrateGearItemsWithAlertState({
+    activeTeamId: input.activeTeamId,
+    gearItems: mergedRows,
+    supabase: input.supabase,
+  })
 
   return {
     gearCatalogPage: buildCatalogPage({
@@ -815,7 +871,7 @@ async function querySessionDetailGearCatalog(input: {
       search,
       totalCount: count ?? pageRows.length,
     }),
-    gearItems: mergedRows,
+    gearItems,
     gearType,
   }
 }
@@ -885,7 +941,17 @@ export async function getSessionDetailGearItemByBarcode(input: {
     throw new Error(`Could not load gear item by barcode: ${error.message}`)
   }
 
-  return (data as GearItemRow | null) ?? null
+  if (!data) {
+    return null
+  }
+
+  const [gearItem] = await hydrateGearItemsWithAlertState({
+    activeTeamId: input.activeTeamId,
+    gearItems: [data as GearItemRow],
+    supabase,
+  })
+
+  return gearItem ?? null
 }
 
 function attachAssetContentUrls(input: {
