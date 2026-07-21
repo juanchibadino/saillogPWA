@@ -4,6 +4,7 @@ import * as React from "react"
 import type {
   CircleMarker,
   DivIcon,
+  LatLngBounds,
   LatLngExpression,
   LayerGroup,
   Map as LeafletMap,
@@ -12,17 +13,28 @@ import type {
 } from "leaflet"
 import {
   CrosshairIcon,
-  FastForwardIcon,
   Loader2Icon,
-  LocateFixedIcon,
+  Maximize2Icon,
   MapPinIcon,
+  MenuIcon,
+  MinusIcon,
   PauseIcon,
   PlayIcon,
+  PlusIcon,
   RouteIcon,
-  WavesIcon,
+  SaveIcon,
 } from "lucide-react"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Slider } from "@/components/ui/slider"
 import { cn } from "@/lib/utils"
 
 type LeafletModule = typeof import("leaflet")
@@ -38,8 +50,38 @@ type VakarosSeriesPoint = {
   trim: number
 }
 
-type TrackMode = "default" | "sog" | "wake"
 type BuoyMode = "windward" | "leeward" | null
+type TrailMode = "line" | "speed"
+type PlacedBuoy = {
+  id: string
+  lat: number
+  lon: number
+  mode: Exclude<BuoyMode, null>
+}
+type SavedTrim = {
+  id: string
+  buoys: PlacedBuoy[]
+  createdAt: string
+  name: string
+  trimEnd: number
+  trimStart: number
+}
+
+const PLAYBACK_RATES = [1, 2, 4, 10] as const
+type PlaybackRate = (typeof PLAYBACK_RATES)[number]
+const MIN_TRIM_SPAN = 30
+const TRIM_VIEWPORT_PADDING_RATIO = 0.25
+const SPEED_COLOR_STOPS = ["#3aa0ff", "#ff3b30"] as const
+
+type LeafletMapWithBoundsCenterZoom = LeafletMap & {
+  _getBoundsCenterZoom?: (
+    bounds: LatLngBounds,
+    options: {
+      paddingBottomRight: [number, number]
+      paddingTopLeft: [number, number]
+    }
+  ) => { zoom?: number }
+}
 
 function parseNumber(value: string | undefined): number {
   const parsed = Number.parseFloat(value ?? "")
@@ -141,14 +183,14 @@ function formatTimestamp(value: string): string {
     return value || "-"
   }
 
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(date)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  const hours = String(date.getHours()).padStart(2, "0")
+  const minutes = String(date.getMinutes()).padStart(2, "0")
+  const seconds = String(date.getSeconds()).padStart(2, "0")
+
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
 }
 
 function formatNumber(value: number, decimals: number): string {
@@ -159,17 +201,156 @@ function clampIndex(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
-function getSpeedColor(input: {
-  maxSog: number
-  minSog: number
-  sog: number
-}): string {
-  const span = input.maxSog - input.minSog
-  const ratio = span > 0 ? (input.sog - input.minSog) / span : 0.5
-  const clamped = Math.min(1, Math.max(0, ratio))
-  const hue = 205 - clamped * 165
+function clampRatio(value: number): number {
+  return Math.min(1, Math.max(0, value))
+}
 
-  return `hsl(${hue} 85% 52%)`
+function hexToRgb(hex: string): { b: number; g: number; r: number } {
+  const normalized = hex.replace("#", "")
+  const value = Number.parseInt(normalized.length === 3
+    ? normalized.split("").map((part) => `${part}${part}`).join("")
+    : normalized, 16)
+
+  return {
+    r: (value >> 16) & 255,
+    g: (value >> 8) & 255,
+    b: value & 255,
+  }
+}
+
+function rgbToHex(input: { b: number; g: number; r: number }): string {
+  const toHex = (value: number) =>
+    Math.round(value).toString(16).padStart(2, "0")
+
+  return `#${toHex(input.r)}${toHex(input.g)}${toHex(input.b)}`
+}
+
+function interpolate(start: number, end: number, ratio: number): number {
+  return start + (end - start) * ratio
+}
+
+function gradientColorAt(ratio: number, stops: readonly string[]): string {
+  if (stops.length === 0) {
+    return "#2563eb"
+  }
+
+  if (stops.length === 1) {
+    return stops[0]
+  }
+
+  const normalizedRatio = clampRatio(ratio)
+  const maxStopIndex = stops.length - 1
+  const stopIndex = Math.min(maxStopIndex - 1, Math.floor(normalizedRatio * maxStopIndex))
+  const localRatio = (normalizedRatio - stopIndex / maxStopIndex) * maxStopIndex
+  const start = hexToRgb(stops[stopIndex])
+  const end = hexToRgb(stops[stopIndex + 1])
+
+  return rgbToHex({
+    r: interpolate(start.r, end.r, localRatio),
+    g: interpolate(start.g, end.g, localRatio),
+    b: interpolate(start.b, end.b, localRatio),
+  })
+}
+
+function getSogRange(points: VakarosSeriesPoint[]): { max: number; min: number } | null {
+  let min = Number.POSITIVE_INFINITY
+  let max = Number.NEGATIVE_INFINITY
+
+  for (const point of points) {
+    if (!Number.isFinite(point.sog_kts)) {
+      continue
+    }
+
+    min = Math.min(min, Math.max(0, point.sog_kts))
+    max = Math.max(max, Math.max(0, point.sog_kts))
+  }
+
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return null
+  }
+
+  return { min, max }
+}
+
+function trimTrackLatLngs(
+  trackLatLngs: LatLngExpression[],
+  input: {
+    maxIndex: number
+    trimEnd: number
+    trimStart: number
+  }
+): LatLngExpression[] {
+  if (trackLatLngs.length < 2 || input.maxIndex <= 0) {
+    return trackLatLngs
+  }
+
+  const maxTrackPoint = trackLatLngs.length - 1
+  const startRatio = input.trimStart / input.maxIndex
+  const endRatio = input.trimEnd / input.maxIndex
+  const startPoint = Math.floor(clampRatio(startRatio) * maxTrackPoint)
+  const endPoint = Math.max(
+    startPoint + 1,
+    Math.floor(clampRatio(endRatio) * maxTrackPoint)
+  )
+
+  return trackLatLngs.slice(startPoint, Math.min(maxTrackPoint, endPoint) + 1)
+}
+
+function getMinimumTrimViewportSpan(input: {
+  maxIndex: number
+  trimEnd: number
+  trimStart: number
+}): number {
+  if (input.maxIndex <= 0) {
+    return 0
+  }
+
+  const selectedSpan = Math.max(1, input.trimEnd - input.trimStart)
+
+  return Math.min(
+    input.maxIndex,
+    Math.max(MIN_TRIM_SPAN, Math.ceil(selectedSpan * (1 + TRIM_VIEWPORT_PADDING_RATIO)))
+  )
+}
+
+function getTrimViewportContainingRange(input: {
+  center: number
+  maxIndex: number
+  span: number
+  trimEnd: number
+  trimStart: number
+}): { end: number; start: number } {
+  if (input.maxIndex <= 0) {
+    return { start: 0, end: 0 }
+  }
+
+  const trimStart = clampIndex(Math.min(input.trimStart, input.trimEnd), 0, input.maxIndex)
+  const trimEnd = clampIndex(Math.max(input.trimStart, input.trimEnd), 0, input.maxIndex)
+  const selectedSpan = Math.max(1, trimEnd - trimStart)
+  const span = clampIndex(Math.round(Math.max(input.span, selectedSpan)), 1, input.maxIndex)
+  const center = clampIndex(input.center, trimStart, trimEnd)
+  let start = Math.min(trimStart, center - Math.floor(span / 2))
+  let end = start + span
+
+  if (end < trimEnd) {
+    end = trimEnd
+    start = end - span
+  }
+
+  if (start < 0) {
+    end -= start
+    start = 0
+  }
+
+  if (end > input.maxIndex) {
+    start -= end - input.maxIndex
+    end = input.maxIndex
+  }
+
+  return {
+    start: clampIndex(start, 0, input.maxIndex),
+    end: clampIndex(end, 0, input.maxIndex),
+  }
 }
 
 function buildBoatIcon(leaflet: LeafletModule): DivIcon {
@@ -179,6 +360,61 @@ function buildBoatIcon(leaflet: LeafletModule): DivIcon {
     iconSize: [28, 28],
     iconAnchor: [14, 14],
   })
+}
+
+function createLocalId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+function copyBuoys(buoys: PlacedBuoy[]): PlacedBuoy[] {
+  return buoys.map((buoy) => ({ ...buoy }))
+}
+
+function formatTrimRange(input: {
+  trimEnd: number
+  trimStart: number
+}): string {
+  return `${input.trimStart + 1}-${input.trimEnd + 1}`
+}
+
+function getSliderPointValue(value: number | readonly number[], fallback: number): number {
+  const nextValue = Array.isArray(value) ? value[0] : value
+
+  return Number.isFinite(nextValue) ? Math.round(nextValue) : fallback
+}
+
+function getSliderRangeValue(
+  value: number | readonly number[],
+  fallback: readonly [number, number]
+): [number, number] {
+  if (!Array.isArray(value)) {
+    return [fallback[0], fallback[1]]
+  }
+
+  const nextStart = Number.isFinite(value[0]) ? Math.round(value[0]) : fallback[0]
+  const nextEnd = Number.isFinite(value[1]) ? Math.round(value[1]) : fallback[1]
+
+  return [nextStart, nextEnd]
+}
+
+function lockMapToBounds(map: LeafletMap, bounds: LatLngBounds): void {
+  if (!bounds.isValid()) {
+    return
+  }
+
+  const paddedBounds = bounds.pad(0.1)
+  map.options.maxBoundsViscosity = 1
+  map.setMaxBounds(paddedBounds)
+
+  const calc = (map as LeafletMapWithBoundsCenterZoom)._getBoundsCenterZoom?.(paddedBounds, {
+    paddingTopLeft: [24, 24],
+    paddingBottomRight: [24, 24],
+  })
+  const zoom = calc?.zoom
+
+  if (typeof zoom === "number" && Number.isFinite(zoom)) {
+    map.setMinZoom(zoom)
+  }
 }
 
 export function VakarosPlayer(input: {
@@ -191,19 +427,22 @@ export function VakarosPlayer(input: {
   const leafletRef = React.useRef<LeafletModule | null>(null)
   const mapRef = React.useRef<LeafletMap | null>(null)
   const trackLayerRef = React.useRef<Polyline | LayerGroup | null>(null)
-  const wakeLayerRef = React.useRef<LayerGroup | null>(null)
   const buoyLayerRef = React.useRef<LayerGroup | null>(null)
   const boatMarkerRef = React.useRef<Marker | null>(null)
   const buoyModeRef = React.useRef<BuoyMode>(null)
   const intervalRef = React.useRef<number | null>(null)
   const [series, setSeries] = React.useState<VakarosSeriesPoint[]>([])
   const [trackLatLngs, setTrackLatLngs] = React.useState<LatLngExpression[]>([])
+  const [buoys, setBuoys] = React.useState<PlacedBuoy[]>([])
+  const [savedTrims, setSavedTrims] = React.useState<SavedTrim[]>([])
   const [idx, setIdx] = React.useState(0)
   const [trimStart, setTrimStart] = React.useState(0)
   const [trimEnd, setTrimEnd] = React.useState(0)
-  const [rate, setRate] = React.useState(1)
-  const [trackMode, setTrackMode] = React.useState<TrackMode>("default")
+  const [trimViewportStart, setTrimViewportStart] = React.useState(0)
+  const [trimViewportEnd, setTrimViewportEnd] = React.useState(0)
+  const [rate, setRate] = React.useState<PlaybackRate>(1)
   const [buoyMode, setBuoyMode] = React.useState<BuoyMode>(null)
+  const [trailMode, setTrailMode] = React.useState<TrailMode>("line")
   const [isPlaying, setIsPlaying] = React.useState(false)
   const [isMapReady, setIsMapReady] = React.useState(false)
   const [loadError, setLoadError] = React.useState<string | null>(null)
@@ -211,6 +450,42 @@ export function VakarosPlayer(input: {
   const maxIndex = Math.max(0, series.length - 1)
   const safeTrimStart = clampIndex(Math.min(trimStart, trimEnd), 0, maxIndex)
   const safeTrimEnd = clampIndex(Math.max(trimStart, trimEnd), 0, maxIndex)
+  const safeTrimViewportStart = clampIndex(
+    Math.min(trimViewportStart, trimViewportEnd, safeTrimStart),
+    0,
+    maxIndex
+  )
+  const safeTrimViewportEnd = clampIndex(
+    Math.max(trimViewportStart, trimViewportEnd, safeTrimEnd),
+    0,
+    maxIndex
+  )
+  const selectedTrimSpan = safeTrimEnd - safeTrimStart
+  const trimViewportSpan = safeTrimViewportEnd - safeTrimViewportStart
+  const minimumTrimViewportSpan = getMinimumTrimViewportSpan({
+    maxIndex,
+    trimEnd: safeTrimEnd,
+    trimStart: safeTrimStart,
+  })
+  const canTrimZoomIn =
+    maxIndex > 0 &&
+    selectedTrimSpan < maxIndex &&
+    trimViewportSpan > minimumTrimViewportSpan
+  const canTrimZoomOut =
+    maxIndex > 0 && (safeTrimViewportStart > 0 || safeTrimViewportEnd < maxIndex)
+  const visibleTrackLatLngs = React.useMemo(
+    () =>
+      trimTrackLatLngs(trackLatLngs, {
+        maxIndex,
+        trimEnd: safeTrimEnd,
+        trimStart: safeTrimStart,
+      }),
+    [maxIndex, safeTrimEnd, safeTrimStart, trackLatLngs]
+  )
+  const visibleSeries = React.useMemo(
+    () => series.slice(safeTrimStart, safeTrimEnd + 1),
+    [safeTrimEnd, safeTrimStart, series]
+  )
   const currentPoint = series[clampIndex(idx, safeTrimStart, safeTrimEnd)]
 
   React.useEffect(() => {
@@ -251,9 +526,15 @@ export function VakarosPlayer(input: {
 
         setTrackLatLngs(nextTrackLatLngs)
         setSeries(nextSeries)
+        setBuoys([])
+        setSavedTrims([])
+        setBuoyMode(null)
+        setIsPlaying(false)
         setIdx(0)
         setTrimStart(0)
         setTrimEnd(Math.max(0, nextSeries.length - 1))
+        setTrimViewportStart(0)
+        setTrimViewportEnd(Math.max(0, nextSeries.length - 1))
       } catch (error) {
         if (!isMounted) {
           return
@@ -307,25 +588,24 @@ export function VakarosPlayer(input: {
           maxZoom: 19,
         })
         .addTo(map)
-      leaflet.control.zoom({ position: "bottomright" }).addTo(map)
-      wakeLayerRef.current = leaflet.layerGroup().addTo(map)
+      leaflet.control.zoom({ position: "topright" }).addTo(map)
       buoyLayerRef.current = leaflet.layerGroup().addTo(map)
       map.on("click", (event) => {
         const mode = buoyModeRef.current
 
-        if (!mode || !buoyLayerRef.current) {
+        if (!mode) {
           return
         }
 
-        const color = mode === "windward" ? "#f97316" : "#0ea5e9"
-        const marker: CircleMarker = leaflet.circleMarker(event.latlng, {
-          radius: 7,
-          color,
-          fillColor: color,
-          fillOpacity: 0.9,
-          weight: 2,
-        })
-        marker.addTo(buoyLayerRef.current)
+        setBuoys((currentBuoys) => [
+          ...currentBuoys,
+          {
+            id: createLocalId("buoy"),
+            lat: event.latlng.lat,
+            lon: event.latlng.lng,
+            mode,
+          },
+        ])
       })
       mapRef.current = map
       setIsMapReady(true)
@@ -344,7 +624,6 @@ export function VakarosPlayer(input: {
       }
       leafletRef.current = null
       trackLayerRef.current = null
-      wakeLayerRef.current = null
       buoyLayerRef.current = null
       boatMarkerRef.current = null
     }
@@ -354,7 +633,14 @@ export function VakarosPlayer(input: {
     const leaflet = leafletRef.current
     const map = mapRef.current
 
-    if (!isMapReady || !leaflet || !map || trackLatLngs.length === 0 || series.length === 0) {
+    if (
+      !isMapReady ||
+      !leaflet ||
+      !map ||
+      trackLatLngs.length < 2 ||
+      visibleTrackLatLngs.length < 2 ||
+      series.length === 0
+    ) {
       return
     }
 
@@ -363,54 +649,48 @@ export function VakarosPlayer(input: {
       trackLayerRef.current = null
     }
 
-    if (wakeLayerRef.current) {
-      wakeLayerRef.current.clearLayers()
-    }
+    let nextTrackLayer: LayerGroup | Polyline
 
-    if (trackMode === "sog") {
-      const start = safeTrimStart
-      const end = safeTrimEnd
-      const visibleSeries = series.slice(start, end + 1)
-      const sogs = visibleSeries.map((point) => point.sog_kts).filter(Number.isFinite)
-      const minSog = Math.min(...sogs)
-      const maxSog = Math.max(...sogs)
-      const step = Math.max(1, Math.ceil(visibleSeries.length / 1200))
-      const layerGroup = leaflet.layerGroup()
+    if (trailMode === "speed") {
+      const speedLayer = leaflet.layerGroup()
+      const speedRange = getSogRange(visibleSeries)
+      const span = speedRange ? speedRange.max - speedRange.min : 0
+      const segmentStep = Math.max(1, Math.ceil(visibleTrackLatLngs.length / 1200))
 
-      for (let index = 0; index < visibleSeries.length - step; index += step) {
-        const left = visibleSeries[index]
-        const right = visibleSeries[index + step]
+      for (let pointIndex = 0; pointIndex < visibleTrackLatLngs.length - 1; pointIndex += segmentStep) {
+        const nextPointIndex = Math.min(visibleTrackLatLngs.length - 1, pointIndex + segmentStep)
+        const trackRatio = pointIndex / Math.max(1, visibleTrackLatLngs.length - 2)
+        const seriesIndex = clampIndex(
+          Math.round(trackRatio * Math.max(0, visibleSeries.length - 1)),
+          0,
+          Math.max(0, visibleSeries.length - 1)
+        )
+        const speed = visibleSeries[seriesIndex]?.sog_kts ?? Number.NaN
+        const speedRatio =
+          speedRange && span > 0 && Number.isFinite(speed)
+            ? (Math.max(0, speed) - speedRange.min) / span
+            : 0.5
 
         leaflet
-          .polyline(
-            [
-              [left.lat, left.lon],
-              [right.lat, right.lon],
-            ],
-            {
-              color: getSpeedColor({
-                maxSog,
-                minSog,
-                sog: left.sog_kts,
-              }),
-              opacity: 0.95,
-              weight: 4,
-            },
-          )
-          .addTo(layerGroup)
+          .polyline([visibleTrackLatLngs[pointIndex], visibleTrackLatLngs[nextPointIndex]], {
+            color: gradientColorAt(speedRatio, SPEED_COLOR_STOPS),
+            opacity: 0.92,
+            weight: 4,
+          })
+          .addTo(speedLayer)
       }
 
-      layerGroup.addTo(map)
-      trackLayerRef.current = layerGroup
+      nextTrackLayer = speedLayer
     } else {
-      const line = leaflet.polyline(trackLatLngs, {
-        color: trackMode === "wake" ? "#94a3b8" : "#2563eb",
-        opacity: trackMode === "wake" ? 0.35 : 0.9,
+      nextTrackLayer = leaflet.polyline(visibleTrackLatLngs, {
+        color: "#2563eb",
+        opacity: 0.9,
         weight: 4,
       })
-      line.addTo(map)
-      trackLayerRef.current = line
     }
+
+    nextTrackLayer.addTo(map)
+    trackLayerRef.current = nextTrackLayer
 
     if (!boatMarkerRef.current) {
       boatMarkerRef.current = leaflet
@@ -421,13 +701,14 @@ export function VakarosPlayer(input: {
         .addTo(map)
     }
 
-    const bounds = leaflet.latLngBounds(trackLatLngs)
+    const bounds = leaflet.latLngBounds(visibleTrackLatLngs)
     map.fitBounds(bounds.pad(0.12), {
       animate: false,
       padding: [20, 20],
     })
+    lockMapToBounds(map, leaflet.latLngBounds(trackLatLngs))
     window.setTimeout(() => map.invalidateSize(), 50)
-  }, [isMapReady, safeTrimEnd, safeTrimStart, series, trackLatLngs, trackMode])
+  }, [isMapReady, series, trackLatLngs, trailMode, visibleSeries, visibleTrackLatLngs])
 
   React.useEffect(() => {
     const leaflet = leafletRef.current
@@ -457,26 +738,50 @@ export function VakarosPlayer(input: {
     if (wrapper instanceof HTMLElement && Number.isFinite(heading)) {
       wrapper.style.transform = `rotate(${heading}deg)`
     }
+  }, [currentPoint, isMapReady])
 
-    if (trackMode === "wake" && wakeLayerRef.current && idx > safeTrimStart) {
-      const previousPoint = series[idx - 1]
+  React.useEffect(() => {
+    const leaflet = leafletRef.current
+    const buoyLayer = buoyLayerRef.current
 
-      if (previousPoint) {
-        const wakeSegment = leaflet.polyline(
-          [
-            [previousPoint.lat, previousPoint.lon],
-            [currentPoint.lat, currentPoint.lon],
-          ],
-          {
-            color: "#0ea5e9",
-            opacity: 0.95,
-            weight: 4,
-          },
-        )
-        wakeSegment.addTo(wakeLayerRef.current)
+    if (!isMapReady || !leaflet || !buoyLayer) {
+      return
+    }
+
+    buoyLayer.clearLayers()
+
+    const leewardBuoyLatLngs: LatLngExpression[] = []
+
+    for (const buoy of buoys) {
+      const color = buoy.mode === "windward" ? "#f97316" : "#0ea5e9"
+      const marker: CircleMarker = leaflet.circleMarker([buoy.lat, buoy.lon], {
+        radius: 7,
+        color,
+        fillColor: color,
+        fillOpacity: 0.95,
+        weight: 2,
+      })
+
+      marker.addTo(buoyLayer)
+
+      if (buoy.mode === "leeward") {
+        leewardBuoyLatLngs.push([buoy.lat, buoy.lon])
       }
     }
-  }, [currentPoint, idx, isMapReady, safeTrimStart, series, trackMode])
+
+    const latestLeewardPair = leewardBuoyLatLngs.slice(-2)
+
+    if (latestLeewardPair.length === 2) {
+      leaflet
+        .polyline(latestLeewardPair, {
+          color: "#0ea5e9",
+          dashArray: "8 6",
+          opacity: 0.95,
+          weight: 3,
+        })
+        .addTo(buoyLayer)
+    }
+  }, [buoys, isMapReady])
 
   React.useEffect(() => {
     if (intervalRef.current) {
@@ -513,45 +818,126 @@ export function VakarosPlayer(input: {
     const leaflet = leafletRef.current
     const map = mapRef.current
 
-    if (!leaflet || !map || trackLatLngs.length === 0) {
+    if (!leaflet || !map || visibleTrackLatLngs.length < 2) {
       return
     }
 
-    map.fitBounds(leaflet.latLngBounds(trackLatLngs).pad(0.12), {
+    const bounds = leaflet.latLngBounds(visibleTrackLatLngs)
+    map.fitBounds(bounds.pad(0.12), {
       animate: true,
       padding: [20, 20],
     })
+    if (trackLatLngs.length >= 2) {
+      lockMapToBounds(map, leaflet.latLngBounds(trackLatLngs))
+    }
   }
 
-  function handleCenterBoat(): void {
-    const map = mapRef.current
+  function applyTrimWindow(input: {
+    trimEnd: number
+    trimStart: number
+  }): void {
+    const nextStart = clampIndex(Math.min(input.trimStart, input.trimEnd), 0, maxIndex)
+    const nextEnd = clampIndex(Math.max(input.trimStart, input.trimEnd), 0, maxIndex)
 
-    if (!map || !currentPoint) {
+    setTrimStart(nextStart)
+    setTrimEnd(nextEnd)
+    setIdx((currentIndex) => clampIndex(currentIndex, nextStart, nextEnd))
+  }
+
+  function setTrimViewportForRange(input: {
+    trimEnd: number
+    trimStart: number
+  }): void {
+    const nextTrimStart = clampIndex(Math.min(input.trimStart, input.trimEnd), 0, maxIndex)
+    const nextTrimEnd = clampIndex(Math.max(input.trimStart, input.trimEnd), 0, maxIndex)
+    const currentStart = clampIndex(Math.min(trimViewportStart, trimViewportEnd), 0, maxIndex)
+    const currentEnd = clampIndex(Math.max(trimViewportStart, trimViewportEnd), 0, maxIndex)
+
+    if (currentStart <= nextTrimStart && currentEnd >= nextTrimEnd) {
       return
     }
 
-    map.panTo([currentPoint.lat, currentPoint.lon], {
-      animate: true,
-      duration: 0.3,
-    })
-  }
-
-  function handleTrackModeToggle(): void {
-    setTrackMode((currentMode) =>
-      currentMode === "default" ? "sog" : currentMode === "sog" ? "wake" : "default",
+    const currentSpan = Math.max(
+      currentEnd - currentStart,
+      getMinimumTrimViewportSpan({
+        maxIndex,
+        trimEnd: nextTrimEnd,
+        trimStart: nextTrimStart,
+      })
     )
+    const nextViewport = getTrimViewportContainingRange({
+      center: Math.round((nextTrimStart + nextTrimEnd) / 2),
+      maxIndex,
+      span: currentSpan,
+      trimEnd: nextTrimEnd,
+      trimStart: nextTrimStart,
+    })
+
+    setTrimViewportStart(nextViewport.start)
+    setTrimViewportEnd(nextViewport.end)
   }
 
-  function handleTrimStartChange(value: number): void {
-    const nextStart = clampIndex(value, 0, maxIndex)
-    setTrimStart(nextStart)
-    setIdx((currentIndex) => clampIndex(currentIndex, nextStart, safeTrimEnd))
+  function handleTrimZoom(direction: "in" | "out"): void {
+    if (maxIndex <= 0) {
+      return
+    }
+
+    if (direction === "in" && !canTrimZoomIn) {
+      return
+    }
+
+    if (direction === "out" && !canTrimZoomOut) {
+      return
+    }
+
+    const currentSpan = Math.max(1, trimViewportSpan)
+    const nextSpan =
+      direction === "in"
+        ? Math.max(minimumTrimViewportSpan, Math.round(currentSpan * 0.5))
+        : Math.min(maxIndex, Math.round(currentSpan * 2))
+
+    if (nextSpan === currentSpan) {
+      return
+    }
+
+    const nextViewport = getTrimViewportContainingRange({
+      center: Math.round((safeTrimStart + safeTrimEnd) / 2),
+      maxIndex,
+      span: nextSpan,
+      trimEnd: safeTrimEnd,
+      trimStart: safeTrimStart,
+    })
+
+    setTrimViewportStart(nextViewport.start)
+    setTrimViewportEnd(nextViewport.end)
   }
 
-  function handleTrimEndChange(value: number): void {
-    const nextEnd = clampIndex(value, 0, maxIndex)
-    setTrimEnd(nextEnd)
-    setIdx((currentIndex) => clampIndex(currentIndex, safeTrimStart, nextEnd))
+  function handleSaveTrim(): void {
+    const savedTrim: SavedTrim = {
+      id: createLocalId("trim"),
+      buoys: copyBuoys(buoys),
+      createdAt: new Date().toISOString(),
+      name: `Trim ${savedTrims.length + 1}`,
+      trimEnd: safeTrimEnd,
+      trimStart: safeTrimStart,
+    }
+
+    setSavedTrims((currentSavedTrims) => [savedTrim, ...currentSavedTrims])
+    toast.success("Trim saved.")
+  }
+
+  function handleApplySavedTrim(savedTrim: SavedTrim): void {
+    applyTrimWindow({
+      trimEnd: savedTrim.trimEnd,
+      trimStart: savedTrim.trimStart,
+    })
+    setTrimViewportForRange({
+      trimEnd: savedTrim.trimEnd,
+      trimStart: savedTrim.trimStart,
+    })
+    setBuoys(copyBuoys(savedTrim.buoys))
+    setBuoyMode(null)
+    toast.success(`${savedTrim.name} loaded.`)
   }
 
   if (isLoading) {
@@ -573,153 +959,247 @@ export function VakarosPlayer(input: {
   }
 
   return (
-    <div className={cn("grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto]", input.className)}>
-      <div className="relative min-h-0 overflow-hidden rounded-lg border bg-muted">
+    <div className={cn("grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden rounded-lg bg-black", input.className)}>
+      <div className="vakaros-player-map relative min-h-0 overflow-hidden rounded-lg border bg-muted">
         <div ref={mapElementRef} className="h-full min-h-96 w-full" />
 
-        <div className="absolute top-2 left-2 z-[500] grid max-w-[calc(100%-1rem)] grid-cols-2 gap-1.5 rounded-lg border bg-background/95 p-2 text-xs shadow-sm backdrop-blur sm:grid-cols-4">
+        <div className="absolute left-3 top-3 z-[500] flex gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  className="vakaros-map-button h-11 w-11"
+                  title="Trims"
+                />
+              }
+            >
+              <MenuIcon className="size-5" />
+              <span className="sr-only">Trims</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" side="bottom" className="w-56">
+              <DropdownMenuLabel>Trims</DropdownMenuLabel>
+              {savedTrims.length === 0 ? (
+                <DropdownMenuItem disabled>No saved trims</DropdownMenuItem>
+              ) : (
+                savedTrims.map((savedTrim) => (
+                  <DropdownMenuItem key={savedTrim.id} onClick={() => handleApplySavedTrim(savedTrim)}>
+                    <span className="min-w-0 flex-1 truncate">{savedTrim.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {formatTrimRange(savedTrim)}
+                    </span>
+                  </DropdownMenuItem>
+                ))
+              )}
+              <DropdownMenuItem onClick={handleFitTrack}>Fit trail</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <Button
+            type="button"
+            variant="secondary"
+            size="icon"
+            className="vakaros-map-button h-11 w-11"
+            title="Save trim"
+            onClick={handleSaveTrim}
+          >
+            <SaveIcon className="size-5" />
+            <span className="sr-only">Save trim</span>
+          </Button>
+        </div>
+
+        <div className="vakaros-data-overlay pointer-events-none absolute left-4 bottom-20 z-[500] grid max-w-[calc(100%-7rem)] grid-cols-1 gap-1.5 text-xs sm:bottom-5 sm:grid-cols-4 sm:gap-4">
           <div>
-            <p className="text-muted-foreground">Time</p>
-            <p className="font-medium">{formatTimestamp(currentPoint?.timestamp ?? "")}</p>
+            <p className="text-[0.6rem] font-medium uppercase leading-tight">SOG (kn)</p>
+            <p className="text-[0.95rem] font-semibold leading-tight tabular-nums sm:text-base">
+              {formatNumber(currentPoint?.sog_kts ?? Number.NaN, 2)}
+            </p>
           </div>
           <div>
-            <p className="text-muted-foreground">SOG</p>
-            <p className="font-medium">{formatNumber(currentPoint?.sog_kts ?? Number.NaN, 2)} kt</p>
-          </div>
-          <div>
-            <p className="text-muted-foreground">COG/HDG</p>
-            <p className="font-medium">
+            <p className="text-[0.6rem] font-medium uppercase leading-tight">COG/HDG (deg)</p>
+            <p className="text-[0.95rem] font-semibold leading-tight tabular-nums sm:text-base">
               {formatNumber(currentPoint?.cog ?? Number.NaN, 0)} /{" "}
               {formatNumber(currentPoint?.hdg_true ?? Number.NaN, 0)}
             </p>
           </div>
           <div>
-            <p className="text-muted-foreground">Heel/Trim</p>
-            <p className="font-medium">
+            <p className="text-[0.6rem] font-medium uppercase leading-tight">Heel / Trim</p>
+            <p className="text-[0.95rem] font-semibold leading-tight tabular-nums sm:text-base">
               {formatNumber(currentPoint?.heel ?? Number.NaN, 1)} /{" "}
               {formatNumber(currentPoint?.trim ?? Number.NaN, 1)}
             </p>
           </div>
+          <div>
+            <p className="text-[0.6rem] font-medium uppercase leading-tight">Date & Time</p>
+            <p className="text-[0.95rem] font-semibold leading-tight tabular-nums sm:text-base">
+              {formatTimestamp(currentPoint?.timestamp ?? "")}
+            </p>
+          </div>
         </div>
 
-        <div className="absolute right-2 top-2 z-[500] flex flex-col gap-1.5">
-          <Button type="button" size="icon-sm" variant="secondary" title="Fit track" onClick={handleFitTrack}>
-            <RouteIcon className="size-4" />
-            <span className="sr-only">Fit track</span>
-          </Button>
+        <div className="absolute left-3 bottom-3 z-[1500] flex min-w-0 gap-2">
           <Button
             type="button"
-            size="icon-sm"
             variant="secondary"
-            title="Center boat"
-            onClick={handleCenterBoat}
+            size="icon"
+            className="vakaros-map-button h-11 w-11"
+            title="Fit trimmed trail"
+            onClick={handleFitTrack}
           >
-            <LocateFixedIcon className="size-4" />
-            <span className="sr-only">Center boat</span>
+            <Maximize2Icon className="size-4" />
+            <span className="sr-only">Fit trimmed trail</span>
           </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="default"
+                  className="vakaros-map-button h-11 min-w-16 px-3"
+                  title="Playback speed"
+                />
+              }
+            >
+              {rate}x
+              <span className="sr-only">Playback speed</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" side="top" className="w-28">
+              {PLAYBACK_RATES.map((speed) => (
+                <DropdownMenuItem key={speed} onClick={() => setRate(speed)}>
+                  {speed}x
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  type="button"
+                  variant={buoyMode ? "default" : "secondary"}
+                  size="icon"
+                  className={cn("h-11 w-11", !buoyMode && "vakaros-map-button")}
+                  title="Add buoy"
+                />
+              }
+            >
+              <PlusIcon className="size-5" />
+              <span className="sr-only">Add buoy</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" side="top" className="w-44">
+              <DropdownMenuItem
+                onClick={() =>
+                  setBuoyMode((currentMode) => (currentMode === "windward" ? null : "windward"))
+                }
+              >
+                <MapPinIcon className="size-4 text-orange-500" />
+                Windward
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() =>
+                  setBuoyMode((currentMode) => (currentMode === "leeward" ? null : "leeward"))
+                }
+              >
+                <CrosshairIcon className="size-4 text-sky-500" />
+                Leeward
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={buoys.length === 0} onClick={() => setBuoys([])}>
+                Clear buoys
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Button
             type="button"
-            size="icon-sm"
-            variant={trackMode === "default" ? "secondary" : "default"}
-            title="Track mode"
-            onClick={handleTrackModeToggle}
+            variant={trailMode === "speed" ? "default" : "secondary"}
+            size="icon"
+            className={cn("h-11 w-11", trailMode === "line" && "vakaros-map-button")}
+            title={trailMode === "speed" ? "Speed trail" : "Trail line"}
+            onClick={() => setTrailMode((currentMode) => (currentMode === "speed" ? "line" : "speed"))}
           >
-            <WavesIcon className="size-4" />
-            <span className="sr-only">Track mode</span>
-          </Button>
-          <Button
-            type="button"
-            size="icon-sm"
-            variant={buoyMode === "windward" ? "default" : "secondary"}
-            title="Windward buoy"
-            onClick={() => setBuoyMode((currentMode) => (currentMode === "windward" ? null : "windward"))}
-          >
-            <MapPinIcon className="size-4" />
-            <span className="sr-only">Windward buoy</span>
-          </Button>
-          <Button
-            type="button"
-            size="icon-sm"
-            variant={buoyMode === "leeward" ? "default" : "secondary"}
-            title="Leeward buoy"
-            onClick={() => setBuoyMode((currentMode) => (currentMode === "leeward" ? null : "leeward"))}
-          >
-            <CrosshairIcon className="size-4" />
-            <span className="sr-only">Leeward buoy</span>
+            <RouteIcon className="size-5" />
+            <span className="sr-only">
+              {trailMode === "speed" ? "Speed trail" : "Trail line"}
+            </span>
           </Button>
         </div>
+
+        <Button
+          type="button"
+          size="icon"
+          className="absolute right-4 bottom-4 z-[1500] h-16 w-16 rounded-full shadow-xl sm:h-18 sm:w-18"
+          onClick={() => setIsPlaying((currentValue) => !currentValue)}
+        >
+          {isPlaying ? <PauseIcon className="size-6" /> : <PlayIcon className="ml-1 size-7" />}
+          <span className="sr-only">{isPlaying ? "Pause" : "Play"}</span>
+        </Button>
       </div>
 
-      <div className="space-y-3 border-t bg-background p-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <Button
-            type="button"
-            size="icon"
-            className="h-11 w-11 shrink-0"
-            onClick={() => setIsPlaying((currentValue) => !currentValue)}
-          >
-            {isPlaying ? <PauseIcon className="size-4" /> : <PlayIcon className="size-4" />}
-            <span className="sr-only">{isPlaying ? "Pause" : "Play"}</span>
-          </Button>
-          <input
-            type="range"
+      <div className="space-y-10 border-t border-white/10 bg-black p-4 text-white">
+        <div className="mt-2 flex min-w-0 items-center">
+          <Slider
             min={safeTrimStart}
             max={safeTrimEnd}
-            value={clampIndex(idx, safeTrimStart, safeTrimEnd)}
-            onChange={(event) => setIdx(Number.parseInt(event.currentTarget.value, 10))}
-            className="min-w-0 flex-1"
-            aria-label="Playback position"
+            step={1}
+            value={[clampIndex(idx, safeTrimStart, safeTrimEnd)]}
+            onValueChange={(value) => {
+              setIdx(getSliderPointValue(value, clampIndex(idx, safeTrimStart, safeTrimEnd)))
+            }}
+            className="vakaros-playback-slider min-w-0 flex-1"
+            aria-label="Trail position"
           />
-          <span className="w-20 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-            {clampIndex(idx, safeTrimStart, safeTrimEnd) + 1}/{series.length}
-          </span>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-          <div className="grid gap-2 sm:grid-cols-2">
-            <label className="min-w-0 text-xs text-muted-foreground">
-              Start
-              <input
-                type="range"
-                min={0}
-                max={maxIndex}
-                value={safeTrimStart}
-                onChange={(event) => handleTrimStartChange(Number.parseInt(event.currentTarget.value, 10))}
-                className="mt-1 w-full"
-              />
-            </label>
-            <label className="min-w-0 text-xs text-muted-foreground">
-              End
-              <input
-                type="range"
-                min={0}
-                max={maxIndex}
-                value={safeTrimEnd}
-                onChange={(event) => handleTrimEndChange(Number.parseInt(event.currentTarget.value, 10))}
-                className="mt-1 w-full"
-              />
-            </label>
-          </div>
+        <div className="grid gap-3">
+          <Slider
+            min={safeTrimViewportStart}
+            max={safeTrimViewportEnd}
+            step={1}
+            minStepsBetweenValues={1}
+            thumbCollisionBehavior="none"
+            value={[safeTrimStart, safeTrimEnd]}
+            onValueChange={(value) => {
+              const [nextStart, nextEnd] = getSliderRangeValue(value, [safeTrimStart, safeTrimEnd])
 
-          <div className="flex min-w-0 items-center justify-between gap-2 md:justify-end">
-            <div className="flex items-center gap-1 rounded-lg border p-1">
-              {[1, 2, 4, 10].map((speed) => (
-                <Button
-                  key={speed}
-                  type="button"
-                  variant={rate === speed ? "default" : "ghost"}
-                  size="sm"
-                  className="h-8 px-2"
-                  onClick={() => setRate(speed)}
-                >
-                  {speed}x
-                </Button>
-              ))}
-            </div>
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <FastForwardIcon className="size-3.5" />
-              {trackMode === "default" ? "Track" : trackMode === "sog" ? "SOG" : "Wake"}
-            </div>
+              applyTrimWindow({
+                trimEnd: nextEnd,
+                trimStart: nextStart,
+              })
+            }}
+            className="vakaros-trim-range-slider min-w-0"
+            aria-label="Trim trail"
+          />
+
+          <div className="mt-3 grid w-full grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              className="vakaros-control-button h-11 w-full"
+              title="Trim zoom out"
+              disabled={!canTrimZoomOut}
+              onClick={() => handleTrimZoom("out")}
+            >
+              <MinusIcon className="size-5" />
+              <span className="sr-only">Trim zoom out</span>
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              className="vakaros-control-button h-11 w-full"
+              title="Trim zoom in"
+              disabled={!canTrimZoomIn}
+              onClick={() => handleTrimZoom("in")}
+            >
+              <PlusIcon className="size-5" />
+              <span className="sr-only">Trim zoom in</span>
+            </Button>
           </div>
         </div>
       </div>

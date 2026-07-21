@@ -385,10 +385,6 @@ export function SessionGpsFilePlayerDialog(input: SessionGpsFilePlayerDialogProp
       >
         <DialogHeader className="min-w-0">
           <DialogTitle className="truncate pr-10">{input.gpsFile.file_name}</DialogTitle>
-          <DialogDescription>
-            {formatAssetSize(input.gpsFile.size_bytes)} ·{" "}
-            {formatAssetUploadedAt(input.gpsFile.created_at)}
-          </DialogDescription>
         </DialogHeader>
         <div className="min-h-0">
           <VakarosPlayer
