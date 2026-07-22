@@ -1,7 +1,10 @@
 import "server-only"
 
 import type { AuthenticatedAccessContext } from "@/lib/auth/access"
-import { canManageOrganizationOperations } from "@/lib/auth/capabilities"
+import {
+  canManageOrganizationOperations,
+  canManageTeamFinance,
+} from "@/lib/auth/capabilities"
 import type { ResolvedNavigationScope } from "@/lib/navigation/types"
 
 type PendingEmailUserFields = {
@@ -20,12 +23,15 @@ export type SettingsUserData = {
 export type SettingsOrganizationData = {
   avatarUrl: string | null
   canEdit: boolean
+  defaultCurrencyCode: string
   id: string
   name: string
 }
 
 export type SettingsTeamData = {
   canEdit: boolean
+  canEditExpenseVisibility: boolean
+  expensesShowTeamTotals: boolean
   id: string
   name: string
   organizationId: string
@@ -94,9 +100,10 @@ export function getSettingsPageData(input: {
       pendingEmail: getPendingEmail(input.context.user),
     },
     organization: activeOrganization
-      ? {
+        ? {
           avatarUrl: activeOrganization.avatarUrl,
           canEdit: canManageOrganizationOperations(input.context, activeOrganization.id),
+          defaultCurrencyCode: activeOrganization.defaultCurrencyCode,
           id: activeOrganization.id,
           name: activeOrganization.name,
         }
@@ -108,6 +115,12 @@ export function getSettingsPageData(input: {
             organizationId: activeTeam.organizationId,
             teamId: activeTeam.id,
           }),
+          canEditExpenseVisibility: canManageTeamFinance({
+            context: input.context,
+            organizationId: activeTeam.organizationId,
+            teamId: activeTeam.id,
+          }),
+          expensesShowTeamTotals: activeTeam.expensesShowTeamTotals,
           id: activeTeam.id,
           name: activeTeam.name,
           organizationId: activeTeam.organizationId,

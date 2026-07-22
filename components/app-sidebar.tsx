@@ -17,6 +17,7 @@ import {
   KeyIcon,
   LogOutIcon,
   MapPinIcon,
+  ReceiptTextIcon,
   SailboatIcon,
   SettingsIcon,
   WalletCardsIcon,
@@ -199,6 +200,11 @@ const teamNavSections: SidebarNavSection[] = [
         title: "Reports",
         url: "/team-reports",
         icon: BarChart3Icon,
+      },
+      {
+        title: "Expenses",
+        url: "/team-expenses",
+        icon: ReceiptTextIcon,
       },
       {
         title: "Assets",

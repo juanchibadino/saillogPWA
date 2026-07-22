@@ -15,6 +15,7 @@ export type VenueDetailTabCacheFiltersInput = {
   campId?: string | null
   highlight?: TeamSessionHighlightFilter | null
   loadMore: boolean
+  memberId?: string | null
 }
 
 export type VenueDetailTabCacheInput = VenueDetailTabCacheFiltersInput & {
@@ -40,6 +41,7 @@ export function buildVenueDetailTabCacheFilters(
     camp: input.campId ?? null,
     highlight: input.highlight ?? null,
     loadMore: input.loadMore,
+    member: input.memberId ?? null,
   }
 }
 
@@ -75,6 +77,10 @@ export function buildVenueDetailTabApiUrl(
 
   if (input.highlight) {
     params.set("highlight", input.highlight)
+  }
+
+  if (input.memberId) {
+    params.set("member", input.memberId)
   }
 
   if (input.page > 1) {

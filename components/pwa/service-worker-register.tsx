@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 
 const DEVELOPMENT_SW_CLEANUP_RELOAD_KEY = "dockout-dev-sw-cleanup-reloaded";
+const APP_CACHE_NAME_PATTERN = /^(dockout-|sailog-)/;
 
 async function clearDevelopmentServiceWorkerState(): Promise<boolean> {
   const registrations = await navigator.serviceWorker.getRegistrations();
@@ -19,7 +20,9 @@ async function clearDevelopmentServiceWorkerState(): Promise<boolean> {
     return sameOriginRegistrations.length > 0;
   }
 
-  const cacheNames = await caches.keys();
+  const cacheNames = (await caches.keys()).filter((cacheName) =>
+    APP_CACHE_NAME_PATTERN.test(cacheName),
+  );
 
   await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
 

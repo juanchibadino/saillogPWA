@@ -28,12 +28,12 @@ import type { Database } from "@/types/database";
 
 type TeamRow = Pick<
   Database["public"]["Tables"]["teams"]["Row"],
-  "id" | "name" | "organization_id" | "team_type"
+  "id" | "name" | "organization_id" | "team_type" | "expenses_show_team_totals"
 >;
 
 type OrganizationRow = Pick<
   Database["public"]["Tables"]["organizations"]["Row"],
-  "id" | "name" | "avatar_url"
+  "id" | "name" | "avatar_url" | "default_currency_code"
 >;
 
 type NavigationBaseData = {
@@ -114,6 +114,7 @@ function mapTeams(rows: TeamRow[]): ScopeTeamOption[] {
     name: row.name,
     organizationId: row.organization_id,
     teamType: row.team_type,
+    expensesShowTeamTotals: row.expenses_show_team_totals ?? false,
   }));
 }
 
@@ -197,7 +198,7 @@ const loadNavigationBaseDataCached = cache(
     if (!isSuperAdmin && directTeamIds.length > 0) {
       const { data: directTeamRows, error: directTeamsError } = await supabase
         .from("teams")
-        .select("id, name, organization_id, team_type")
+        .select("id, name, organization_id, team_type, expenses_show_team_totals")
         .in("id", directTeamIds)
         .eq("is_active", true);
 
@@ -211,7 +212,7 @@ const loadNavigationBaseDataCached = cache(
     if (isSuperAdmin) {
       const { data: organizationRows, error: organizationsError } = await supabase
         .from("organizations")
-        .select("id, name, avatar_url")
+        .select("id, name, avatar_url, default_currency_code")
         .eq("is_active", true)
         .order("name", { ascending: true });
 
@@ -229,7 +230,7 @@ const loadNavigationBaseDataCached = cache(
       if (seedOrgIds.length > 0) {
         const { data: organizationRows, error: organizationsError } = await supabase
           .from("organizations")
-          .select("id, name, avatar_url")
+          .select("id, name, avatar_url, default_currency_code")
           .in("id", seedOrgIds)
           .eq("is_active", true)
           .order("name", { ascending: true });
@@ -244,6 +245,7 @@ const loadNavigationBaseDataCached = cache(
 
     const organizationOptions = sortByName(
       organizations.map((organization) => ({
+        defaultCurrencyCode: organization.default_currency_code ?? "USD",
         id: organization.id,
         name: organization.name,
         avatarUrl: organization.avatar_url,
@@ -284,7 +286,7 @@ const loadNavigationBaseDataCached = cache(
     if (orgIdsWithAllTeamsAccess.length > 0) {
       const { data: orgWideTeamRows, error: orgWideTeamsError } = await supabase
         .from("teams")
-        .select("id, name, organization_id, team_type")
+        .select("id, name, organization_id, team_type, expenses_show_team_totals")
         .in("organization_id", orgIdsWithAllTeamsAccess)
         .eq("is_active", true)
         .order("name", { ascending: true });
@@ -360,7 +362,7 @@ const loadOrganizationTeamsCached = cache(
     const supabase = await createServerSupabaseClient();
     const { data: teamRows, error: teamsError } = await supabase
       .from("teams")
-      .select("id, name, organization_id, team_type")
+      .select("id, name, organization_id, team_type, expenses_show_team_totals")
       .eq("organization_id", organizationId)
       .eq("is_active", true)
       .order("name", { ascending: true });
@@ -378,7 +380,7 @@ const loadAccessibleTeamByIdCached = cache(
     const supabase = await createServerSupabaseClient();
     const { data: teamRow, error: teamError } = await supabase
       .from("teams")
-      .select("id, name, organization_id, team_type")
+      .select("id, name, organization_id, team_type, expenses_show_team_totals")
       .eq("id", teamId)
       .eq("is_active", true)
       .maybeSingle();
@@ -395,6 +397,7 @@ const loadAccessibleTeamByIdCached = cache(
       id: teamRow.id,
       name: teamRow.name,
       organizationId: teamRow.organization_id,
+      expensesShowTeamTotals: teamRow.expenses_show_team_totals ?? false,
       teamType: teamRow.team_type,
     };
   },

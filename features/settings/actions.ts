@@ -5,7 +5,10 @@ import { redirect } from "next/navigation"
 
 import { canUpdateTeamSettings } from "@/features/settings/data"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
-import { canManageOrganizationOperations } from "@/lib/auth/capabilities"
+import {
+  canManageOrganizationOperations,
+  canManageTeamFinance,
+} from "@/lib/auth/capabilities"
 import { resolveCurrentRequestOrigin } from "@/lib/http/request-origin"
 import {
   NAVIGATION_SCOPE_ORG_QUERY_KEY,
@@ -49,6 +52,10 @@ function getFormString(formData: FormData, key: string): string | undefined {
   }
 
   return value
+}
+
+function getFormCheckbox(formData: FormData, key: string): boolean {
+  return formData.get(key) === "on"
 }
 
 function getFormFile(formData: FormData, key: string): File | undefined {
@@ -401,6 +408,7 @@ export async function updateOrganizationSettingsAction(
   const parsedInput = updateOrganizationSettingsInputSchema.safeParse({
     organizationId: getFormString(formData, "organizationId"),
     name: getFormString(formData, "name"),
+    defaultCurrencyCode: getFormString(formData, "defaultCurrencyCode"),
     avatarUrl: getFormString(formData, "avatarUrl"),
   })
 
@@ -465,6 +473,7 @@ export async function updateOrganizationSettingsAction(
     .from("organizations")
     .update({
       avatar_url: avatarResult.avatarUrl,
+      default_currency_code: parsedInput.data.defaultCurrencyCode,
       name: parsedInput.data.name,
     })
     .eq("id", parsedInput.data.organizationId)
@@ -496,6 +505,7 @@ export async function updateTeamSettingsAction(formData: FormData): Promise<void
     teamId: getFormString(formData, "teamId"),
     name: getFormString(formData, "name"),
     teamType: getFormString(formData, "teamType"),
+    expensesShowTeamTotals: getFormCheckbox(formData, "expensesShowTeamTotals"),
   })
 
   if (
@@ -512,6 +522,12 @@ export async function updateTeamSettingsAction(formData: FormData): Promise<void
       }),
     )
   }
+
+  const canUpdateExpenseVisibility = canManageTeamFinance({
+    context,
+    organizationId: parsedInput.data.organizationId,
+    teamId: parsedInput.data.teamId,
+  })
 
   if (
     !canUpdateTeamSettings({
@@ -540,9 +556,29 @@ export async function updateTeamSettingsAction(formData: FormData): Promise<void
     )
   }
 
+  const { data: existingTeam, error: existingTeamError } = await adminSupabase
+    .from("teams")
+    .select("id,expenses_show_team_totals")
+    .eq("id", parsedInput.data.teamId)
+    .eq("organization_id", parsedInput.data.organizationId)
+    .eq("is_active", true)
+    .maybeSingle()
+
+  if (existingTeamError || !existingTeam) {
+    redirect(
+      buildSettingsRedirectPath({
+        error: "update_failed",
+        ...scope,
+      }),
+    )
+  }
+
   const { error } = await adminSupabase
     .from("teams")
     .update({
+      expenses_show_team_totals: canUpdateExpenseVisibility
+        ? parsedInput.data.expensesShowTeamTotals
+        : existingTeam.expenses_show_team_totals,
       name: parsedInput.data.name,
       team_type: parsedInput.data.teamType,
     })

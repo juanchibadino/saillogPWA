@@ -3,6 +3,7 @@
 import * as React from "react"
 import {
   Building2Icon,
+  CoinsIcon,
   Loader2Icon,
   MailCheckIcon,
   SaveIcon,
@@ -23,6 +24,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 
 type SettingsScope = {
   activeOrgId?: string
@@ -468,7 +470,7 @@ function OrganizationSettingsForm({
   return (
     <SettingsPanel
       title="Organization"
-      description="Organization avatar and name."
+      description="Organization profile and billing currency."
       icon={<Building2Icon className="size-4" />}
       locked={!data.canEdit}
     >
@@ -499,6 +501,19 @@ function OrganizationSettingsForm({
                 name="name"
                 required
                 defaultValue={data.name}
+                className={inputClassName}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="settings-organization-currency">Default currency</Label>
+              <Input
+                id="settings-organization-currency"
+                name="defaultCurrencyCode"
+                required
+                defaultValue={data.defaultCurrencyCode}
+                inputMode="text"
+                maxLength={3}
                 className={inputClassName}
               />
             </div>
@@ -558,7 +573,7 @@ function TeamSettingsForm({
   return (
     <SettingsPanel
       title="Team"
-      description="Team name and type."
+      description="Team profile and expense visibility."
       icon={<UsersIcon className="size-4" />}
       locked={!data.canEdit}
     >
@@ -597,6 +612,36 @@ function TeamSettingsForm({
                 ))}
               </select>
             </div>
+          </div>
+
+          <div className="rounded-lg border bg-muted/30 px-3 py-3">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-background text-muted-foreground">
+                  <CoinsIcon className="size-4" />
+                </div>
+                <div className="min-w-0">
+                  <Label htmlFor="settings-team-expenses-show-team-totals">
+                    See all team expenses
+                  </Label>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Show team totals and team-scope exports on Expenses.
+                  </p>
+                </div>
+              </div>
+              <Switch
+                id="settings-team-expenses-show-team-totals"
+                name="expensesShowTeamTotals"
+                defaultChecked={data.expensesShowTeamTotals}
+                disabled={!data.canEditExpenseVisibility}
+                className="shrink-0"
+              />
+            </div>
+            {!data.canEditExpenseVisibility ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Only organization admins, team admins, and coaches can change this setting.
+              </p>
+            ) : null}
           </div>
         </SettingsFieldset>
 

@@ -14,6 +14,10 @@ import { resolveVenueDetailRouteRequest } from "@/features/venues/detail-route-s
 import { buildApiSliceErrorPayload } from "@/features/shared/api-slice-contracts"
 import { buildVenueDetailTabCacheMetadata } from "@/features/venues/venue-detail-tab-cache"
 import {
+  canManageTeamFinance,
+  canManageTeamSessions,
+} from "@/lib/auth/capabilities"
+import {
   getCurrentAccessContext,
   type AuthenticatedAccessContext,
 } from "@/lib/auth/access"
@@ -122,6 +126,7 @@ export async function GET(request: Request, context: RouteContext) {
     requestedYear?: number
   }
   const requestedCampId = requestUrl.searchParams.get("camp") ?? undefined
+  const requestedMemberId = requestUrl.searchParams.get("member") ?? undefined
 
   try {
     const yearContextPromise = getTeamVenueDetailYearContextData({
@@ -129,22 +134,39 @@ export async function GET(request: Request, context: RouteContext) {
       requestedYear,
       teamVenue: chromeData.teamVenue,
     })
+    const currentProfileId = authenticatedContext.profile?.id ?? authenticatedContext.user.id
+    const canManageTeamFinanceRows = canManageTeamFinance({
+      context: authenticatedContext,
+      organizationId: navigation.scope.activeOrgId,
+      teamId: navigation.scope.activeTeamId,
+    })
+    const canManageTeamSessionsRows = canManageTeamSessions({
+      context: authenticatedContext,
+      organizationId: navigation.scope.activeOrgId,
+      teamId: navigation.scope.activeTeamId,
+    })
 
     const [kpis, data] = await Promise.all([
       getTeamVenueDetailKpisData({
+        activeOrganizationId: navigation.scope.activeOrgId,
         activeTeamId: navigation.scope.activeTeamId,
+        currentProfileId,
         requestedYear,
         teamVenue: chromeData.teamVenue,
         yearContextPromise,
       }),
       getTeamVenueDetailTabData({
+        activeOrganizationId: navigation.scope.activeOrgId,
         activeTeamId: navigation.scope.activeTeamId,
         accumulatePages: requestedLoadMoreMode,
-        currentProfileId: authenticatedContext.user.id,
+        canManageTeamFinance: canManageTeamFinanceRows,
+        canManageTeamSessions: canManageTeamSessionsRows,
+        currentProfileId,
         requestedPage,
         requestedYear,
         selectedCampId: requestedCampId,
         selectedHighlight: requestedHighlight,
+        selectedMemberId: requestedMemberId,
         tab,
         teamVenue: chromeData.teamVenue,
         venue: chromeData.venue,
@@ -155,6 +177,7 @@ export async function GET(request: Request, context: RouteContext) {
     const tabLoadMore = tab === "sessions" && requestedLoadMoreMode
     const tabCampId = tab === "sessions" ? requestedCampId : undefined
     const tabHighlight = tab === "sessions" ? requestedHighlight : undefined
+    const tabMemberId = tab === "expenses" ? requestedMemberId : undefined
     const cache = buildVenueDetailTabCacheMetadata({
       scope: {
         orgId: navigation.scope.activeOrgId,
@@ -166,6 +189,7 @@ export async function GET(request: Request, context: RouteContext) {
       campId: tabCampId,
       highlight: tabHighlight,
       loadMore: tabLoadMore,
+      memberId: tabMemberId,
       page: tabPage,
     })
 

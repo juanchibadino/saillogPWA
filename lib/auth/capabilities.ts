@@ -1,6 +1,7 @@
 import type { AccessContext } from "@/lib/auth/access";
 import {
   canManageOrganizationOperationsFromAccess,
+  canManageTeamFinanceFromAccess,
   canManageTeamSessionsFromAccess,
   canManageTeamVenuesFromAccess,
 } from "@/lib/auth/capability-rules.mjs";
@@ -70,6 +71,14 @@ export function canManageTeamVenues(input: {
   teamId: string;
 }): boolean {
   return canManageTeamVenuesFromAccess(input);
+}
+
+export function canManageTeamFinance(input: {
+  context: AccessContext;
+  organizationId: string;
+  teamId: string;
+}): boolean {
+  return canManageTeamFinanceFromAccess(input);
 }
 
 export function canDeleteCamps(input: {

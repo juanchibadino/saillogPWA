@@ -4,6 +4,7 @@ export const VENUE_DETAIL_TABS = [
   "wind-patterns",
   "assessments",
   "reports",
+  "expenses",
 ]
 
 export function resolveVenueDetailTab(value) {
@@ -57,6 +58,7 @@ export function resolveVenueDetailRouteRequest(input) {
     requestedPage: normalizeVenueDetailPage(input.pageParam),
     requestedLoadMoreMode: input.loadMoreParam === "1",
     requestedHighlight: resolveVenueDetailHighlightFilter(input.highlightParam),
+    requestedMemberId: input.memberParam || undefined,
   }
 }
 
@@ -80,6 +82,20 @@ export function buildVenueDetailPageHref(input) {
     params.set("highlight", input.nextHighlight)
   }
 
+  if (input.nextMemberId === null) {
+    params.delete("member")
+  } else if (typeof input.nextMemberId === "string") {
+    const trimmedMemberId = input.nextMemberId.trim()
+
+    if (trimmedMemberId.length > 0) {
+      params.set("member", trimmedMemberId)
+    } else {
+      params.delete("member")
+    }
+  }
+
+  params.delete("crew")
+
   const resolvedTab = input.nextTab ?? params.get("tab")
 
   if (resolvedTab !== "sessions") {
@@ -87,11 +103,16 @@ export function buildVenueDetailPageHref(input) {
     params.delete("highlight")
   }
 
+  if (resolvedTab !== "expenses") {
+    params.delete("member")
+  }
+
   const shouldResetPage =
     input.resetPage === true ||
     typeof input.nextTab !== "undefined" ||
     typeof input.nextYear !== "undefined" ||
-    typeof input.nextHighlight !== "undefined"
+    typeof input.nextHighlight !== "undefined" ||
+    typeof input.nextMemberId !== "undefined"
 
   if (shouldResetPage) {
     params.delete("page")

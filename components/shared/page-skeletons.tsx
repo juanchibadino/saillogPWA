@@ -773,6 +773,145 @@ export function TeamGearPageSkeleton() {
   )
 }
 
+const TEAM_EXPENSES_TABLE_HEADERS = [
+  "Date",
+  "Vendor",
+  "Venue",
+  "Type",
+  "Local",
+  "Converted",
+  "Receipt",
+]
+const TEAM_EXPENSES_TABLE_GRID_CLASS =
+  "grid grid-cols-[0.8fr_1.2fr_1.1fr_0.85fr_0.75fr_0.9fr_0.8fr_3rem] items-center gap-4"
+
+export function TeamExpensesChromeSkeleton() {
+  return (
+    <section className="flex items-center justify-between gap-3">
+      <h1 className="min-w-0 text-2xl font-semibold tracking-tight md:hidden">
+        Expenses
+      </h1>
+      <h2 className="hidden text-lg font-semibold md:block">Expenses</h2>
+
+      <div className="flex shrink-0 items-center justify-end gap-2 md:w-auto">
+        <button
+          type="button"
+          disabled
+          className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-secondary text-secondary-foreground opacity-70 md:hidden"
+          aria-label="Loading expenses filters"
+        >
+          <Settings2Icon className="size-5" />
+        </button>
+
+        <div className="hidden items-center justify-end gap-2 md:flex">
+          <Skeleton className="h-8 w-24" />
+          <Skeleton className="h-8 w-24" />
+          <Skeleton className="h-8 w-28" />
+          <Skeleton className="h-8 w-28" />
+          <Skeleton className="h-8 w-24" />
+          <button
+            type="button"
+            disabled
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium text-muted-foreground opacity-70"
+          >
+            <PlusIcon className="size-4" />
+            New
+          </button>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        disabled
+        className="mobile-floating-action inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground opacity-70 shadow-lg shadow-black/20 md:hidden"
+        aria-label="Loading new expense action"
+      >
+        <PlusIcon className="size-6" />
+      </button>
+    </section>
+  )
+}
+
+export function TeamExpensesResultsSkeleton() {
+  return (
+    <section className="space-y-4">
+      <div className="grid gap-2 md:grid-cols-2">
+        <GradientCard className="px-4 py-3">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="mt-2 h-6 w-28" />
+        </GradientCard>
+        <GradientCard className="hidden px-4 py-3 md:block">
+          <Skeleton className="h-3 w-28" />
+          <Skeleton className="mt-2 h-6 w-32" />
+        </GradientCard>
+      </div>
+
+      <div className="space-y-2 md:hidden">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <GradientCard key={`team-expenses-mobile-row-${index}`} className="px-3 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="space-y-1">
+                  <Skeleton className="h-4 w-36" />
+                  <Skeleton className="h-3 w-44" />
+                </div>
+                <Skeleton className="h-3 w-32" />
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <Skeleton className="h-5 w-24" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+              </div>
+              <Skeleton className="h-11 w-11 shrink-0" />
+            </div>
+          </GradientCard>
+        ))}
+        <div className="pb-4 pt-3">
+          <Skeleton className="h-11 w-full" />
+        </div>
+      </div>
+
+      <GradientCard className="hidden overflow-hidden p-0 md:block">
+        <div
+          className={`${TEAM_EXPENSES_TABLE_GRID_CLASS} bg-muted/40 px-4 py-3 text-sm font-medium text-muted-foreground`}
+        >
+          {TEAM_EXPENSES_TABLE_HEADERS.map((header) => (
+            <span key={`team-expenses-header-${header}`} className="truncate">
+              {header}
+            </span>
+          ))}
+          <span aria-hidden="true" />
+        </div>
+        <div className="divide-y divide-border">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div
+              key={`team-expenses-desktop-row-${index}`}
+              className={`${TEAM_EXPENSES_TABLE_GRID_CLASS} min-h-12 px-4 py-3`}
+            >
+              <Skeleton className="h-4 w-full max-w-24" />
+              <Skeleton className="h-4 w-full max-w-36" />
+              <Skeleton className="h-4 w-full max-w-32" />
+              <Skeleton className="h-4 w-full max-w-20" />
+              <Skeleton className="ml-auto h-4 w-full max-w-20" />
+              <Skeleton className="ml-auto h-4 w-full max-w-24" />
+              <Skeleton className="ml-auto h-8 w-8" />
+              <Skeleton className="ml-auto h-8 w-8" />
+            </div>
+          ))}
+        </div>
+      </GradientCard>
+    </section>
+  )
+}
+
+export function TeamExpensesPageSkeleton() {
+  return (
+    <div className="space-y-6">
+      <TeamExpensesChromeSkeleton />
+      <TeamExpensesResultsSkeleton />
+    </div>
+  )
+}
+
 export function TeamNotesChromeSkeleton() {
   return (
     <section className="space-y-4" aria-busy="true">
@@ -2404,6 +2543,7 @@ export type VenueDetailSkeletonTab =
   | "camps"
   | "sessions"
   | "reports"
+  | "expenses"
   | "assessments"
   | "wind-patterns"
 
@@ -2427,6 +2567,7 @@ const VENUE_DETAIL_TABS: Array<{
   { label: "Camps", value: "camps" },
   { label: "Sessions", value: "sessions" },
   { label: "Reports", value: "reports" },
+  { label: "Expenses", value: "expenses" },
   { label: "Assess", value: "assessments" },
   { label: "Wind", value: "wind-patterns" },
 ]
@@ -2470,6 +2611,12 @@ function formatVenueDetailSkeletonPanelTitle(input: {
     return typeof input.selectedYear === "number"
       ? `Reports ${input.selectedYear}`
       : "Reports"
+  }
+
+  if (input.selectedTab === "expenses") {
+    return typeof input.selectedYear === "number"
+      ? `Expenses ${input.selectedYear}`
+      : "Expenses"
   }
 
   if (input.selectedTab === "wind-patterns") {
@@ -2550,7 +2697,7 @@ function VenueDetailListPanelSkeleton({
   selectedTab,
   selectedYear,
 }: {
-  selectedTab: "camps" | "sessions" | "reports"
+  selectedTab: "camps" | "sessions" | "reports" | "expenses"
   selectedYear?: number
 }) {
   const title = formatVenueDetailSkeletonPanelTitle({
@@ -2558,8 +2705,10 @@ function VenueDetailListPanelSkeleton({
     selectedYear,
   })
   const showToolbarSkeleton = selectedTab === "sessions"
-  const showCreateSkeleton = selectedTab === "camps" || selectedTab === "reports"
-  const createActionLabel = selectedTab === "reports" ? "report" : "camp"
+  const showCreateSkeleton =
+    selectedTab === "camps" || selectedTab === "reports" || selectedTab === "expenses"
+  const createActionLabel =
+    selectedTab === "reports" ? "report" : selectedTab === "expenses" ? "expense" : "camp"
 
   return (
     <section className="space-y-4" aria-busy="true">
@@ -2841,6 +2990,15 @@ export function VenueDetailPanelSkeleton({
     return (
       <VenueDetailListPanelSkeleton
         selectedTab="reports"
+        selectedYear={selectedYear}
+      />
+    )
+  }
+
+  if (selectedTab === "expenses") {
+    return (
+      <VenueDetailListPanelSkeleton
+        selectedTab="expenses"
         selectedYear={selectedYear}
       />
     )

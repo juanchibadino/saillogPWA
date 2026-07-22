@@ -1,6 +1,13 @@
 import type { Database } from "@/types/database";
 import type { TeamVenueWindPatternsPageData } from "@/features/wind-patterns/data";
 import type {
+  TeamExpenseFormOptions,
+  TeamExpenseCrewFilter,
+  TeamExpenseListItem,
+  TeamExpenseMemberOption,
+  TeamExpenseMetrics,
+} from "@/features/expenses/data";
+import type {
   TeamSessionCampOption,
   TeamSessionHighlightFilter,
   TeamSessionListItem,
@@ -168,12 +175,25 @@ export type VenueDetailReportsTabData = {
   reports: VenueDetailReportItem[];
 };
 
+export type VenueDetailExpensesTabData = {
+  canFilterByMember: boolean;
+  expenses: TeamExpenseListItem[];
+  formOptions: TeamExpenseFormOptions;
+  memberOptions: TeamExpenseMemberOption[];
+  metrics: TeamExpenseMetrics;
+  selectedCrewFilter: TeamExpenseCrewFilter;
+  selectedMemberId?: string;
+  selectedVisibilityScope: "mine" | "team";
+  teamExpensesVisible: boolean;
+};
+
 export type VenueDetailTabDataByTab = {
   camps: VenueDetailCampsTabData;
   sessions: VenueDetailSessionsTabData;
   "wind-patterns": VenueDetailWindPatternsTabData;
   assessments: VenueDetailAssessmentsTabData;
   reports: VenueDetailReportsTabData;
+  expenses: VenueDetailExpensesTabData;
 };
 
 export type VenueDetailTabPayload =

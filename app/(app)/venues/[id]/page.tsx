@@ -29,6 +29,7 @@ import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import {
   canDeleteCamps,
   canManageOrganizationOperations,
+  canManageTeamFinance,
   canManageTeamSessions,
   canManageTeamStructure,
 } from "@/lib/auth/capabilities"
@@ -210,6 +211,7 @@ async function VenueDetailDeferredContent(input: {
   canManageCamps: boolean
   canManageAssessments: boolean
   canManageReports: boolean
+  canManageExpenses: boolean
   canManageSessions: boolean
   canManageVenues: boolean
   canManageWindPatterns: boolean
@@ -261,6 +263,7 @@ async function VenueDetailDeferredContent(input: {
       canManageCamps={input.canManageCamps}
       canManageAssessments={input.canManageAssessments}
       canManageReports={input.canManageReports}
+      canManageExpenses={input.canManageExpenses}
       canManageSessions={input.canManageSessions}
       canManageWindPatterns={input.canManageWindPatterns}
       initialWindPatternStatusFilter={input.initialWindPatternStatusFilter}
@@ -287,6 +290,7 @@ export default async function VenueDetailPage({
   const cacheTeamVenueId =
     getSingleSearchParamValue(resolvedSearchParams.cacheTeamVenue) ?? resolvedParams.id
   const requestedCampId = getSingleSearchParamValue(resolvedSearchParams.camp)
+  const requestedMemberId = getSingleSearchParamValue(resolvedSearchParams.member)
   const {
     requestedHighlight,
     requestedLoadMoreMode,
@@ -399,25 +403,40 @@ export default async function VenueDetailPage({
         })
       : false
   const canManageWindPatterns = canManageSessions
+  const canManageExpenseFinance =
+    !noTeamSelected && chromeData.teamVenue
+      ? canManageTeamFinance({
+          context,
+          organizationId: scope.activeOrgId,
+          teamId: chromeData.teamVenue.team_id,
+        })
+      : false
+  const canManageExpenses = canManageSessions
   const yearContextPromise = getTeamVenueDetailYearContextData({
     activeTeamId: scope.activeTeamId,
     requestedYear,
     teamVenue: chromeData.teamVenue,
   })
   const kpisPromise = getTeamVenueDetailKpisData({
+    activeOrganizationId: scope.activeOrgId,
     activeTeamId: scope.activeTeamId,
+    currentProfileId: context.profile?.id ?? context.user.id,
     requestedYear,
     teamVenue: chromeData.teamVenue,
     yearContextPromise,
   })
   const initialTabDataPromise = getTeamVenueDetailTabData({
+    activeOrganizationId: scope.activeOrgId,
     activeTeamId: scope.activeTeamId,
     accumulatePages: requestedLoadMoreMode,
-    currentProfileId: context.user.id,
+    canManageTeamFinance: canManageExpenseFinance,
+    canManageTeamSessions: canManageExpenses,
+    currentProfileId: context.profile?.id ?? context.user.id,
     requestedPage,
     requestedYear,
     selectedCampId: requestedCampId,
     selectedHighlight: requestedHighlight,
+    selectedMemberId: requestedMemberId,
     tab: selectedTab,
     teamVenue: chromeData.teamVenue,
     venue,
@@ -502,6 +521,7 @@ export default async function VenueDetailPage({
           canManageCamps={canManageCamps}
           canManageAssessments={canManageAssessments}
           canManageReports={canManageReports}
+          canManageExpenses={canManageExpenses}
           canManageSessions={canManageSessions}
           canManageVenues={canManageVenues}
           canManageWindPatterns={canManageWindPatterns}

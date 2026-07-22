@@ -68,6 +68,7 @@ export type Database = {
           name: string;
           slug: string;
           avatar_url: string | null;
+          default_currency_code: string;
           is_active: boolean;
           created_at: string;
           updated_at: string;
@@ -77,6 +78,7 @@ export type Database = {
           name: string;
           slug: string;
           avatar_url?: string | null;
+          default_currency_code?: string;
           is_active?: boolean;
           created_at?: string;
           updated_at?: string;
@@ -85,6 +87,7 @@ export type Database = {
           name?: string;
           slug?: string;
           avatar_url?: string | null;
+          default_currency_code?: string;
           is_active?: boolean;
           created_at?: string;
           updated_at?: string;
@@ -121,6 +124,7 @@ export type Database = {
           name: string;
           slug: string;
           team_type: string | null;
+          expenses_show_team_totals: boolean;
           is_active: boolean;
           legacy_glide_row_id: string | null;
           created_at: string;
@@ -132,6 +136,7 @@ export type Database = {
           name: string;
           slug: string;
           team_type?: string | null;
+          expenses_show_team_totals?: boolean;
           is_active?: boolean;
           legacy_glide_row_id?: string | null;
           created_at?: string;
@@ -142,6 +147,7 @@ export type Database = {
           name?: string;
           slug?: string;
           team_type?: string | null;
+          expenses_show_team_totals?: boolean;
           is_active?: boolean;
           legacy_glide_row_id?: string | null;
           created_at?: string;
@@ -375,6 +381,136 @@ export type Database = {
           report_id?: string;
           camp_id?: string;
           created_at?: string;
+        };
+        Relationships: [];
+      };
+      expense_exchange_rates: {
+        Row: {
+          id: string;
+          base_currency_code: string;
+          quote_currency_code: string;
+          rate_date: string;
+          source: string;
+          rate: number;
+          fetched_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          base_currency_code: string;
+          quote_currency_code: string;
+          rate_date: string;
+          source: string;
+          rate: number;
+          fetched_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          base_currency_code?: string;
+          quote_currency_code?: string;
+          rate_date?: string;
+          source?: string;
+          rate?: number;
+          fetched_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      team_expenses: {
+        Row: {
+          id: string;
+          team_id: string;
+          team_venue_id: string;
+          camp_id: string | null;
+          created_by_profile_id: string;
+          assigned_to_profile_id: string;
+          expense_date: string;
+          expense_year: number;
+          vendor: string;
+          expense_type: Database["public"]["Enums"]["expense_type"];
+          description: string | null;
+          amount_local: number;
+          currency_code: string;
+          organization_currency_code: string;
+          exchange_rate: number;
+          exchange_rate_date: string;
+          exchange_rate_source: string;
+          amount_organization_currency: number;
+          receipt_bucket: string | null;
+          receipt_storage_path: string | null;
+          receipt_file_name: string | null;
+          receipt_mime_type: string | null;
+          receipt_size_bytes: number | null;
+          receipt_thumbnail_bucket: string | null;
+          receipt_thumbnail_storage_path: string | null;
+          receipt_thumbnail_mime_type: string | null;
+          receipt_thumbnail_size_bytes: number | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          team_id: string;
+          team_venue_id: string;
+          camp_id?: string | null;
+          created_by_profile_id: string;
+          assigned_to_profile_id: string;
+          expense_date: string;
+          vendor: string;
+          expense_type?: Database["public"]["Enums"]["expense_type"];
+          description?: string | null;
+          amount_local: number;
+          currency_code: string;
+          organization_currency_code: string;
+          exchange_rate: number;
+          exchange_rate_date: string;
+          exchange_rate_source: string;
+          amount_organization_currency: number;
+          receipt_bucket?: string | null;
+          receipt_storage_path?: string | null;
+          receipt_file_name?: string | null;
+          receipt_mime_type?: string | null;
+          receipt_size_bytes?: number | null;
+          receipt_thumbnail_bucket?: string | null;
+          receipt_thumbnail_storage_path?: string | null;
+          receipt_thumbnail_mime_type?: string | null;
+          receipt_thumbnail_size_bytes?: number | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          team_id?: string;
+          team_venue_id?: string;
+          camp_id?: string | null;
+          created_by_profile_id?: string;
+          assigned_to_profile_id?: string;
+          expense_date?: string;
+          vendor?: string;
+          expense_type?: Database["public"]["Enums"]["expense_type"];
+          description?: string | null;
+          amount_local?: number;
+          currency_code?: string;
+          organization_currency_code?: string;
+          exchange_rate?: number;
+          exchange_rate_date?: string;
+          exchange_rate_source?: string;
+          amount_organization_currency?: number;
+          receipt_bucket?: string | null;
+          receipt_storage_path?: string | null;
+          receipt_file_name?: string | null;
+          receipt_mime_type?: string | null;
+          receipt_size_bytes?: number | null;
+          receipt_thumbnail_bucket?: string | null;
+          receipt_thumbnail_storage_path?: string | null;
+          receipt_thumbnail_mime_type?: string | null;
+          receipt_thumbnail_size_bytes?: number | null;
+          created_at?: string;
+          updated_at?: string;
         };
         Relationships: [];
       };
@@ -1855,6 +1991,17 @@ export type Database = {
       camp_type: "training" | "regatta" | "mixed";
       calendar_event_type: "meeting" | "travel" | "logistics" | "other";
       calendar_presence_source_type: "camp" | "event";
+      expense_type:
+        | "meals"
+        | "accommodation"
+        | "transport"
+        | "fuel"
+        | "marina_fees"
+        | "race_fees"
+        | "supplies"
+        | "gear"
+        | "coaching"
+        | "other";
       gear_alert_metric: "usage_count" | "usage_minutes";
       gear_alert_severity: "warning" | "critical";
       gear_alert_state: "critical" | "warning" | "none";

@@ -11,6 +11,7 @@ test("normalizes Venue detail tab, year, page, loadMore, and highlight params", 
     resolveVenueDetailRouteRequest({
       tabParam: "metrics",
       yearParam: "2026",
+      memberParam: "member-1",
       pageParam: "3",
       loadMoreParam: "1",
       highlightParam: "yes",
@@ -21,6 +22,7 @@ test("normalizes Venue detail tab, year, page, loadMore, and highlight params", 
       requestedPage: 3,
       requestedLoadMoreMode: true,
       requestedHighlight: "yes",
+      requestedMemberId: "member-1",
     },
   )
 
@@ -31,6 +33,7 @@ test("normalizes Venue detail tab, year, page, loadMore, and highlight params", 
       pageParam: "-2",
       loadMoreParam: "0",
       highlightParam: "maybe",
+      memberParam: "",
     }),
     {
       selectedTab: "camps",
@@ -38,6 +41,7 @@ test("normalizes Venue detail tab, year, page, loadMore, and highlight params", 
       requestedPage: 1,
       requestedLoadMoreMode: false,
       requestedHighlight: undefined,
+      requestedMemberId: undefined,
     },
   )
 })
@@ -59,6 +63,35 @@ test("builds Venue detail URLs preserving scope and replacing tab or year state"
       nextYear: 2026,
     }),
     "/venues/team-venue-1?org=org-1&team=team-1&tab=sessions&year=2026",
+  )
+})
+
+test("preserves venue expense member filter only on the expenses tab", () => {
+  assert.equal(
+    buildVenueDetailPageHref({
+      pathname: "/venues/team-venue-1",
+      search: "?org=org-1&team=team-1&tab=expenses&year=2026&page=2",
+      nextMemberId: "member-1",
+    }),
+    "/venues/team-venue-1?org=org-1&team=team-1&tab=expenses&year=2026&member=member-1",
+  )
+
+  assert.equal(
+    buildVenueDetailPageHref({
+      pathname: "/venues/team-venue-1",
+      search: "?org=org-1&team=team-1&tab=expenses&year=2026&member=member-1&crew=others",
+      nextMemberId: "",
+    }),
+    "/venues/team-venue-1?org=org-1&team=team-1&tab=expenses&year=2026",
+  )
+
+  assert.equal(
+    buildVenueDetailPageHref({
+      pathname: "/venues/team-venue-1",
+      search: "?org=org-1&team=team-1&tab=expenses&year=2026&member=member-1&crew=others",
+      nextTab: "camps",
+    }),
+    "/venues/team-venue-1?org=org-1&team=team-1&tab=camps&year=2026",
   )
 })
 

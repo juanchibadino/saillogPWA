@@ -5,12 +5,14 @@ export type ScopeSearchParams = Record<string, ScopeSearchParamValue>;
 export type NavigationTeamId = string | null;
 
 export type ScopeOrganizationOption = {
+  defaultCurrencyCode: string;
   id: string;
   name: string;
   avatarUrl: string | null;
 };
 
 export type ScopeTeamOption = {
+  expensesShowTeamTotals: boolean;
   id: string;
   name: string;
   organizationId: string;

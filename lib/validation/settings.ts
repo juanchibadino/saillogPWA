@@ -2,6 +2,12 @@ import { z } from "zod"
 
 const requiredNameSchema = z.string().trim().min(1).max(120)
 const requiredEmailSchema = z.string().trim().email().max(320).toLowerCase()
+const currencyCodeSchema = z
+  .string()
+  .trim()
+  .length(3)
+  .transform((value) => value.toUpperCase())
+  .refine((value) => /^[A-Z]{3}$/.test(value), "Currency must be a 3-letter code")
 const optionalAvatarUrlSchema = z
   .union([z.string().trim().url().max(2048), z.literal("")])
   .optional()
@@ -16,6 +22,7 @@ export const updateUserSettingsInputSchema = z.object({
 export const updateOrganizationSettingsInputSchema = z.object({
   organizationId: z.string().uuid(),
   name: requiredNameSchema,
+  defaultCurrencyCode: currencyCodeSchema,
   avatarUrl: z
     .string()
     .trim()
@@ -33,6 +40,7 @@ export const updateTeamSettingsInputSchema = z.object({
   teamId: z.string().uuid(),
   name: requiredNameSchema,
   teamType: requiredNameSchema,
+  expensesShowTeamTotals: z.boolean(),
 })
 
 export type UpdateUserSettingsInput = z.infer<typeof updateUserSettingsInputSchema>

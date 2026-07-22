@@ -118,6 +118,10 @@ function getSectionTitle(pathname: string): string {
     return "Team Gear"
   }
 
+  if (pathname.startsWith("/team-expenses")) {
+    return "Team Expenses"
+  }
+
   if (pathname.startsWith("/team-notes")) {
     return "Notes"
   }
@@ -504,6 +508,31 @@ function getTeamGearTitle(
   return `${activeTeamLabel} > Gear`
 }
 
+function getTeamExpensesTitle(
+  navigation: ResolvedNavigationScope | null,
+  searchParams: ReadonlyURLSearchParams,
+): string {
+  if (!navigation?.scope) {
+    return "Team Expenses"
+  }
+
+  const activeOrgId =
+    searchParams.get(NAVIGATION_SCOPE_ORG_QUERY_KEY) ?? navigation.scope.activeOrgId
+  const queryTeamId = searchParams.get(NAVIGATION_SCOPE_TEAM_QUERY_KEY)
+
+  const teamsForOrganization =
+    navigation.catalog.teamsByOrganizationId[activeOrgId] ?? []
+  const activeTeamId =
+    queryTeamId && teamsForOrganization.some((team) => team.id === queryTeamId)
+      ? queryTeamId
+      : navigation.scope.activeTeamId
+  const activeTeamLabel =
+    teamsForOrganization.find((team) => team.id === activeTeamId)?.name ??
+    "No team selected"
+
+  return `${activeTeamLabel} > Expenses`
+}
+
 function getTeamVenueDetailId(pathname: string): string | null {
   const match = pathname.match(/^\/venues\/([^/]+)$/)
   return match?.[1] ?? null
@@ -647,6 +676,10 @@ function shouldUsePhaseOneMobileHeader(pathname: string): boolean {
     return true
   }
 
+  if (pathname.startsWith("/team-expenses")) {
+    return true
+  }
+
   if (pathname.startsWith("/team-notes")) {
     return true
   }
@@ -708,6 +741,10 @@ function resolveMobileBackFallbackPath(pathname: string): string {
   }
 
   if (pathname.startsWith("/team-gear")) {
+    return "/team-home"
+  }
+
+  if (pathname.startsWith("/team-expenses")) {
     return "/team-home"
   }
 
@@ -778,23 +815,26 @@ export function SiteHeader({
               ? getTeamAssessmentsTitle(navigation, searchParams)
               : pathname.startsWith("/team-gear")
                 ? getTeamGearTitle(navigation, searchParams)
-                : pathname.startsWith("/team-notes")
-                  ? getTeamNotesTitle(navigation, searchParams)
-                  : pathname.startsWith("/team-standard-moves")
-                    ? getTeamStandardMovesTitle(navigation, searchParams)
-                    : pathname.startsWith("/team-wind-patterns")
-                      ? getTeamWindPatternsTitle(navigation, searchParams)
-                      : pathname.startsWith("/team-assets")
-                        ? getTeamAssetsTitle(navigation, searchParams)
-                        : pathname.startsWith("/team-reports")
-                          ? "Team Reports"
-                          : getSectionTitle(pathname)
+                : pathname.startsWith("/team-expenses")
+                  ? getTeamExpensesTitle(navigation, searchParams)
+                  : pathname.startsWith("/team-notes")
+                    ? getTeamNotesTitle(navigation, searchParams)
+                    : pathname.startsWith("/team-standard-moves")
+                      ? getTeamStandardMovesTitle(navigation, searchParams)
+                      : pathname.startsWith("/team-wind-patterns")
+                        ? getTeamWindPatternsTitle(navigation, searchParams)
+                        : pathname.startsWith("/team-assets")
+                          ? getTeamAssetsTitle(navigation, searchParams)
+                          : pathname.startsWith("/team-reports")
+                            ? "Team Reports"
+                            : getSectionTitle(pathname)
   const isTeamHomeHeader = pathname.startsWith("/team-home")
   const isTeamCampsListHeader = pathname === "/team-camps"
   const isTeamCalendarHeader = pathname.startsWith("/team-calendar")
   const isTeamSessionsHeader = pathname.startsWith("/team-sessions")
   const isTeamAssessmentsHeader = pathname.startsWith("/team-assessments")
   const isTeamGearHeader = pathname.startsWith("/team-gear")
+  const isTeamExpensesHeader = pathname.startsWith("/team-expenses")
   const isTeamNotesHeader = pathname.startsWith("/team-notes")
   const isTeamStandardMovesHeader = pathname.startsWith("/team-standard-moves")
   const isTeamWindPatternsHeader = pathname.startsWith("/team-wind-patterns")
@@ -812,17 +852,19 @@ export function SiteHeader({
             ? "Assessments"
             : pathname.startsWith("/team-gear")
               ? "Gear"
-        : pathname.startsWith("/team-notes")
-          ? "Notes"
-        : pathname.startsWith("/team-standard-moves")
-          ? "Standard Moves"
-        : pathname.startsWith("/team-wind-patterns")
-          ? "Wind Patterns"
-        : pathname.startsWith("/team-assets")
-          ? "Assets"
-        : pathname.startsWith("/team-reports")
-          ? "Reports"
-        : null
+              : pathname.startsWith("/team-expenses")
+                ? "Expenses"
+                : pathname.startsWith("/team-notes")
+                  ? "Notes"
+                  : pathname.startsWith("/team-standard-moves")
+                    ? "Standard Moves"
+                    : pathname.startsWith("/team-wind-patterns")
+                      ? "Wind Patterns"
+                      : pathname.startsWith("/team-assets")
+                        ? "Assets"
+                        : pathname.startsWith("/team-reports")
+                          ? "Reports"
+                          : null
   const teamVenueDetailId = getTeamVenueDetailId(pathname)
   const sessionDetailId = getSessionDetailId(pathname)
   const assessmentDetailId = getAssessmentDetailId(pathname)
@@ -1214,6 +1256,7 @@ export function SiteHeader({
       isTeamSessionsHeader ||
       isTeamAssessmentsHeader ||
       isTeamGearHeader ||
+      isTeamExpensesHeader ||
       isTeamNotesHeader ||
       isTeamStandardMovesHeader ||
       isTeamWindPatternsHeader ||
@@ -1366,6 +1409,7 @@ export function SiteHeader({
                 isTeamSessionsHeader ||
                 isTeamAssessmentsHeader ||
                 isTeamGearHeader ||
+                isTeamExpensesHeader ||
                 isTeamNotesHeader ||
                 isTeamStandardMovesHeader ||
                 isTeamWindPatternsHeader ||

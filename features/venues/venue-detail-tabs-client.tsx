@@ -30,6 +30,7 @@ import { CreateSessionDialog } from "@/features/sessions/session-form-dialogs";
 import { TeamSessionsTable } from "@/features/sessions/sessions-table";
 import { TeamSessionsToolbar } from "@/features/sessions/team-sessions-toolbar";
 import { VenueCampsPanel } from "@/features/venues/detail/camps-panel";
+import { VenueExpensesPanel } from "@/features/venues/detail/expenses-panel";
 import { VenueReportsPanel } from "@/features/venues/detail/reports-panel";
 import {
   VenueWindPatternsPanel,
@@ -95,6 +96,7 @@ type VenueDetailWarmTab = "camps" | "sessions" | "wind-patterns";
 type VenueDetailRouteRequest = {
   requestedHighlight?: TeamSessionHighlightFilter;
   requestedLoadMoreMode: boolean;
+  requestedMemberId?: string;
   requestedPage: number;
   requestedYear?: number;
   selectedTab: VenueDetailTab;
@@ -136,6 +138,10 @@ function formatVenueDetailMobileTabLabel(tab: VenueDetailTab): string {
 
   if (tab === "assessments") {
     return "Assess";
+  }
+
+  if (tab === "expenses") {
+    return "Expenses";
   }
 
   return formatVenueDetailTabLabel(tab);
@@ -458,12 +464,25 @@ function buildVenueDetailTabRequest(input: {
   campId?: string;
   highlight?: TeamSessionHighlightFilter;
   loadMore: boolean;
+  memberId?: string;
   page: number;
   scope: NavigationScope;
   teamVenueId: string;
   tab: VenueDetailTab;
   year: number;
 }): VenueDetailTabRequestInput {
+  if (input.tab === "expenses") {
+    return {
+      scope: input.scope,
+      teamVenueId: input.teamVenueId,
+      tab: input.tab,
+      year: input.year,
+      memberId: input.memberId,
+      page: 1,
+      loadMore: false,
+    };
+  }
+
   if (input.tab !== "sessions") {
     return {
       scope: input.scope,
@@ -499,6 +518,7 @@ function buildVenueDetailTabCacheFromRequest(input: {
     campId: input.request.campId,
     highlight: input.request.highlight,
     loadMore: input.request.loadMore,
+    memberId: input.request.memberId,
     page: input.request.page,
   });
 }
@@ -571,6 +591,17 @@ function isVenueDetailTabPayload(
       isRecord(assessments) &&
       Array.isArray(assessments.templates) &&
       Array.isArray(assessments.runs)
+    );
+  }
+
+  if (tab === "expenses") {
+    return (
+      Array.isArray(value.expenses) &&
+      typeof value.canFilterByMember === "boolean" &&
+      isRecord(value.formOptions) &&
+      Array.isArray(value.memberOptions) &&
+      isRecord(value.metrics) &&
+      typeof value.teamExpensesVisible === "boolean"
     );
   }
 
@@ -699,6 +730,7 @@ async function fetchVenueDetailTabData(input: {
   campId?: string | null;
   highlight?: TeamSessionHighlightFilter | null;
   loadMore?: boolean;
+  memberId?: string | null;
   page?: number;
   scope: NavigationScope;
   signal?: AbortSignal;
@@ -711,6 +743,7 @@ async function fetchVenueDetailTabData(input: {
       campId: input.campId,
       highlight: input.highlight,
       loadMore: input.loadMore === true,
+      memberId: input.memberId,
       page: input.page ?? 1,
       scope: input.scope,
       teamVenueId: input.teamVenueId,
@@ -871,6 +904,7 @@ function renderTabPanel(input: {
   canDeleteCamps: boolean;
   canManageCamps: boolean;
   canManageAssessments: boolean;
+  canManageExpenses: boolean;
   canManageReports: boolean;
   canManageSessions: boolean;
   canManageWindPatterns: boolean;
@@ -1059,6 +1093,20 @@ function renderTabPanel(input: {
     );
   }
 
+  if (input.tab === "expenses") {
+    const data = input.data as VenueDetailTabDataByTab["expenses"];
+
+    return (
+      <VenueExpensesPanel
+        canManageExpenses={input.canManageExpenses}
+        data={data}
+        scope={input.scope}
+        selectedYear={input.selectedYear}
+        teamVenueId={input.teamVenueId}
+      />
+    );
+  }
+
   const data = input.data as VenueDetailTabDataByTab["reports"];
 
   return (
@@ -1086,6 +1134,7 @@ export function VenueDetailTabsClient(input: {
   canDeleteCamps: boolean;
   canManageCamps: boolean;
   canManageAssessments: boolean;
+  canManageExpenses: boolean;
   canManageReports: boolean;
   canManageSessions: boolean;
   canManageWindPatterns: boolean;
@@ -1096,6 +1145,7 @@ export function VenueDetailTabsClient(input: {
   const searchParams = useSearchParams();
   const currentSearch = searchParams.toString();
   const requestedCampId = searchParams.get("camp") ?? undefined;
+  const requestedMemberId = searchParams.get("member") ?? undefined;
   const [selectedYearState, setSelectedYear] = useState(input.initialYear);
   const [selectedTab, setSelectedTab] = useState<VenueDetailTab>(input.initialTab);
   const selectedYear = input.availableYears.includes(selectedYearState)
@@ -1108,11 +1158,12 @@ export function VenueDetailTabsClient(input: {
       resolveVenueDetailRouteRequest({
         highlightParam: searchParams.get("highlight") ?? undefined,
         loadMoreParam: searchParams.get("loadMore") ?? undefined,
+        memberParam: requestedMemberId,
         pageParam: searchParams.get("page") ?? undefined,
         tabParam: searchParams.get("tab") ?? undefined,
         yearParam: searchParams.get("year") ?? undefined,
       }) as VenueDetailRouteRequest,
-    [searchParams],
+    [requestedMemberId, searchParams],
   );
 
   const replaceVenueDetailHref = useCallback(
@@ -1158,6 +1209,7 @@ export function VenueDetailTabsClient(input: {
         campId: requestedCampId,
         highlight: routeRequest.requestedHighlight,
         loadMore: routeRequest.requestedLoadMoreMode,
+        memberId: routeRequest.requestedMemberId,
         page: routeRequest.requestedPage,
         scope: input.scope,
         teamVenueId: input.teamVenueId,
@@ -1170,6 +1222,7 @@ export function VenueDetailTabsClient(input: {
       requestedCampId,
       routeRequest.requestedHighlight,
       routeRequest.requestedLoadMoreMode,
+      routeRequest.requestedMemberId,
       routeRequest.requestedPage,
       selectedTab,
       selectedYear,
@@ -1369,6 +1422,7 @@ export function VenueDetailTabsClient(input: {
       canDeleteCamps: input.canDeleteCamps,
       canManageCamps: input.canManageCamps,
       canManageAssessments: input.canManageAssessments,
+      canManageExpenses: input.canManageExpenses,
       canManageReports: input.canManageReports,
       canManageSessions: input.canManageSessions,
       canManageWindPatterns: input.canManageWindPatterns,
@@ -1380,7 +1434,8 @@ export function VenueDetailTabsClient(input: {
       tab === "camps" ||
       tab === "assessments" ||
       tab === "wind-patterns" ||
-      tab === "reports"
+      tab === "reports" ||
+      tab === "expenses"
     ) {
       return panel;
     }

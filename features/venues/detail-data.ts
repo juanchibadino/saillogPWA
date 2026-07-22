@@ -1,6 +1,14 @@
 import "server-only";
 
 import {
+  getVenueExpensesTabData,
+  type TeamExpenseFormOptions,
+} from "@/features/expenses/data";
+import {
+  TEAM_EXPENSE_TYPE_OPTIONS,
+  formatCurrencyAmount,
+} from "@/features/expenses/shared";
+import {
   getVenueDetailTimingErrorMessage,
   logVenueDetailTiming,
   startVenueDetailTiming,
@@ -70,6 +78,18 @@ type TeamVenueReportRow = Pick<
 type TeamVenueReportCampRow = Pick<
   Database["public"]["Tables"]["team_venue_report_camps"]["Row"],
   "report_id" | "camp_id"
+>;
+type ExpenseOrganizationRow = Pick<
+  Database["public"]["Tables"]["organizations"]["Row"],
+  "default_currency_code"
+>;
+type TeamExpenseSettingsRow = Pick<
+  Database["public"]["Tables"]["teams"]["Row"],
+  "expenses_show_team_totals"
+>;
+type ExpenseAmountRow = Pick<
+  Database["public"]["Tables"]["team_expenses"]["Row"],
+  "amount_organization_currency"
 >;
 type AssessmentTemplateRow = Pick<
   Database["public"]["Tables"]["assessment_templates"]["Row"],
@@ -391,6 +411,18 @@ function buildEmptyKpisData(requestedYear?: number): VenueDetailKpisData {
   };
 }
 
+function buildEmptyExpenseFormOptions(): TeamExpenseFormOptions {
+  return {
+    canAssignMembers: false,
+    currencyOptions: ["USD"],
+    defaultAssignedToProfileId: "",
+    memberOptions: [],
+    organizationCurrencyCode: "USD",
+    typeOptions: TEAM_EXPENSE_TYPE_OPTIONS,
+    venueOptions: [],
+  };
+}
+
 function buildEmptyTabPayload(tab: VenueDetailTab): VenueDetailTabPayload {
   if (tab === "camps") {
     return {
@@ -422,6 +454,25 @@ function buildEmptyTabPayload(tab: VenueDetailTab): VenueDetailTabPayload {
         templates: [],
         runs: [],
       },
+    };
+  }
+
+  if (tab === "expenses") {
+    return {
+      canFilterByMember: false,
+      expenses: [],
+      formOptions: buildEmptyExpenseFormOptions(),
+      memberOptions: [],
+      metrics: {
+        myTotalLabel: "$0.00",
+        myTotalValue: 0,
+        teamTotalLabel: null,
+        teamTotalValue: null,
+      },
+      selectedCrewFilter: "you",
+      selectedMemberId: undefined,
+      selectedVisibilityScope: "mine",
+      teamExpensesVisible: false,
     };
   }
 
@@ -1052,6 +1103,25 @@ function logTeamVenueTabTiming(input: {
     return;
   }
 
+  if (input.tab === "expenses") {
+    const data = input.data as VenueDetailTabDataByTab["expenses"];
+
+    logVenueDetailTiming({
+      route: "/venues/[id]",
+      phase: "load_tab",
+      startedAt: input.startedAt,
+      teamVenueId: input.teamVenueId,
+      activeTeamId: input.activeTeamId,
+      status: input.status,
+      metadata: {
+        ...baseMetadata,
+        expenseCount: data.expenses.length,
+        visibilityScope: data.selectedVisibilityScope,
+      },
+    });
+    return;
+  }
+
   const data = input.data as VenueDetailTabDataByTab["reports"];
 
   logVenueDetailTiming({
@@ -1093,6 +1163,106 @@ async function loadSelectedYearSessions(input: {
   }
 
   return sessionRows ?? [];
+}
+
+async function loadVenueExpenseKpis(input: {
+  activeOrganizationId: string;
+  activeTeamId: string;
+  currentProfileId: string;
+  selectedYear: number;
+  supabase: ServerSupabaseClient;
+  teamVenueId: string;
+}): Promise<VenueDetailKpi[]> {
+  const [
+    { data: teamRow, error: teamError },
+    { data: organizationRow, error: organizationError },
+  ] = await Promise.all([
+    input.supabase
+      .from("teams")
+      .select("expenses_show_team_totals")
+      .eq("id", input.activeTeamId)
+      .eq("organization_id", input.activeOrganizationId)
+      .maybeSingle(),
+    input.supabase
+      .from("organizations")
+      .select("default_currency_code")
+      .eq("id", input.activeOrganizationId)
+      .maybeSingle(),
+  ]);
+
+  if (teamError) {
+    throw new Error(`Could not load venue expense settings: ${teamError.message}`);
+  }
+
+  if (organizationError) {
+    throw new Error(
+      `Could not load venue expense currency: ${organizationError.message}`,
+    );
+  }
+
+  const teamExpensesVisible =
+    (teamRow as TeamExpenseSettingsRow | null)?.expenses_show_team_totals ?? false;
+  const organizationCurrencyCode =
+    (organizationRow as ExpenseOrganizationRow | null)?.default_currency_code ?? "USD";
+  const myQuery = input.supabase
+    .from("team_expenses")
+    .select("amount_organization_currency")
+    .eq("team_id", input.activeTeamId)
+    .eq("team_venue_id", input.teamVenueId)
+    .eq("expense_year", input.selectedYear)
+    .eq("assigned_to_profile_id", input.currentProfileId);
+  const teamQuery = input.supabase
+    .from("team_expenses")
+    .select("amount_organization_currency")
+    .eq("team_id", input.activeTeamId)
+    .eq("team_venue_id", input.teamVenueId)
+    .eq("expense_year", input.selectedYear);
+  const [{ data: myRows, error: myError }, teamResult] = await Promise.all([
+    myQuery,
+    teamExpensesVisible ? teamQuery : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (myError) {
+    throw new Error(`Could not load venue personal expenses: ${myError.message}`);
+  }
+
+  if (teamResult.error) {
+    throw new Error(`Could not load venue team expenses: ${teamResult.error.message}`);
+  }
+
+  const myTotal = ((myRows ?? []) as ExpenseAmountRow[]).reduce(
+    (sum, row) => sum + Number(row.amount_organization_currency),
+    0,
+  );
+  const teamTotal = teamExpensesVisible
+    ? ((teamResult.data ?? []) as ExpenseAmountRow[]).reduce(
+        (sum, row) => sum + Number(row.amount_organization_currency),
+        0,
+      )
+    : 0;
+  const kpis: VenueDetailKpi[] = [];
+
+  if (myTotal > 0) {
+    kpis.push({
+      label: "My Expenses",
+      value: formatCurrencyAmount({
+        amount: myTotal,
+        currencyCode: organizationCurrencyCode,
+      }),
+    });
+  }
+
+  if (teamExpensesVisible && teamTotal > 0) {
+    kpis.push({
+      label: "Team Expenses",
+      value: formatCurrencyAmount({
+        amount: teamTotal,
+        currencyCode: organizationCurrencyCode,
+      }),
+    });
+  }
+
+  return kpis;
 }
 
 function buildTeamSessionCampOptions(input: {
@@ -1692,7 +1862,9 @@ export async function getTeamVenueDetailChromeData(input: {
 }
 
 export async function getTeamVenueDetailKpisData(input: {
+  activeOrganizationId?: string;
   activeTeamId: string | null;
+  currentProfileId?: string;
   requestedYear?: number;
   teamVenue: VenueDetailTeamVenue | null;
   yearContextPromise?: Promise<TeamVenueDetailYearContextData>;
@@ -1737,11 +1909,23 @@ export async function getTeamVenueDetailKpisData(input: {
       supabase: yearContext.supabase,
     });
     const selectedYearCamps = filterCampsByYear(yearContext.camps, yearContext.selectedYear);
-    const kpis = buildKpis({
+    const baseKpis = buildKpis({
       campCount: selectedYearCamps.length,
       sessionCount: sessions.length,
       sessions,
     });
+    const expenseKpis =
+      input.activeOrganizationId && input.currentProfileId
+        ? await loadVenueExpenseKpis({
+            activeOrganizationId: input.activeOrganizationId,
+            activeTeamId,
+            currentProfileId: input.currentProfileId,
+            selectedYear: yearContext.selectedYear,
+            supabase: yearContext.supabase,
+            teamVenueId: teamVenue.id,
+          })
+        : [];
+    const kpis = [...baseKpis, ...expenseKpis];
 
     logVenueDetailTiming({
       route: "/venues/[id]",
@@ -1779,13 +1963,17 @@ export async function getTeamVenueDetailKpisData(input: {
 }
 
 export async function getTeamVenueDetailTabData(input: {
+  activeOrganizationId: string;
   activeTeamId: string | null;
   accumulatePages?: boolean;
+  canManageTeamFinance: boolean;
+  canManageTeamSessions: boolean;
   currentProfileId: string;
   requestedPage?: number;
   requestedYear?: number;
   selectedCampId?: string;
   selectedHighlight?: TeamSessionHighlightFilter;
+  selectedMemberId?: string;
   tab: VenueDetailTab;
   teamVenue: VenueDetailTeamVenue | null;
   venue?: VenueDetailVenue | null;
@@ -1907,6 +2095,17 @@ export async function getTeamVenueDetailTabData(input: {
         }).camps,
         assessments,
       };
+    } else if (input.tab === "expenses") {
+      data = await getVenueExpensesTabData({
+        activeOrganizationId: input.activeOrganizationId,
+        activeTeamId,
+        canManageTeamFinance: input.canManageTeamFinance,
+        canManageTeamSessions: input.canManageTeamSessions,
+        currentProfileId: input.currentProfileId,
+        requestedMemberId: input.selectedMemberId,
+        selectedYear: yearContext.selectedYear,
+        teamVenueId: teamVenue.id,
+      });
     } else {
       const sessions = await loadSelectedYearSessions({
         campIds: yearContext.campIds,
