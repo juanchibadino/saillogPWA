@@ -11,6 +11,7 @@ import {
   NAVIGATION_SCOPE_ORG_QUERY_KEY,
   NAVIGATION_SCOPE_TEAM_QUERY_KEY,
 } from "@/lib/navigation/constants"
+import { normalizeVakarosSavedTrimBuoys } from "@/features/sessions/vakaros-saved-trims.mjs"
 import type {
   SessionDetailAsset,
   SessionDetailAnalyticsTabData,
@@ -34,6 +35,7 @@ import type {
   SessionDetailStandardMovesCatalogData,
   SessionSetupDialogItem,
   SessionDetailTabPayload,
+  SessionDetailVakarosSavedTrim,
   SessionDetailWindPattern,
   SessionDetailWindPatternsCatalogData,
 } from "@/features/sessions/detail-types"
@@ -118,6 +120,7 @@ type SessionSetupItemSelectedOptionRow = Pick<
 type SessionAssetRow = SessionDetailAssetMetadata
 type SessionVakarosUploadRow = Pick<
   Database["public"]["Tables"]["session_vakaros_uploads"]["Row"],
+  | "id"
   | "asset_id"
   | "avg_sog_kts"
   | "bucket"
@@ -133,6 +136,16 @@ type SessionVakarosUploadRow = Pick<
   | "start_at"
   | "summary_storage_path"
   | "track_geojson_storage_path"
+>
+type SessionVakarosSavedTrimRow = Pick<
+  Database["public"]["Tables"]["session_vakaros_saved_trims"]["Row"],
+  | "id"
+  | "upload_id"
+  | "name"
+  | "trim_start_index"
+  | "trim_end_index"
+  | "buoys"
+  | "created_at"
 >
 type GearItemRow = Pick<
   Database["public"]["Tables"]["gear_items"]["Row"],
@@ -181,7 +194,9 @@ const SESSION_ASSETS_WITH_DESCRIPTION_SELECT_COLUMNS =
 const SESSION_ASSETS_WITH_THUMBNAILS_SELECT_COLUMNS =
   "id,asset_type,bucket,storage_path,file_name,description,mime_type,size_bytes,thumbnail_bucket,thumbnail_storage_path,thumbnail_mime_type,thumbnail_size_bytes,created_at"
 const SESSION_VAKAROS_UPLOADS_SELECT_COLUMNS =
-  "asset_id,bucket,raw_storage_path,series_1hz_storage_path,track_geojson_storage_path,summary_storage_path,rows_raw,rows_1hz,start_at,end_at,duration_hours,distance_nm,avg_sog_kts,p95_sog_kts,max_sog_kts"
+  "id,asset_id,bucket,raw_storage_path,series_1hz_storage_path,track_geojson_storage_path,summary_storage_path,rows_raw,rows_1hz,start_at,end_at,duration_hours,distance_nm,avg_sog_kts,p95_sog_kts,max_sog_kts"
+const SESSION_VAKAROS_SAVED_TRIMS_SELECT_COLUMNS =
+  "id,upload_id,name,trim_start_index,trim_end_index,buoys,created_at"
 const GEAR_ITEMS_SELECT_COLUMNS = "id,name,gear_type,status,condition,serial_number,barcode"
 const SESSION_GEAR_USAGE_SELECT_COLUMNS = "gear_item_id"
 const TEAM_SETUP_ITEMS_SELECT_COLUMNS =
@@ -1025,13 +1040,73 @@ function mapVakarosUploadsByAssetId(
   return rowsByAssetId
 }
 
+function mapVakarosSavedTrim(row: SessionVakarosSavedTrimRow): SessionDetailVakarosSavedTrim | null {
+  const buoys = normalizeVakarosSavedTrimBuoys(row.buoys)
+
+  if (!buoys) {
+    return null
+  }
+
+  return {
+    id: row.id,
+    buoys,
+    createdAt: row.created_at,
+    name: row.name,
+    trimEnd: row.trim_end_index,
+    trimStart: row.trim_start_index,
+  }
+}
+
+function mapVakarosSavedTrimsByUploadId(
+  rows: SessionVakarosSavedTrimRow[],
+): Map<string, SessionDetailVakarosSavedTrim[]> {
+  const rowsByUploadId = new Map<string, SessionDetailVakarosSavedTrim[]>()
+
+  for (const row of rows) {
+    const savedTrim = mapVakarosSavedTrim(row)
+
+    if (!savedTrim) {
+      continue
+    }
+
+    const savedTrims = rowsByUploadId.get(row.upload_id) ?? []
+    savedTrims.push(savedTrim)
+    rowsByUploadId.set(row.upload_id, savedTrims)
+  }
+
+  return rowsByUploadId
+}
+
+async function loadVakarosSavedTrimRows(input: {
+  supabase: ServerSupabaseClient
+  uploadIds: string[]
+}): Promise<SessionVakarosSavedTrimRow[]> {
+  if (input.uploadIds.length === 0) {
+    return []
+  }
+
+  const { data, error } = await input.supabase
+    .from("session_vakaros_saved_trims")
+    .select(SESSION_VAKAROS_SAVED_TRIMS_SELECT_COLUMNS)
+    .in("upload_id", input.uploadIds)
+    .order("created_at", { ascending: false })
+
+  if (error) {
+    throw new Error(`Could not load saved Vakaros trims: ${error.message}`)
+  }
+
+  return (data ?? []) as SessionVakarosSavedTrimRow[]
+}
+
 function attachGpsFileContentUrls(input: {
   activeOrganizationId: string
   activeTeamId: string
   assets: SessionAssetRow[]
+  savedTrimRows: SessionVakarosSavedTrimRow[]
   vakarosUploads: SessionVakarosUploadRow[]
 }): SessionDetailGpsFile[] {
   const uploadsByAssetId = mapVakarosUploadsByAssetId(input.vakarosUploads)
+  const savedTrimsByUploadId = mapVakarosSavedTrimsByUploadId(input.savedTrimRows)
 
   return input.assets.map((asset) => {
     const upload = uploadsByAssetId.get(asset.id)
@@ -1069,6 +1144,7 @@ function attachGpsFileContentUrls(input: {
       thumbnailSignedUrl: null,
       vakaros: upload
         ? {
+            uploadId: upload.id,
             avgSogKts: Number(upload.avg_sog_kts),
             distanceNm: Number(upload.distance_nm),
             durationHours: Number(upload.duration_hours),
@@ -1077,6 +1153,7 @@ function attachGpsFileContentUrls(input: {
             p95SogKts: Number(upload.p95_sog_kts),
             rows1Hz: upload.rows_1hz,
             rowsRaw: upload.rows_raw,
+            savedTrims: savedTrimsByUploadId.get(upload.id) ?? [],
             startAt: upload.start_at,
           }
         : null,
@@ -1120,11 +1197,17 @@ export async function getSessionDetailHeaderGpsFile(input: {
     return null
   }
 
+  const savedTrimRows = await loadVakarosSavedTrimRows({
+    supabase,
+    uploadIds: vakarosUploads.map((upload) => upload.id),
+  })
+
   return (
     attachGpsFileContentUrls({
       activeOrganizationId: input.activeOrganizationId,
       activeTeamId: input.activeTeamId,
       assets: [gpsAsset],
+      savedTrimRows,
       vakarosUploads,
     })[0] ?? null
   )
@@ -1705,6 +1788,7 @@ export async function getSessionDetailAnalyticsTabData(
   })
   const gpsAssetIds = gpsAssetPage.assets.map((asset) => asset.id)
   let vakarosUploads: SessionVakarosUploadRow[] = []
+  let savedTrimRows: SessionVakarosSavedTrimRow[] = []
 
   if (gpsAssetIds.length > 0) {
     const { data: vakarosRows, error: vakarosError } = await supabase
@@ -1724,10 +1808,27 @@ export async function getSessionDetailAnalyticsTabData(
     vakarosUploads = (vakarosRows ?? []) as SessionVakarosUploadRow[]
   }
 
+  if (vakarosUploads.length > 0) {
+    try {
+      savedTrimRows = await loadVakarosSavedTrimRows({
+        supabase,
+        uploadIds: vakarosUploads.map((upload) => upload.id),
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown saved trims query error"
+      throwSessionDetailScopedTimingError(
+        logTabTiming,
+        "vakaros_saved_trims_query_error",
+        `Could not load saved GPS trims for session detail: ${message}`,
+      )
+    }
+  }
+
   const gpsFiles = attachGpsFileContentUrls({
     activeOrganizationId: input.activeOrganizationId,
     activeTeamId: input.activeTeamId,
     assets: gpsAssetPage.assets,
+    savedTrimRows,
     vakarosUploads,
   })
 

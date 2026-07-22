@@ -10,9 +10,11 @@ import {
   NAVIGATION_SCOPE_ORG_QUERY_KEY,
   NAVIGATION_SCOPE_TEAM_QUERY_KEY,
 } from "@/lib/navigation/constants"
+import { normalizeVakarosSavedTrimBuoys } from "@/features/sessions/vakaros-saved-trims.mjs"
 import type {
   SessionDetailAsset,
   SessionDetailGpsFile,
+  SessionDetailVakarosSavedTrim,
 } from "@/features/sessions/detail-types"
 import type { Database } from "@/types/database"
 
@@ -24,7 +26,9 @@ const VENUE_SELECT_COLUMNS = "id,name,city,country"
 const CAMP_SELECT_COLUMNS = "id,team_venue_id,name,start_date,end_date"
 const SESSION_SELECT_COLUMNS = "id,camp_id,session_type,session_date,dock_out_at"
 const TEAM_VAKAROS_UPLOADS_SELECT_COLUMNS =
-  "asset_id,rows_raw,rows_1hz,start_at,end_at,duration_hours,distance_nm,avg_sog_kts,p95_sog_kts,max_sog_kts"
+  "id,asset_id,rows_raw,rows_1hz,start_at,end_at,duration_hours,distance_nm,avg_sog_kts,p95_sog_kts,max_sog_kts"
+const TEAM_VAKAROS_SAVED_TRIMS_SELECT_COLUMNS =
+  "id,upload_id,name,trim_start_index,trim_end_index,buoys,created_at"
 
 export type TeamAssetTab = "images" | "files" | "gps-files"
 
@@ -53,6 +57,7 @@ type TeamAssetRpcRow =
 
 type TeamVakarosUploadRow = Pick<
   Database["public"]["Tables"]["session_vakaros_uploads"]["Row"],
+  | "id"
   | "asset_id"
   | "avg_sog_kts"
   | "distance_nm"
@@ -63,6 +68,17 @@ type TeamVakarosUploadRow = Pick<
   | "rows_1hz"
   | "rows_raw"
   | "start_at"
+>
+
+type TeamVakarosSavedTrimRow = Pick<
+  Database["public"]["Tables"]["session_vakaros_saved_trims"]["Row"],
+  | "id"
+  | "upload_id"
+  | "name"
+  | "trim_start_index"
+  | "trim_end_index"
+  | "buoys"
+  | "created_at"
 >
 
 type ServerSupabaseClient = Awaited<ReturnType<typeof createServerSupabaseClient>>
@@ -598,6 +614,45 @@ async function attachTeamAssetUrls(input: {
   })
 }
 
+function mapTeamVakarosSavedTrim(
+  row: TeamVakarosSavedTrimRow,
+): SessionDetailVakarosSavedTrim | null {
+  const buoys = normalizeVakarosSavedTrimBuoys(row.buoys)
+
+  if (!buoys) {
+    return null
+  }
+
+  return {
+    id: row.id,
+    buoys,
+    createdAt: row.created_at,
+    name: row.name,
+    trimEnd: row.trim_end_index,
+    trimStart: row.trim_start_index,
+  }
+}
+
+function mapTeamVakarosSavedTrimsByUploadId(
+  rows: TeamVakarosSavedTrimRow[],
+): Map<string, SessionDetailVakarosSavedTrim[]> {
+  const rowsByUploadId = new Map<string, SessionDetailVakarosSavedTrim[]>()
+
+  for (const row of rows) {
+    const savedTrim = mapTeamVakarosSavedTrim(row)
+
+    if (!savedTrim) {
+      continue
+    }
+
+    const savedTrims = rowsByUploadId.get(row.upload_id) ?? []
+    savedTrims.push(savedTrim)
+    rowsByUploadId.set(row.upload_id, savedTrims)
+  }
+
+  return rowsByUploadId
+}
+
 async function attachTeamGpsFileData(input: {
   activeOrganizationId: string
   activeTeamId: string
@@ -623,6 +678,25 @@ async function attachTeamGpsFileData(input: {
 
   for (const row of (data ?? []) as TeamVakarosUploadRow[]) {
     rowsByAssetId.set(row.asset_id, row)
+  }
+
+  const uploadIds = Array.from(rowsByAssetId.values()).map((row) => row.id)
+  let savedTrimsByUploadId = new Map<string, SessionDetailVakarosSavedTrim[]>()
+
+  if (uploadIds.length > 0) {
+    const { data: savedTrimRows, error: savedTrimError } = await input.supabase
+      .from("session_vakaros_saved_trims")
+      .select(TEAM_VAKAROS_SAVED_TRIMS_SELECT_COLUMNS)
+      .in("upload_id", uploadIds)
+      .order("created_at", { ascending: false })
+
+    if (savedTrimError) {
+      throw new Error(`Could not load team GPS saved trims: ${savedTrimError.message}`)
+    }
+
+    savedTrimsByUploadId = mapTeamVakarosSavedTrimsByUploadId(
+      (savedTrimRows ?? []) as TeamVakarosSavedTrimRow[],
+    )
   }
 
   return input.assets.map((asset) => {
@@ -659,6 +733,7 @@ async function attachTeamGpsFileData(input: {
       },
       vakaros: upload
         ? {
+            uploadId: upload.id,
             avgSogKts: Number(upload.avg_sog_kts),
             distanceNm: Number(upload.distance_nm),
             durationHours: Number(upload.duration_hours),
@@ -667,6 +742,7 @@ async function attachTeamGpsFileData(input: {
             p95SogKts: Number(upload.p95_sog_kts),
             rows1Hz: upload.rows_1hz,
             rowsRaw: upload.rows_raw,
+            savedTrims: savedTrimsByUploadId.get(upload.id) ?? [],
             startAt: upload.start_at,
           }
         : null,

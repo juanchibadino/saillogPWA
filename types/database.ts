@@ -1017,6 +1017,41 @@ export type Database = {
         };
         Relationships: [];
       };
+      session_vakaros_saved_trims: {
+        Row: {
+          id: string;
+          upload_id: string;
+          name: string;
+          trim_start_index: number;
+          trim_end_index: number;
+          buoys: Json;
+          created_by_profile_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          upload_id: string;
+          name: string;
+          trim_start_index: number;
+          trim_end_index: number;
+          buoys?: Json;
+          created_by_profile_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          upload_id?: string;
+          name?: string;
+          trim_start_index?: number;
+          trim_end_index?: number;
+          buoys?: Json;
+          created_by_profile_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       gear_items: {
         Row: {
           id: string;

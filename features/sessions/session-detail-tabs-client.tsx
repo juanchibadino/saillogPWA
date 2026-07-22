@@ -477,6 +477,7 @@ function EditSessionMetadataDialog(input: {
 }
 
 export function SessionHeaderGpsPlayerAction(input: {
+  canManageSession: boolean
   gpsFile: SessionDetailGpsFile | null
   scope: NavigationScope
   sessionId: string
@@ -519,9 +520,12 @@ export function SessionHeaderGpsPlayerAction(input: {
 
       {input.gpsFile ? (
         <SessionGpsFilePlayerDialog
+          canManageSession={input.canManageSession}
           gpsFile={input.gpsFile}
           open={playerOpen}
           onOpenChange={setPlayerOpen}
+          scope={input.scope}
+          sessionId={input.sessionId}
         />
       ) : null}
     </>

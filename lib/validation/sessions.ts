@@ -11,6 +11,8 @@ const optionalTrimmedTextSchema = z
   .max(4000, "Maximum length is 4000 characters")
   .optional()
 
+const savedTrimIndexSchema = z.coerce.number().int().min(0).max(1_000_000)
+
 const hhmmTimeSchema = z
   .string()
   .regex(/^\d{2}:\d{2}$/, "Use a valid time in HH:MM format")
@@ -133,6 +135,21 @@ export const deleteSessionAssetInputSchema = z.object({
   assetId: z.string().uuid(),
 })
 
+export const saveSessionVakarosTrimInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  uploadId: z.string().uuid(),
+  name: z.string().trim().max(120).optional(),
+  trimStartIndex: savedTrimIndexSchema,
+  trimEndIndex: savedTrimIndexSchema,
+  buoysPayload: z.string().trim().min(2).max(20000),
+})
+
+export const deleteSessionVakarosTrimInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  uploadId: z.string().uuid(),
+  savedTrimId: z.string().uuid(),
+})
+
 export type CreateSessionInput = z.infer<typeof createSessionInputSchema>
 export type UpdateSessionInput = z.infer<typeof updateSessionInputSchema>
 export type DeleteSessionInput = z.infer<typeof deleteSessionInputSchema>
@@ -148,5 +165,11 @@ export type ReorderTeamSetupMetricsInput = z.infer<typeof reorderTeamSetupMetric
 export type UploadSessionAssetInput = z.infer<typeof uploadSessionAssetInputSchema>
 export type UploadSessionGpsFileInput = z.infer<typeof uploadSessionGpsFileInputSchema>
 export type DeleteSessionAssetInput = z.infer<typeof deleteSessionAssetInputSchema>
+export type SaveSessionVakarosTrimInput = z.infer<
+  typeof saveSessionVakarosTrimInputSchema
+>
+export type DeleteSessionVakarosTrimInput = z.infer<
+  typeof deleteSessionVakarosTrimInputSchema
+>
 
 export type SessionInfoJsonText = Json | null

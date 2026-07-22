@@ -79,9 +79,12 @@ export type SessionGpsFileUploadSurfaceProps = {
 }
 
 export type SessionGpsFilePlayerDialogProps = {
+  canManageSession: boolean
   gpsFile: SessionGpsFileCardAsset
   onOpenChange: (open: boolean) => void
   open: boolean
+  scope: NavigationScope
+  sessionId: string
 }
 
 function buildSubscriptionHref(scope: NavigationScope): string {
@@ -388,9 +391,14 @@ export function SessionGpsFilePlayerDialog(input: SessionGpsFilePlayerDialogProp
         </DialogHeader>
         <div className="min-h-0">
           <VakarosPlayer
+            canManageSession={input.canManageSession}
             fileName={input.gpsFile.file_name}
+            initialSavedTrims={input.gpsFile.vakaros?.savedTrims ?? []}
+            scope={input.scope}
             series1HzUrl={input.gpsFile.gpsArtifacts.series1HzUrl}
+            sessionId={input.sessionId}
             trackGeojsonUrl={input.gpsFile.gpsArtifacts.trackGeojsonUrl}
+            uploadId={input.gpsFile.vakaros?.uploadId ?? null}
             className="h-full"
           />
         </div>
@@ -522,9 +530,12 @@ export function SessionGpsFileCard(input: {
       </div>
 
       <SessionGpsFilePlayerDialog
+        canManageSession={input.canManageSession}
         gpsFile={input.gpsFile}
         open={playerOpen}
         onOpenChange={setPlayerOpen}
+        scope={input.scope}
+        sessionId={input.sessionId}
       />
 
       <Dialog

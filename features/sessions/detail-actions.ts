@@ -39,6 +39,7 @@ import {
   assertValidVakarosCsvFileName,
   parseVakarosCsv,
 } from "@/features/sessions/vakaros-parser.mjs"
+import { normalizeVakarosSavedTrimInput } from "@/features/sessions/vakaros-saved-trims.mjs"
 import { scopeFormInputSchema } from "@/lib/validation/navigation"
 import { updateSessionGearUsageInputSchema } from "@/lib/validation/gear"
 import { createTeamStandardMoveInputSchema } from "@/lib/validation/standard-moves"
@@ -56,12 +57,15 @@ import {
   updateSessionSetupInputSchema,
   uploadSessionGpsFileInputSchema,
   uploadSessionAssetInputSchema,
+  deleteSessionVakarosTrimInputSchema,
+  saveSessionVakarosTrimInputSchema,
 } from "@/lib/validation/sessions"
 import type {
   SessionDetailInfoTabData,
   SessionSetupDialogItem,
+  SessionDetailVakarosSavedTrim,
 } from "@/features/sessions/detail-types"
-import type { Database } from "@/types/database"
+import type { Database, Json } from "@/types/database"
 
 const SESSION_PHOTOS_BUCKET = "session-photos"
 const SESSION_FILES_BUCKET = "session-files"
@@ -3485,6 +3489,16 @@ type UploadSessionAssetActionError =
   | "payment_required"
   | "upload_failed"
 type DeleteSessionAssetActionError = "invalid_input" | "forbidden" | "delete_failed"
+type SessionVakarosTrimActionError =
+  | "invalid_input"
+  | "forbidden"
+  | "save_failed"
+  | "delete_failed"
+type SessionVakarosTrimActionFailure = {
+  ok: false
+  error: SessionVakarosTrimActionError
+  message: string
+}
 
 export type UploadSessionAssetActionResult =
   | {
@@ -3509,6 +3523,22 @@ export type DeleteSessionAssetActionResult =
       error: DeleteSessionAssetActionError
       message: string
     }
+
+export type SaveSessionVakarosTrimActionResult =
+  | {
+      ok: true
+      savedTrim: SessionDetailVakarosSavedTrim
+      status: "vakaros_trim_saved"
+    }
+  | SessionVakarosTrimActionFailure
+
+export type DeleteSessionVakarosTrimActionResult =
+  | {
+      ok: true
+      savedTrimId: string
+      status: "vakaros_trim_deleted"
+    }
+  | SessionVakarosTrimActionFailure
 
 type UploadSessionAssetMutationResult =
   | {
@@ -3541,6 +3571,13 @@ const SESSION_ASSET_DELETE_ERROR_MESSAGES: Record<DeleteSessionAssetActionError,
   delete_failed: "Could not delete this file. Confirm storage is available and try again.",
 }
 
+const SESSION_VAKAROS_TRIM_ERROR_MESSAGES: Record<SessionVakarosTrimActionError, string> = {
+  invalid_input: "The saved trim is invalid. Review the trim range and buoys, then try again.",
+  forbidden: "You do not have permission to manage saved trims in the active scope.",
+  save_failed: "Could not save this trim. Refresh and try again.",
+  delete_failed: "Could not delete this trim. Refresh and try again.",
+}
+
 function buildUploadSessionAssetActionError(input: {
   error: UploadSessionAssetActionError
   scope: SessionActionScope
@@ -3562,6 +3599,16 @@ function buildDeleteSessionAssetActionError(
     ok: false,
     error,
     message: SESSION_ASSET_DELETE_ERROR_MESSAGES[error],
+  }
+}
+
+function buildSessionVakarosTrimActionError(
+  error: SessionVakarosTrimActionError,
+): SessionVakarosTrimActionFailure {
+  return {
+    ok: false,
+    error,
+    message: SESSION_VAKAROS_TRIM_ERROR_MESSAGES[error],
   }
 }
 
@@ -4153,6 +4200,328 @@ export async function saveSessionGpsFileAction(
     ok: true,
     status: result.status,
     tab: result.tab,
+  }
+}
+
+export async function saveSessionVakarosTrimAction(
+  formData: FormData,
+): Promise<SaveSessionVakarosTrimActionResult> {
+  const startedAt = startSessionDetailTiming()
+  const context = await requireAuthenticatedAccessContext()
+  const scope = getScopeFromFormData(formData)
+  const submittedSessionId = getFormString(formData, "sessionId")
+  const submittedUploadId = getFormString(formData, "uploadId")
+  const logTiming = (input: {
+    error?: string
+    outcome: string
+    savedTrimId?: string | null
+    sessionId?: string | null
+    status: SessionDetailTimingStatus
+  }) => {
+    logSessionActionTiming({
+      phase: "save_session_vakaros_trim",
+      startedAt,
+      scope,
+      sessionId: input.sessionId ?? submittedSessionId,
+      status: input.status,
+      outcome: input.outcome,
+      error: input.error,
+      metadata: {
+        uploadId: submittedUploadId ?? null,
+        savedTrimId: input.savedTrimId ?? null,
+      },
+    })
+  }
+  const parsedInput = saveSessionVakarosTrimInputSchema.safeParse({
+    sessionId: submittedSessionId,
+    uploadId: submittedUploadId,
+    name: getFormString(formData, "name"),
+    trimStartIndex: getFormString(formData, "trimStartIndex"),
+    trimEndIndex: getFormString(formData, "trimEndIndex"),
+    buoysPayload: getFormString(formData, "buoysPayload"),
+  })
+
+  if (!parsedInput.success || !scope.scopeOrgId || !scope.scopeTeamId) {
+    logTiming({
+      outcome: "invalid_input",
+      status: "error",
+    })
+    return buildSessionVakarosTrimActionError("invalid_input")
+  }
+
+  if (
+    !canManageTeamSessions({
+      context,
+      organizationId: scope.scopeOrgId,
+      teamId: scope.scopeTeamId,
+    })
+  ) {
+    logTiming({
+      outcome: "forbidden",
+      sessionId: parsedInput.data.sessionId,
+      status: "error",
+    })
+    return buildSessionVakarosTrimActionError("forbidden")
+  }
+
+  const scopedSession = await resolveScopedSessionContext({
+    sessionId: parsedInput.data.sessionId,
+    scopeOrgId: scope.scopeOrgId,
+    scopeTeamId: scope.scopeTeamId,
+  })
+
+  if (!scopedSession) {
+    logTiming({
+      outcome: "forbidden",
+      sessionId: parsedInput.data.sessionId,
+      status: "error",
+    })
+    return buildSessionVakarosTrimActionError("forbidden")
+  }
+
+  const supabase = await createServerSupabaseClient()
+  const { data: uploadRow, error: uploadError } = await supabase
+    .from("session_vakaros_uploads")
+    .select("id,session_id,rows_1hz")
+    .eq("id", parsedInput.data.uploadId)
+    .eq("session_id", parsedInput.data.sessionId)
+    .maybeSingle()
+
+  if (uploadError) {
+    logTiming({
+      outcome: "upload_query_error",
+      sessionId: parsedInput.data.sessionId,
+      status: "error",
+      error: uploadError.message,
+    })
+    return buildSessionVakarosTrimActionError("save_failed")
+  }
+
+  if (!uploadRow || uploadRow.rows_1hz <= 0) {
+    logTiming({
+      outcome: "invalid_upload",
+      sessionId: parsedInput.data.sessionId,
+      status: "error",
+    })
+    return buildSessionVakarosTrimActionError("invalid_input")
+  }
+
+  const { count: savedTrimCount, error: countError } = await supabase
+    .from("session_vakaros_saved_trims")
+    .select("id", { count: "exact", head: true })
+    .eq("upload_id", uploadRow.id)
+
+  if (countError) {
+    logTiming({
+      outcome: "saved_trim_count_error",
+      sessionId: parsedInput.data.sessionId,
+      status: "error",
+      error: countError.message,
+    })
+    return buildSessionVakarosTrimActionError("save_failed")
+  }
+
+  const normalizedInput = normalizeVakarosSavedTrimInput({
+    sessionId: parsedInput.data.sessionId,
+    uploadId: parsedInput.data.uploadId,
+    name: parsedInput.data.name,
+    fallbackName: `Trim ${(savedTrimCount ?? 0) + 1}`,
+    maxIndex: uploadRow.rows_1hz - 1,
+    trimStartIndex: parsedInput.data.trimStartIndex,
+    trimEndIndex: parsedInput.data.trimEndIndex,
+    buoysPayload: parsedInput.data.buoysPayload,
+  })
+
+  if (!normalizedInput) {
+    logTiming({
+      outcome: "invalid_payload",
+      sessionId: parsedInput.data.sessionId,
+      status: "error",
+    })
+    return buildSessionVakarosTrimActionError("invalid_input")
+  }
+
+  const { data: savedTrimRow, error: insertError } = await supabase
+    .from("session_vakaros_saved_trims")
+    .insert({
+      upload_id: uploadRow.id,
+      name: normalizedInput.name,
+      trim_start_index: normalizedInput.trimStartIndex,
+      trim_end_index: normalizedInput.trimEndIndex,
+      buoys: normalizedInput.buoys as Json,
+      created_by_profile_id: context.profile?.id ?? null,
+    })
+    .select("id,name,trim_start_index,trim_end_index,created_at")
+    .single()
+
+  if (insertError || !savedTrimRow) {
+    logTiming({
+      outcome: "insert_failed",
+      sessionId: parsedInput.data.sessionId,
+      status: "error",
+      error: insertError?.message,
+    })
+    return buildSessionVakarosTrimActionError("save_failed")
+  }
+
+  logTiming({
+    outcome: "saved",
+    savedTrimId: savedTrimRow.id,
+    sessionId: parsedInput.data.sessionId,
+    status: "success",
+  })
+
+  return {
+    ok: true,
+    status: "vakaros_trim_saved",
+    savedTrim: {
+      id: savedTrimRow.id,
+      buoys: normalizedInput.buoys,
+      createdAt: savedTrimRow.created_at,
+      name: savedTrimRow.name,
+      trimEnd: savedTrimRow.trim_end_index,
+      trimStart: savedTrimRow.trim_start_index,
+    },
+  }
+}
+
+export async function deleteSessionVakarosTrimAction(
+  formData: FormData,
+): Promise<DeleteSessionVakarosTrimActionResult> {
+  const startedAt = startSessionDetailTiming()
+  const context = await requireAuthenticatedAccessContext()
+  const scope = getScopeFromFormData(formData)
+  const submittedSessionId = getFormString(formData, "sessionId")
+  const submittedUploadId = getFormString(formData, "uploadId")
+  const submittedSavedTrimId = getFormString(formData, "savedTrimId")
+  const logTiming = (input: {
+    error?: string
+    outcome: string
+    sessionId?: string | null
+    status: SessionDetailTimingStatus
+  }) => {
+    logSessionActionTiming({
+      phase: "delete_session_vakaros_trim",
+      startedAt,
+      scope,
+      sessionId: input.sessionId ?? submittedSessionId,
+      status: input.status,
+      outcome: input.outcome,
+      error: input.error,
+      metadata: {
+        uploadId: submittedUploadId ?? null,
+        savedTrimId: submittedSavedTrimId ?? null,
+      },
+    })
+  }
+  const parsedInput = deleteSessionVakarosTrimInputSchema.safeParse({
+    sessionId: submittedSessionId,
+    uploadId: submittedUploadId,
+    savedTrimId: submittedSavedTrimId,
+  })
+
+  if (!parsedInput.success || !scope.scopeOrgId || !scope.scopeTeamId) {
+    logTiming({
+      outcome: "invalid_input",
+      status: "error",
+    })
+    return buildSessionVakarosTrimActionError("invalid_input")
+  }
+
+  if (
+    !canManageTeamSessions({
+      context,
+      organizationId: scope.scopeOrgId,
+      teamId: scope.scopeTeamId,
+    })
+  ) {
+    logTiming({
+      outcome: "forbidden",
+      sessionId: parsedInput.data.sessionId,
+      status: "error",
+    })
+    return buildSessionVakarosTrimActionError("forbidden")
+  }
+
+  const scopedSession = await resolveScopedSessionContext({
+    sessionId: parsedInput.data.sessionId,
+    scopeOrgId: scope.scopeOrgId,
+    scopeTeamId: scope.scopeTeamId,
+  })
+
+  if (!scopedSession) {
+    logTiming({
+      outcome: "forbidden",
+      sessionId: parsedInput.data.sessionId,
+      status: "error",
+    })
+    return buildSessionVakarosTrimActionError("forbidden")
+  }
+
+  const supabase = await createServerSupabaseClient()
+  const { data: uploadRow, error: uploadError } = await supabase
+    .from("session_vakaros_uploads")
+    .select("id,session_id")
+    .eq("id", parsedInput.data.uploadId)
+    .eq("session_id", parsedInput.data.sessionId)
+    .maybeSingle()
+
+  if (uploadError) {
+    logTiming({
+      outcome: "upload_query_error",
+      sessionId: parsedInput.data.sessionId,
+      status: "error",
+      error: uploadError.message,
+    })
+    return buildSessionVakarosTrimActionError("delete_failed")
+  }
+
+  if (!uploadRow) {
+    logTiming({
+      outcome: "invalid_upload",
+      sessionId: parsedInput.data.sessionId,
+      status: "error",
+    })
+    return buildSessionVakarosTrimActionError("invalid_input")
+  }
+
+  const { data: deletedRow, error: deleteError } = await supabase
+    .from("session_vakaros_saved_trims")
+    .delete()
+    .eq("id", parsedInput.data.savedTrimId)
+    .eq("upload_id", uploadRow.id)
+    .select("id")
+    .maybeSingle()
+
+  if (deleteError) {
+    logTiming({
+      outcome: "delete_failed",
+      sessionId: parsedInput.data.sessionId,
+      status: "error",
+      error: deleteError.message,
+    })
+    return buildSessionVakarosTrimActionError("delete_failed")
+  }
+
+  if (!deletedRow) {
+    logTiming({
+      outcome: "saved_trim_not_found",
+      sessionId: parsedInput.data.sessionId,
+      status: "error",
+    })
+    return buildSessionVakarosTrimActionError("invalid_input")
+  }
+
+  logTiming({
+    outcome: "deleted",
+    sessionId: parsedInput.data.sessionId,
+    status: "success",
+  })
+
+  return {
+    ok: true,
+    savedTrimId: deletedRow.id,
+    status: "vakaros_trim_deleted",
   }
 }
 

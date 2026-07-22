@@ -23,18 +23,35 @@ import {
   PlusIcon,
   RouteIcon,
   SaveIcon,
+  Trash2Icon,
 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
+import {
+  deleteSessionVakarosTrimAction,
+  saveSessionVakarosTrimAction,
+} from "@/features/sessions/detail-actions"
+import type { SessionDetailVakarosSavedTrim } from "@/features/sessions/detail-types"
+import type { NavigationScope } from "@/lib/navigation/types"
 import { cn } from "@/lib/utils"
 
 type LeafletModule = typeof import("leaflet")
@@ -52,20 +69,8 @@ type VakarosSeriesPoint = {
 
 type BuoyMode = "windward" | "leeward" | null
 type TrailMode = "line" | "speed"
-type PlacedBuoy = {
-  id: string
-  lat: number
-  lon: number
-  mode: Exclude<BuoyMode, null>
-}
-type SavedTrim = {
-  id: string
-  buoys: PlacedBuoy[]
-  createdAt: string
-  name: string
-  trimEnd: number
-  trimStart: number
-}
+type SavedTrim = SessionDetailVakarosSavedTrim
+type PlacedBuoy = SavedTrim["buoys"][number]
 
 const PLAYBACK_RATES = [1, 2, 4, 10] as const
 type PlaybackRate = (typeof PLAYBACK_RATES)[number]
@@ -370,11 +375,31 @@ function copyBuoys(buoys: PlacedBuoy[]): PlacedBuoy[] {
   return buoys.map((buoy) => ({ ...buoy }))
 }
 
-function formatTrimRange(input: {
-  trimEnd: number
-  trimStart: number
-}): string {
-  return `${input.trimStart + 1}-${input.trimEnd + 1}`
+function copySavedTrims(savedTrims: SavedTrim[]): SavedTrim[] {
+  return savedTrims.map((savedTrim) => ({
+    ...savedTrim,
+    buoys: copyBuoys(savedTrim.buoys),
+  }))
+}
+
+function appendScopeToFormData(formData: FormData, scope: NavigationScope): void {
+  formData.set("scopeOrgId", scope.activeOrgId)
+
+  if (scope.activeTeamId) {
+    formData.set("scopeTeamId", scope.activeTeamId)
+  }
+
+  formData.set("scopeTab", "analytics")
+}
+
+function getDefaultSavedTrimName(savedTrims: SavedTrim[]): string {
+  return `Trim ${savedTrims.length + 1}`
+}
+
+function normalizeSavedTrimName(value: string, fallbackName: string): string {
+  const normalized = value.trim().replace(/\s+/g, " ")
+
+  return normalized.length > 0 ? normalized.slice(0, 120) : fallbackName
 }
 
 function getSliderPointValue(value: number | readonly number[], fallback: number): number {
@@ -418,10 +443,15 @@ function lockMapToBounds(map: LeafletMap, bounds: LatLngBounds): void {
 }
 
 export function VakarosPlayer(input: {
+  canManageSession: boolean
   className?: string
   fileName: string
+  initialSavedTrims: SessionDetailVakarosSavedTrim[]
+  scope: NavigationScope
   series1HzUrl: string
+  sessionId: string
   trackGeojsonUrl: string
+  uploadId: string | null
 }) {
   const mapElementRef = React.useRef<HTMLDivElement | null>(null)
   const leafletRef = React.useRef<LeafletModule | null>(null)
@@ -431,10 +461,13 @@ export function VakarosPlayer(input: {
   const boatMarkerRef = React.useRef<Marker | null>(null)
   const buoyModeRef = React.useRef<BuoyMode>(null)
   const intervalRef = React.useRef<number | null>(null)
+  const saveTrimNameInputId = React.useId()
   const [series, setSeries] = React.useState<VakarosSeriesPoint[]>([])
   const [trackLatLngs, setTrackLatLngs] = React.useState<LatLngExpression[]>([])
   const [buoys, setBuoys] = React.useState<PlacedBuoy[]>([])
-  const [savedTrims, setSavedTrims] = React.useState<SavedTrim[]>([])
+  const [savedTrims, setSavedTrims] = React.useState<SavedTrim[]>(() =>
+    copySavedTrims(input.initialSavedTrims)
+  )
   const [idx, setIdx] = React.useState(0)
   const [trimStart, setTrimStart] = React.useState(0)
   const [trimEnd, setTrimEnd] = React.useState(0)
@@ -447,7 +480,12 @@ export function VakarosPlayer(input: {
   const [isMapReady, setIsMapReady] = React.useState(false)
   const [loadError, setLoadError] = React.useState<string | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
+  const [isSavingTrim, setIsSavingTrim] = React.useState(false)
+  const [isSaveTrimDialogOpen, setIsSaveTrimDialogOpen] = React.useState(false)
+  const [saveTrimName, setSaveTrimName] = React.useState("")
+  const [deletingTrimId, setDeletingTrimId] = React.useState<string | null>(null)
   const maxIndex = Math.max(0, series.length - 1)
+  const canPersistTrims = input.canManageSession && Boolean(input.uploadId)
   const safeTrimStart = clampIndex(Math.min(trimStart, trimEnd), 0, maxIndex)
   const safeTrimEnd = clampIndex(Math.max(trimStart, trimEnd), 0, maxIndex)
   const safeTrimViewportStart = clampIndex(
@@ -527,9 +565,11 @@ export function VakarosPlayer(input: {
         setTrackLatLngs(nextTrackLatLngs)
         setSeries(nextSeries)
         setBuoys([])
-        setSavedTrims([])
+        setSavedTrims(copySavedTrims(input.initialSavedTrims))
         setBuoyMode(null)
         setIsPlaying(false)
+        setIsSavingTrim(false)
+        setDeletingTrimId(null)
         setIdx(0)
         setTrimStart(0)
         setTrimEnd(Math.max(0, nextSeries.length - 1))
@@ -553,7 +593,7 @@ export function VakarosPlayer(input: {
     return () => {
       isMounted = false
     }
-  }, [input.series1HzUrl, input.trackGeojsonUrl])
+  }, [input.initialSavedTrims, input.series1HzUrl, input.trackGeojsonUrl])
 
   React.useEffect(() => {
     let isMounted = true
@@ -912,18 +952,102 @@ export function VakarosPlayer(input: {
     setTrimViewportEnd(nextViewport.end)
   }
 
-  function handleSaveTrim(): void {
+  function openSaveTrimDialog(): void {
+    setSaveTrimName(getDefaultSavedTrimName(savedTrims))
+    setIsSaveTrimDialogOpen(true)
+  }
+
+  async function handleSaveTrim(nameInput: string): Promise<void> {
+    const uploadId = input.uploadId
+
+    if (isSavingTrim || !uploadId || !canPersistTrims) {
+      return
+    }
+
+    const name = normalizeSavedTrimName(nameInput, getDefaultSavedTrimName(savedTrims))
     const savedTrim: SavedTrim = {
       id: createLocalId("trim"),
       buoys: copyBuoys(buoys),
       createdAt: new Date().toISOString(),
-      name: `Trim ${savedTrims.length + 1}`,
+      name,
       trimEnd: safeTrimEnd,
       trimStart: safeTrimStart,
     }
 
     setSavedTrims((currentSavedTrims) => [savedTrim, ...currentSavedTrims])
-    toast.success("Trim saved.")
+    setIsSavingTrim(true)
+
+    try {
+      const formData = new FormData()
+      formData.set("sessionId", input.sessionId)
+      formData.set("uploadId", uploadId)
+      formData.set("name", savedTrim.name)
+      formData.set("trimStartIndex", String(savedTrim.trimStart))
+      formData.set("trimEndIndex", String(savedTrim.trimEnd))
+      formData.set("buoysPayload", JSON.stringify(savedTrim.buoys))
+      appendScopeToFormData(formData, input.scope)
+
+      const result = await saveSessionVakarosTrimAction(formData)
+
+      if (!result.ok) {
+        setSavedTrims((currentSavedTrims) =>
+          currentSavedTrims.filter((currentSavedTrim) => currentSavedTrim.id !== savedTrim.id)
+        )
+        toast.error(result.message)
+        return
+      }
+
+      setSavedTrims((currentSavedTrims) =>
+        currentSavedTrims.map((currentSavedTrim) =>
+          currentSavedTrim.id === savedTrim.id ? result.savedTrim : currentSavedTrim
+        )
+      )
+      setIsSaveTrimDialogOpen(false)
+      toast.success("Trim saved.")
+    } catch {
+      setSavedTrims((currentSavedTrims) =>
+        currentSavedTrims.filter((currentSavedTrim) => currentSavedTrim.id !== savedTrim.id)
+      )
+      toast.error("Could not save this trim. Refresh and try again.")
+    } finally {
+      setIsSavingTrim(false)
+    }
+  }
+
+  async function handleDeleteSavedTrim(savedTrim: SavedTrim): Promise<void> {
+    const uploadId = input.uploadId
+
+    if (deletingTrimId || !uploadId || !canPersistTrims) {
+      return
+    }
+
+    setDeletingTrimId(savedTrim.id)
+    setSavedTrims((currentSavedTrims) =>
+      currentSavedTrims.filter((currentSavedTrim) => currentSavedTrim.id !== savedTrim.id)
+    )
+
+    try {
+      const formData = new FormData()
+      formData.set("sessionId", input.sessionId)
+      formData.set("uploadId", uploadId)
+      formData.set("savedTrimId", savedTrim.id)
+      appendScopeToFormData(formData, input.scope)
+
+      const result = await deleteSessionVakarosTrimAction(formData)
+
+      if (!result.ok) {
+        setSavedTrims((currentSavedTrims) => [savedTrim, ...currentSavedTrims])
+        toast.error(result.message)
+        return
+      }
+
+      toast.success("Trim deleted.")
+    } catch {
+      setSavedTrims((currentSavedTrims) => [savedTrim, ...currentSavedTrims])
+      toast.error("Could not delete this trim. Refresh and try again.")
+    } finally {
+      setDeletingTrimId(null)
+    }
   }
 
   function handleApplySavedTrim(savedTrim: SavedTrim): void {
@@ -959,7 +1083,8 @@ export function VakarosPlayer(input: {
   }
 
   return (
-    <div className={cn("grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden rounded-lg bg-black", input.className)}>
+    <>
+      <div className={cn("grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden rounded-lg bg-black", input.className)}>
       <div className="vakaros-player-map relative min-h-0 overflow-hidden rounded-lg border bg-muted">
         <div ref={mapElementRef} className="h-full min-h-96 w-full" />
 
@@ -979,35 +1104,71 @@ export function VakarosPlayer(input: {
               <MenuIcon className="size-5" />
               <span className="sr-only">Trims</span>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" side="bottom" className="w-56">
+            <DropdownMenuContent align="start" side="bottom" className="w-64">
               <DropdownMenuLabel>Trims</DropdownMenuLabel>
               {savedTrims.length === 0 ? (
                 <DropdownMenuItem disabled>No saved trims</DropdownMenuItem>
               ) : (
                 savedTrims.map((savedTrim) => (
-                  <DropdownMenuItem key={savedTrim.id} onClick={() => handleApplySavedTrim(savedTrim)}>
+                  <DropdownMenuItem
+                    key={savedTrim.id}
+                    className="gap-2 pr-1"
+                    disabled={deletingTrimId === savedTrim.id}
+                    onClick={() => handleApplySavedTrim(savedTrim)}
+                  >
                     <span className="min-w-0 flex-1 truncate">{savedTrim.name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {formatTrimRange(savedTrim)}
-                    </span>
+                    {canPersistTrims ? (
+                      <span
+                        className="shrink-0"
+                        onClick={(event) => event.stopPropagation()}
+                        onPointerDown={(event) => event.stopPropagation()}
+                      >
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive focus-visible:border-destructive/40 focus-visible:ring-destructive/20"
+                          title={`Delete ${savedTrim.name}`}
+                          disabled={Boolean(deletingTrimId) || isSavingTrim}
+                          onClick={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            void handleDeleteSavedTrim(savedTrim)
+                          }}
+                        >
+                          <Trash2Icon className="size-4" />
+                          <span className="sr-only">Delete {savedTrim.name}</span>
+                        </Button>
+                      </span>
+                    ) : null}
                   </DropdownMenuItem>
                 ))
               )}
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleFitTrack}>Fit trail</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon"
-            className="vakaros-map-button h-11 w-11"
-            title="Save trim"
-            onClick={handleSaveTrim}
-          >
-            <SaveIcon className="size-5" />
-            <span className="sr-only">Save trim</span>
-          </Button>
+          {input.canManageSession ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              className="vakaros-map-button h-11 w-11"
+              title={input.uploadId ? "Save trim" : "Save trim unavailable"}
+              disabled={isSavingTrim || !input.uploadId}
+              onClick={() => {
+                openSaveTrimDialog()
+              }}
+            >
+              {isSavingTrim ? (
+                <Loader2Icon className="size-5 animate-spin" />
+              ) : (
+                <SaveIcon className="size-5" />
+              )}
+              <span className="sr-only">Save trim</span>
+            </Button>
+          ) : null}
         </div>
 
         <div className="vakaros-data-overlay pointer-events-none absolute left-4 bottom-20 z-[500] grid max-w-[calc(100%-7rem)] grid-cols-1 gap-1.5 text-xs sm:bottom-5 sm:grid-cols-4 sm:gap-4">
@@ -1203,6 +1364,70 @@ export function VakarosPlayer(input: {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+
+      {input.canManageSession ? (
+        <Dialog
+          open={isSaveTrimDialogOpen}
+          onOpenChange={(nextOpen) => {
+            if (!isSavingTrim) {
+              setIsSaveTrimDialogOpen(nextOpen)
+            }
+          }}
+        >
+          <DialogContent
+            className="sm:max-w-md"
+            forceOverlayRender
+            overlayClassName="bg-black/25 backdrop-blur-sm supports-backdrop-filter:backdrop-blur-sm"
+            showCloseButton={!isSavingTrim}
+          >
+            <form
+              className="grid gap-4"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void handleSaveTrim(saveTrimName)
+              }}
+            >
+              <DialogHeader>
+                <DialogTitle>Save trim</DialogTitle>
+              </DialogHeader>
+
+              <div className="grid gap-2">
+                <Label htmlFor={saveTrimNameInputId}>Trim name</Label>
+                <Input
+                  id={saveTrimNameInputId}
+                  className="h-11"
+                  value={saveTrimName}
+                  maxLength={120}
+                  autoFocus
+                  disabled={isSavingTrim}
+                  onChange={(event) => setSaveTrimName(event.target.value)}
+                />
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11"
+                  disabled={isSavingTrim}
+                  onClick={() => setIsSaveTrimDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" className="h-11" disabled={isSavingTrim}>
+                  {isSavingTrim ? (
+                    <Loader2Icon className="size-4 animate-spin" />
+                  ) : (
+                    <SaveIcon className="size-4" />
+                  )}
+                  Save trim
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+    </>
   )
 }

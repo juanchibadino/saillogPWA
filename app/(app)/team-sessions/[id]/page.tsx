@@ -275,6 +275,7 @@ async function SessionHeaderActionsSlot(input: {
 }
 
 async function SessionHeaderGpsPlayerSlot(input: {
+  canManageSession: boolean
   detailDataPromise: SessionDetailShellDataPromise
   scope: ResolvedSessionDetailScope
   sessionId: string
@@ -284,6 +285,7 @@ async function SessionHeaderGpsPlayerSlot(input: {
   if (!detailData) {
     return (
       <SessionHeaderGpsPlayerAction
+        canManageSession={input.canManageSession}
         gpsFile={null}
         scope={input.scope}
         sessionId={input.sessionId}
@@ -305,6 +307,7 @@ async function SessionHeaderGpsPlayerSlot(input: {
 
   return (
     <SessionHeaderGpsPlayerAction
+      canManageSession={input.canManageSession}
       gpsFile={gpsFile}
       scope={input.scope}
       sessionId={detailData.session.id}
@@ -480,6 +483,7 @@ export default async function SessionDetailPage({
             <Suspense
               fallback={
                 <SessionHeaderGpsPlayerAction
+                  canManageSession={canManageSession}
                   gpsFile={null}
                   scope={scope}
                   sessionId={resolvedParams.id}
@@ -487,6 +491,7 @@ export default async function SessionDetailPage({
               }
             >
               <SessionHeaderGpsPlayerSlot
+                canManageSession={canManageSession}
                 detailDataPromise={detailDataPromise}
                 scope={scope}
                 sessionId={resolvedParams.id}

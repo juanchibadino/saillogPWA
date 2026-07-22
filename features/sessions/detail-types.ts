@@ -90,6 +90,22 @@ export type SessionDetailAsset = SessionDetailAssetMetadata & {
   thumbnailSignedUrl: string | null
 }
 
+export type SessionDetailVakarosBuoy = {
+  id: string
+  lat: number
+  lon: number
+  mode: "windward" | "leeward"
+}
+
+export type SessionDetailVakarosSavedTrim = {
+  id: string
+  buoys: SessionDetailVakarosBuoy[]
+  createdAt: string
+  name: string
+  trimEnd: number
+  trimStart: number
+}
+
 export type SessionDetailGpsFile = SessionDetailAsset & {
   gpsArtifacts: {
     series1HzUrl: string
@@ -97,6 +113,7 @@ export type SessionDetailGpsFile = SessionDetailAsset & {
     trackGeojsonUrl: string
   }
   vakaros: {
+    uploadId: string
     avgSogKts: number
     distanceNm: number
     durationHours: number
@@ -105,6 +122,7 @@ export type SessionDetailGpsFile = SessionDetailAsset & {
     p95SogKts: number
     rows1Hz: number
     rowsRaw: number
+    savedTrims: SessionDetailVakarosSavedTrim[]
     startAt: string | null
   } | null
 }
