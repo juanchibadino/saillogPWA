@@ -9,6 +9,24 @@ const APP_SHELL_ASSETS = [
   "/icons/apple-touch-icon.png",
 ];
 
+function resolveNotificationUrl(value) {
+  if (typeof value !== "string" || value.length === 0) {
+    return "/";
+  }
+
+  try {
+    const url = new URL(value, self.location.origin);
+
+    if (url.origin !== self.location.origin) {
+      return "/";
+    }
+
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return "/";
+  }
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
@@ -91,4 +109,76 @@ self.addEventListener("fetch", (event) => {
       }),
     );
   }
+});
+
+self.addEventListener("push", (event) => {
+  let payload = {};
+
+  if (event.data) {
+    try {
+      payload = event.data.json();
+    } catch {
+      payload = {
+        body: event.data.text(),
+      };
+    }
+  }
+
+  const title =
+    typeof payload.title === "string" && payload.title.trim().length > 0
+      ? payload.title.trim()
+      : "Dock Out";
+  const body =
+    typeof payload.body === "string" && payload.body.trim().length > 0
+      ? payload.body.trim()
+      : "You have a new team update.";
+  const targetUrl = resolveNotificationUrl(payload.url);
+  const tag =
+    typeof payload.tag === "string" && payload.tag.trim().length > 0
+      ? payload.tag.trim()
+      : undefined;
+
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      badge: "/icons/icon-192x192-maskable.png",
+      body,
+      data: {
+        url: targetUrl,
+      },
+      icon: "/icons/icon-192x192.png",
+      tag,
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  const targetUrl = resolveNotificationUrl(event.notification.data?.url);
+
+  event.waitUntil(
+    (async () => {
+      const targetAbsoluteUrl = new URL(targetUrl, self.location.origin).href;
+      const windowClients = await self.clients.matchAll({
+        includeUncontrolled: true,
+        type: "window",
+      });
+
+      for (const client of windowClients) {
+        const clientUrl = new URL(client.url);
+
+        if (clientUrl.origin === self.location.origin && "focus" in client) {
+          await client.focus();
+
+          if ("navigate" in client && client.url !== targetAbsoluteUrl) {
+            await client.navigate(targetAbsoluteUrl);
+          }
+
+          return;
+        }
+      }
+
+      await self.clients.openWindow(targetUrl);
+    })(),
+  );
 });

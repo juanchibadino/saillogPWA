@@ -43,8 +43,15 @@ export const updateTeamSettingsInputSchema = z.object({
   expensesShowTeamTotals: z.boolean(),
 })
 
+export const updateNotificationSettingsInputSchema = z.object({
+  emailNotificationsEnabled: z.boolean(),
+})
+
 export type UpdateUserSettingsInput = z.infer<typeof updateUserSettingsInputSchema>
 export type UpdateOrganizationSettingsInput = z.infer<
   typeof updateOrganizationSettingsInputSchema
 >
 export type UpdateTeamSettingsInput = z.infer<typeof updateTeamSettingsInputSchema>
+export type UpdateNotificationSettingsInput = z.infer<
+  typeof updateNotificationSettingsInputSchema
+>

@@ -6,8 +6,11 @@ import { redirect } from "next/navigation"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canDeleteCamps, canManageTeamStructure } from "@/lib/auth/capabilities"
 import { resolveOrganizationWriteEntitlement } from "@/lib/billing/entitlements"
+import { getOptionalAppUrlOrigin } from "@/lib/supabase/env"
+import { createAdminSupabaseClient } from "@/lib/supabase/admin"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { scopeFormInputSchema } from "@/lib/validation/navigation"
+import type { Database } from "@/types/database"
 import {
   createCampInputSchema,
   deleteCampInputSchema,
@@ -25,13 +28,18 @@ import {
   type CampDetailTimingStatus,
 } from "@/features/camps/detail-timing"
 import {
-  buildCampGoalsMessage,
-  buildScopedNotificationHref,
   formatActorName,
   NOTIFICATION_EVENT_TYPES,
   shouldNotifyTextAdded,
 } from "@/features/notifications/core.mjs"
-import { createNotificationsForActiveTeamMembers } from "@/features/notifications/server"
+import {
+  buildCampGoalCrewRecipients,
+  buildCampGoalNotificationRows,
+  buildCampGoalPushPayload,
+  buildCampGoalTargetHref,
+} from "@/features/notifications/camp-goal-core.mjs"
+import { sendCampGoalEmailNotifications } from "@/features/notifications/email"
+import { sendWebPushNotifications } from "@/features/notifications/push"
 
 function getFormString(formData: FormData, key: string): string | undefined {
   const value = formData.get(key)
@@ -91,6 +99,28 @@ type CampActionScope = {
   scopeTab?: string
   scopePage?: number
 }
+
+type CampGoalNotificationActionResult = {
+  emailSentCount: number
+  notifiedCount: number
+  ok: boolean
+  pushSentCount: number
+}
+
+type CampGoalCrewMembershipRow = Pick<
+  Database["public"]["Tables"]["team_memberships"]["Row"],
+  "is_active" | "profile_id" | "role"
+>
+
+type CampGoalCrewProfileRow = Pick<
+  Database["public"]["Tables"]["profiles"]["Row"],
+  "email" | "email_notifications_enabled" | "first_name" | "id" | "is_active" | "last_name"
+>
+
+type CampGoalExistingNotificationRow = Pick<
+  Database["public"]["Tables"]["notifications"]["Row"],
+  "event_type" | "metadata" | "recipient_profile_id"
+>
 
 function logCampActionTiming(input: {
   campId?: string | null
@@ -290,6 +320,119 @@ async function ensureCampBelongsToScope(input: {
   }
 
   return Boolean(teamVenueRow)
+}
+
+function buildAbsoluteAppUrl(href: string): string {
+  try {
+    const origin = getOptionalAppUrlOrigin()
+    return origin ? `${origin}${href}` : href
+  } catch {
+    return href
+  }
+}
+
+async function loadCampGoalNotificationRows(input: {
+  actorName: string
+  actorProfileId: string
+  campId: string
+  orgId: string
+  teamId: string
+}): Promise<{
+  campName: string
+  recipients: ReturnType<typeof buildCampGoalCrewRecipients>
+  rows: ReturnType<typeof buildCampGoalNotificationRows>
+} | null> {
+  const adminSupabase = createAdminSupabaseClient()
+  const { data: campRow, error: campError } = await adminSupabase
+    .from("camps")
+    .select("id,name,notes")
+    .eq("id", input.campId)
+    .maybeSingle()
+
+  if (campError || !campRow || !campRow.notes?.trim()) {
+    return null
+  }
+
+  const { data: membershipRows, error: membershipError } = await adminSupabase
+    .from("team_memberships")
+    .select("profile_id,role,is_active")
+    .eq("team_id", input.teamId)
+    .eq("role", "crew")
+    .eq("is_active", true)
+
+  if (membershipError) {
+    console.warn("Failed to load Camp Goal notification crew recipients", membershipError)
+    return null
+  }
+
+  const memberships: CampGoalCrewMembershipRow[] = membershipRows ?? []
+  const profileIds = [...new Set(memberships.map((membership) => membership.profile_id))]
+
+  if (profileIds.length === 0) {
+    return {
+      campName: campRow.name.trim().length > 0 ? campRow.name : "this camp",
+      recipients: [],
+      rows: [],
+    }
+  }
+
+  const { data: profileRows, error: profileError } = await adminSupabase
+    .from("profiles")
+    .select("id,first_name,last_name,email,is_active,email_notifications_enabled")
+    .in("id", profileIds)
+
+  if (profileError) {
+    console.warn("Failed to load Camp Goal notification profiles", profileError)
+    return null
+  }
+
+  const profiles: CampGoalCrewProfileRow[] = profileRows ?? []
+  const recipients = buildCampGoalCrewRecipients({
+    actorProfileId: input.actorProfileId,
+    memberships,
+    profiles,
+  })
+
+  if (recipients.length === 0) {
+    return {
+      campName: campRow.name.trim().length > 0 ? campRow.name : "this camp",
+      recipients,
+      rows: [],
+    }
+  }
+
+  const { data: existingRows, error: existingRowsError } = await adminSupabase
+    .from("notifications")
+    .select("recipient_profile_id,event_type,metadata")
+    .eq("team_id", input.teamId)
+    .eq("event_type", NOTIFICATION_EVENT_TYPES.CAMP_GOALS_ADDED)
+    .in(
+      "recipient_profile_id",
+      recipients.map((recipient) => recipient.profileId),
+    )
+
+  if (existingRowsError) {
+    console.warn("Failed to load existing Camp Goal notifications", existingRowsError)
+    return null
+  }
+
+  const campName = campRow.name.trim().length > 0 ? campRow.name : "this camp"
+  const existingNotifications: CampGoalExistingNotificationRow[] = existingRows ?? []
+
+  return {
+    campName,
+    recipients,
+    rows: buildCampGoalNotificationRows({
+      actorName: input.actorName,
+      actorProfileId: input.actorProfileId,
+      campId: input.campId,
+      campName,
+      existingRows: existingNotifications,
+      orgId: input.orgId,
+      recipients,
+      teamId: input.teamId,
+    }),
+  }
 }
 
 async function resolveTeamOrganizationId(teamId: string): Promise<string | null> {
@@ -705,38 +848,9 @@ export async function updateCampGoalsAction(formData: FormData): Promise<void> {
     )
   }
 
-  if (
+  const shouldPromptForNotification =
     campNotificationRow &&
     shouldNotifyTextAdded(campNotificationRow.notes, normalizedGoals)
-  ) {
-    const actorName = formatActorName({
-      firstName: context.profile?.first_name,
-      lastName: context.profile?.last_name,
-      email: context.user.email ?? null,
-    })
-    const campName =
-      campNotificationRow.name.trim().length > 0 ? campNotificationRow.name : "this camp"
-
-    await createNotificationsForActiveTeamMembers({
-      excludeProfileId: context.user.id,
-      actorProfileId: context.user.id,
-      teamId: scope.scopeTeamId,
-      eventType: NOTIFICATION_EVENT_TYPES.CAMP_GOALS_ADDED,
-      message: buildCampGoalsMessage({
-        actorName,
-        campName,
-      }),
-      targetHref: buildScopedNotificationHref({
-        pathname: `/team-camps/${parsedInput.data.campId}`,
-        orgId: scope.scopeOrgId,
-        teamId: scope.scopeTeamId,
-        tab: "goals",
-      }),
-      metadata: {
-        campId: parsedInput.data.campId,
-      },
-    })
-  }
 
   revalidatePath("/team-camps")
   revalidatePath(`/team-camps/${parsedInput.data.campId}`)
@@ -757,7 +871,209 @@ export async function updateCampGoalsAction(formData: FormData): Promise<void> {
     resolveCampGoalsActionRedirect({
       outcome: "saved",
       campId: parsedInput.data.campId,
+      notifyCampGoals: shouldPromptForNotification,
       ...scope,
     }),
   )
+}
+
+export async function confirmCampGoalsNotificationAction(
+  formData: FormData,
+): Promise<CampGoalNotificationActionResult> {
+  const startedAt = startCampDetailTiming()
+  const context = await requireAuthenticatedAccessContext()
+  const scope = getScopeFromFormData(formData)
+  const campId = getFormString(formData, "campId")
+  const notifyEmail = getBooleanField(formData, "notifyEmail")
+  const notifyPush = getBooleanField(formData, "notifyPush")
+
+  const baseResult: CampGoalNotificationActionResult = {
+    emailSentCount: 0,
+    notifiedCount: 0,
+    ok: false,
+    pushSentCount: 0,
+  }
+
+  if (!campId || !scope.scopeOrgId || !scope.scopeTeamId) {
+    logCampActionTiming({
+      phase: "confirm_camp_goals_notification",
+      startedAt,
+      scope,
+      campId,
+      status: "error",
+      outcome: "missing_required",
+    })
+    return baseResult
+  }
+
+  if (
+    !canManageTeamStructure({
+      context,
+      organizationId: scope.scopeOrgId,
+      teamId: scope.scopeTeamId,
+    })
+  ) {
+    logCampActionTiming({
+      phase: "confirm_camp_goals_notification",
+      startedAt,
+      scope,
+      campId,
+      status: "error",
+      outcome: "forbidden",
+    })
+    return baseResult
+  }
+
+  const campBelongsToScope = await ensureCampBelongsToScope({
+    campId,
+    scopeTeamId: scope.scopeTeamId,
+  })
+
+  if (!campBelongsToScope) {
+    logCampActionTiming({
+      phase: "confirm_camp_goals_notification",
+      startedAt,
+      scope,
+      campId,
+      status: "error",
+      outcome: "missing_camp",
+    })
+    return baseResult
+  }
+
+  const actorName = formatActorName({
+    firstName: context.profile?.first_name,
+    lastName: context.profile?.last_name,
+    email: context.user.email ?? null,
+  })
+  const notificationContext = await loadCampGoalNotificationRows({
+    actorName,
+    actorProfileId: context.user.id,
+    campId,
+    orgId: scope.scopeOrgId,
+    teamId: scope.scopeTeamId,
+  })
+
+  if (!notificationContext || notificationContext.rows.length === 0) {
+    logCampActionTiming({
+      phase: "confirm_camp_goals_notification",
+      startedAt,
+      scope,
+      campId,
+      status: "success",
+      outcome: "nothing_to_send",
+    })
+    return {
+      ...baseResult,
+      ok: true,
+    }
+  }
+
+  const adminSupabase = createAdminSupabaseClient()
+  const { error: insertError } = await adminSupabase
+    .from("notifications")
+    .insert(notificationContext.rows)
+
+  if (insertError) {
+    console.warn("Failed to create Camp Goal crew notifications", insertError)
+    logCampActionTiming({
+      phase: "confirm_camp_goals_notification",
+      startedAt,
+      scope,
+      campId,
+      status: "error",
+      outcome: "insert_failed",
+      error: insertError.message,
+    })
+    return baseResult
+  }
+
+  const notifiedRecipientIds = new Set(
+    notificationContext.rows.map((row) => row.recipient_profile_id),
+  )
+  const deliveryRecipients = notificationContext.recipients.filter((recipient) =>
+    notifiedRecipientIds.has(recipient.profileId),
+  )
+  const firstNotificationRow = notificationContext.rows[0]
+  const targetHref =
+    firstNotificationRow?.target_href ??
+    buildCampGoalTargetHref({
+      campId,
+      orgId: scope.scopeOrgId,
+      teamId: scope.scopeTeamId,
+    })
+  const message = firstNotificationRow?.message ?? ""
+  let emailSentCount = 0
+  let pushSentCount = 0
+
+  if (notifyEmail) {
+    emailSentCount = await sendCampGoalEmailNotifications({
+      actorName,
+      campName: notificationContext.campName,
+      message,
+      recipients: deliveryRecipients,
+      targetHref,
+      targetUrl: buildAbsoluteAppUrl(targetHref),
+    })
+  }
+
+  if (notifyPush && deliveryRecipients.length > 0) {
+    const { data: subscriptions, error: subscriptionsError } = await adminSupabase
+      .from("push_subscriptions")
+      .select("endpoint,p256dh,auth")
+      .in(
+        "profile_id",
+        deliveryRecipients.map((recipient) => recipient.profileId),
+      )
+
+    if (subscriptionsError) {
+      console.warn("Failed to load Camp Goal push subscriptions", subscriptionsError)
+    } else {
+      const pushResult = await sendWebPushNotifications({
+        payload: buildCampGoalPushPayload({
+          campId,
+          message,
+          targetHref,
+        }),
+        subscriptions: subscriptions ?? [],
+      })
+
+      pushSentCount = pushResult.sentCount
+
+      if (pushResult.staleEndpoints.length > 0) {
+        const { error: deleteError } = await adminSupabase
+          .from("push_subscriptions")
+          .delete()
+          .in("endpoint", pushResult.staleEndpoints)
+
+        if (deleteError) {
+          console.warn("Failed to delete stale push subscriptions", deleteError)
+        }
+      }
+    }
+  }
+
+  revalidatePath("/", "layout")
+  revalidatePath("/notifications")
+
+  logCampActionTiming({
+    phase: "confirm_camp_goals_notification",
+    startedAt,
+    scope,
+    campId,
+    status: "success",
+    outcome: "sent",
+    metadata: {
+      emailSentCount,
+      notifiedCount: deliveryRecipients.length,
+      pushSentCount,
+    },
+  })
+
+  return {
+    emailSentCount,
+    notifiedCount: deliveryRecipients.length,
+    ok: true,
+    pushSentCount,
+  }
 }

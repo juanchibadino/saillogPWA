@@ -18,6 +18,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { scopeFormInputSchema } from "@/lib/validation/navigation"
 import {
+  updateNotificationSettingsInputSchema,
   updateOrganizationSettingsInputSchema,
   updateTeamSettingsInputSchema,
   updateUserSettingsInputSchema,
@@ -34,6 +35,7 @@ type AdminSupabaseClient = ReturnType<typeof createAdminSupabaseClient>
 type SettingsStatus =
   | "email_confirmed"
   | "email_verification_sent"
+  | "notifications_updated"
   | "organization_updated"
   | "team_updated"
   | "user_updated"
@@ -43,6 +45,8 @@ type SettingsError =
   | "forbidden"
   | "invalid_input"
   | "update_failed"
+
+type SettingsTab = "user" | "team" | "organizations" | "notifications"
 
 function getFormString(formData: FormData, key: string): string | undefined {
   const value = formData.get(key)
@@ -71,23 +75,42 @@ function getFormFile(formData: FormData, key: string): File | undefined {
 function getScopeFromFormData(formData: FormData): {
   scopeOrgId?: string
   scopeTeamId?: string
+  settingsTab?: SettingsTab
 } {
   const parsedScope = scopeFormInputSchema.safeParse({
     scopeOrgId: getFormString(formData, "scopeOrgId"),
     scopeTeamId: getFormString(formData, "scopeTeamId"),
   })
+  const settingsTab = getSettingsTab(getFormString(formData, "settingsTab"))
 
   if (!parsedScope.success) {
-    return {}
+    return settingsTab ? { settingsTab } : {}
   }
 
-  return parsedScope.data
+  return {
+    ...parsedScope.data,
+    ...(settingsTab ? { settingsTab } : {}),
+  }
+}
+
+function getSettingsTab(value: string | undefined): SettingsTab | undefined {
+  if (
+    value === "user" ||
+    value === "team" ||
+    value === "organizations" ||
+    value === "notifications"
+  ) {
+    return value
+  }
+
+  return undefined
 }
 
 function buildSettingsRedirectPath(input: {
   error?: SettingsError
   scopeOrgId?: string
   scopeTeamId?: string
+  settingsTab?: SettingsTab
   status?: SettingsStatus
 }): string {
   const params = new URLSearchParams()
@@ -98,6 +121,10 @@ function buildSettingsRedirectPath(input: {
 
   if (input.error) {
     params.set("error", input.error)
+  }
+
+  if (input.settingsTab) {
+    params.set("tab", input.settingsTab)
   }
 
   if (input.scopeOrgId) {
@@ -394,6 +421,66 @@ export async function updateUserSettingsAction(formData: FormData): Promise<void
   redirect(
     buildSettingsRedirectPath({
       status: shouldUpdateEmail ? "email_verification_sent" : "user_updated",
+      ...scope,
+    }),
+  )
+}
+
+export async function updateNotificationSettingsAction(
+  formData: FormData,
+): Promise<void> {
+  const context = await requireAuthenticatedAccessContext()
+  const scope = getScopeFromFormData(formData)
+  const parsedInput = updateNotificationSettingsInputSchema.safeParse({
+    emailNotificationsEnabled: getFormCheckbox(formData, "emailNotificationsEnabled"),
+  })
+
+  if (!parsedInput.success) {
+    redirect(
+      buildSettingsRedirectPath({
+        error: "invalid_input",
+        settingsTab: "notifications",
+        ...scope,
+      }),
+    )
+  }
+
+  let adminSupabase: AdminSupabaseClient
+  try {
+    adminSupabase = createAdminSupabaseClient()
+  } catch {
+    redirect(
+      buildSettingsRedirectPath({
+        error: "update_failed",
+        settingsTab: "notifications",
+        ...scope,
+      }),
+    )
+  }
+
+  const profileUpdate: Database["public"]["Tables"]["profiles"]["Update"] = {
+    email_notifications_enabled: parsedInput.data.emailNotificationsEnabled,
+  }
+  const { error: profileUpdateError } = await adminSupabase
+    .from("profiles")
+    .update(profileUpdate)
+    .eq("id", context.user.id)
+
+  if (profileUpdateError) {
+    redirect(
+      buildSettingsRedirectPath({
+        error: "update_failed",
+        settingsTab: "notifications",
+        ...scope,
+      }),
+    )
+  }
+
+  revalidateSettingsSurfaces()
+  redirect(
+    buildSettingsRedirectPath({
+      status: "notifications_updated",
+      settingsTab: "notifications",
       ...scope,
     }),
   )

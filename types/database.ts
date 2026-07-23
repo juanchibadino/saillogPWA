@@ -15,6 +15,7 @@ export type Database = {
           first_name: string | null;
           last_name: string | null;
           email: string | null;
+          email_notifications_enabled: boolean;
           photo_url: string | null;
           global_role: Database["public"]["Enums"]["global_role_type"] | null;
           is_active: boolean;
@@ -32,6 +33,7 @@ export type Database = {
           first_name?: string | null;
           last_name?: string | null;
           email?: string | null;
+          email_notifications_enabled?: boolean;
           photo_url?: string | null;
           global_role?: Database["public"]["Enums"]["global_role_type"] | null;
           is_active?: boolean;
@@ -48,6 +50,7 @@ export type Database = {
           first_name?: string | null;
           last_name?: string | null;
           email?: string | null;
+          email_notifications_enabled?: boolean;
           photo_url?: string | null;
           global_role?: Database["public"]["Enums"]["global_role_type"] | null;
           is_active?: boolean;
@@ -692,6 +695,42 @@ export type Database = {
           read_at?: string | null;
           deleted_at?: string | null;
           created_at?: string;
+        };
+        Relationships: [];
+      };
+      push_subscriptions: {
+        Row: {
+          id: string;
+          profile_id: string;
+          endpoint: string;
+          p256dh: string;
+          auth: string;
+          expiration_time: string | null;
+          user_agent: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          profile_id: string;
+          endpoint: string;
+          p256dh: string;
+          auth: string;
+          expiration_time?: string | null;
+          user_agent?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          profile_id?: string;
+          endpoint?: string;
+          p256dh?: string;
+          auth?: string;
+          expiration_time?: string | null;
+          user_agent?: string | null;
+          created_at?: string;
+          updated_at?: string;
         };
         Relationships: [];
       };

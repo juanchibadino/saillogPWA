@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { Loader2Icon } from "lucide-react"
+import { toast } from "sonner"
 
 import { CampDetailPanelSkeleton } from "@/components/shared/page-skeletons"
 import { GradientCard } from "@/components/shared/gradient-card"
@@ -11,7 +12,18 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { confirmCampGoalsNotificationAction } from "@/features/camps/actions"
 import {
   buildCampDetailTabApiUrl,
   buildCampDetailTabCacheMetadata,
@@ -62,6 +74,12 @@ type CampDetailTabLoadError = {
 type NotesAppendState = {
   cacheKey: string
   data: CampDetailNotesTabData
+}
+
+function clearCampGoalNotificationPromptParam(): void {
+  const url = new URL(window.location.href)
+  url.searchParams.delete("notifyCampGoals")
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`)
 }
 
 function resolveTab(value: string): CampDetailTab {
@@ -382,6 +400,134 @@ function CampTabDataError(input: {
   )
 }
 
+function CampGoalNotificationDialog({
+  campId,
+  defaultOpen,
+  scope,
+}: {
+  campId: string
+  defaultOpen: boolean
+  scope: NavigationScope
+}) {
+  const [isOpen, setIsOpen] = React.useState(defaultOpen)
+  const [notifyEmail, setNotifyEmail] = React.useState(true)
+  const [notifyPush, setNotifyPush] = React.useState(true)
+  const [isPending, setIsPending] = React.useState(false)
+  const [errorMessage, setErrorMessage] = React.useState("")
+
+  React.useEffect(() => {
+    setIsOpen(defaultOpen)
+  }, [defaultOpen])
+
+  function closeDialog(): void {
+    setIsOpen(false)
+    clearCampGoalNotificationPromptParam()
+  }
+
+  async function confirmNotifications(): Promise<void> {
+    if (isPending) {
+      return
+    }
+
+    setIsPending(true)
+    setErrorMessage("")
+
+    const formData = new FormData()
+    formData.set("campId", campId)
+    formData.set("scopeOrgId", scope.activeOrgId)
+
+    if (scope.activeTeamId) {
+      formData.set("scopeTeamId", scope.activeTeamId)
+    }
+
+    if (notifyEmail) {
+      formData.set("notifyEmail", "on")
+    }
+
+    if (notifyPush) {
+      formData.set("notifyPush", "on")
+    }
+
+    try {
+      const result = await confirmCampGoalsNotificationAction(formData)
+
+      if (!result.ok) {
+        setErrorMessage("Could not notify the crew. Confirm permissions and try again.")
+        return
+      }
+
+      toast.success("Crew notified.", {
+        description: `${result.notifiedCount} crew notification${
+          result.notifiedCount === 1 ? "" : "s"
+        } queued.`,
+      })
+      closeDialog()
+    } catch {
+      setErrorMessage("Could not notify the crew. Confirm permissions and try again.")
+    } finally {
+      setIsPending(false)
+    }
+  }
+
+  return (
+    <Dialog
+      open={isOpen}
+      onOpenChange={(nextOpen) => {
+        setIsOpen(nextOpen)
+
+        if (!nextOpen) {
+          clearCampGoalNotificationPromptParam()
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Notify crew?</DialogTitle>
+          <DialogDescription>
+            Camp goals were saved. Send the update to the active crew.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-3">
+          <Label className="flex min-h-12 items-center justify-between gap-4 rounded-lg border bg-muted/30 px-3 py-2">
+            <span className="min-w-0 text-sm font-medium">Email</span>
+            <Checkbox checked={notifyEmail} onCheckedChange={setNotifyEmail} />
+          </Label>
+          <Label className="flex min-h-12 items-center justify-between gap-4 rounded-lg border bg-muted/30 px-3 py-2">
+            <span className="min-w-0 text-sm font-medium">Push notification</span>
+            <Checkbox checked={notifyPush} onCheckedChange={setNotifyPush} />
+          </Label>
+          {errorMessage ? (
+            <p className="text-sm text-destructive">{errorMessage}</p>
+          ) : null}
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" disabled={isPending} onClick={closeDialog}>
+            Skip
+          </Button>
+          <Button
+            type="button"
+            disabled={isPending}
+            onClick={() => {
+              void confirmNotifications()
+            }}
+          >
+            {isPending ? (
+              <>
+                <Loader2Icon className="size-4 animate-spin" />
+                Sending...
+              </>
+            ) : (
+              "Confirm"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function isCampKpiTabular(label: string): boolean {
   return label !== "Camp Dates"
 }
@@ -447,6 +593,7 @@ export function CampDetailTabsClient({
   canManageGoals,
   scope,
   campId,
+  showCampGoalNotificationPrompt,
 }: {
   initialTab: CampDetailTab
   initialTabData: CampDetailTabPayload
@@ -463,6 +610,7 @@ export function CampDetailTabsClient({
   canManageGoals: boolean
   scope: NavigationScope
   campId: string
+  showCampGoalNotificationPrompt: boolean
 }) {
   const identityKey = `${scope.activeOrgId}:${scope.activeTeamId ?? ""}:${campId}`
   const [tabState, setTabState] = React.useState<{
@@ -1069,6 +1217,11 @@ export function CampDetailTabsClient({
 
   return (
     <div className="space-y-6">
+      <CampGoalNotificationDialog
+        campId={campId}
+        defaultOpen={showCampGoalNotificationPrompt}
+        scope={scope}
+      />
       <CampDetailSummaryCards kpis={kpis} />
 
       <Tabs

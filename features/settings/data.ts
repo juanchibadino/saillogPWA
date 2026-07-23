@@ -15,6 +15,7 @@ type PendingEmailUserFields = {
 export type SettingsUserData = {
   avatarUrl: string | null
   email: string
+  emailNotificationsEnabled: boolean
   firstName: string
   lastName: string
   pendingEmail: string | null
@@ -95,6 +96,8 @@ export function getSettingsPageData(input: {
     user: {
       avatarUrl: input.context.profile?.photo_url ?? null,
       email: input.context.user.email ?? input.context.profile?.email ?? "",
+      emailNotificationsEnabled:
+        input.context.profile?.email_notifications_enabled ?? true,
       firstName: input.context.profile?.first_name ?? "",
       lastName: input.context.profile?.last_name ?? "",
       pendingEmail: getPendingEmail(input.context.user),

@@ -24,6 +24,10 @@ function getStatusMessage(status: string | undefined): string | null {
     return "Email verified successfully."
   }
 
+  if (status === "notifications_updated") {
+    return "Notification settings saved."
+  }
+
   if (status === "organization_updated") {
     return "Organization settings saved."
   }
@@ -68,6 +72,7 @@ export default async function SettingsPage({
   })
   const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
+  const selectedTab = getSingleSearchParamValue(resolvedSearchParams.tab)
   const data = getSettingsPageData({
     context,
     navigation,
@@ -83,12 +88,13 @@ export default async function SettingsPage({
       <div className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold tracking-normal sm:text-2xl">Settings</h1>
         <p className="text-sm text-muted-foreground">
-          Edit your user profile, active organization, and active team.
+          Edit your profile, active scopes, and notification preferences.
         </p>
       </div>
 
       <SettingsPageClient
         data={data}
+        initialTab={selectedTab}
         scope={{
           activeOrgId: navigation.scope?.activeOrgId,
           activeTeamId: navigation.scope?.activeTeamId,

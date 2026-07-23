@@ -126,6 +126,10 @@ export function buildCampDetailRedirectPath(input) {
     params.set("cacheTeamVenue", input.cacheTeamVenueId)
   }
 
+  if (input.notifyCampGoals) {
+    params.set("notifyCampGoals", "1")
+  }
+
   const query = params.toString()
   const basePath = `/team-camps/${input.campId}`
   return query.length > 0 ? `${basePath}?${query}` : basePath
@@ -184,6 +188,7 @@ export function resolveCampGoalsActionRedirect(input) {
     campId: input.campId,
     status: "goals_updated",
     cacheCampId: input.campId,
+    notifyCampGoals: input.notifyCampGoals,
     scopeOrgId: input.scopeOrgId,
     scopeTeamId: input.scopeTeamId,
     scopeTab: input.scopeTab,

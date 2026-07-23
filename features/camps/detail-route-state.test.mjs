@@ -165,6 +165,21 @@ test("builds successful Goals save redirect with preserved Camp detail state", (
   )
 })
 
+test("builds successful Goals save redirect with notification prompt flag", () => {
+  assert.equal(
+    resolveCampGoalsActionRedirect({
+      outcome: "saved",
+      campId: "camp-1",
+      scopeOrgId: "org-1",
+      scopeTeamId: "team-1",
+      scopeTab: "goals",
+      scopePage: 2,
+      notifyCampGoals: true,
+    }),
+    "/team-camps/camp-1?status=goals_updated&org=org-1&team=team-1&tab=goals&page=2&cacheCamp=camp-1&notifyCampGoals=1",
+  )
+})
+
 test("builds missing required Goals save redirect back to Camp list", () => {
   assert.equal(
     resolveCampGoalsActionRedirect({

@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import {
+  BellIcon,
   Building2Icon,
   CoinsIcon,
   Loader2Icon,
@@ -13,6 +14,7 @@ import {
 import { useFormStatus } from "react-dom"
 
 import {
+  updateNotificationSettingsAction,
   updateOrganizationSettingsAction,
   updateTeamSettingsAction,
   updateUserSettingsAction,
@@ -25,11 +27,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 type SettingsScope = {
   activeOrgId?: string
   activeTeamId?: string | null
 }
+
+type SettingsTab = "user" | "team" | "organizations" | "notifications"
 
 type DecodedAvatarImageSource = {
   cleanup: () => void
@@ -43,6 +48,23 @@ const PROFILE_AVATAR_MAX_BYTES = 32 * 1024
 const PROFILE_AVATAR_WEBP_TYPE = "image/webp"
 const PROFILE_AVATAR_QUALITY_LADDER = [0.56, 0.46, 0.36, 0.28] as const
 const TEAM_TYPE_OPTIONS = ["49er", "49erFX", "Laser", "Nacra"] as const
+const PUSH_SUBSCRIPTIONS_API_PATH = "/api/push-subscriptions"
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim() ?? ""
+const SETTINGS_TABS: { label: string; value: SettingsTab }[] = [
+  { label: "User", value: "user" },
+  { label: "Team", value: "team" },
+  { label: "Organizations", value: "organizations" },
+  { label: "Notifications", value: "notifications" },
+]
+
+type PushNotificationStatus =
+  | "checking"
+  | "dev_unavailable"
+  | "unsupported"
+  | "denied"
+  | "disabled"
+  | "enabled"
+  | "error"
 
 function buildCompressedAvatarFileName(fileName: string): string {
   const normalizedName = fileName.trim()
@@ -190,6 +212,16 @@ function getInitials(name: string): string {
   return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase()
 }
 
+function resolveSettingsTab(value: string | undefined): SettingsTab {
+  return SETTINGS_TABS.some((tab) => tab.value === value)
+    ? (value as SettingsTab)
+    : "user"
+}
+
+function SettingsTabHiddenInput({ value }: { value: SettingsTab }) {
+  return <input type="hidden" name="settingsTab" value={value} />
+}
+
 function SettingsScopeHiddenInputs({ scope }: { scope: SettingsScope }) {
   return (
     <>
@@ -294,6 +326,252 @@ function buildTeamTypeOptions(currentTeamType: string): string[] {
   return options
 }
 
+function urlBase64ToArrayBuffer(value: string): ArrayBuffer {
+  const padding = "=".repeat((4 - (value.length % 4)) % 4)
+  const base64 = `${value}${padding}`.replaceAll("-", "+").replaceAll("_", "/")
+  const rawData = window.atob(base64)
+  const buffer = new ArrayBuffer(rawData.length)
+  const output = new Uint8Array(buffer)
+
+  for (let index = 0; index < rawData.length; index += 1) {
+    output[index] = rawData.charCodeAt(index)
+  }
+
+  return buffer
+}
+
+function isBrowserPushSupported(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.isSecureContext &&
+    "Notification" in window &&
+    "serviceWorker" in navigator &&
+    "PushManager" in window &&
+    VAPID_PUBLIC_KEY.length > 0
+  )
+}
+
+function getPushStatusLabel(status: PushNotificationStatus): string {
+  switch (status) {
+    case "checking":
+      return "Checking this device..."
+    case "dev_unavailable":
+      return "Push is available in production or HTTPS preview builds."
+    case "unsupported":
+      return "This browser cannot enable web push for Dock Out."
+    case "denied":
+      return "Browser notification permission is blocked for this device."
+    case "enabled":
+      return "Push notifications are enabled on this device."
+    case "error":
+      return "Could not update push notifications. Try again."
+    default:
+      return "Push notifications are disabled on this device."
+  }
+}
+
+function NotificationsSettingsPanel({
+  data,
+  scope,
+}: {
+  data: SettingsPageData["user"]
+  scope: SettingsScope
+}) {
+  const [status, setStatus] = React.useState<PushNotificationStatus>("checking")
+  const [isUpdating, setIsUpdating] = React.useState(false)
+
+  const refreshStatus = React.useCallback(async () => {
+    if (process.env.NODE_ENV !== "production") {
+      setStatus("dev_unavailable")
+      return
+    }
+
+    if (!isBrowserPushSupported()) {
+      setStatus("unsupported")
+      return
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.ready
+      const subscription = await registration.pushManager.getSubscription()
+
+      if (subscription) {
+        setStatus("enabled")
+        return
+      }
+
+      setStatus(Notification.permission === "denied" ? "denied" : "disabled")
+    } catch {
+      setStatus("error")
+    }
+  }, [])
+
+  React.useEffect(() => {
+    void refreshStatus()
+  }, [refreshStatus])
+
+  async function enablePushNotifications(): Promise<void> {
+    if (isUpdating || !isBrowserPushSupported()) {
+      return
+    }
+
+    setIsUpdating(true)
+
+    try {
+      const permission = await Notification.requestPermission()
+
+      if (permission !== "granted") {
+        setStatus(permission === "denied" ? "denied" : "disabled")
+        return
+      }
+
+      const registration = await navigator.serviceWorker.ready
+      const existingSubscription = await registration.pushManager.getSubscription()
+      const subscription =
+        existingSubscription ??
+        (await registration.pushManager.subscribe({
+          applicationServerKey: urlBase64ToArrayBuffer(VAPID_PUBLIC_KEY),
+          userVisibleOnly: true,
+        }))
+
+      const response = await fetch(PUSH_SUBSCRIPTIONS_API_PATH, {
+        body: JSON.stringify(subscription.toJSON()),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      })
+
+      if (!response.ok) {
+        throw new Error("Could not save push subscription.")
+      }
+
+      setStatus("enabled")
+    } catch {
+      setStatus("error")
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  async function disablePushNotifications(): Promise<void> {
+    if (isUpdating || !isBrowserPushSupported()) {
+      return
+    }
+
+    setIsUpdating(true)
+
+    try {
+      const registration = await navigator.serviceWorker.ready
+      const subscription = await registration.pushManager.getSubscription()
+
+      if (subscription) {
+        const endpoint = subscription.endpoint
+        await subscription.unsubscribe()
+        await fetch(PUSH_SUBSCRIPTIONS_API_PATH, {
+          body: JSON.stringify({ endpoint }),
+          headers: {
+            "Content-Type": "application/json",
+          },
+          method: "DELETE",
+        })
+      }
+
+      setStatus("disabled")
+    } catch {
+      setStatus("error")
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  const isEnabled = status === "enabled"
+  const isActionDisabled =
+    isUpdating ||
+    status === "checking" ||
+    status === "dev_unavailable" ||
+    status === "unsupported" ||
+    status === "denied"
+
+  return (
+    <SettingsPanel
+      title="Notifications"
+      description="Update notification preferences for this account."
+      icon={<BellIcon className="size-4" />}
+    >
+      <div className="grid gap-4 px-4 py-4 sm:px-5">
+        <div className="rounded-lg border bg-muted/30 px-3 py-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Push notifications</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Receive time-sensitive team updates on this device.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant={isEnabled ? "outline" : "default"}
+              disabled={isActionDisabled}
+              onClick={() => {
+                void (isEnabled ? disablePushNotifications() : enablePushNotifications())
+              }}
+              className="shrink-0"
+            >
+              {isUpdating ? (
+                <>
+                  <Loader2Icon className="size-4 animate-spin" />
+                  Updating...
+                </>
+              ) : isEnabled ? (
+                "Disable"
+              ) : (
+                "Enable"
+              )}
+            </Button>
+          </div>
+          <p className="mt-3 text-sm text-muted-foreground">
+            {getPushStatusLabel(status)}
+          </p>
+        </div>
+
+        <form action={updateNotificationSettingsAction} className="grid gap-4">
+          <SettingsScopeHiddenInputs scope={scope} />
+          <SettingsTabHiddenInput value="notifications" />
+
+          <SettingsFieldset>
+            <div className="rounded-lg border bg-muted/30 px-3 py-3">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <Label htmlFor="settings-email-notifications">
+                    Email notifications
+                  </Label>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Receive Dock Out update emails for team activity.
+                  </p>
+                </div>
+                <Switch
+                  id="settings-email-notifications"
+                  name="emailNotificationsEnabled"
+                  defaultChecked={data.emailNotificationsEnabled}
+                  className="shrink-0"
+                />
+              </div>
+              <p className="mt-3 text-sm text-muted-foreground">
+                Applies only to update notifications. Authentication emails such as OTP
+                and invites are sent separately.
+              </p>
+            </div>
+          </SettingsFieldset>
+
+          <div className="flex justify-end">
+            <SettingsSubmitButton pendingLabel="Saving..." />
+          </div>
+        </form>
+      </div>
+    </SettingsPanel>
+  )
+}
+
 function UserSettingsForm({
   data,
   scope,
@@ -335,6 +613,7 @@ function UserSettingsForm({
     >
       <form action={submitUserSettingsForm} className="grid gap-5 px-4 py-4 sm:px-5">
         <SettingsScopeHiddenInputs scope={scope} />
+        <SettingsTabHiddenInput value="user" />
         <input type="hidden" name="avatarUrl" value={data.avatarUrl ?? ""} />
 
         <SettingsFieldset>
@@ -433,7 +712,7 @@ function OrganizationSettingsForm({
   if (!data) {
     return (
       <SettingsPanel
-        title="Organization"
+        title="Organizations"
         description="Organization profile for the active scope."
         icon={<Building2Icon className="size-4" />}
         locked
@@ -469,13 +748,14 @@ function OrganizationSettingsForm({
 
   return (
     <SettingsPanel
-      title="Organization"
+      title="Organizations"
       description="Organization profile and billing currency."
       icon={<Building2Icon className="size-4" />}
       locked={!data.canEdit}
     >
       <form action={submitOrganizationSettingsForm} className="grid gap-5 px-4 py-4 sm:px-5">
         <SettingsScopeHiddenInputs scope={scope} />
+        <SettingsTabHiddenInput value="organizations" />
         <input type="hidden" name="organizationId" value={data.id} />
         <input type="hidden" name="avatarUrl" value={data.avatarUrl ?? ""} />
 
@@ -579,6 +859,7 @@ function TeamSettingsForm({
     >
       <form action={updateTeamSettingsAction} className="grid gap-5 px-4 py-4 sm:px-5">
         <SettingsScopeHiddenInputs scope={scope} />
+        <SettingsTabHiddenInput value="team" />
         <input type="hidden" name="organizationId" value={data.organizationId} />
         <input type="hidden" name="teamId" value={data.id} />
 
@@ -655,28 +936,70 @@ function TeamSettingsForm({
 
 export function SettingsPageClient({
   data,
+  initialTab,
   scope,
 }: {
   data: SettingsPageData
+  initialTab?: string
   scope: SettingsScope
 }) {
+  const [selectedTab, setSelectedTab] = React.useState<SettingsTab>(
+    resolveSettingsTab(initialTab),
+  )
+
+  React.useEffect(() => {
+    setSelectedTab(resolveSettingsTab(initialTab))
+  }, [initialTab])
+
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-      <div className="grid gap-4">
-        <UserSettingsForm data={data.user} scope={scope} />
+    <Tabs
+      value={selectedTab}
+      onValueChange={(value) => setSelectedTab(resolveSettingsTab(value))}
+      className="space-y-4"
+    >
+      <div className="no-scrollbar max-w-full overflow-x-auto md:hidden">
+        <div className="flex h-11 w-max min-w-full items-center rounded-lg bg-muted p-[3px] text-muted-foreground">
+          <TabsList className="h-full w-max min-w-full rounded-md bg-transparent p-0 group-data-horizontal/tabs:h-full">
+            {SETTINGS_TABS.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value} className="min-w-fit px-3">
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
       </div>
-      <div className="grid gap-4">
-        <OrganizationSettingsForm
-          key={data.organization?.id ?? "no-organization"}
-          data={data.organization}
-          scope={scope}
-        />
+
+      <TabsList className="hidden h-10 md:inline-flex">
+        {SETTINGS_TABS.map((tab) => (
+          <TabsTrigger key={tab.value} value={tab.value} className="min-w-fit px-4">
+            {tab.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+
+      <TabsContent value="user" className="space-y-4">
+        <UserSettingsForm data={data.user} scope={scope} />
+      </TabsContent>
+
+      <TabsContent value="team" className="space-y-4">
         <TeamSettingsForm
           key={data.team?.id ?? "no-team"}
           data={data.team}
           scope={scope}
         />
-      </div>
-    </div>
+      </TabsContent>
+
+      <TabsContent value="organizations" className="space-y-4">
+        <OrganizationSettingsForm
+          key={data.organization?.id ?? "no-organization"}
+          data={data.organization}
+          scope={scope}
+        />
+      </TabsContent>
+
+      <TabsContent value="notifications" className="space-y-4">
+        <NotificationsSettingsPanel data={data.user} scope={scope} />
+      </TabsContent>
+    </Tabs>
   )
 }

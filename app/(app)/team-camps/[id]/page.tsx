@@ -107,6 +107,7 @@ async function CampDetailDeferredContent(input: {
   kpisPromise: Promise<CampDetailKpi[]>
   scope: ResolvedCampDetailScope
   selectedTab: CampDetailTab
+  showCampGoalNotificationPrompt: boolean
 }) {
   const [kpis, initialTabData] = await Promise.all([
     input.kpisPromise,
@@ -130,6 +131,7 @@ async function CampDetailDeferredContent(input: {
       canManageGoals={input.canManageGoals}
       scope={input.scope}
       campId={input.camp.id}
+      showCampGoalNotificationPrompt={input.showCampGoalNotificationPrompt}
     />
   )
 }
@@ -147,6 +149,9 @@ export default async function CampDetailPage({
 
   const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
+  const showCampGoalNotificationPrompt =
+    status === "goals_updated" &&
+    getSingleSearchParamValue(resolvedSearchParams.notifyCampGoals) === "1"
   const pageParam = getSingleSearchParamValue(resolvedSearchParams.page)
   const {
     requestedNotesOffset,
@@ -291,6 +296,7 @@ export default async function CampDetailPage({
           kpisPromise={kpisPromise}
           scope={scope}
           selectedTab={selectedTab}
+          showCampGoalNotificationPrompt={showCampGoalNotificationPrompt}
         />
       </Suspense>
     </div>
