@@ -1,10 +1,13 @@
 import "server-only"
 
+import type { SupabaseClient } from "@supabase/supabase-js"
+
 import { buildTeamCalendarTimeline } from "@/features/calendar/timeline-core.mjs"
 import { normalizeCalendarSelectedId } from "@/features/calendar/list-route-state.mjs"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import type { Database } from "@/types/database"
 
+type ServerSupabaseClient = SupabaseClient<Database>
 type ProfileRow = Pick<
   Database["public"]["Tables"]["profiles"]["Row"],
   "id" | "first_name" | "last_name" | "email" | "photo_url" | "is_active"
@@ -120,7 +123,7 @@ export type TeamCalendarResultsData = {
   today: string
 }
 
-type TeamCalendarSource = {
+export type TeamCalendarSource = {
   id: string
   sourceType: TeamCalendarSourceType
   title: string
@@ -129,6 +132,8 @@ type TeamCalendarSource = {
   endDate: string
   venueName: string | null
   notes: string | null
+  createdAt: string | null
+  updatedAt: string | null
 }
 
 type PresenceBySourceDate = Record<string, Record<string, string[]>>
@@ -300,9 +305,12 @@ async function getTeamMembers(activeTeamId: string): Promise<TeamCalendarMemberO
     })
 }
 
-async function getTeamCalendarSources(activeTeamId: string): Promise<TeamCalendarSource[]> {
-  const supabase = await createServerSupabaseClient()
-  const { data: teamVenueData, error: teamVenueError } = await supabase
+export async function getTeamCalendarSources(
+  activeTeamId: string,
+  supabase?: ServerSupabaseClient,
+): Promise<TeamCalendarSource[]> {
+  const scopedSupabase = supabase ?? (await createServerSupabaseClient())
+  const { data: teamVenueData, error: teamVenueError } = await scopedSupabase
     .from("team_venues")
     .select("id,team_id,venue_id,created_at")
     .eq("team_id", activeTeamId)
@@ -318,7 +326,7 @@ async function getTeamCalendarSources(activeTeamId: string): Promise<TeamCalenda
   let campRows: CampRow[] = []
 
   if (venueIds.length > 0) {
-    const { data: venueData, error: venueError } = await supabase
+    const { data: venueData, error: venueError } = await scopedSupabase
       .from("venues")
       .select("id,name,city,country")
       .in("id", venueIds)
@@ -331,7 +339,7 @@ async function getTeamCalendarSources(activeTeamId: string): Promise<TeamCalenda
   }
 
   if (teamVenueIds.length > 0) {
-    const { data: campData, error: campError } = await supabase
+    const { data: campData, error: campError } = await scopedSupabase
       .from("camps")
       .select("id,team_venue_id,name,camp_type,start_date,end_date,notes,is_active,created_at")
       .in("team_venue_id", teamVenueIds)
@@ -345,7 +353,7 @@ async function getTeamCalendarSources(activeTeamId: string): Promise<TeamCalenda
     campRows = campData ?? []
   }
 
-  const { data: eventData, error: eventError } = await supabase
+  const { data: eventData, error: eventError } = await scopedSupabase
     .from("calendar_events")
     .select("*")
     .eq("team_id", activeTeamId)
@@ -376,6 +384,8 @@ async function getTeamCalendarSources(activeTeamId: string): Promise<TeamCalenda
       endDate: camp.end_date,
       venueName: venue ? venue.name : null,
       notes: camp.notes,
+      createdAt: camp.created_at,
+      updatedAt: camp.created_at,
     })
 
     return sources
@@ -391,6 +401,8 @@ async function getTeamCalendarSources(activeTeamId: string): Promise<TeamCalenda
     endDate: event.end_date,
     venueName: null,
     notes: event.notes,
+    createdAt: event.created_at,
+    updatedAt: event.updated_at,
   }))
 
   return [...campSources, ...customEventSources]

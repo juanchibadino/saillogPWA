@@ -14,11 +14,16 @@ import {
   type TeamCalendarTimeFilter,
 } from "@/features/calendar/data"
 import { canEditCalendarPresence } from "@/features/calendar/action-rules.mjs"
+import {
+  getTeamCalendarFeedState,
+  type TeamCalendarFeedState,
+} from "@/features/calendar/feed-data"
 import { resolveTeamCalendarListRequest } from "@/features/calendar/list-route-state.mjs"
 import { TeamCalendarResultsClient } from "@/features/calendar/team-calendar-results-client"
 import { TeamCalendarRouteShell } from "@/features/calendar/team-calendar-route-shell"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canManageTeamSessions, canManageTeamStructure } from "@/lib/auth/capabilities"
+import { resolveCurrentRequestOrigin } from "@/lib/http/request-origin"
 import {
   getSingleSearchParamValue,
   resolveNavigationScope,
@@ -43,6 +48,14 @@ function getStatusMessage(status: string | undefined): string | null {
 
   if (status === "event_deleted") {
     return "Event deleted successfully."
+  }
+
+  if (status === "feed_ready") {
+    return "Calendar subscription link is ready."
+  }
+
+  if (status === "feed_rotated") {
+    return "Calendar subscription link regenerated."
   }
 
   return null
@@ -71,6 +84,18 @@ function getErrorMessage(error: string | undefined): string | null {
 
   if (error === "presence_update_failed") {
     return "Could not update presence. Confirm your permissions and try again."
+  }
+
+  if (error === "feed_forbidden") {
+    return "You do not have permission to manage the calendar export link."
+  }
+
+  if (error === "feed_generate_failed") {
+    return "Could not generate the calendar export link. Try again."
+  }
+
+  if (error === "feed_rotate_failed") {
+    return "Could not regenerate the calendar export link. Try again."
   }
 
   return null
@@ -102,6 +127,7 @@ function resolveCanEditTargetPresence(input: {
 
 async function TeamCalendarShellSlot(input: {
   activeTeamId: string | null
+  calendarFeedState: TeamCalendarFeedState
   canManageAnyPresence: boolean
   canManageCustomEvents: boolean
   chromeDataPromise: TeamCalendarChromeDataPromise
@@ -118,6 +144,7 @@ async function TeamCalendarShellSlot(input: {
 
   return (
     <TeamCalendarRouteShell
+      calendarFeedState={input.calendarFeedState}
       canManageCustomEvents={input.canManageCustomEvents}
       chromeData={chromeData}
       noTeamSelected={input.noTeamSelected}
@@ -235,6 +262,18 @@ export default async function TeamCalendarPage({
           requestedTimeFilter,
         }),
       )
+  const calendarFeedState =
+    activeTeamId && canManageCustomEvents
+      ? await getTeamCalendarFeedState({
+          origin: await resolveCurrentRequestOrigin(),
+          teamId: activeTeamId,
+        })
+      : {
+          createdAt: null,
+          downloadUrl: null,
+          feedUrl: null,
+          updatedAt: null,
+        }
 
   return (
     <div className="space-y-6">
@@ -257,6 +296,7 @@ export default async function TeamCalendarPage({
       <Suspense fallback={<TeamCalendarPageSkeleton />}>
         <TeamCalendarShellSlot
           activeTeamId={activeTeamId}
+          calendarFeedState={calendarFeedState}
           canManageAnyPresence={canManageAnyPresence}
           canManageCustomEvents={canManageCustomEvents}
           chromeDataPromise={chromeDataPromise}

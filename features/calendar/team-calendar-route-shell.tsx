@@ -6,7 +6,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 
 import { CreateCalendarEventDialog } from "@/features/calendar/calendar-event-dialogs"
 import type { TeamCalendarChromeData } from "@/features/calendar/data"
+import type { TeamCalendarFeedState } from "@/features/calendar/feed-data"
 import { buildTeamCalendarHref } from "@/features/calendar/navigation"
+import { TeamCalendarExportDialog } from "@/features/calendar/team-calendar-export-dialog"
 import { TeamCalendarToolbar } from "@/features/calendar/team-calendar-toolbar"
 import type { NavigationScope } from "@/lib/navigation/types"
 import { cn } from "@/lib/utils"
@@ -22,12 +24,14 @@ function normalizeInternalHref(href: string): string {
 }
 
 export function TeamCalendarRouteShell({
+  calendarFeedState,
   canManageCustomEvents,
   children,
   chromeData,
   noTeamSelected,
   scope,
 }: {
+  calendarFeedState: TeamCalendarFeedState
   canManageCustomEvents: boolean
   children: ReactNode
   chromeData: TeamCalendarChromeData
@@ -121,7 +125,7 @@ export function TeamCalendarRouteShell({
           Calendar
         </h1>
         <h2 className="hidden text-lg font-semibold md:block">Calendar</h2>
-        <div className="flex shrink-0 justify-end md:w-auto">
+        <div className="flex shrink-0 items-center justify-end gap-2 md:w-auto">
           <TeamCalendarToolbar
             scope={scope}
             selectedMemberId={selectedMemberId}
@@ -133,7 +137,19 @@ export function TeamCalendarRouteShell({
             memberOptions={memberOptions}
             eventOptions={eventOptions}
             action={
-              <div className="hidden md:block">
+              <div className="hidden items-center gap-2 md:flex">
+                {canManageCustomEvents ? (
+                  <TeamCalendarExportDialog
+                    feedState={calendarFeedState}
+                    returnPath={currentHref}
+                    scope={scope}
+                    selectedMemberId={chromeData.selectedMemberId}
+                    selectedEventValue={selectedEventValue}
+                    selectedTimeFilter={chromeData.selectedTimeFilter}
+                    disabled={noTeamSelected || isFilterNavigationBusy}
+                    triggerVariant="button"
+                  />
+                ) : null}
                 <CreateCalendarEventDialog
                   scope={scope}
                   selectedMemberId={chromeData.selectedMemberId}
@@ -146,6 +162,20 @@ export function TeamCalendarRouteShell({
               </div>
             }
           />
+          {canManageCustomEvents ? (
+            <div className="md:hidden">
+              <TeamCalendarExportDialog
+                feedState={calendarFeedState}
+                returnPath={currentHref}
+                scope={scope}
+                selectedMemberId={chromeData.selectedMemberId}
+                selectedEventValue={selectedEventValue}
+                selectedTimeFilter={chromeData.selectedTimeFilter}
+                disabled={noTeamSelected || isFilterNavigationBusy}
+                triggerVariant="icon"
+              />
+            </div>
+          ) : null}
         </div>
       </div>
 

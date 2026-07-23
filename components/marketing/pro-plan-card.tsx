@@ -17,7 +17,6 @@ const FEATURES = [
   "Assets for images, files and Vakaros",
   "Vakaros GPS uploads and playback",
   "Notes",
-  "Year calendar connected to Google and Outlook",
 ] as const;
 
 const CONTACT_SALES_EMAIL = "billing@dockout.app";
@@ -66,6 +65,7 @@ export function ProPlanCard() {
               <li>1 venue</li>
               <li>1 camp</li>
               <li>3 sessions (hard block at session 3)</li>
+              <li>Calendar export to Google and Outlook</li>
             </ul>
           </CardContent>
         </Card>

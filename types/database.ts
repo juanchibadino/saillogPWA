@@ -336,6 +336,41 @@ export type Database = {
         };
         Relationships: [];
       };
+      team_calendar_feeds: {
+        Row: {
+          id: string;
+          team_id: string;
+          token: string;
+          is_active: boolean;
+          created_by_profile_id: string | null;
+          rotated_by_profile_id: string | null;
+          rotated_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          team_id: string;
+          token: string;
+          is_active?: boolean;
+          created_by_profile_id?: string | null;
+          rotated_by_profile_id?: string | null;
+          rotated_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          team_id?: string;
+          token?: string;
+          is_active?: boolean;
+          created_by_profile_id?: string | null;
+          rotated_by_profile_id?: string | null;
+          rotated_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       team_venue_reports: {
         Row: {
           id: string;

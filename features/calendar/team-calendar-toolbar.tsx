@@ -220,7 +220,7 @@ export function TeamCalendarToolbar({
 
   if (isMobile) {
     return (
-      <section className="flex w-full items-center justify-between gap-3 md:hidden">
+      <section className="flex items-center justify-end gap-3 md:hidden">
         <Drawer
           open={isDrawerOpen}
           onOpenChange={(open) => {
