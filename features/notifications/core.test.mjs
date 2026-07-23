@@ -5,6 +5,10 @@ import {
   applyNotificationDelete,
   applyNotificationMarkAllRead,
   applyNotificationReadState,
+  buildAssessmentRunEmailPayload,
+  buildAssessmentRunNotificationRows,
+  buildAssessmentRunPushPayload,
+  buildAssessmentRunTargetHref,
   buildAssessmentRequestMessage,
   buildCampGoalsMessage,
   buildGearAlertMessage,
@@ -110,6 +114,115 @@ test("builds scoped target hrefs for camp session and assessment notifications",
       },
     }),
     "/team-gear?org=org-1&team=team-1&alert=critical",
+  )
+  assert.equal(
+    buildAssessmentRunTargetHref({
+      assessmentRunId: "run-2",
+      orgId: "org-1",
+      teamId: "team-1",
+    }),
+    "/team-assessments/run-2?org=org-1&team=team-1",
+  )
+})
+
+test("builds and dedupes assessment run notification rows", () => {
+  const rows = buildAssessmentRunNotificationRows({
+    actorName: "Alex Coach",
+    actorProfileId: "profile-actor",
+    assessmentRunId: "run-1",
+    campIds: ["camp-1", "camp-2"],
+    campNames: "Camp Alpha & Camp Beta",
+    existingRows: [
+      {
+        event_type: "assessment_run_created",
+        metadata: {
+          assessmentRunId: "run-1",
+        },
+        recipient_profile_id: "profile-crew-1",
+      },
+      {
+        event_type: "assessment_run_created",
+        metadata: {
+          assessmentRunId: "run-2",
+        },
+        recipient_profile_id: "profile-crew-2",
+      },
+    ],
+    orgId: "org-1",
+    recipientProfileIds: [
+      "profile-crew-1",
+      "profile-crew-2",
+      "profile-crew-2",
+      "profile-actor",
+    ],
+    teamId: "team-1",
+    teamVenueId: "team-venue-1",
+    venueName: "Marseille",
+  })
+
+  assert.deepEqual(
+    rows.map((row) => row.recipient_profile_id),
+    ["profile-crew-2"],
+  )
+  assert.equal(rows[0].event_type, "assessment_run_created")
+  assert.equal(
+    rows[0].message,
+    "Alex Coach is asking you to complete the Marseille assessment for Camp Alpha & Camp Beta. Complete it.",
+  )
+  assert.deepEqual(rows[0].metadata, {
+    assessmentRunId: "run-1",
+    campIds: ["camp-1", "camp-2"],
+    teamVenueId: "team-venue-1",
+  })
+  assert.equal(
+    rows[0].target_href,
+    "/team-assessments/run-1?org=org-1&team=team-1",
+  )
+})
+
+test("builds branded Assessment Run email and push payloads", () => {
+  const message =
+    "Alex <Coach> is asking you to complete the Marseille assessment for Camp <Alpha>. Complete it."
+  const emailPayload = buildAssessmentRunEmailPayload({
+    actorName: "Alex Coach",
+    message,
+    preferencesUrl: "https://www.dockout.app/settings?tab=notifications&org=org-1&team=team-1",
+    targetHref: "/team-assessments/run-1?org=org-1&team=team-1",
+    targetUrl: "https://www.dockout.app/team-assessments/run-1?org=org-1&team=team-1",
+    venueName: "Marseille",
+  })
+
+  assert.match(emailPayload.html, /Assessment request/)
+  assert.match(emailPayload.html, /Open assessment/)
+  assert.match(emailPayload.html, /Alex &lt;Coach&gt; is asking/)
+  assert.doesNotMatch(emailPayload.html, /Alex <Coach>/)
+  assert.doesNotMatch(emailPayload.html, /were shared with the active crew/)
+  assert.ok(
+    emailPayload.html.indexOf("The Dock Out team") <
+      emailPayload.html.indexOf("Manage email notifications"),
+  )
+  assert.match(
+    emailPayload.html,
+    /font-size: 12px; line-height: 1\.4; color: #9ca3af;[\s\S]*Manage email notifications/,
+  )
+  assert.equal(emailPayload.subject, "Alex Coach requested the Marseille assessment.")
+  assert.match(
+    emailPayload.text,
+    /Manage email notifications: https:\/\/www\.dockout\.app\/settings\?tab=notifications&org=org-1&team=team-1/,
+  )
+
+  assert.deepEqual(
+    buildAssessmentRunPushPayload({
+      assessmentRunId: "run-1",
+      message,
+      targetHref: "/team-assessments/run-1?org=org-1&team=team-1",
+    }),
+    {
+      body: message,
+      tag: "assessment-run-run-1",
+      title: "Assessment request",
+      url: "/team-assessments/run-1?org=org-1&team=team-1",
+    },
   )
 })
 

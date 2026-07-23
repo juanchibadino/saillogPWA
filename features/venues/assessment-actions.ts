@@ -3,12 +3,25 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import {
+  buildAssessmentRunPushPayload,
+  buildAssessmentRunNotificationRows,
+  buildAssessmentRunTargetHref,
+  buildUpdateNotificationSettingsHref,
+  formatActorName,
+  joinCampNames,
+  NOTIFICATION_EVENT_TYPES,
+} from "@/features/notifications/core.mjs";
+import { sendAssessmentRunEmailNotifications } from "@/features/notifications/email";
+import { sendWebPushNotifications } from "@/features/notifications/push";
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access";
 import { canManageTeamStructure } from "@/lib/auth/capabilities";
+import { resolveCurrentRequestOrigin } from "@/lib/http/request-origin";
 import {
   NAVIGATION_SCOPE_ORG_QUERY_KEY,
   NAVIGATION_SCOPE_TEAM_QUERY_KEY,
 } from "@/lib/navigation/constants";
+import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
   assessmentDefinitionInputSchema,
@@ -19,6 +32,7 @@ import {
   type AssessmentDefinitionInput,
 } from "@/lib/validation/assessments";
 import { scopeFormInputSchema } from "@/lib/validation/navigation";
+import type { Database } from "@/types/database";
 
 const ASSESSMENT_TAB_KEY = "assessments";
 
@@ -46,6 +60,30 @@ type AssessmentStatusCode =
   | "run_closed"
   | "answers_saved";
 
+type AssessmentRunNotificationActionResult = {
+  emailSentCount: number;
+  notifiedCount: number;
+  ok: boolean;
+  pushSentCount: number;
+};
+
+type AssessmentRunNotificationRecipient = {
+  email: string;
+  emailNotificationsEnabled: boolean;
+  name: string;
+  profileId: string;
+};
+
+type AssessmentRunNotificationProfileRow = Pick<
+  Database["public"]["Tables"]["profiles"]["Row"],
+  "email" | "email_notifications_enabled" | "first_name" | "id" | "is_active" | "last_name"
+>;
+
+type AssessmentRunExistingNotificationRow = Pick<
+  Database["public"]["Tables"]["notifications"]["Row"],
+  "event_type" | "metadata" | "recipient_profile_id"
+>;
+
 function getFormString(formData: FormData, key: string): string | undefined {
   const value = formData.get(key);
 
@@ -54,6 +92,10 @@ function getFormString(formData: FormData, key: string): string | undefined {
   }
 
   return value;
+}
+
+function getBooleanField(formData: FormData, key: string): boolean {
+  return formData.get(key) === "on";
 }
 
 function parseOptionalYear(value: string | undefined): number | undefined {
@@ -186,6 +228,8 @@ function buildVenueAssessmentsRedirectPath(input: {
   scopeYear?: number;
   status?: AssessmentStatusCode;
   error?: AssessmentErrorCode;
+  notifyAssessmentRun?: boolean;
+  notifyAssessmentRunId?: string;
 }): string {
   const teamVenueId = input.teamVenueId?.trim();
 
@@ -215,6 +259,11 @@ function buildVenueAssessmentsRedirectPath(input: {
 
   if (input.error) {
     params.set("error", input.error);
+  }
+
+  if (input.notifyAssessmentRun && input.notifyAssessmentRunId) {
+    params.set("notifyAssessmentRun", "1");
+    params.set("notifyAssessmentRunId", input.notifyAssessmentRunId);
   }
 
   const query = params.toString();
@@ -583,6 +632,220 @@ function revalidateVenuePaths(teamVenueId: string): void {
   revalidatePath("/venues");
 }
 
+async function buildAbsoluteAppUrl(href: string): Promise<string> {
+  try {
+    const origin = await resolveCurrentRequestOrigin();
+    return `${origin}${href}`;
+  } catch {
+    return href;
+  }
+}
+
+async function loadVenueAssessmentRunNotificationRows(input: {
+  actorName: string;
+  actorProfileId: string;
+  orgId: string;
+  runId: string;
+  teamId: string;
+  teamVenueId: string;
+}): Promise<{
+  recipients: AssessmentRunNotificationRecipient[];
+  rows: ReturnType<typeof buildAssessmentRunNotificationRows>;
+  venueName: string;
+} | null> {
+  const adminSupabase = createAdminSupabaseClient();
+  const { data: runRow, error: runError } = await adminSupabase
+    .from("assessment_runs")
+    .select("id,status")
+    .eq("id", input.runId)
+    .eq("team_id", input.teamId)
+    .eq("team_venue_id", input.teamVenueId)
+    .maybeSingle();
+
+  if (runError || !runRow || runRow.status !== "published") {
+    if (runError) {
+      console.warn("Failed to load Assessment Run notification state", runError);
+    }
+
+    return null;
+  }
+
+  const [
+    { data: respondentRows, error: respondentError },
+    { data: membershipRows, error: membershipError },
+    { data: runCampRows, error: runCampError },
+    { data: teamVenueRow, error: teamVenueError },
+  ] = await Promise.all([
+    adminSupabase
+      .from("assessment_run_respondents")
+      .select("profile_id")
+      .eq("assessment_run_id", input.runId),
+    adminSupabase
+      .from("team_memberships")
+      .select("profile_id,role,is_active")
+      .eq("team_id", input.teamId)
+      .eq("role", "crew")
+      .eq("is_active", true),
+    adminSupabase
+      .from("assessment_run_camps")
+      .select("camp_id")
+      .eq("assessment_run_id", input.runId),
+    adminSupabase
+      .from("team_venues")
+      .select("venue_id")
+      .eq("id", input.teamVenueId)
+      .eq("team_id", input.teamId)
+      .maybeSingle(),
+  ]);
+
+  if (respondentError || membershipError || runCampError || teamVenueError) {
+    console.warn("Failed to load Assessment Run notification context", {
+      membershipError,
+      respondentError,
+      runCampError,
+      teamVenueError,
+    });
+    return null;
+  }
+
+  const respondentProfileIds = new Set(
+    (respondentRows ?? []).map((respondent) => respondent.profile_id),
+  );
+  const recipientProfileIds = (membershipRows ?? [])
+    .filter(
+      (membership) =>
+        membership.role === "crew" &&
+        membership.is_active &&
+        respondentProfileIds.has(membership.profile_id),
+    )
+    .map((membership) => membership.profile_id);
+  const campIds = (runCampRows ?? []).map((runCamp) => runCamp.camp_id);
+  let venueName = "venue";
+  let campNames = "the selected camps";
+
+  if (teamVenueRow?.venue_id) {
+    const { data: venueRow, error: venueError } = await adminSupabase
+      .from("venues")
+      .select("name")
+      .eq("id", teamVenueRow.venue_id)
+      .maybeSingle();
+
+    if (venueError) {
+      console.warn("Failed to load Assessment Run notification venue", venueError);
+    } else if (venueRow?.name?.trim()) {
+      venueName = venueRow.name.trim();
+    }
+  }
+
+  if (campIds.length > 0) {
+    const { data: campRows, error: campError } = await adminSupabase
+      .from("camps")
+      .select("id,name")
+      .in("id", campIds);
+
+    if (campError) {
+      console.warn("Failed to load Assessment Run notification camps", campError);
+    } else {
+      const campNameById = new Map(
+        (campRows ?? []).map((camp) => [camp.id, camp.name] as const),
+      );
+      campNames = joinCampNames(campIds.map((campId) => campNameById.get(campId)));
+    }
+  }
+
+  const uniqueRecipientProfileIds = [
+    ...new Set(
+      recipientProfileIds.filter((profileId) => profileId !== input.actorProfileId),
+    ),
+  ];
+
+  if (uniqueRecipientProfileIds.length === 0) {
+    return {
+      recipients: [],
+      rows: [],
+      venueName,
+    };
+  }
+
+  const { data: profileRows, error: profileError } = await adminSupabase
+    .from("profiles")
+    .select("id,first_name,last_name,email,is_active,email_notifications_enabled")
+    .in("id", uniqueRecipientProfileIds);
+
+  if (profileError) {
+    console.warn("Failed to load Assessment Run notification profiles", profileError);
+    return null;
+  }
+
+  const profileById = new Map(
+    ((profileRows ?? []) as AssessmentRunNotificationProfileRow[]).map((profile) => [
+      profile.id,
+      profile,
+    ]),
+  );
+  const recipients = uniqueRecipientProfileIds.flatMap((profileId) => {
+    const profile = profileById.get(profileId);
+
+    if (!profile || profile.is_active !== true) {
+      return [];
+    }
+
+    return [
+      {
+        email: typeof profile.email === "string" ? profile.email.trim() : "",
+        emailNotificationsEnabled: profile.email_notifications_enabled !== false,
+        name: formatActorName({
+          firstName: profile.first_name,
+          lastName: profile.last_name,
+          email: profile.email,
+        }),
+        profileId,
+      },
+    ];
+  });
+
+  if (recipients.length === 0) {
+    return {
+      recipients: [],
+      rows: [],
+      venueName,
+    };
+  }
+
+  const { data: existingRows, error: existingRowsError } = await adminSupabase
+    .from("notifications")
+    .select("recipient_profile_id,event_type,metadata")
+    .eq("team_id", input.teamId)
+    .eq("event_type", NOTIFICATION_EVENT_TYPES.ASSESSMENT_RUN_CREATED)
+    .in(
+      "recipient_profile_id",
+      recipients.map((recipient) => recipient.profileId),
+    );
+
+  if (existingRowsError) {
+    console.warn("Failed to load existing Assessment Run notifications", existingRowsError);
+    return null;
+  }
+
+  return {
+    recipients,
+    rows: buildAssessmentRunNotificationRows({
+      actorName: input.actorName,
+      actorProfileId: input.actorProfileId,
+      assessmentRunId: input.runId,
+      campIds,
+      campNames,
+      existingRows: (existingRows ?? []) as AssessmentRunExistingNotificationRow[],
+      orgId: input.orgId,
+      recipientProfileIds: recipients.map((recipient) => recipient.profileId),
+      teamId: input.teamId,
+      teamVenueId: input.teamVenueId,
+      venueName,
+    }),
+    venueName,
+  };
+}
+
 export async function upsertAssessmentTemplateAction(formData: FormData): Promise<void> {
   const context = await requireAuthenticatedAccessContext();
   const scope = getScopeFromFormData(formData);
@@ -908,6 +1171,8 @@ export async function upsertAssessmentRunAction(formData: FormData): Promise<voi
       ...scope,
       teamVenueId: scope.scopeVenueId,
       status: "run_published",
+      notifyAssessmentRun: profileIds.some((profileId) => profileId !== context.user.id),
+      notifyAssessmentRunId: runData.id,
     }),
   );
 }
@@ -1067,6 +1332,162 @@ export async function publishAssessmentRunAction(formData: FormData): Promise<vo
       status: "run_published",
     }),
   );
+}
+
+export async function confirmVenueAssessmentRunNotificationAction(
+  formData: FormData,
+): Promise<AssessmentRunNotificationActionResult> {
+  const context = await requireAuthenticatedAccessContext();
+  const scope = getScopeFromFormData(formData);
+  const notifyEmail = getBooleanField(formData, "notifyEmail");
+  const notifyPush = getBooleanField(formData, "notifyPush");
+  const parsedInput = assessmentRunLifecycleInputSchema.safeParse({
+    runId: getFormString(formData, "runId"),
+    teamId: scope.scopeTeamId,
+    teamVenueId: scope.scopeVenueId,
+  });
+  const baseResult: AssessmentRunNotificationActionResult = {
+    emailSentCount: 0,
+    notifiedCount: 0,
+    ok: false,
+    pushSentCount: 0,
+  };
+
+  if (!parsedInput.success || !scope.scopeOrgId || !scope.scopeTeamId) {
+    return baseResult;
+  }
+
+  if (
+    !canManageTeamStructure({
+      context,
+      organizationId: scope.scopeOrgId,
+      teamId: parsedInput.data.teamId,
+    })
+  ) {
+    return baseResult;
+  }
+
+  const runInScope = await ensureRunBelongsToScope({
+    runId: parsedInput.data.runId,
+    teamId: parsedInput.data.teamId,
+    teamVenueId: parsedInput.data.teamVenueId,
+  });
+
+  if (!runInScope) {
+    return baseResult;
+  }
+
+  const actorName = formatActorName({
+    firstName: context.profile?.first_name,
+    lastName: context.profile?.last_name,
+    email: context.user.email ?? null,
+  });
+  const notificationContext = await loadVenueAssessmentRunNotificationRows({
+    actorName,
+    actorProfileId: context.user.id,
+    orgId: scope.scopeOrgId,
+    runId: parsedInput.data.runId,
+    teamId: parsedInput.data.teamId,
+    teamVenueId: parsedInput.data.teamVenueId,
+  });
+
+  if (!notificationContext || notificationContext.rows.length === 0) {
+    return {
+      ...baseResult,
+      ok: true,
+    };
+  }
+
+  const adminSupabase = createAdminSupabaseClient();
+  const { error: insertError } = await adminSupabase
+    .from("notifications")
+    .insert(notificationContext.rows);
+
+  if (insertError) {
+    console.warn("Failed to create Assessment Run crew notifications", insertError);
+    return baseResult;
+  }
+
+  const notifiedRecipientIds = new Set(
+    notificationContext.rows.map((row) => row.recipient_profile_id),
+  );
+  const deliveryRecipients = notificationContext.recipients.filter((recipient) =>
+    notifiedRecipientIds.has(recipient.profileId),
+  );
+  const firstNotificationRow = notificationContext.rows[0];
+  const targetHref =
+    firstNotificationRow?.target_href ??
+    buildAssessmentRunTargetHref({
+      assessmentRunId: parsedInput.data.runId,
+      orgId: scope.scopeOrgId,
+      teamId: scope.scopeTeamId,
+    });
+  const message = firstNotificationRow?.message ?? "";
+  let emailSentCount = 0;
+  let pushSentCount = 0;
+
+  if (notifyEmail) {
+    emailSentCount = await sendAssessmentRunEmailNotifications({
+      actorName,
+      message,
+      preferencesUrl: await buildAbsoluteAppUrl(
+        buildUpdateNotificationSettingsHref({
+          orgId: scope.scopeOrgId,
+          teamId: scope.scopeTeamId,
+        }),
+      ),
+      recipients: deliveryRecipients,
+      targetHref,
+      targetUrl: await buildAbsoluteAppUrl(targetHref),
+      venueName: notificationContext.venueName,
+    });
+  }
+
+  if (notifyPush && deliveryRecipients.length > 0) {
+    const { data: subscriptions, error: subscriptionsError } = await adminSupabase
+      .from("push_subscriptions")
+      .select("endpoint,p256dh,auth")
+      .in(
+        "profile_id",
+        deliveryRecipients.map((recipient) => recipient.profileId),
+      );
+
+    if (subscriptionsError) {
+      console.warn("Failed to load Assessment push subscriptions", subscriptionsError);
+    } else {
+      const pushResult = await sendWebPushNotifications({
+        payload: buildAssessmentRunPushPayload({
+          assessmentRunId: parsedInput.data.runId,
+          message,
+          targetHref,
+        }),
+        subscriptions: subscriptions ?? [],
+      });
+
+      pushSentCount = pushResult.sentCount;
+
+      if (pushResult.staleEndpoints.length > 0) {
+        const { error: deleteError } = await adminSupabase
+          .from("push_subscriptions")
+          .delete()
+          .in("endpoint", pushResult.staleEndpoints);
+
+        if (deleteError) {
+          console.warn("Failed to delete stale assessment push subscriptions", deleteError);
+        }
+      }
+    }
+  }
+
+  revalidatePath("/", "layout");
+  revalidatePath("/notifications");
+
+  return {
+    emailSentCount,
+    notifiedCount: deliveryRecipients.length,
+    ok: true,
+    pushSentCount,
+  };
 }
 
 export async function closeAssessmentRunAction(formData: FormData): Promise<void> {

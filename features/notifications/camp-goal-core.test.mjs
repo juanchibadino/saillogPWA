@@ -187,11 +187,20 @@ test("builds branded Camp Goal email html", () => {
   assert.match(payload.html, /Open camp goals/)
   assert.match(payload.html, /Alex &lt;Coach&gt; just uploaded/)
   assert.match(payload.html, /Miami &lt;Camp&gt;/)
+  assert.doesNotMatch(payload.html, /were shared with the active crew/)
   assert.match(
     payload.html,
     /href="https:\/\/www\.dockout\.app\/team-camps\/camp-1\?org=org-1&amp;team=team-1&amp;tab=goals"/,
   )
   assert.match(payload.html, /Manage email notifications/)
+  assert.ok(
+    payload.html.indexOf("The Dock Out team") <
+      payload.html.indexOf("Manage email notifications"),
+  )
+  assert.match(
+    payload.html,
+    /font-size: 12px; line-height: 1\.4; color: #9ca3af;[\s\S]*Manage email notifications/,
+  )
   assert.match(
     payload.html,
     /href="https:\/\/www\.dockout\.app\/settings\?tab=notifications&amp;org=org-1&amp;team=team-1"/,

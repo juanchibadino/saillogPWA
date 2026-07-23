@@ -1,8 +1,11 @@
 import {
   buildCampGoalsMessage,
   buildScopedNotificationHref,
+  buildUpdateNotificationEmailPayload,
   NOTIFICATION_EVENT_TYPES,
 } from "./core.mjs"
+
+export { buildUpdateNotificationSettingsHref } from "./core.mjs"
 
 export function buildProfileDisplayName(profile = {}) {
   const name = [profile.first_name, profile.last_name]
@@ -28,21 +31,6 @@ export function buildCampGoalTargetHref(input) {
     teamId: input.teamId,
     tab: "goals",
   })
-}
-
-export function buildUpdateNotificationSettingsHref(input = {}) {
-  const params = new URLSearchParams()
-  params.set("tab", "notifications")
-
-  if (typeof input.orgId === "string" && input.orgId.trim().length > 0) {
-    params.set("org", input.orgId.trim())
-  }
-
-  if (typeof input.teamId === "string" && input.teamId.trim().length > 0) {
-    params.set("team", input.teamId.trim())
-  }
-
-  return `/settings?${params.toString()}`
 }
 
 export function buildCampGoalCrewRecipients(input) {
@@ -154,74 +142,18 @@ function formatCampGoalSubjectCampName(campName) {
   return `${normalizedCampName} Camp`
 }
 
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;")
-}
-
 export function buildCampGoalEmailPayload(input) {
-  const targetLabel = input.targetUrl || input.targetHref
-  const targetUrl = escapeHtml(targetLabel)
-  const preferencesLabel = input.preferencesUrl || "/settings?tab=notifications"
-  const preferencesUrl = escapeHtml(preferencesLabel)
-  const message = escapeHtml(input.message)
-  const campName = escapeHtml(input.campName || "this camp")
   const subjectCampName = formatCampGoalSubjectCampName(input.campName)
 
-  return {
-    html: `
-<div style="font-family: Inter, Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; color: #111827;">
-  <img
-    src="https://www.dockout.app/icons/apple-touch-icon.png"
-    alt="Dock Out"
-    width="56"
-    height="56"
-    style="display: block; width: 56px; height: 56px; border-radius: 18px; margin: 0 0 20px;"
-  />
-
-  <h1 style="margin: 0 0 16px; font-size: 28px; font-weight: 700;">
-    Camp goals are ready
-  </h1>
-
-  <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.5; color: #4b5563;">
-    ${message}
-  </p>
-
-  <p style="margin: 0 0 28px;">
-    <a
-      href="${targetUrl}"
-      style="display: inline-block; padding: 14px 20px; background: #111827; color: #ffffff; text-decoration: none; border-radius: 12px; font-size: 15px; font-weight: 600;"
-    >
-      Open camp goals
-    </a>
-  </p>
-
-  <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #6b7280;">
-    The goals for ${campName} were shared with the active crew.
-  </p>
-
-  <p style="margin: 20px 0 0; font-size: 14px; line-height: 1.5; color: #6b7280;">
-    To stop receiving Dock Out update emails,
-    <a
-      href="${preferencesUrl}"
-      style="color: #111827; font-weight: 600; text-decoration: underline;"
-    >
-      Manage email notifications
-    </a>.
-  </p>
-
-  <p style="margin: 32px 0 0; font-size: 14px; color: #9ca3af;">
-    See you on the water,<br />
-    The Dock Out team
-  </p>
-</div>`.trim(),
+  return buildUpdateNotificationEmailPayload({
+    ctaLabel: "Open camp goals",
+    heading: "Camp goals are ready",
+    message: input.message,
+    preferencesUrl: input.preferencesUrl,
     subject: `${input.actorName} added Goals for ${subjectCampName}.`,
-    text: `${input.message}\n\nOpen camp goals: ${targetLabel}\n\nManage email notifications: ${preferencesLabel}`,
-  }
+    targetHref: input.targetHref,
+    targetUrl: input.targetUrl,
+  })
 }
 
 export function buildCampGoalPushPayload(input) {

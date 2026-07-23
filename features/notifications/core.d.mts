@@ -30,6 +30,27 @@ export function buildScopedNotificationHref(input: {
   extraParams?: Record<string, string | null | undefined>
 }): string
 
+export function buildUpdateNotificationSettingsHref(input?: {
+  orgId?: string | null
+  teamId?: string | null
+}): string
+
+export function escapeNotificationHtml(value: unknown): string
+
+export function buildUpdateNotificationEmailPayload(input: {
+  ctaLabel: string
+  heading: string
+  message: string
+  preferencesUrl?: string | null
+  subject: string
+  targetHref: string
+  targetUrl?: string | null
+}): {
+  html: string
+  subject: string
+  text: string
+}
+
 export function buildCampGoalsMessage(input: {
   actorName: string
   campName: string
@@ -46,6 +67,86 @@ export function buildAssessmentRequestMessage(input: {
   venueName: string
   campNames: string
 }): string
+
+export type AssessmentRunExistingNotificationRow = {
+  event_type: string
+  metadata: unknown
+  recipient_profile_id: string
+}
+
+export type AssessmentRunNotificationRow = {
+  actor_profile_id: string
+  event_type: "assessment_run_created"
+  message: string
+  metadata: {
+    assessmentRunId: string
+    campIds: string[]
+    teamVenueId: string
+  }
+  recipient_profile_id: string
+  target_href: string
+  team_id: string
+}
+
+export function buildAssessmentRunTargetHref(input: {
+  assessmentRunId: string
+  orgId: string
+  teamId: string
+}): string
+
+export function getExistingAssessmentRunNotificationRecipientIds(input: {
+  assessmentRunId: string
+  existingRows: AssessmentRunExistingNotificationRow[]
+}): Set<string>
+
+export function buildAssessmentRunNotificationRows(input: {
+  actorName: string
+  actorProfileId: string
+  assessmentRunId: string
+  campIds: string[]
+  campNames: string
+  existingRows: AssessmentRunExistingNotificationRow[]
+  orgId: string
+  recipientProfileIds: string[]
+  teamId: string
+  teamVenueId: string
+  venueName: string
+}): AssessmentRunNotificationRow[]
+
+export type AssessmentRunEmailRecipient = {
+  email: string
+  emailNotificationsEnabled: boolean
+  name: string
+  profileId: string
+}
+
+export function getAssessmentRunEmailRecipients(
+  recipients?: AssessmentRunEmailRecipient[],
+): AssessmentRunEmailRecipient[]
+
+export function buildAssessmentRunEmailPayload(input: {
+  actorName: string
+  message: string
+  preferencesUrl?: string | null
+  targetHref: string
+  targetUrl?: string | null
+  venueName: string
+}): {
+  html: string
+  subject: string
+  text: string
+}
+
+export function buildAssessmentRunPushPayload(input: {
+  assessmentRunId: string
+  message: string
+  targetHref: string
+}): {
+  body: string
+  tag: string
+  title: string
+  url: string
+}
 
 export function getNotificationEventTitle(eventType: string): string
 

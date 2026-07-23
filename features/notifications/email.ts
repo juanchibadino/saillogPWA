@@ -7,6 +7,10 @@ import {
   getCampGoalEmailRecipients,
 } from "@/features/notifications/camp-goal-core.mjs"
 import {
+  buildAssessmentRunEmailPayload,
+  getAssessmentRunEmailRecipients,
+} from "@/features/notifications/core.mjs"
+import {
   buildUpdateNotificationListUnsubscribeHeaders,
   signUpdateNotificationUnsubscribeToken,
 } from "@/features/notifications/email-unsubscribe-token.mjs"
@@ -19,6 +23,8 @@ type CampGoalEmailRecipient = {
   profileId: string
 }
 
+type AssessmentRunEmailRecipient = CampGoalEmailRecipient
+
 type SendCampGoalEmailNotificationsInput = {
   actorName: string
   campName: string
@@ -27,6 +33,16 @@ type SendCampGoalEmailNotificationsInput = {
   recipients: CampGoalEmailRecipient[]
   targetHref: string
   targetUrl: string
+}
+
+type SendAssessmentRunEmailNotificationsInput = {
+  actorName: string
+  message: string
+  preferencesUrl: string
+  recipients: AssessmentRunEmailRecipient[]
+  targetHref: string
+  targetUrl: string
+  venueName: string
 }
 
 type UnsubscribeHeaderConfig = {
@@ -178,6 +194,70 @@ export async function sendCampGoalEmailNotifications(
       sentCount += 1
     } catch (error) {
       console.warn("Failed to send camp goal email notification", {
+        error,
+        profileId: recipient.profileId,
+      })
+    }
+  }
+
+  return sentCount
+}
+
+export async function sendAssessmentRunEmailNotifications(
+  input: SendAssessmentRunEmailNotificationsInput,
+): Promise<number> {
+  const apiKey = getOptionalEnvironmentValue("RESEND_API_KEY")
+  const from = getOptionalEnvironmentValue("NOTIFICATION_EMAIL_FROM")
+  const replyTo = getOptionalEnvironmentValue("NOTIFICATION_EMAIL_REPLY_TO")
+
+  if (!apiKey || !from) {
+    console.warn("Assessment email notifications skipped: Resend is not configured")
+    return 0
+  }
+
+  const resend = new Resend(apiKey)
+  const recipients = getAssessmentRunEmailRecipients(input.recipients)
+  const { config: unsubscribeHeaderConfig, warning: unsubscribeHeaderWarning } =
+    getUnsubscribeHeaderConfig()
+  let sentCount = 0
+
+  if (recipients.length > 0 && unsubscribeHeaderWarning) {
+    console.warn(
+      unsubscribeHeaderWarning.replaceAll("Camp goal", "Assessment"),
+    )
+  }
+
+  for (const recipient of recipients) {
+    try {
+      const emailPayload = buildAssessmentRunEmailPayload({
+        actorName: input.actorName,
+        message: input.message,
+        preferencesUrl: input.preferencesUrl,
+        targetHref: input.targetHref,
+        targetUrl: input.targetUrl,
+        venueName: input.venueName,
+      })
+      const { error } = await resend.emails.send({
+        from: buildDockOutSenderAddress(from),
+        headers: buildRecipientUnsubscribeHeaders(recipient, unsubscribeHeaderConfig),
+        html: emailPayload.html,
+        replyTo,
+        subject: emailPayload.subject,
+        text: emailPayload.text,
+        to: recipient.email,
+      })
+
+      if (error) {
+        console.warn("Failed to send assessment email notification", {
+          error,
+          profileId: recipient.profileId,
+        })
+        continue
+      }
+
+      sentCount += 1
+    } catch (error) {
+      console.warn("Failed to send assessment email notification", {
         error,
         profileId: recipient.profileId,
       })

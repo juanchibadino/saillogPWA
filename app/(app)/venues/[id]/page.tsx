@@ -207,6 +207,7 @@ function resolveWindPatternStatusFilter(value: string | undefined): WindPatternS
 
 async function VenueDetailDeferredContent(input: {
   activeOrganization: VenueOrganizationOption
+  assessmentRunNotificationRunId?: string | null
   canDeleteCamps: boolean
   canManageCamps: boolean
   canManageAssessments: boolean
@@ -221,6 +222,7 @@ async function VenueDetailDeferredContent(input: {
   initialWindPatternStatusFilter: WindPatternStatusFilter
   kpisPromise: Promise<VenueDetailKpisData>
   scope: ResolvedVenueDetailScope
+  showAssessmentRunNotificationPrompt: boolean
   teamVenueId: string
   venue: VenueDetailVenue
 }) {
@@ -269,6 +271,8 @@ async function VenueDetailDeferredContent(input: {
       canManageSessions={input.canManageSessions}
       canManageWindPatterns={input.canManageWindPatterns}
       initialWindPatternStatusFilter={input.initialWindPatternStatusFilter}
+      assessmentRunNotificationRunId={input.assessmentRunNotificationRunId}
+      showAssessmentRunNotificationPrompt={input.showAssessmentRunNotificationPrompt}
       action={detailHeaderAction}
     />
   )
@@ -287,6 +291,13 @@ export default async function VenueDetailPage({
 
   const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
+  const assessmentRunNotificationRunId = getSingleSearchParamValue(
+    resolvedSearchParams.notifyAssessmentRunId,
+  )
+  const showAssessmentRunNotificationPrompt =
+    status === "run_published" &&
+    getSingleSearchParamValue(resolvedSearchParams.notifyAssessmentRun) === "1" &&
+    Boolean(assessmentRunNotificationRunId)
   const cacheSessionId = getSingleSearchParamValue(resolvedSearchParams.cacheSession)
   const cacheCampId = getSingleSearchParamValue(resolvedSearchParams.cacheCamp)
   const cacheTeamVenueId =
@@ -531,6 +542,7 @@ export default async function VenueDetailPage({
       >
         <VenueDetailDeferredContent
           activeOrganization={activeOrganization}
+          assessmentRunNotificationRunId={assessmentRunNotificationRunId}
           canDeleteCamps={canDeleteCampRows}
           canManageCamps={canManageCamps}
           canManageAssessments={canManageAssessments}
@@ -545,6 +557,7 @@ export default async function VenueDetailPage({
           initialWindPatternStatusFilter={requestedWindPatternStatusFilter}
           kpisPromise={kpisPromise}
           scope={scope}
+          showAssessmentRunNotificationPrompt={showAssessmentRunNotificationPrompt}
           teamVenueId={resolvedParams.id}
           venue={venue}
         />

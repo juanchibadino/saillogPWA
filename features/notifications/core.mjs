@@ -92,6 +92,87 @@ export function buildScopedNotificationHref(input) {
   return query.length > 0 ? `${input.pathname}?${query}` : input.pathname
 }
 
+export function buildUpdateNotificationSettingsHref(input = {}) {
+  const params = new URLSearchParams()
+  params.set("tab", "notifications")
+
+  if (typeof input.orgId === "string" && input.orgId.trim().length > 0) {
+    params.set("org", input.orgId.trim())
+  }
+
+  if (typeof input.teamId === "string" && input.teamId.trim().length > 0) {
+    params.set("team", input.teamId.trim())
+  }
+
+  return `/settings?${params.toString()}`
+}
+
+export function escapeNotificationHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;")
+}
+
+export function buildUpdateNotificationEmailPayload(input) {
+  const targetLabel = input.targetUrl || input.targetHref
+  const targetUrl = escapeNotificationHtml(targetLabel)
+  const preferencesLabel = input.preferencesUrl || "/settings?tab=notifications"
+  const preferencesUrl = escapeNotificationHtml(preferencesLabel)
+  const message = escapeNotificationHtml(input.message)
+  const heading = escapeNotificationHtml(input.heading)
+  const ctaLabel = escapeNotificationHtml(input.ctaLabel)
+
+  return {
+    html: `
+<div style="font-family: Inter, Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; color: #111827;">
+  <img
+    src="https://www.dockout.app/icons/apple-touch-icon.png"
+    alt="Dock Out"
+    width="56"
+    height="56"
+    style="display: block; width: 56px; height: 56px; border-radius: 18px; margin: 0 0 20px;"
+  />
+
+  <h1 style="margin: 0 0 16px; font-size: 28px; font-weight: 700;">
+    ${heading}
+  </h1>
+
+  <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.5; color: #4b5563;">
+    ${message}
+  </p>
+
+  <p style="margin: 0 0 28px;">
+    <a
+      href="${targetUrl}"
+      style="display: inline-block; padding: 14px 20px; background: #111827; color: #ffffff; text-decoration: none; border-radius: 12px; font-size: 15px; font-weight: 600;"
+    >
+      ${ctaLabel}
+    </a>
+  </p>
+
+  <p style="margin: 32px 0 0; font-size: 14px; color: #9ca3af;">
+    See you on the water,<br />
+    The Dock Out team
+  </p>
+
+  <p style="margin: 16px 0 0; font-size: 12px; line-height: 1.4; color: #9ca3af;">
+    To stop receiving Dock Out update emails,
+    <a
+      href="${preferencesUrl}"
+      style="color: #111827; font-weight: 600; text-decoration: underline;"
+    >
+      Manage email notifications
+    </a>.
+  </p>
+</div>`.trim(),
+    subject: input.subject,
+    text: `${input.message}\n\n${input.ctaLabel}: ${targetLabel}\n\nSee you on the water,\nThe Dock Out team\n\nManage email notifications: ${preferencesLabel}`,
+  }
+}
+
 export function buildCampGoalsMessage(input) {
   return `${input.actorName} just uploaded the goals for ${input.campName}. Check them out.`
 }
@@ -107,6 +188,115 @@ export function buildSessionUpdateMessage(input) {
 
 export function buildAssessmentRequestMessage(input) {
   return `${input.actorName} is asking you to complete the ${input.venueName} assessment for ${input.campNames}. Complete it.`
+}
+
+function isNotificationMetadataRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+
+export function buildAssessmentRunTargetHref(input) {
+  return buildScopedNotificationHref({
+    pathname: `/team-assessments/${input.assessmentRunId}`,
+    orgId: input.orgId,
+    teamId: input.teamId,
+  })
+}
+
+export function getExistingAssessmentRunNotificationRecipientIds(input) {
+  const recipientIds = new Set()
+
+  for (const row of input.existingRows ?? []) {
+    if (row.event_type !== NOTIFICATION_EVENT_TYPES.ASSESSMENT_RUN_CREATED) {
+      continue
+    }
+
+    if (!isNotificationMetadataRecord(row.metadata)) {
+      continue
+    }
+
+    if (row.metadata.assessmentRunId !== input.assessmentRunId) {
+      continue
+    }
+
+    if (typeof row.recipient_profile_id === "string") {
+      recipientIds.add(row.recipient_profile_id)
+    }
+  }
+
+  return recipientIds
+}
+
+export function buildAssessmentRunNotificationRows(input) {
+  const existingRecipientIds = getExistingAssessmentRunNotificationRecipientIds({
+    assessmentRunId: input.assessmentRunId,
+    existingRows: input.existingRows,
+  })
+  const message = buildAssessmentRequestMessage({
+    actorName: input.actorName,
+    campNames: input.campNames,
+    venueName: input.venueName,
+  })
+  const targetHref = buildAssessmentRunTargetHref({
+    assessmentRunId: input.assessmentRunId,
+    orgId: input.orgId,
+    teamId: input.teamId,
+  })
+  const recipientProfileIds = [
+    ...new Set(
+      input.recipientProfileIds.filter(
+        (profileId) => profileId.length > 0 && profileId !== input.actorProfileId,
+      ),
+    ),
+  ]
+
+  return recipientProfileIds
+    .filter((recipientProfileId) => !existingRecipientIds.has(recipientProfileId))
+    .map((recipientProfileId) => ({
+      actor_profile_id: input.actorProfileId,
+      event_type: NOTIFICATION_EVENT_TYPES.ASSESSMENT_RUN_CREATED,
+      message,
+      metadata: {
+        assessmentRunId: input.assessmentRunId,
+        campIds: input.campIds,
+        teamVenueId: input.teamVenueId,
+      },
+      recipient_profile_id: recipientProfileId,
+      target_href: targetHref,
+      team_id: input.teamId,
+    }))
+}
+
+export function getAssessmentRunEmailRecipients(recipients = []) {
+  return recipients.filter(
+    (recipient) =>
+      typeof recipient.email === "string" &&
+      recipient.email.includes("@") &&
+      recipient.email.includes(".") &&
+      recipient.emailNotificationsEnabled !== false,
+  )
+}
+
+export function buildAssessmentRunEmailPayload(input) {
+  const venueName = normalizeNotificationText(input.venueName) || "venue"
+
+  return buildUpdateNotificationEmailPayload({
+    ctaLabel: "Open assessment",
+    heading: "Assessment request",
+    message: input.message,
+    preferencesUrl: input.preferencesUrl,
+    subject: `${input.actorName} requested the ${venueName} assessment.`,
+    targetHref: input.targetHref,
+    targetUrl: input.targetUrl,
+  })
+}
+
+export function buildAssessmentRunPushPayload(input) {
+  return {
+    body: input.message,
+    tag: `assessment-run-${input.assessmentRunId}`,
+    title: "Assessment request",
+    url: input.targetHref,
+  }
 }
 
 export function getNotificationEventTitle(eventType) {

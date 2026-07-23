@@ -927,8 +927,10 @@ function renderTabPanel(input: {
   canManageReports: boolean;
   canManageSessions: boolean;
   canManageWindPatterns: boolean;
+  assessmentRunNotificationRunId?: string | null;
   isExpenseFilterNavigating: boolean;
   onExpenseFilterNavigate: (href: string) => void;
+  showAssessmentRunNotificationPrompt: boolean;
   windPatternStatusFilter: WindPatternStatusFilter;
 }) {
   if (input.tab === "camps") {
@@ -1095,6 +1097,8 @@ function renderTabPanel(input: {
         templates={data.assessments.templates}
         runs={data.assessments.runs}
         availableCamps={data.camps}
+        assessmentRunNotificationRunId={input.assessmentRunNotificationRunId}
+        showAssessmentRunNotificationPrompt={input.showAssessmentRunNotificationPrompt}
       />
     );
   }
@@ -1163,6 +1167,8 @@ export function VenueDetailTabsClient(input: {
   canManageSessions: boolean;
   canManageWindPatterns: boolean;
   initialWindPatternStatusFilter: WindPatternStatusFilter;
+  assessmentRunNotificationRunId?: string | null;
+  showAssessmentRunNotificationPrompt?: boolean;
   action?: ReactNode;
 }) {
   const pathname = usePathname();
@@ -1541,9 +1547,12 @@ export function VenueDetailTabsClient(input: {
       canManageReports: input.canManageReports,
       canManageSessions: input.canManageSessions,
       canManageWindPatterns: input.canManageWindPatterns,
+      assessmentRunNotificationRunId: input.assessmentRunNotificationRunId,
       isExpenseFilterNavigating:
         tab === "expenses" && (routeData.isFetching || routeData.isRevalidating),
       onExpenseFilterNavigate: navigateToExpenseFilter,
+      showAssessmentRunNotificationPrompt:
+        input.showAssessmentRunNotificationPrompt === true,
       windPatternStatusFilter: input.initialWindPatternStatusFilter,
     });
 
