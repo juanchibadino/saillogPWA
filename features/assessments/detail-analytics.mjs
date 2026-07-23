@@ -270,47 +270,49 @@ export function buildTeamAssessmentDetailAnalytics(input) {
       new Map(getQuestionEntriesForRun(run).map((entry) => [entry.key, entry])),
     ]),
   )
-  const items = getQuestionEntriesForRun(input.run).map((item) => {
-    const trendPoints = input.comparisonRuns.map((run, index) =>
-      buildTrendPoint({
+  const items = getQuestionEntriesForRun(input.run)
+    .map((item) => {
+      const trendPoints = input.comparisonRuns.map((run, index) =>
+        buildTrendPoint({
+          item,
+          run,
+          index,
+          currentRunId: input.run.id,
+          respondents,
+          questionEntryByKey: runQuestionEntriesByRunId.get(run.id) ?? new Map(),
+        }),
+      )
+      const respondentLines = respondents.filter((respondent) =>
+        trendPoints.some(
+          (point) => typeof point.respondentScores[respondent.profileId] === "number",
+        ),
+      )
+      const summary = buildCurrentAnswerSummary({
         item,
-        run,
-        index,
-        currentRunId: input.run.id,
+        run: input.run,
         respondents,
-        questionEntryByKey: runQuestionEntriesByRunId.get(run.id) ?? new Map(),
-      }),
-    )
-    const respondentLines = respondents.filter((respondent) =>
-      trendPoints.some(
-        (point) => typeof point.respondentScores[respondent.profileId] === "number",
-      ),
-    )
-    const summary = buildCurrentAnswerSummary({
-      item,
-      run: input.run,
-      respondents,
-    })
+      })
 
-    return {
-      questionId: item.questionId,
-      categoryId: item.categoryId,
-      categoryName: item.categoryName,
-      categoryPosition: item.categoryPosition,
-      modeId: item.modeId,
-      modeName: item.modeName,
-      modePosition: item.modePosition,
-      prompt: item.prompt,
-      position: item.position,
-      isRequired: item.isRequired,
-      average: summary.average,
-      answerCount: summary.answerCount,
-      myAnswer: summary.myAnswer,
-      crewAnswers: summary.crewAnswers,
-      respondentLines,
-      trendPoints,
-    }
-  })
+      return {
+        questionId: item.questionId,
+        categoryId: item.categoryId,
+        categoryName: item.categoryName,
+        categoryPosition: item.categoryPosition,
+        modeId: item.modeId,
+        modeName: item.modeName,
+        modePosition: item.modePosition,
+        prompt: item.prompt,
+        position: item.position,
+        isRequired: item.isRequired,
+        average: summary.average,
+        answerCount: summary.answerCount,
+        myAnswer: summary.myAnswer,
+        crewAnswers: summary.crewAnswers,
+        respondentLines,
+        trendPoints,
+      }
+    })
+    .filter((item) => item.answerCount > 0)
 
   return {
     respondentSummaries: respondents,

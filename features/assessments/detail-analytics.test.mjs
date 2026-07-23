@@ -72,6 +72,94 @@ function buildModeRun(input) {
   }
 }
 
+function buildMixedRun(input) {
+  return {
+    id: input.id,
+    name: input.name ?? input.id,
+    venueName: input.venueName ?? null,
+    scaleOptions: buildScaleOptions(),
+    categories: [
+      {
+        id: `${input.id}-category-racing`,
+        name: "RACING",
+        position: 1,
+        questions: [],
+        modes: [
+          {
+            id: `${input.id}-mode-upwind`,
+            name: "UPWIND",
+            position: 1,
+            questions: [
+              {
+                id: `${input.id}-question-trim`,
+                prompt: "TRIM",
+                position: 1,
+                isRequired: true,
+              },
+              {
+                id: `${input.id}-question-pace`,
+                prompt: "PACE",
+                position: 2,
+                isRequired: false,
+              },
+            ],
+          },
+          {
+            id: `${input.id}-mode-downwind`,
+            name: "DOWNWIND",
+            position: 2,
+            questions: [
+              {
+                id: `${input.id}-question-exit`,
+                prompt: "EXIT",
+                position: 1,
+                isRequired: false,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: `${input.id}-category-starting`,
+        name: "STARTING",
+        position: 2,
+        questions: [],
+        modes: [
+          {
+            id: `${input.id}-mode-line`,
+            name: "LINE",
+            position: 1,
+            questions: [
+              {
+                id: `${input.id}-question-time-distance`,
+                prompt: "TIME DISTANCE",
+                position: 1,
+                isRequired: false,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: `${input.id}-category-boat-handling`,
+        name: "BOAT HANDLING",
+        position: 3,
+        questions: [
+          {
+            id: `${input.id}-question-tacks`,
+            prompt: "TACKS",
+            position: 1,
+            isRequired: false,
+          },
+        ],
+        modes: [],
+      },
+    ],
+    myAnswers: input.myAnswers ?? [],
+    allAnswers: input.allAnswers ?? [],
+  }
+}
+
 test("builds direct-category item trends with average and per-crew lines", () => {
   const previousRun = buildDirectRun({
     id: "run-1",
@@ -224,4 +312,94 @@ test("falls back to scale option position when labels are not numeric", () => {
 
   assert.equal(analytics.items[0].average, 2)
   assert.equal(analytics.items[0].crewAnswers[0].scaleLabel, "High")
+})
+
+test("keeps only items answered in the current run", () => {
+  const previousRun = buildMixedRun({
+    id: "run-1",
+    allAnswers: [
+      {
+        questionId: "run-1-question-pace",
+        respondentProfileId: "profile-b",
+        scaleOptionId: "scale-5",
+      },
+      {
+        questionId: "run-1-question-time-distance",
+        respondentProfileId: "profile-c",
+        scaleOptionId: "scale-3",
+      },
+      {
+        questionId: "run-1-question-tacks",
+        respondentProfileId: "profile-c",
+        scaleOptionId: "scale-2",
+      },
+    ],
+  })
+  const currentRun = buildMixedRun({
+    id: "run-2",
+    allAnswers: [
+      {
+        questionId: "run-2-question-trim",
+        respondentProfileId: "profile-a",
+        scaleOptionId: "scale-4",
+      },
+    ],
+  })
+
+  const analytics = buildTeamAssessmentDetailAnalytics({
+    run: currentRun,
+    comparisonRuns: [previousRun, currentRun],
+    respondentProfiles: [
+      { profileId: "profile-a", label: "Alice Crew" },
+      { profileId: "profile-b", label: "Bruno Crew" },
+      { profileId: "profile-c", label: "Carla Crew" },
+    ],
+  })
+
+  assert.deepEqual(
+    analytics.items.map((item) => item.prompt),
+    ["TRIM"],
+  )
+  assert.deepEqual(
+    analytics.items.map((item) => item.categoryName),
+    ["RACING"],
+  )
+  assert.deepEqual(
+    analytics.items.map((item) => item.modeName),
+    ["UPWIND"],
+  )
+  assert.equal(
+    analytics.items.some((item) => item.modeName === "DOWNWIND"),
+    false,
+  )
+  assert.equal(
+    analytics.items.some((item) => item.categoryName === "STARTING"),
+    false,
+  )
+  assert.equal(
+    analytics.items.some((item) => item.categoryName === "BOAT HANDLING"),
+    false,
+  )
+})
+
+test("does not surface historical-only answers when current run has no answers", () => {
+  const previousRun = buildDirectRun({
+    id: "run-1",
+    allAnswers: [
+      {
+        questionId: "run-1-question-race-routine",
+        respondentProfileId: "profile-a",
+        scaleOptionId: "scale-5",
+      },
+    ],
+  })
+  const currentRun = buildDirectRun({ id: "run-2" })
+
+  const analytics = buildTeamAssessmentDetailAnalytics({
+    run: currentRun,
+    comparisonRuns: [previousRun, currentRun],
+    respondentProfiles: [{ profileId: "profile-a", label: "Alice Crew" }],
+  })
+
+  assert.equal(analytics.items.length, 0)
 })

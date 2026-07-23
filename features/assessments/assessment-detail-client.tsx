@@ -390,6 +390,43 @@ function getQuestionsForSelection(input: {
   return input.category.questions
 }
 
+function buildAnsweredAnalyticsCategories(input: {
+  run: TeamAssessmentRun
+  items: TeamAssessmentAnalyticsItem[]
+}): TeamAssessmentCategory[] {
+  const answeredQuestionIds = new Set(
+    input.items
+      .filter((item) => item.answerCount > 0)
+      .map((item) => item.questionId),
+  )
+
+  return input.run.categories.flatMap((category) => {
+    const questions = category.questions.filter((question) =>
+      answeredQuestionIds.has(question.id),
+    )
+    const modes = (category.modes ?? [])
+      .map((mode) => ({
+        ...mode,
+        questions: mode.questions.filter((question) =>
+          answeredQuestionIds.has(question.id),
+        ),
+      }))
+      .filter((mode) => mode.questions.length > 0)
+
+    if (questions.length === 0 && modes.length === 0) {
+      return []
+    }
+
+    return [
+      {
+        ...category,
+        questions,
+        modes,
+      },
+    ]
+  })
+}
+
 function getFirstQuestionIdForSelection(input: {
   category: TeamAssessmentCategory | null
   mode: TeamAssessmentMode | null
@@ -407,21 +444,20 @@ function getSelectTriggerWidthStyle(labels: string[]): React.CSSProperties {
 }
 
 function findAnalyticsItem(input: {
-  detail: TeamAssessmentDetailData
+  items: TeamAssessmentAnalyticsItem[]
   questionId: string
 }): TeamAssessmentAnalyticsItem | null {
   return (
-    input.detail.analytics.items.find((item) => item.questionId === input.questionId) ??
-    null
+    input.items.find((item) => item.questionId === input.questionId) ?? null
   )
 }
 
 function getAnalyticsItemsForSelection(input: {
-  detail: TeamAssessmentDetailData
+  items: TeamAssessmentAnalyticsItem[]
   categoryId: string | null
   modeId: string | null
 }): TeamAssessmentAnalyticsItem[] {
-  return input.detail.analytics.items
+  return input.items
     .filter(
       (item) =>
         item.categoryId === input.categoryId &&
@@ -1037,24 +1073,43 @@ function AnswerMatrix({
 
 function AssessmentAnalyticsSection({ detail }: { detail: TeamAssessmentDetailData }) {
   const run = detail.run
+  const answeredItems = React.useMemo(
+    () => detail.analytics.items.filter((item) => item.answerCount > 0),
+    [detail.analytics.items],
+  )
+  const analyticsCategories = React.useMemo(
+    () =>
+      buildAnsweredAnalyticsCategories({
+        run,
+        items: answeredItems,
+      }),
+    [answeredItems, run],
+  )
+  const analyticsRun = React.useMemo(
+    () => ({
+      ...run,
+      categories: analyticsCategories,
+    }),
+    [analyticsCategories, run],
+  )
   const [selectedCategoryId, setSelectedCategoryId] = React.useState(
-    () => run.categories[0]?.id ?? "",
+    () => analyticsRun.categories[0]?.id ?? "",
   )
   const [modeByCategoryId, setModeByCategoryId] = React.useState<
     Record<string, string>
-  >(() => buildInitialModeByCategoryId(run.categories))
+  >(() => buildInitialModeByCategoryId(analyticsRun.categories))
   const [selectedQuestionId, setSelectedQuestionId] = React.useState(() => {
-    const category = run.categories[0] ?? null
+    const category = analyticsRun.categories[0] ?? null
     const mode = getSelectedMode({
       category,
-      modeByCategoryId: buildInitialModeByCategoryId(run.categories),
+      modeByCategoryId: buildInitialModeByCategoryId(analyticsRun.categories),
     })
 
     return getFirstQuestionIdForSelection({ category, mode })
   })
   const selectedCategory =
-    run.categories.find((category) => category.id === selectedCategoryId) ??
-    run.categories[0] ??
+    analyticsRun.categories.find((category) => category.id === selectedCategoryId) ??
+    analyticsRun.categories[0] ??
     null
   const selectedMode = getSelectedMode({
     category: selectedCategory,
@@ -1071,11 +1126,11 @@ function AssessmentAnalyticsSection({ detail }: { detail: TeamAssessmentDetailDa
     ? selectedQuestionId
     : activeQuestions[0]?.id ?? ""
   const selectedItem = findAnalyticsItem({
-    detail,
+    items: answeredItems,
     questionId: resolvedQuestionId,
   })
   const matrixItems = getAnalyticsItemsForSelection({
-    detail,
+    items: answeredItems,
     categoryId: selectedCategory?.id ?? null,
     modeId: selectedMode?.id ?? null,
   })
@@ -1088,7 +1143,7 @@ function AssessmentAnalyticsSection({ detail }: { detail: TeamAssessmentDetailDa
 
   function updateSelectedCategory(categoryId: string): void {
     const nextCategory =
-      run.categories.find((category) => category.id === categoryId) ?? null
+      analyticsRun.categories.find((category) => category.id === categoryId) ?? null
     const nextMode = getSelectedMode({
       category: nextCategory,
       modeByCategoryId,
@@ -1123,6 +1178,19 @@ function AssessmentAnalyticsSection({ detail }: { detail: TeamAssessmentDetailDa
     )
   }
 
+  if (answeredItems.length === 0 || analyticsRun.categories.length === 0) {
+    return (
+      <section className="space-y-4">
+        <GradientCard className="space-y-4 p-4">
+          <h2 className="text-base font-semibold">Analytics</h2>
+          <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+            No crew answers have been submitted for this assessment yet.
+          </p>
+        </GradientCard>
+      </section>
+    )
+  }
+
   return (
     <section className="space-y-4">
       <GradientCard className="space-y-4 p-4">
@@ -1134,7 +1202,7 @@ function AssessmentAnalyticsSection({ detail }: { detail: TeamAssessmentDetailDa
           <AssessmentSelectionControls
             className="xl:ml-auto xl:w-auto"
             idPrefix={`analytics-${run.id}`}
-            run={run}
+            run={analyticsRun}
             selectedCategory={selectedCategory}
             selectedMode={selectedMode}
             selectedQuestionId={resolvedQuestionId}
