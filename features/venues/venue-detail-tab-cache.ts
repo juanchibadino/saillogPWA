@@ -13,6 +13,8 @@ export const VENUE_DETAIL_TAB_CACHE_ROUTE = "venues:tab-data"
 
 export type VenueDetailTabCacheFiltersInput = {
   campId?: string | null
+  crewFilter?: string | null
+  expenseType?: string | null
   highlight?: TeamSessionHighlightFilter | null
   loadMore: boolean
   memberId?: string | null
@@ -39,6 +41,8 @@ export function buildVenueDetailTabCacheFilters(
 ) {
   return {
     camp: input.campId ?? null,
+    crew: input.crewFilter ?? null,
+    type: input.expenseType ?? null,
     highlight: input.highlight ?? null,
     loadMore: input.loadMore,
     member: input.memberId ?? null,
@@ -81,6 +85,14 @@ export function buildVenueDetailTabApiUrl(
 
   if (input.memberId) {
     params.set("member", input.memberId)
+  }
+
+  if (input.crewFilter) {
+    params.set("crew", input.crewFilter)
+  }
+
+  if (input.expenseType) {
+    params.set("type", input.expenseType)
   }
 
   if (input.page > 1) {

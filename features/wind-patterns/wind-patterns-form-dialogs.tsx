@@ -202,8 +202,11 @@ function WindPatternDialogForm({
   const canSubmit = name.trim().length > 0 && selectedTeamVenueId.length > 0
   const isDrawerSurface = surface === "drawer"
   const isSheetSurface = surface === "sheet"
-  const inputClassName =
-    isDrawerSurface || isSheetSurface ? "h-11 px-3 text-base md:text-sm" : undefined
+  const inputClassName = isDrawerSurface ? "h-11 px-3 text-base md:text-sm" : undefined
+  const selectClassName = cn(
+    "w-full rounded-lg border border-input bg-background text-sm outline-none ring-ring/50 transition-colors focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-60",
+    isDrawerSurface ? "h-11 px-3 text-base md:text-sm" : "h-9 px-3",
+  )
   const textareaClassName =
     isDrawerSurface || isSheetSurface
       ? "min-h-28 px-3 text-base md:text-sm"
@@ -244,9 +247,7 @@ function WindPatternDialogForm({
               required
               value={selectedTeamVenueId}
               onChange={(event) => setSelectedTeamVenueId(event.target.value)}
-              className={cn(
-                "h-11 w-full rounded-lg border border-border bg-background px-3 text-base outline-none ring-ring/50 transition-colors focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-60 md:text-sm",
-              )}
+              className={selectClassName}
             >
               {venueOptions.map((venueOption) => (
                 <option key={venueOption.teamVenueId} value={venueOption.teamVenueId}>

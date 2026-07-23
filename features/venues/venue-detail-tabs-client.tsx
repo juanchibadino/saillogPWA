@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { toast } from "sonner";
 
 import type {
   VenueDetailKpi,
@@ -94,12 +95,19 @@ type VenueDetailTabDataResponse = {
 };
 type VenueDetailWarmTab = "camps" | "sessions" | "wind-patterns";
 type VenueDetailRouteRequest = {
+  requestedCrewFilter?: string;
   requestedHighlight?: TeamSessionHighlightFilter;
   requestedLoadMoreMode: boolean;
   requestedMemberId?: string;
   requestedPage: number;
+  requestedType?: string;
   requestedYear?: number;
   selectedTab: VenueDetailTab;
+};
+type VenueExpenseRouteFilters = {
+  requestedCrewFilter?: string;
+  requestedMemberId?: string;
+  requestedType?: string;
 };
 
 const MOBILE_VENUE_DETAIL_TAB_LIST_X_PADDING = 6;
@@ -462,6 +470,8 @@ function resolveCacheScope(scope: NavigationScope): ScopedRouteCacheScope {
 
 function buildVenueDetailTabRequest(input: {
   campId?: string;
+  crewFilter?: string;
+  expenseType?: string;
   highlight?: TeamSessionHighlightFilter;
   loadMore: boolean;
   memberId?: string;
@@ -477,6 +487,8 @@ function buildVenueDetailTabRequest(input: {
       teamVenueId: input.teamVenueId,
       tab: input.tab,
       year: input.year,
+      crewFilter: input.crewFilter,
+      expenseType: input.expenseType,
       memberId: input.memberId,
       page: 1,
       loadMore: false,
@@ -516,6 +528,8 @@ function buildVenueDetailTabCacheFromRequest(input: {
     tab: input.request.tab,
     year: input.request.year,
     campId: input.request.campId,
+    crewFilter: input.request.crewFilter,
+    expenseType: input.request.expenseType,
     highlight: input.request.highlight,
     loadMore: input.request.loadMore,
     memberId: input.request.memberId,
@@ -601,6 +615,7 @@ function isVenueDetailTabPayload(
       isRecord(value.formOptions) &&
       Array.isArray(value.memberOptions) &&
       isRecord(value.metrics) &&
+      Array.isArray(value.typeOptions) &&
       typeof value.teamExpensesVisible === "boolean"
     );
   }
@@ -728,6 +743,8 @@ async function resolveVenueDetailTabErrorMessage(response: Response): Promise<st
 
 async function fetchVenueDetailTabData(input: {
   campId?: string | null;
+  crewFilter?: string | null;
+  expenseType?: string | null;
   highlight?: TeamSessionHighlightFilter | null;
   loadMore?: boolean;
   memberId?: string | null;
@@ -741,6 +758,8 @@ async function fetchVenueDetailTabData(input: {
   const response = await fetch(
     buildVenueDetailTabApiUrl({
       campId: input.campId,
+      crewFilter: input.crewFilter,
+      expenseType: input.expenseType,
       highlight: input.highlight,
       loadMore: input.loadMore === true,
       memberId: input.memberId,
@@ -908,6 +927,8 @@ function renderTabPanel(input: {
   canManageReports: boolean;
   canManageSessions: boolean;
   canManageWindPatterns: boolean;
+  isExpenseFilterNavigating: boolean;
+  onExpenseFilterNavigate: (href: string) => void;
   windPatternStatusFilter: WindPatternStatusFilter;
 }) {
   if (input.tab === "camps") {
@@ -1100,6 +1121,8 @@ function renderTabPanel(input: {
       <VenueExpensesPanel
         canManageExpenses={input.canManageExpenses}
         data={data}
+        isFilterNavigating={input.isExpenseFilterNavigating}
+        onFilterNavigate={input.onExpenseFilterNavigate}
         scope={input.scope}
         selectedYear={input.selectedYear}
         teamVenueId={input.teamVenueId}
@@ -1135,6 +1158,7 @@ export function VenueDetailTabsClient(input: {
   canManageCamps: boolean;
   canManageAssessments: boolean;
   canManageExpenses: boolean;
+  canManageExpenseFinance: boolean;
   canManageReports: boolean;
   canManageSessions: boolean;
   canManageWindPatterns: boolean;
@@ -1145,7 +1169,15 @@ export function VenueDetailTabsClient(input: {
   const searchParams = useSearchParams();
   const currentSearch = searchParams.toString();
   const requestedCampId = searchParams.get("camp") ?? undefined;
-  const requestedMemberId = searchParams.get("member") ?? undefined;
+  const requestedCrewFilterParam = searchParams.get("crew") ?? undefined;
+  const requestedMemberIdParam = searchParams.get("member") ?? undefined;
+  const requestedTypeParam = searchParams.get("type") ?? undefined;
+  const [expenseRouteFilters, setExpenseRouteFilters] =
+    useState<VenueExpenseRouteFilters>(() => ({
+      requestedCrewFilter: requestedCrewFilterParam,
+      requestedMemberId: requestedMemberIdParam,
+      requestedType: requestedTypeParam,
+    }));
   const [selectedYearState, setSelectedYear] = useState(input.initialYear);
   const [selectedTab, setSelectedTab] = useState<VenueDetailTab>(input.initialTab);
   const selectedYear = input.availableYears.includes(selectedYearState)
@@ -1153,18 +1185,44 @@ export function VenueDetailTabsClient(input: {
     : input.initialYear;
   const cacheScope = useMemo(() => resolveCacheScope(input.scope), [input.scope]);
   const warmInFlightTabsRef = useRef<Set<string>>(new Set());
+  const routeErrorToastIdRef = useRef<string | null>(null);
   const routeRequest = useMemo(
     () =>
       resolveVenueDetailRouteRequest({
+        crewParam:
+          selectedTab === "expenses"
+            ? expenseRouteFilters.requestedCrewFilter
+            : requestedCrewFilterParam,
         highlightParam: searchParams.get("highlight") ?? undefined,
         loadMoreParam: searchParams.get("loadMore") ?? undefined,
-        memberParam: requestedMemberId,
+        memberParam:
+          selectedTab === "expenses"
+            ? expenseRouteFilters.requestedMemberId
+            : requestedMemberIdParam,
         pageParam: searchParams.get("page") ?? undefined,
         tabParam: searchParams.get("tab") ?? undefined,
+        typeParam:
+          selectedTab === "expenses" ? expenseRouteFilters.requestedType : requestedTypeParam,
         yearParam: searchParams.get("year") ?? undefined,
       }) as VenueDetailRouteRequest,
-    [requestedMemberId, searchParams],
+    [
+      expenseRouteFilters.requestedCrewFilter,
+      expenseRouteFilters.requestedMemberId,
+      expenseRouteFilters.requestedType,
+      requestedCrewFilterParam,
+      requestedMemberIdParam,
+      requestedTypeParam,
+      searchParams,
+      selectedTab,
+    ],
   );
+  const selectedExpenseCrewFilter =
+    selectedTab === "expenses"
+      ? routeRequest.requestedCrewFilter ??
+        (!routeRequest.requestedMemberId && !input.canManageExpenseFinance
+          ? "you"
+          : undefined)
+      : undefined;
 
   const replaceVenueDetailHref = useCallback(
     (href: string) => {
@@ -1203,10 +1261,36 @@ export function VenueDetailTabsClient(input: {
     [currentSearch, pathname, replaceVenueDetailHref, selectedTab],
   );
 
+  const navigateToExpenseFilter = useCallback(
+    (href: string) => {
+      const nextUrl = new URL(href, window.location.origin);
+      const nextCrewFilter = nextUrl.searchParams.get("crew") ?? undefined;
+      const nextMemberId = nextUrl.searchParams.get("member") ?? undefined;
+      const nextType = nextUrl.searchParams.get("type") ?? undefined;
+      const nextYear = Number.parseInt(nextUrl.searchParams.get("year") ?? "", 10);
+
+      setSelectedTab("expenses");
+      setExpenseRouteFilters({
+        requestedCrewFilter: nextCrewFilter,
+        requestedMemberId: nextMemberId,
+        requestedType: nextType,
+      });
+
+      if (Number.isFinite(nextYear) && input.availableYears.includes(nextYear)) {
+        setSelectedYear(nextYear);
+      }
+
+      replaceVenueDetailHref(`${nextUrl.pathname}${nextUrl.search}`);
+    },
+    [input.availableYears, replaceVenueDetailHref],
+  );
+
   const selectedTabRequest = useMemo(
     () =>
       buildVenueDetailTabRequest({
         campId: requestedCampId,
+        crewFilter: selectedExpenseCrewFilter,
+        expenseType: routeRequest.requestedType,
         highlight: routeRequest.requestedHighlight,
         loadMore: routeRequest.requestedLoadMoreMode,
         memberId: routeRequest.requestedMemberId,
@@ -1224,6 +1308,8 @@ export function VenueDetailTabsClient(input: {
       routeRequest.requestedLoadMoreMode,
       routeRequest.requestedMemberId,
       routeRequest.requestedPage,
+      routeRequest.requestedType,
+      selectedExpenseCrewFilter,
       selectedTab,
       selectedYear,
     ],
@@ -1386,8 +1472,37 @@ export function VenueDetailTabsClient(input: {
   const currentKpis =
     selectedRoutePayload?.kpis.kpis ?? selectedInitialPayload?.kpis.kpis ?? EMPTY_KPIS;
   const selectedTabData = selectedRoutePayload?.data ?? selectedInitialPayload?.data ?? null;
-  const showInlineError = routeData.status === "error" && selectedTabData !== null;
   const isSelectedTabRevalidating = routeData.isRevalidating && selectedTabData !== null;
+  const showSelectedTabRevalidatingIndicator =
+    isSelectedTabRevalidating && selectedTab !== "expenses";
+
+  useEffect(() => {
+    if (routeData.status !== "error" || selectedTabData === null) {
+      return;
+    }
+
+    const message = routeData.error?.message ?? "Could not refresh this tab.";
+    const toastId = `venue-detail-tab:${selectedTabCache.key}:error:${message}`;
+
+    if (routeErrorToastIdRef.current === toastId) {
+      return;
+    }
+
+    routeErrorToastIdRef.current = toastId;
+    toast.error(message, {
+      action: {
+        label: "Retry",
+        onClick: retrySelectedTab,
+      },
+      id: toastId,
+    });
+  }, [
+    retrySelectedTab,
+    routeData.error?.message,
+    routeData.status,
+    selectedTabCache.key,
+    selectedTabData,
+  ]);
 
   function renderPendingTab(tab: VenueDetailTab) {
     if (routeData.status === "error") {
@@ -1426,6 +1541,9 @@ export function VenueDetailTabsClient(input: {
       canManageReports: input.canManageReports,
       canManageSessions: input.canManageSessions,
       canManageWindPatterns: input.canManageWindPatterns,
+      isExpenseFilterNavigating:
+        tab === "expenses" && (routeData.isFetching || routeData.isRevalidating),
+      onExpenseFilterNavigate: navigateToExpenseFilter,
       windPatternStatusFilter: input.initialWindPatternStatusFilter,
     });
 
@@ -1506,35 +1624,16 @@ export function VenueDetailTabsClient(input: {
             {tab === selectedTab ? (
               selectedTabData ? (
                 <div className="relative">
-                  {showInlineError ? (
-                    <div
-                      role="alert"
-                      className="mb-3 flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 md:flex-row md:items-center md:justify-between"
-                    >
-                      <span>
-                        {routeData.error?.message ?? "Could not refresh this tab."}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={retrySelectedTab}
-                      >
-                        Retry
-                      </Button>
-                    </div>
-                  ) : null}
-
                   <div
                     className={cn(
                       "transition-opacity",
-                      isSelectedTabRevalidating && "opacity-75",
+                      showSelectedTabRevalidatingIndicator && "opacity-75",
                     )}
                   >
                     {renderLoadedTab(tab, selectedTabData)}
                   </div>
 
-                  {isSelectedTabRevalidating ? (
+                  {showSelectedTabRevalidatingIndicator ? (
                     <div className="pointer-events-none absolute right-3 top-3 z-20 rounded-full border bg-background/90 p-2 text-muted-foreground shadow-sm">
                       <Loader2Icon className="size-4 animate-spin" />
                       <span className="sr-only">

@@ -68,6 +68,20 @@ function formatGeneratedAt(value: string): string {
   }).format(new Date(value))
 }
 
+function formatCompactRateDate(value: string): string {
+  const date = new Date(`${value}T00:00:00.000Z`)
+
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(date)
+}
+
 function formatRoleLabel(value: string): string {
   return value
     .split("_")
@@ -75,21 +89,56 @@ function formatRoleLabel(value: string): string {
     .join(" ")
 }
 
-function buildReceiptReference(input: {
+function resolveImageSource(input: {
   baseUrl: string
-  expense: TeamExpenseListItem
-  index: number
+  source: string | null
+}): string | null {
+  const source = input.source?.trim()
+
+  if (!source) {
+    return null
+  }
+
+  try {
+    return new URL(source, input.baseUrl).toString()
+  } catch {
+    return null
+  }
+}
+
+function buildOrganizationMarkHtml(input: {
+  baseUrl: string
+  data: TeamExpensesReportData
 }): string {
-  if (!input.expense.receiptUrl) {
+  const logoSource = resolveImageSource({
+    baseUrl: input.baseUrl,
+    source: input.data.organizationLogoUrl,
+  })
+
+  if (logoSource) {
+    return `<img class="organization-logo" src="${escapeHtml(logoSource)}" alt="${escapeHtml(input.data.organizationName)} logo" />`
+  }
+
+  return `<h1>${escapeHtml(input.data.organizationName)}</h1>`
+}
+
+function buildReceiptAnchorId(expenseId: string): string {
+  return `receipt-${expenseId.replace(/[^a-zA-Z0-9_-]+/g, "")}`
+}
+
+function buildReceiptReference(input: {
+  expense: TeamExpenseListItem
+  receiptByExpenseId: Map<string, TeamExpensesReportData["receiptReferences"][number]>
+}): string {
+  const receipt = input.receiptByExpenseId.get(input.expense.id)
+
+  if (!receipt) {
     return "No receipt"
   }
 
-  const receiptUrl = new URL(input.expense.receiptUrl, input.baseUrl).toString()
-  const label = input.expense.receiptFileName
-    ? `Receipt ${input.index + 1}: ${input.expense.receiptFileName}`
-    : `Receipt ${input.index + 1}`
+  const anchorId = buildReceiptAnchorId(input.expense.id)
 
-  return `<a href="${escapeHtml(receiptUrl)}">${escapeHtml(label)}</a>`
+  return `<a href="#${escapeHtml(anchorId)}">${escapeHtml(receipt.label)}</a>`
 }
 
 function buildFilterSummary(data: TeamExpensesReportData): string {
@@ -104,12 +153,52 @@ function buildFilterSummary(data: TeamExpensesReportData): string {
   return values.map(escapeHtml).join(" | ")
 }
 
+function buildReceiptReferencesHtml(data: TeamExpensesReportData): string {
+  if (data.receiptReferences.length === 0) {
+    return ""
+  }
+
+  const expenseById = new Map(data.expenses.map((expense) => [expense.id, expense]))
+  const referencesHtml = data.receiptReferences
+    .map((receipt) => {
+      const expense = expenseById.get(receipt.expenseId)
+      const metaParts = expense
+        ? [
+            formatExpenseDate(expense.expenseDate),
+            expense.vendor,
+            expense.amountLabel,
+          ].filter((value) => value.length > 0)
+        : []
+      const metaHtml =
+        metaParts.length > 0
+          ? `<div class="receipt-meta">${escapeHtml(metaParts.join(" | "))}</div>`
+          : ""
+      const imageHtml = receipt.dataUrl
+        ? `<img class="receipt-image" src="${escapeHtml(receipt.dataUrl)}" alt="${escapeHtml(receipt.label)}" />`
+        : `<div class="receipt-placeholder">Receipt image unavailable</div>`
+
+      return `
+        <figure id="${escapeHtml(buildReceiptAnchorId(receipt.expenseId))}" class="receipt-card">
+          <figcaption>${escapeHtml(receipt.label)}</figcaption>
+          ${metaHtml}
+          ${imageHtml}
+        </figure>
+      `
+    })
+    .join("")
+
+  return `
+    <section class="receipt-references">
+      <h2>Receipt references</h2>
+      <div class="receipt-grid">${referencesHtml}</div>
+    </section>
+  `
+}
+
 export function buildExpensesReportPdfHtml(input: {
   baseUrl: string
   data: TeamExpensesReportData
 }): string {
-  const scopeLabel =
-    input.data.selectedVisibilityScope === "team" ? "Team expenses" : "My expenses"
   const totalLabel =
     input.data.selectedVisibilityScope === "team" && input.data.metrics.teamTotalLabel
       ? input.data.metrics.teamTotalLabel
@@ -118,25 +207,27 @@ export function buildExpensesReportPdfHtml(input: {
   const campContextLabel = input.data.campLabel
     ? `<div class="subtitle">Camp Date ${escapeHtml(input.data.campLabel)}</div>`
     : ""
+  const receiptByExpenseId = new Map(
+    input.data.receiptReferences.map((receipt) => [receipt.expenseId, receipt]),
+  )
   const rowsHtml =
     input.data.expenses.length === 0
       ? `<tr><td colspan="9" class="empty">No expenses found for this report.</td></tr>`
       : input.data.expenses
           .map(
-            (expense, index) => `
+            (expense) => `
               <tr>
                 <td>${escapeHtml(formatExpenseDate(expense.expenseDate))}</td>
                 <td>${escapeHtml(expense.vendor)}</td>
                 <td>${escapeHtml(expense.venueName)}${expense.campName ? `<br><span>${escapeHtml(expense.campName)}</span>` : ""}</td>
                 <td>${escapeHtml(expense.description ?? "")}</td>
                 <td>${escapeHtml(expense.amountLabel)}</td>
-                <td>${escapeHtml(String(expense.exchangeRate))}<br><span>${escapeHtml(expense.exchangeRateDate)}</span></td>
+                <td><span class="rate-value">${escapeHtml(String(expense.exchangeRate))}</span><span class="rate-date">${escapeHtml(formatCompactRateDate(expense.exchangeRateDate))}</span></td>
                 <td>${escapeHtml(expense.convertedAmountLabel)}</td>
                 <td>${escapeHtml(expense.ownerName)}</td>
                 <td>${buildReceiptReference({
-                  baseUrl: input.baseUrl,
                   expense,
-                  index,
+                  receiptByExpenseId,
                 })}</td>
               </tr>
             `,
@@ -162,15 +253,19 @@ export function buildExpensesReportPdfHtml(input: {
             border-bottom: 2px solid #111827;
             padding-bottom: 14px;
           }
+          .organization-mark {
+            min-height: 42px;
+          }
+          .organization-logo {
+            display: block;
+            max-height: 54px;
+            max-width: 210px;
+            object-fit: contain;
+          }
           h1 {
             margin: 0;
             font-size: 24px;
             letter-spacing: 0;
-          }
-          .header-total {
-            margin-top: 12px;
-            font-size: 24px;
-            font-weight: 800;
           }
           .subtitle {
             margin-top: 4px;
@@ -179,7 +274,7 @@ export function buildExpensesReportPdfHtml(input: {
           }
           .summary {
             display: grid;
-            grid-template-columns: 1.3fr 0.9fr 0.9fr;
+            grid-template-columns: 1.3fr 0.9fr;
             gap: 10px;
             margin-top: 16px;
           }
@@ -225,6 +320,21 @@ export function buildExpensesReportPdfHtml(input: {
             color: #6b7280;
             font-size: 9px;
           }
+          .rate-value,
+          .rate-date {
+            display: block;
+          }
+          .rate-value {
+            color: #111827;
+            font-size: 11px;
+          }
+          .rate-date {
+            color: #6b7280;
+            font-size: 7.5px;
+            line-height: 1.2;
+            margin-top: 2px;
+            white-space: nowrap;
+          }
           a {
             color: #0f766e;
             text-decoration: none;
@@ -233,6 +343,54 @@ export function buildExpensesReportPdfHtml(input: {
             color: #6b7280;
             padding: 18px 5px;
             text-align: center;
+          }
+          .receipt-references {
+            margin-top: 18px;
+            page-break-before: auto;
+          }
+          .receipt-references h2 {
+            border-bottom: 1px solid #d1d5db;
+            font-size: 13px;
+            margin: 0 0 10px;
+            padding-bottom: 6px;
+          }
+          .receipt-grid {
+            display: grid;
+            gap: 12px;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .receipt-card {
+            break-inside: avoid;
+            margin: 0;
+            page-break-inside: avoid;
+          }
+          .receipt-card figcaption {
+            font-size: 11px;
+            font-weight: 700;
+          }
+          .receipt-meta {
+            color: #6b7280;
+            font-size: 8px;
+            margin: 2px 0 6px;
+          }
+          .receipt-image {
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            display: block;
+            max-height: 260px;
+            max-width: 100%;
+            object-fit: contain;
+            width: 100%;
+          }
+          .receipt-placeholder {
+            align-items: center;
+            border: 1px dashed #d1d5db;
+            border-radius: 6px;
+            color: #6b7280;
+            display: flex;
+            font-size: 9px;
+            height: 120px;
+            justify-content: center;
           }
           footer {
             margin-top: 18px;
@@ -243,12 +401,11 @@ export function buildExpensesReportPdfHtml(input: {
       </head>
       <body>
         <header>
-          <h1>${escapeHtml(input.data.exportedByName)}</h1>
-          <div class="header-total">${escapeHtml(totalLabel)}</div>
+          <div class="organization-mark">${buildOrganizationMarkHtml(input)}</div>
           <div class="subtitle">${escapeHtml(input.data.teamName)} / ${escapeHtml(formatRoleLabel(input.data.exportedByRole))}</div>
           <div class="subtitle">${escapeHtml(venueContextLabel)}</div>
           ${campContextLabel}
-          <div class="subtitle">${escapeHtml(scopeLabel)} | Generated ${escapeHtml(formatGeneratedAt(input.data.generatedAt))}</div>
+          <div class="subtitle">Generated ${escapeHtml(formatGeneratedAt(input.data.generatedAt))}</div>
         </header>
 
         <section class="summary">
@@ -256,10 +413,6 @@ export function buildExpensesReportPdfHtml(input: {
             <div class="label">Exported by</div>
             <div class="value">${escapeHtml(input.data.exportedByName)}</div>
             <div class="subtitle">${escapeHtml(formatRoleLabel(input.data.exportedByRole))}</div>
-          </div>
-          <div class="box">
-            <div class="label">Scope</div>
-            <div class="value">${escapeHtml(scopeLabel)}</div>
           </div>
           <div class="box">
             <div class="label">Total</div>
@@ -285,6 +438,8 @@ export function buildExpensesReportPdfHtml(input: {
           </thead>
           <tbody>${rowsHtml}</tbody>
         </table>
+
+        ${buildReceiptReferencesHtml(input.data)}
 
         <footer>
           Currency conversion uses the stored exchange-rate snapshot on each expense.

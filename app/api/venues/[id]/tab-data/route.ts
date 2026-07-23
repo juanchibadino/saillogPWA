@@ -109,20 +109,27 @@ export async function GET(request: Request, context: RouteContext) {
   }
 
   const {
+    requestedCrewFilter,
     requestedHighlight,
     requestedLoadMoreMode,
     requestedPage,
+    requestedType,
     requestedYear,
   } = resolveVenueDetailRouteRequest({
+    crewParam: requestUrl.searchParams.get("crew") ?? undefined,
     highlightParam: requestUrl.searchParams.get("highlight") ?? undefined,
     loadMoreParam: requestUrl.searchParams.get("loadMore") ?? undefined,
+    memberParam: requestUrl.searchParams.get("member") ?? undefined,
     pageParam: requestUrl.searchParams.get("page") ?? undefined,
     tabParam: requestUrl.searchParams.get("tab") ?? undefined,
+    typeParam: requestUrl.searchParams.get("type") ?? undefined,
     yearParam: requestUrl.searchParams.get("year") ?? undefined,
   }) as {
+    requestedCrewFilter?: string
     requestedHighlight?: "yes" | "no"
     requestedLoadMoreMode: boolean
     requestedPage: number
+    requestedType?: string
     requestedYear?: number
   }
   const requestedCampId = requestUrl.searchParams.get("camp") ?? undefined
@@ -145,12 +152,15 @@ export async function GET(request: Request, context: RouteContext) {
       organizationId: navigation.scope.activeOrgId,
       teamId: navigation.scope.activeTeamId,
     })
+    const effectiveExpenseCrewFilter =
+      tab === "expenses"
+        ? requestedCrewFilter ??
+          (!canManageTeamFinanceRows && !requestedMemberId ? "you" : undefined)
+        : undefined
 
     const [kpis, data] = await Promise.all([
       getTeamVenueDetailKpisData({
-        activeOrganizationId: navigation.scope.activeOrgId,
         activeTeamId: navigation.scope.activeTeamId,
-        currentProfileId,
         requestedYear,
         teamVenue: chromeData.teamVenue,
         yearContextPromise,
@@ -165,6 +175,8 @@ export async function GET(request: Request, context: RouteContext) {
         requestedPage,
         requestedYear,
         selectedCampId: requestedCampId,
+        selectedCrewFilter: effectiveExpenseCrewFilter,
+        selectedExpenseType: requestedType,
         selectedHighlight: requestedHighlight,
         selectedMemberId: requestedMemberId,
         tab,
@@ -177,7 +189,9 @@ export async function GET(request: Request, context: RouteContext) {
     const tabLoadMore = tab === "sessions" && requestedLoadMoreMode
     const tabCampId = tab === "sessions" ? requestedCampId : undefined
     const tabHighlight = tab === "sessions" ? requestedHighlight : undefined
+    const tabCrewFilter = effectiveExpenseCrewFilter
     const tabMemberId = tab === "expenses" ? requestedMemberId : undefined
+    const tabExpenseType = tab === "expenses" ? requestedType : undefined
     const cache = buildVenueDetailTabCacheMetadata({
       scope: {
         orgId: navigation.scope.activeOrgId,
@@ -187,6 +201,8 @@ export async function GET(request: Request, context: RouteContext) {
       tab,
       year: kpis.selectedYear,
       campId: tabCampId,
+      crewFilter: tabCrewFilter,
+      expenseType: tabExpenseType,
       highlight: tabHighlight,
       loadMore: tabLoadMore,
       memberId: tabMemberId,

@@ -212,6 +212,7 @@ async function VenueDetailDeferredContent(input: {
   canManageAssessments: boolean
   canManageReports: boolean
   canManageExpenses: boolean
+  canManageExpenseFinance: boolean
   canManageSessions: boolean
   canManageVenues: boolean
   canManageWindPatterns: boolean
@@ -264,6 +265,7 @@ async function VenueDetailDeferredContent(input: {
       canManageAssessments={input.canManageAssessments}
       canManageReports={input.canManageReports}
       canManageExpenses={input.canManageExpenses}
+      canManageExpenseFinance={input.canManageExpenseFinance}
       canManageSessions={input.canManageSessions}
       canManageWindPatterns={input.canManageWindPatterns}
       initialWindPatternStatusFilter={input.initialWindPatternStatusFilter}
@@ -292,21 +294,28 @@ export default async function VenueDetailPage({
   const requestedCampId = getSingleSearchParamValue(resolvedSearchParams.camp)
   const requestedMemberId = getSingleSearchParamValue(resolvedSearchParams.member)
   const {
+    requestedCrewFilter,
     requestedHighlight,
     requestedLoadMoreMode,
     requestedPage,
+    requestedType,
     requestedYear,
     selectedTab,
   } = resolveVenueDetailRouteRequest({
+    crewParam: getSingleSearchParamValue(resolvedSearchParams.crew),
     highlightParam: getSingleSearchParamValue(resolvedSearchParams.highlight),
     loadMoreParam: getSingleSearchParamValue(resolvedSearchParams.loadMore),
+    memberParam: requestedMemberId,
     pageParam: getSingleSearchParamValue(resolvedSearchParams.page),
     tabParam: getSingleSearchParamValue(resolvedSearchParams.tab),
+    typeParam: getSingleSearchParamValue(resolvedSearchParams.type),
     yearParam: getSingleSearchParamValue(resolvedSearchParams.year),
   }) as {
+    requestedCrewFilter?: string
     requestedHighlight?: "yes" | "no"
     requestedLoadMoreMode: boolean
     requestedPage: number
+    requestedType?: string
     requestedYear?: number
     selectedTab: VenueDetailTab
   }
@@ -410,17 +419,20 @@ export default async function VenueDetailPage({
           organizationId: scope.activeOrgId,
           teamId: chromeData.teamVenue.team_id,
         })
-      : false
+    : false
   const canManageExpenses = canManageSessions
+  const effectiveExpenseCrewFilter =
+    selectedTab === "expenses"
+      ? requestedCrewFilter ??
+        (!canManageExpenseFinance && !requestedMemberId ? "you" : undefined)
+      : undefined
   const yearContextPromise = getTeamVenueDetailYearContextData({
     activeTeamId: scope.activeTeamId,
     requestedYear,
     teamVenue: chromeData.teamVenue,
   })
   const kpisPromise = getTeamVenueDetailKpisData({
-    activeOrganizationId: scope.activeOrgId,
     activeTeamId: scope.activeTeamId,
-    currentProfileId: context.profile?.id ?? context.user.id,
     requestedYear,
     teamVenue: chromeData.teamVenue,
     yearContextPromise,
@@ -435,6 +447,8 @@ export default async function VenueDetailPage({
     requestedPage,
     requestedYear,
     selectedCampId: requestedCampId,
+    selectedCrewFilter: effectiveExpenseCrewFilter,
+    selectedExpenseType: requestedType,
     selectedHighlight: requestedHighlight,
     selectedMemberId: requestedMemberId,
     tab: selectedTab,
@@ -522,6 +536,7 @@ export default async function VenueDetailPage({
           canManageAssessments={canManageAssessments}
           canManageReports={canManageReports}
           canManageExpenses={canManageExpenses}
+          canManageExpenseFinance={canManageExpenseFinance}
           canManageSessions={canManageSessions}
           canManageVenues={canManageVenues}
           canManageWindPatterns={canManageWindPatterns}

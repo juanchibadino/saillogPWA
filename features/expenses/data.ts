@@ -1,11 +1,14 @@
 import "server-only"
 
+import { Buffer } from "node:buffer"
+
 import {
   TEAM_EXPENSES_PAGE_SIZE,
   canMutateTeamExpense,
   resolveExpenseVisibilityScope,
 } from "@/features/expenses/data-core.mjs"
 import {
+  COMMON_EXPENSE_CURRENCIES,
   TEAM_EXPENSE_TYPE_OPTIONS,
   formatCurrencyAmount,
   formatExpenseTypeLabel,
@@ -87,7 +90,7 @@ type TeamRow = Pick<
 >
 type OrganizationRow = Pick<
   Database["public"]["Tables"]["organizations"]["Row"],
-  "id" | "default_currency_code"
+  "id" | "name" | "avatar_url" | "default_currency_code"
 >
 type ServerSupabaseClient = Awaited<ReturnType<typeof createServerSupabaseClient>>
 
@@ -99,7 +102,7 @@ const CAMP_SELECT_COLUMNS = "id,team_venue_id,name,start_date,end_date"
 const PROFILE_SELECT_COLUMNS = "id,first_name,last_name,email"
 const TEAM_MEMBERSHIP_ROLE_SELECT_COLUMNS = "role"
 const TEAM_SELECT_COLUMNS = "id,name,organization_id,expenses_show_team_totals"
-const ORGANIZATION_SELECT_COLUMNS = "id,default_currency_code"
+const ORGANIZATION_SELECT_COLUMNS = "id,name,avatar_url,default_currency_code"
 
 export type TeamExpenseVenueOption = {
   label: string
@@ -204,6 +207,9 @@ export type TeamExpensesReportData = {
   generatedAt: string
   metrics: TeamExpenseMetrics
   organizationCurrencyCode: string
+  organizationLogoUrl: string | null
+  organizationName: string
+  receiptReferences: TeamExpenseReportReceiptReference[]
   selectedCrewLabel: string
   selectedMemberLabel: string | null
   selectedTypeLabel: string | null
@@ -212,6 +218,12 @@ export type TeamExpensesReportData = {
   teamExpensesVisible: boolean
   teamName: string
   venueLabel: string | null
+}
+
+export type TeamExpenseReportReceiptReference = {
+  dataUrl: string | null
+  expenseId: string
+  label: string
 }
 
 export type TeamExpenseFormOptions = {
@@ -229,6 +241,7 @@ function getCurrentYear(): number {
 }
 
 function resolveSelectedCrewFilter(input: {
+  defaultCrewFilter?: TeamExpenseCrewFilter
   requestedCrewFilter?: string
   requestedScope?: string
   teamExpensesVisible: boolean
@@ -249,7 +262,7 @@ function resolveSelectedCrewFilter(input: {
     return "you"
   }
 
-  return "all"
+  return input.defaultCrewFilter ?? "all"
 }
 
 function getVisibilityScopeForCrewFilter(
@@ -259,6 +272,7 @@ function getVisibilityScopeForCrewFilter(
 }
 
 function formatCrewSelectionLabel(input: {
+  currentProfileLabel: string
   currentProfileId: string
   memberOptions: TeamExpenseMemberOption[]
   selectedMemberId?: string
@@ -268,7 +282,7 @@ function formatCrewSelectionLabel(input: {
     input.selectedVisibilityScope === "mine" ||
     input.selectedMemberId === input.currentProfileId
   ) {
-    return "You"
+    return input.currentProfileLabel
   }
 
   if (input.selectedMemberId) {
@@ -328,6 +342,86 @@ function buildExpenseReceiptUrl(input: {
   }
 
   return `/api/expenses/${encodeURIComponent(input.expenseId)}/receipt?${params.toString()}`
+}
+
+function resolveReceiptImageMimeType(input: {
+  blobType: string
+  fileName: string | null
+  storagePath: string
+}): string {
+  const blobType = input.blobType.trim().toLowerCase()
+
+  if (blobType.startsWith("image/")) {
+    return blobType
+  }
+
+  const source = input.storagePath.toLowerCase()
+  const fileName = input.fileName?.toLowerCase() ?? ""
+
+  if (source.endsWith(".webp") || fileName.endsWith(".webp")) {
+    return "image/webp"
+  }
+
+  if (source.endsWith(".png") || fileName.endsWith(".png")) {
+    return "image/png"
+  }
+
+  if (
+    source.endsWith(".jpg") ||
+    source.endsWith(".jpeg") ||
+    fileName.endsWith(".jpg") ||
+    fileName.endsWith(".jpeg")
+  ) {
+    return "image/jpeg"
+  }
+
+  return "image/webp"
+}
+
+async function loadExpenseReceiptDataUrl(input: {
+  row: TeamExpenseRow
+  supabase: ServerSupabaseClient
+}): Promise<string | null> {
+  if (!input.row.receipt_bucket || !input.row.receipt_storage_path) {
+    return null
+  }
+
+  const { data, error } = await input.supabase.storage
+    .from(input.row.receipt_bucket)
+    .download(input.row.receipt_storage_path)
+
+  if (error || !data) {
+    return null
+  }
+
+  const arrayBuffer = await data.arrayBuffer()
+  const mimeType = resolveReceiptImageMimeType({
+    blobType: data.type,
+    fileName: input.row.receipt_file_name,
+    storagePath: input.row.receipt_storage_path,
+  })
+
+  return `data:${mimeType};base64,${Buffer.from(arrayBuffer).toString("base64")}`
+}
+
+async function loadExpenseReportReceiptReferences(input: {
+  rows: TeamExpenseRow[]
+  supabase: ServerSupabaseClient
+}): Promise<TeamExpenseReportReceiptReference[]> {
+  const receiptRows = input.rows.filter(
+    (row) => row.receipt_bucket && row.receipt_storage_path,
+  )
+
+  return Promise.all(
+    receiptRows.map(async (row, index) => ({
+      dataUrl: await loadExpenseReceiptDataUrl({
+        row,
+        supabase: input.supabase,
+      }),
+      expenseId: row.id,
+      label: `Receipt ${index + 1}`,
+    })),
+  )
 }
 
 async function loadTeamAndOrganization(input: {
@@ -579,6 +673,7 @@ export async function getTeamExpensesChromeData(input: {
   const teamExpensesScopeLocked = input.canManageTeamFinance
   const teamExpensesVisible = input.canManageTeamFinance || (team?.expenses_show_team_totals ?? false)
   const selectedCrewFilter = resolveSelectedCrewFilter({
+    defaultCrewFilter: input.canManageTeamFinance ? "all" : "you",
     requestedCrewFilter: input.requestedCrewFilter,
     requestedScope: input.requestedScope,
     teamExpensesVisible,
@@ -1010,7 +1105,7 @@ export async function getTeamExpensesReportData(input: {
   requestedYear?: number
 }): Promise<TeamExpensesReportData> {
   const supabase = await createServerSupabaseClient()
-  const [{ team }, context, chromeData] = await Promise.all([
+  const [{ organization, team }, context, chromeData] = await Promise.all([
     loadTeamAndOrganization({
       activeOrganizationId: input.activeOrganizationId,
       activeTeamId: input.activeTeamId,
@@ -1119,26 +1214,36 @@ export async function getTeamExpensesReportData(input: {
         (option) => option.profileId === chromeData.selectedMemberId,
       ) ?? null
     : null
+  const expenses = mapExpenseRows({
+    activeOrganizationId: input.activeOrganizationId,
+    activeTeamId: input.activeTeamId,
+    canManageTeamFinance: input.canManageTeamFinance,
+    canManageTeamSessions: input.canManageTeamSessions,
+    campById: context.campById,
+    currentProfileId: input.currentProfileId,
+    profileById,
+    rows: expenseRows,
+    venueByTeamVenueId: context.venueByTeamVenueId,
+  })
+  const receiptReferences = await loadExpenseReportReceiptReferences({
+    rows: expenseRows,
+    supabase,
+  })
+  const exportedByName = formatProfileName(exporterById.get(input.currentProfileId))
 
   return {
     campLabel: campOption?.label ?? null,
-    expenses: mapExpenseRows({
-      activeOrganizationId: input.activeOrganizationId,
-      activeTeamId: input.activeTeamId,
-      canManageTeamFinance: input.canManageTeamFinance,
-      canManageTeamSessions: input.canManageTeamSessions,
-      campById: context.campById,
-      currentProfileId: input.currentProfileId,
-      profileById,
-      rows: expenseRows,
-      venueByTeamVenueId: context.venueByTeamVenueId,
-    }),
-    exportedByName: formatProfileName(exporterById.get(input.currentProfileId)),
+    expenses,
+    exportedByName,
     exportedByRole: (membershipRow as TeamMembershipRoleRow | null)?.role ?? "team access",
     generatedAt: new Date().toISOString(),
     metrics,
     organizationCurrencyCode: chromeData.organizationCurrencyCode,
+    organizationLogoUrl: organization?.avatar_url ?? null,
+    organizationName: organization?.name ?? "Organization",
+    receiptReferences,
     selectedCrewLabel: formatCrewSelectionLabel({
+      currentProfileLabel: exportedByName,
       currentProfileId: input.currentProfileId,
       memberOptions: chromeData.memberOptions,
       selectedMemberId: chromeData.selectedMemberId,
@@ -1183,7 +1288,7 @@ export async function getTeamExpenseFormOptions(input: {
 
   return {
     canAssignMembers: input.canManageTeamFinance,
-    currencyOptions: [organizationCurrencyCode, "USD", "EUR", "GBP", "ARS", "BRL", "CLP"]
+    currencyOptions: [organizationCurrencyCode, ...COMMON_EXPENSE_CURRENCIES]
       .filter((value, index, values) => values.indexOf(value) === index),
     defaultAssignedToProfileId: input.currentProfileId,
     memberOptions: input.canManageTeamFinance
@@ -1203,6 +1308,7 @@ export async function getVenueExpensesTabData(input: {
   currentProfileId: string
   requestedCrewFilter?: string
   requestedMemberId?: string
+  requestedType?: string
   selectedYear: number
   teamVenueId: string
 }): Promise<{
@@ -1213,8 +1319,10 @@ export async function getVenueExpensesTabData(input: {
   metrics: TeamExpenseMetrics
   selectedCrewFilter: TeamExpenseCrewFilter
   selectedMemberId?: string
+  selectedType?: ExpenseType
   selectedVisibilityScope: ExpenseVisibilityScope
   teamExpensesVisible: boolean
+  typeOptions: Array<{ label: string; value: ExpenseType }>
 }> {
   const chromeData = await getTeamExpensesChromeData({
     activeOrganizationId: input.activeOrganizationId,
@@ -1224,6 +1332,7 @@ export async function getVenueExpensesTabData(input: {
     requestedCrewFilter: input.requestedCrewFilter,
     requestedMemberId: input.requestedMemberId,
     requestedScope: "team",
+    requestedType: input.requestedType,
     requestedVenueId: input.teamVenueId,
     requestedYear: input.selectedYear,
   })
@@ -1254,7 +1363,9 @@ export async function getVenueExpensesTabData(input: {
     metrics: resultsData.metrics,
     selectedCrewFilter: chromeData.selectedCrewFilter,
     selectedMemberId: chromeData.selectedMemberId,
+    selectedType: chromeData.selectedType,
     selectedVisibilityScope: chromeData.selectedVisibilityScope,
     teamExpensesVisible: chromeData.teamExpensesVisible,
+    typeOptions: chromeData.typeOptions,
   }
 }

@@ -2542,10 +2542,10 @@ export function UsersPageSkeleton() {
 export type VenueDetailSkeletonTab =
   | "camps"
   | "sessions"
+  | "wind-patterns"
+  | "assessments"
   | "reports"
   | "expenses"
-  | "assessments"
-  | "wind-patterns"
 
 const VENUE_DETAIL_SUMMARY_LABELS = [
   "Total Camps",
@@ -2562,23 +2562,24 @@ function formatVenueDetailSummarySkeletonLabel(
 }
 const VENUE_DETAIL_TABS: Array<{
   label: string
+  mobileLabel: string
   value: VenueDetailSkeletonTab
 }> = [
-  { label: "Camps", value: "camps" },
-  { label: "Sessions", value: "sessions" },
-  { label: "Reports", value: "reports" },
-  { label: "Expenses", value: "expenses" },
-  { label: "Assess", value: "assessments" },
-  { label: "Wind", value: "wind-patterns" },
+  { label: "Camps", mobileLabel: "Camps", value: "camps" },
+  { label: "Sessions", mobileLabel: "Sessions", value: "sessions" },
+  { label: "Wind Patterns", mobileLabel: "Wind", value: "wind-patterns" },
+  { label: "Assessments", mobileLabel: "Assess", value: "assessments" },
+  { label: "Reports", mobileLabel: "Reports", value: "reports" },
+  { label: "Expenses", mobileLabel: "Expenses", value: "expenses" },
 ]
 const VENUE_DETAIL_DEFAULT_MOBILE_TABS: VenueDetailSkeletonTab[] = [
   "camps",
   "sessions",
-  "reports",
+  "wind-patterns",
   "assessments",
 ]
 const VENUE_DETAIL_TAB_LABEL_BY_VALUE = new Map(
-  VENUE_DETAIL_TABS.map((tab) => [tab.value, tab.label]),
+  VENUE_DETAIL_TABS.map((tab) => [tab.value, tab.mobileLabel]),
 )
 
 function getVenueDetailMobileSkeletonTabs(
@@ -2588,7 +2589,7 @@ function getVenueDetailMobileSkeletonTabs(
     return VENUE_DETAIL_DEFAULT_MOBILE_TABS
   }
 
-  return ["camps", "sessions", "reports", selectedTab]
+  return ["camps", "sessions", "wind-patterns", selectedTab]
 }
 
 function formatVenueDetailSkeletonPanelTitle(input: {

@@ -22,16 +22,14 @@ export const TEAM_EXPENSE_TYPE_OPTIONS: Array<{
 export const COMMON_EXPENSE_CURRENCIES = [
   "USD",
   "EUR",
+  "DKK",
+  "PLN",
   "GBP",
+  "HUF",
   "ARS",
-  "BRL",
-  "CLP",
-  "UYU",
-  "CAD",
+  "JPY",
   "AUD",
   "NZD",
-  "CHF",
-  "JPY",
 ] as const
 
 const EXPENSE_TYPE_LABELS = new Map(

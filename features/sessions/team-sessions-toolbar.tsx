@@ -263,7 +263,7 @@ export function TeamSessionsToolbar({
               <FilterIcon className="size-4" />
             </Button>
           </DrawerTrigger>
-          <DrawerContent className="h-[85dvh] overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
+          <DrawerContent className="max-h-[85dvh] overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
             <DrawerHeader className="shrink-0">
               <DrawerTitle>Filters</DrawerTitle>
               <DrawerDescription>Set filters and apply.</DrawerDescription>

@@ -1,7 +1,15 @@
 "use client"
 
 import * as React from "react"
-import { FileImageIcon, Loader2Icon, PencilIcon, PlusIcon, UploadIcon, XIcon } from "lucide-react"
+import {
+  ChevronDownIcon,
+  FileImageIcon,
+  Loader2Icon,
+  PencilIcon,
+  PlusIcon,
+  UploadIcon,
+  XIcon,
+} from "lucide-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
@@ -50,6 +58,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
+import { cn } from "@/lib/utils"
 
 const RECEIPT_MAX_DIMENSION = 720
 const RECEIPT_MAX_BYTES = 2 * 1024 * 1024
@@ -266,6 +275,22 @@ function getInitialExpenseValue(input: {
   return input.fallback ?? ""
 }
 
+function getCurrencySymbol(currencyCode: string): string {
+  try {
+    const currencyPart = new Intl.NumberFormat("en-US", {
+      currency: currencyCode,
+      currencyDisplay: "narrowSymbol",
+      style: "currency",
+    })
+      .formatToParts(0)
+      .find((part) => part.type === "currency")
+
+    return currencyPart?.value ?? currencyCode
+  } catch {
+    return currencyCode
+  }
+}
+
 function buildOptimisticExpenseId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return `optimistic-expense-${crypto.randomUUID()}`
@@ -362,6 +387,7 @@ function ExpenseFormFields({
   selectedReceiptFile,
   selectedVenueId,
   setSelectedVenueId,
+  surface,
 }: {
   defaultExpenseDate: string
   disabled: boolean
@@ -376,15 +402,44 @@ function ExpenseFormFields({
   selectedReceiptFile: File | null
   selectedVenueId: string
   setSelectedVenueId: (value: string) => void
+  surface: ExpenseFormSurface
 }) {
   const selectedVenueOption = options.venueOptions.find(
     (option) => option.teamVenueId === selectedVenueId,
   )
   const assignedToProfileId =
     expense?.assignedToProfileId ?? options.defaultAssignedToProfileId
-  const inputClassName = "h-11 px-3 text-base md:text-sm"
-  const selectClassName =
-    "h-11 w-full rounded-lg border border-input bg-background px-3 text-base outline-none ring-ring/50 focus-visible:ring-[3px] md:text-sm"
+  const initialCurrencyCode = expense?.currencyCode ?? options.organizationCurrencyCode
+  const [selectedCurrencyCode, setSelectedCurrencyCode] =
+    React.useState(initialCurrencyCode)
+
+  React.useEffect(() => {
+    setSelectedCurrencyCode(initialCurrencyCode)
+  }, [initialCurrencyCode])
+
+  const selectedCurrencySymbol = getCurrencySymbol(selectedCurrencyCode)
+  const isDrawerSurface = surface === "drawer"
+  const inputClassName = isDrawerSurface ? "h-11 px-3 text-base md:text-sm" : undefined
+  const selectClassName = cn(
+    "w-full rounded-lg border border-input bg-background text-sm outline-none ring-ring/50 focus-visible:ring-[3px]",
+    isDrawerSurface ? "h-11 px-3 text-base md:text-sm" : "h-9 px-3",
+  )
+  const lockedVenueClassName = cn(
+    "flex items-center rounded-lg border border-input bg-muted/30",
+    isDrawerSurface ? "h-11 px-3 text-base md:text-sm" : "h-9 px-3 text-sm",
+  )
+  const amountControlClassName = cn(
+    "flex w-full items-center overflow-hidden rounded-lg border border-input bg-background transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30",
+    isDrawerSurface ? "h-11 text-base md:text-sm" : "h-9 text-sm",
+  )
+  const amountInputClassName = cn(
+    "h-full min-w-0 flex-1 rounded-none border-0 bg-transparent py-0 focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent",
+    isDrawerSurface ? "px-2.5 text-base md:text-sm" : "px-2.5 text-sm",
+  )
+  const currencySelectClassName = cn(
+    "h-full cursor-pointer appearance-none bg-transparent py-0 pl-3 text-center font-medium text-foreground outline-none",
+    isDrawerSurface ? "min-w-24 pr-8 text-base md:text-sm" : "min-w-20 pr-7 text-sm",
+  )
 
   return (
     <fieldset disabled={disabled} className="grid gap-4 disabled:pointer-events-none disabled:opacity-70">
@@ -433,15 +488,15 @@ function ExpenseFormFields({
 
       <div className="grid gap-4 sm:grid-cols-2">
         {lockedTeamVenueId ? (
-          <div className="space-y-2">
+          <div className={cn("space-y-2", !options.canAssignMembers && "sm:col-span-2")}>
             <Label>Venue</Label>
             <input type="hidden" name="teamVenueId" value={lockedTeamVenueId} />
-            <div className="flex h-11 items-center rounded-lg border border-input bg-muted/30 px-3 text-base md:text-sm">
+            <div className={lockedVenueClassName}>
               {selectedVenueOption?.venueName ?? "Selected venue"}
             </div>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className={cn("space-y-2", !options.canAssignMembers && "sm:col-span-2")}>
             <Label htmlFor="expense-venue">Venue</Label>
             <select
               id="expense-venue"
@@ -482,39 +537,46 @@ function ExpenseFormFields({
         ) : null}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-[1fr_9rem]">
-        <div className="space-y-2">
-          <Label htmlFor="expense-amount">Amount</Label>
+      <div className="space-y-2">
+        <Label htmlFor="expense-amount">Amount</Label>
+        <div className={amountControlClassName}>
+          <span className="shrink-0 pl-3 text-muted-foreground">
+            {selectedCurrencySymbol}
+          </span>
           <Input
             id="expense-amount"
             name="amountLocal"
             type="number"
             min="0.01"
             step="0.01"
+            inputMode="decimal"
+            placeholder="0.00"
             required
             defaultValue={getInitialExpenseValue({
               expense,
               key: "amountLocal",
             })}
-            className={inputClassName}
+            className={amountInputClassName}
           />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="expense-currency">Currency</Label>
-          <select
-            id="expense-currency"
-            name="currencyCode"
-            required
-            defaultValue={expense?.currencyCode ?? options.organizationCurrencyCode}
-            className={selectClassName}
-          >
-            {options.currencyOptions.map((currency) => (
-              <option key={currency} value={currency}>
-                {currency}
-              </option>
-            ))}
-          </select>
+          <div className="h-6 w-px shrink-0 bg-border" aria-hidden="true" />
+          <div className="relative h-full shrink-0">
+            <select
+              id="expense-currency"
+              name="currencyCode"
+              required
+              value={selectedCurrencyCode}
+              aria-label="Currency"
+              onChange={(event) => setSelectedCurrencyCode(event.currentTarget.value)}
+              className={currencySelectClassName}
+            >
+              {options.currencyOptions.map((currency) => (
+                <option key={currency} value={currency}>
+                  {currency}
+                </option>
+              ))}
+            </select>
+            <ChevronDownIcon className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          </div>
         </div>
       </div>
 
@@ -741,6 +803,8 @@ function ExpenseFormBody({
       ? addOptimisticTeamExpense(optimisticExpense)
       : null
 
+    onOpenChange(false)
+
     if (selectedReceiptFile) {
       try {
         setReceiptAttachmentState("processing")
@@ -756,6 +820,7 @@ function ExpenseFormBody({
         toast.error(
           error instanceof Error ? error.message : "Could not prepare receipt image.",
         )
+        onOpenChange(true)
         setIsSaving(false)
         return
       }
@@ -774,12 +839,12 @@ function ExpenseFormBody({
         removeOptimisticTeamExpense(optimisticExpenseId)
       }
       toast.error(result.message)
+      onOpenChange(true)
       setIsSaving(false)
       return
     }
 
     toast.success(result.message)
-    onOpenChange(false)
     router.refresh()
     resetReceiptInput()
     if (optimisticExpenseId) {
@@ -810,6 +875,7 @@ function ExpenseFormBody({
           selectedReceiptFile={selectedReceiptFile}
           selectedVenueId={selectedVenueId}
           setSelectedVenueId={setSelectedVenueId}
+          surface={surface}
         />
       </div>
 
@@ -873,6 +939,8 @@ function ExpenseDialogTrigger({
   return (
     <Button
       type="button"
+      variant={mode === "create" ? "outline" : "ghost"}
+      size="sm"
       disabled={disabled}
       aria-haspopup="dialog"
       aria-expanded={open}
@@ -888,8 +956,11 @@ export function ExpenseFormDialog({
   defaultTeamVenueId,
   disabled,
   expense = null,
+  hideTrigger = false,
   lockTeamVenue = false,
   mode,
+  onOpenChange,
+  open,
   options,
   scope,
   selectedYear,
@@ -899,27 +970,35 @@ export function ExpenseFormDialog({
   defaultTeamVenueId?: string
   disabled?: boolean
   expense?: TeamExpenseListItem | null
+  hideTrigger?: boolean
   lockTeamVenue?: boolean
   mode: ExpenseFormMode
+  onOpenChange?: (open: boolean) => void
+  open?: boolean
   options: TeamExpenseFormOptions
   scope: NavigationScope
   selectedYear?: number
   surface: ExpenseFormSurface
   triggerVariant?: "button" | "fab" | "icon"
 }) {
-  const [open, setOpen] = React.useState(false)
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false)
+  const isOpenControlled = typeof open === "boolean" && typeof onOpenChange === "function"
+  const isOpen = isOpenControlled ? open : uncontrolledOpen
+  const setIsOpen = isOpenControlled ? onOpenChange : setUncontrolledOpen
   const title = mode === "create" ? "New expense" : "Edit expense"
 
   if (surface === "drawer") {
     return (
-      <Drawer open={open} onOpenChange={setOpen}>
-        <ExpenseDialogTrigger
-          disabled={disabled}
-          mode={mode}
-          open={open}
-          triggerVariant={triggerVariant}
-          onClick={() => setOpen(true)}
-        />
+      <Drawer open={isOpen} onOpenChange={setIsOpen}>
+        {!hideTrigger ? (
+          <ExpenseDialogTrigger
+            disabled={disabled}
+            mode={mode}
+            open={isOpen}
+            triggerVariant={triggerVariant}
+            onClick={() => setIsOpen(true)}
+          />
+        ) : null}
         <DrawerContent className="flex max-h-[85dvh] min-h-0 flex-col overflow-hidden data-[vaul-drawer-direction=bottom]:max-h-[85dvh]">
           <DrawerHeader className="px-4 sm:px-5">
             <DrawerTitle>{title}</DrawerTitle>
@@ -930,7 +1009,7 @@ export function ExpenseFormDialog({
               expense={expense}
               lockTeamVenue={lockTeamVenue}
               mode={mode}
-              onOpenChange={setOpen}
+              onOpenChange={setIsOpen}
               options={options}
               scope={scope}
               selectedYear={selectedYear}
@@ -943,14 +1022,16 @@ export function ExpenseFormDialog({
   }
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <ExpenseDialogTrigger
-        disabled={disabled}
-        mode={mode}
-        open={open}
-        triggerVariant={triggerVariant}
-        onClick={() => setOpen(true)}
-      />
+    <Sheet open={isOpen} onOpenChange={setIsOpen}>
+      {!hideTrigger ? (
+        <ExpenseDialogTrigger
+          disabled={disabled}
+          mode={mode}
+          open={isOpen}
+          triggerVariant={triggerVariant}
+          onClick={() => setIsOpen(true)}
+        />
+      ) : null}
       <SheetContent side="right" className="flex h-full flex-col overflow-hidden sm:max-w-xl">
         <SheetHeader className="px-4 sm:px-5">
           <SheetTitle>{title}</SheetTitle>
@@ -961,7 +1042,7 @@ export function ExpenseFormDialog({
             expense={expense}
             lockTeamVenue={lockTeamVenue}
             mode={mode}
-            onOpenChange={setOpen}
+            onOpenChange={setIsOpen}
             options={options}
             scope={scope}
             selectedYear={selectedYear}

@@ -85,9 +85,6 @@ export function WindPatternsTable({
             Wind Patterns
           </h1>
           <h2 className="hidden text-lg font-semibold md:block">Wind Patterns</h2>
-          <p className="hidden text-sm text-muted-foreground md:block">
-            Reusable venue patterns for this team.
-          </p>
         </div>
         {toolbar ? <div className="shrink-0">{toolbar}</div> : null}
       </div>

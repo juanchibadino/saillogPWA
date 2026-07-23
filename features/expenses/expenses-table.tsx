@@ -1,11 +1,12 @@
 "use client"
 
-import { useEffect, useState, useTransition } from "react"
+import { type FormEvent, useEffect, useState, useTransition } from "react"
 import {
   DownloadIcon,
   ExternalLinkIcon,
   Loader2Icon,
-  MoreVerticalIcon,
+  MoreHorizontalIcon,
+  PencilIcon,
   Trash2Icon,
 } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
@@ -13,7 +14,15 @@ import { toast } from "sonner"
 
 import { GradientCard } from "@/components/shared/gradient-card"
 import { Badge } from "@/components/ui/badge"
-import { Button, buttonVariants } from "@/components/ui/button"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -65,6 +74,9 @@ type PendingPageNavigation = {
   fromPage: number
   toPage: number
 }
+
+const EXPENSE_ACTION_MENU_ITEM_CLASS =
+  "min-h-11 cursor-pointer gap-3 px-3 py-2 text-base md:min-h-8 md:gap-2 md:px-2 md:py-1 md:text-sm"
 
 function isOptimisticExpenseVisible(input: {
   expense: OptimisticTeamExpense
@@ -152,62 +164,108 @@ function buildExpensesPaginationItems(
 
 function ExpenseMetricsStrip({
   metrics,
-  visibilityScope,
 }: {
   metrics: TeamExpenseMetrics
-  visibilityScope: ExpenseVisibilityScope
 }) {
-  if (visibilityScope === "team" && metrics.teamTotalLabel) {
-    return (
-      <GradientCard className="px-4 py-3">
-        <p className="text-xs font-medium uppercase text-muted-foreground">Team Expenses</p>
-        <p className="mt-1 text-lg font-semibold">{metrics.teamTotalLabel}</p>
-      </GradientCard>
-    )
-  }
-
   return (
-    <div className="grid gap-2 md:grid-cols-2">
-      <GradientCard className="px-4 py-3">
+    <div className={cn("grid gap-4", metrics.teamTotalLabel ? "md:grid-cols-2" : null)}>
+      <GradientCard className="gap-1 px-4 py-3">
         <p className="text-xs font-medium uppercase text-muted-foreground">My Expenses</p>
-        <p className="mt-1 text-lg font-semibold">{metrics.myTotalLabel}</p>
+        <p className="text-lg font-semibold">{metrics.myTotalLabel}</p>
       </GradientCard>
       {metrics.teamTotalLabel ? (
-        <GradientCard className="px-4 py-3">
+        <GradientCard className="gap-1 px-4 py-3">
           <p className="text-xs font-medium uppercase text-muted-foreground">Team Expenses</p>
-          <p className="mt-1 text-lg font-semibold">{metrics.teamTotalLabel}</p>
+          <p className="text-lg font-semibold">{metrics.teamTotalLabel}</p>
         </GradientCard>
       ) : null}
     </div>
   )
 }
 
-function ExpenseReceiptActions({ expense }: { expense: TeamExpenseListItem }) {
-  if (!expense.receiptUrl) {
-    return <span className="text-xs text-muted-foreground">No receipt</span>
+function DeleteExpenseDialog({
+  expense,
+  scope,
+  open,
+  onOpenChange,
+}: {
+  expense: TeamExpenseListItem
+  scope: NavigationScope
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const router = useRouter()
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  async function handleDelete(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+
+    if (isDeleting || !expense.canDelete) {
+      return
+    }
+
+    setIsDeleting(true)
+
+    const formData = new FormData(event.currentTarget)
+    const result = await deleteTeamExpenseAction(formData)
+
+    if (!result.ok) {
+      toast.error(result.message)
+      setIsDeleting(false)
+      return
+    }
+
+    toast.success(result.message)
+    onOpenChange(false)
+    router.refresh()
+    setIsDeleting(false)
   }
 
   return (
-    <div className="flex items-center justify-end gap-1">
-      <a
-        href={expense.receiptUrl}
-        target="_blank"
-        rel="noreferrer"
-        aria-label={`Open receipt for ${expense.vendor}`}
-        className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "h-9 w-9")}
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="sm:max-w-md"
+        forceOverlayRender
+        overlayClassName="bg-black/20 backdrop-blur-sm supports-backdrop-filter:backdrop-blur-sm"
       >
-        <ExternalLinkIcon className="size-4" />
-      </a>
-      {expense.receiptDownloadUrl ? (
-        <a
-          href={expense.receiptDownloadUrl}
-          aria-label={`Download receipt for ${expense.vendor}`}
-          className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "h-9 w-9")}
-        >
-          <DownloadIcon className="size-4" />
-        </a>
-      ) : null}
-    </div>
+        <DialogHeader>
+          <DialogTitle>Delete expense</DialogTitle>
+          <DialogDescription>
+            This will permanently delete <strong>{expense.vendor}</strong>.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={(event) => void handleDelete(event)} className="space-y-4">
+          <input type="hidden" name="expenseId" value={expense.id} />
+          <input type="hidden" name="scopeOrgId" value={scope.activeOrgId} />
+          {scope.activeTeamId ? (
+            <input type="hidden" name="scopeTeamId" value={scope.activeTeamId} />
+          ) : null}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 w-full sm:h-8 sm:w-auto"
+              disabled={isDeleting}
+              onClick={() => onOpenChange(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="destructive"
+              className="h-11 w-full sm:h-8 sm:w-auto"
+              disabled={isDeleting || !expense.canDelete}
+              aria-busy={isDeleting}
+            >
+              {isDeleting ? <Loader2Icon className="size-4 animate-spin" /> : null}
+              {isDeleting ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -222,108 +280,116 @@ function ExpenseActionsMenu({
   scope: NavigationScope
   surface?: "drawer" | "sheet"
 }) {
-  const router = useRouter()
-  const [isDeleting, setIsDeleting] = useState(false)
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false)
+  const [isReceiptDownloading, setIsReceiptDownloading] = useState(false)
 
-  async function handleDelete(): Promise<void> {
-    if (isDeleting || !expense.canDelete) {
-      return
-    }
-
-    const confirmed = window.confirm(`Delete expense from ${expense.vendor}?`)
-
-    if (!confirmed) {
-      return
-    }
-
-    setIsDeleting(true)
-    const formData = new FormData()
-    formData.set("expenseId", expense.id)
-    formData.set("scopeOrgId", scope.activeOrgId)
-
-    if (scope.activeTeamId) {
-      formData.set("scopeTeamId", scope.activeTeamId)
-    }
-
-    const result = await deleteTeamExpenseAction(formData)
-
-    if (!result.ok) {
-      toast.error(result.message)
-      setIsDeleting(false)
-      return
-    }
-
-    toast.success(result.message)
-    router.refresh()
-    setIsDeleting(false)
+  function handleReceiptDownloadClick(): void {
+    setIsReceiptDownloading(true)
+    window.setTimeout(() => {
+      setIsReceiptDownloading(false)
+    }, 1200)
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button type="button" variant="ghost" size="icon-sm" disabled={isDeleting} />
-        }
-      >
-        {isDeleting ? (
-          <Loader2Icon className="size-4 animate-spin" />
-        ) : (
-          <MoreVerticalIcon className="size-4" />
-        )}
-        <span className="sr-only">Expense actions</span>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-40">
-        {expense.receiptUrl ? (
-          <>
-            <DropdownMenuLinkItem
-              href={expense.receiptUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="gap-2"
-            >
-              <ExternalLinkIcon className="size-4" />
-              Open receipt
-            </DropdownMenuLinkItem>
-            {expense.receiptDownloadUrl ? (
-              <DropdownMenuLinkItem href={expense.receiptDownloadUrl} className="gap-2">
-                <DownloadIcon className="size-4" />
-                Download receipt
-              </DropdownMenuLinkItem>
-            ) : null}
-          </>
-        ) : null}
-
-        {expense.canEdit ? (
-          <DropdownMenuItem
-            onSelect={(event) => {
-              event.preventDefault()
-            }}
-          >
-            <ExpenseFormDialog
-              expense={expense}
-              mode="edit"
-              options={formOptions}
-              scope={scope}
-              surface={surface}
-              triggerVariant="button"
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              disabled={isReceiptDownloading}
             />
-          </DropdownMenuItem>
-        ) : null}
+          }
+        >
+          {isReceiptDownloading ? (
+            <Loader2Icon className="size-4 animate-spin" />
+          ) : (
+            <MoreHorizontalIcon className="size-4" />
+          )}
+          <span className="sr-only">Expense actions</span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-40">
+          {expense.receiptUrl ? (
+            <>
+              {expense.receiptDownloadUrl ? (
+                <DropdownMenuLinkItem
+                  href={expense.receiptDownloadUrl}
+                  className={EXPENSE_ACTION_MENU_ITEM_CLASS}
+                  onClick={handleReceiptDownloadClick}
+                >
+                  {isReceiptDownloading ? (
+                    <Loader2Icon className="size-4 animate-spin" />
+                  ) : (
+                    <DownloadIcon className="size-4" />
+                  )}
+                  {isReceiptDownloading ? "Downloading..." : "Download"}
+                </DropdownMenuLinkItem>
+              ) : null}
+              <DropdownMenuLinkItem
+                href={expense.receiptUrl}
+                target="_blank"
+                rel="noreferrer"
+                className={EXPENSE_ACTION_MENU_ITEM_CLASS}
+              >
+                <ExternalLinkIcon className="size-4" />
+                Open
+              </DropdownMenuLinkItem>
+            </>
+          ) : null}
 
-        {expense.canDelete ? (
-          <DropdownMenuItem
-            variant="destructive"
-            disabled={isDeleting}
-            onClick={() => {
-              void handleDelete()
-            }}
-          >
-            <Trash2Icon className="size-4" />
-            Delete
-          </DropdownMenuItem>
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
+          {expense.canEdit ? (
+            <DropdownMenuItem
+              className={EXPENSE_ACTION_MENU_ITEM_CLASS}
+              onClick={() => {
+                setIsEditOpen(true)
+              }}
+            >
+              <PencilIcon className="size-4" />
+              Edit
+            </DropdownMenuItem>
+          ) : null}
+
+          {expense.canDelete ? (
+            <DropdownMenuItem
+              variant="destructive"
+              className={EXPENSE_ACTION_MENU_ITEM_CLASS}
+              onClick={() => {
+                setIsDeleteOpen(true)
+              }}
+            >
+              <Trash2Icon className="size-4" />
+              Delete
+            </DropdownMenuItem>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {expense.canEdit ? (
+        <ExpenseFormDialog
+          expense={expense}
+          hideTrigger
+          mode="edit"
+          onOpenChange={setIsEditOpen}
+          open={isEditOpen}
+          options={formOptions}
+          scope={scope}
+          surface={surface}
+          triggerVariant="button"
+        />
+      ) : null}
+
+      {expense.canDelete ? (
+        <DeleteExpenseDialog
+          expense={expense}
+          scope={scope}
+          open={isDeleteOpen}
+          onOpenChange={setIsDeleteOpen}
+        />
+      ) : null}
+    </>
   )
 }
 
@@ -471,9 +537,6 @@ function OptimisticExpenseTableRow({
       <TableCell className="text-right font-medium">
         {expense.convertedAmountLabel}
       </TableCell>
-      <TableCell className="text-right text-xs text-muted-foreground">
-        {expense.receiptFileName ? "Uploading" : "No receipt"}
-      </TableCell>
       <TableCell className="text-right">
         <div
           role="status"
@@ -493,6 +556,7 @@ export function TeamExpensesTable({
   formOptions,
   hasNextPage,
   hasPreviousPage,
+  isFiltering = false,
   metrics,
   pageCount,
   scope,
@@ -507,6 +571,7 @@ export function TeamExpensesTable({
   formOptions: TeamExpenseFormOptions
   hasNextPage: boolean
   hasPreviousPage: boolean
+  isFiltering?: boolean
   metrics: TeamExpenseMetrics
   pageCount: number
   scope: NavigationScope
@@ -537,10 +602,12 @@ export function TeamExpensesTable({
   const paginationItems = buildExpensesPaginationItems(currentPage, pageCount)
   const isPaginationBusy =
     isPageNavigationPending || pendingPageNavigation?.fromPage === currentPage
+  const isTableBusy = isPaginationBusy || isFiltering
   const previousPage = Math.max(1, currentPage - 1)
   const nextPage = Math.min(pageCount, currentPage + 1)
-  const columnCount = visibilityScope === "team" ? 9 : 8
+  const columnCount = visibilityScope === "team" ? 8 : 7
   const hasVisibleExpenses = expenses.length > 0 || visibleOptimisticExpenses.length > 0
+  const organizationCurrencyCode = formOptions.organizationCurrencyCode
 
   useEffect(() => {
     const matchedOptimisticExpenseIds = optimisticExpenses
@@ -565,7 +632,7 @@ export function TeamExpensesTable({
 
   function navigateToPage(nextPageNumber: number): void {
     if (
-      isPaginationBusy ||
+      isTableBusy ||
       nextPageNumber === currentPage ||
       nextPageNumber < 1 ||
       nextPageNumber > pageCount
@@ -584,40 +651,60 @@ export function TeamExpensesTable({
 
   return (
     <section className="space-y-4">
-      <ExpenseMetricsStrip metrics={metrics} visibilityScope={visibilityScope} />
+      <ExpenseMetricsStrip metrics={metrics} />
 
-      <div className="space-y-2 md:hidden">
-        {!hasVisibleExpenses ? (
-          <GradientCard className="px-4 py-6 text-sm text-muted-foreground">
-            No expenses found for this view.
-          </GradientCard>
-        ) : (
-          <>
-            {visibleOptimisticExpenses.map((expense) => (
-              <OptimisticExpenseMobileCard
-                key={expense.id}
-                expense={expense}
-                visibilityScope={visibilityScope}
-              />
-            ))}
-            {expenses.map((expense) => (
-              <ExpenseMobileCard
-                key={expense.id}
-                expense={expense}
-                formOptions={formOptions}
-                scope={scope}
-                visibilityScope={visibilityScope}
-              />
-            ))}
-          </>
-        )}
+      <div aria-busy={isFiltering} className="relative space-y-2 md:hidden">
+        <div
+          aria-disabled={isFiltering}
+          className={cn(
+            "space-y-2 transition-opacity",
+            isFiltering && "pointer-events-none select-none opacity-40",
+          )}
+        >
+          {!hasVisibleExpenses ? (
+            <GradientCard className="px-4 py-6 text-sm text-muted-foreground">
+              No expenses found for this view.
+            </GradientCard>
+          ) : (
+            <>
+              {visibleOptimisticExpenses.map((expense) => (
+                <OptimisticExpenseMobileCard
+                  key={expense.id}
+                  expense={expense}
+                  visibilityScope={visibilityScope}
+                />
+              ))}
+              {expenses.map((expense) => (
+                <ExpenseMobileCard
+                  key={expense.id}
+                  expense={expense}
+                  formOptions={formOptions}
+                  scope={scope}
+                  visibilityScope={visibilityScope}
+                />
+              ))}
+            </>
+          )}
+        </div>
+
+        {isFiltering ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/20">
+            <div
+              role="status"
+              aria-label="Loading filtered expenses"
+              className="flex size-11 items-center justify-center rounded-full border bg-background/90 text-muted-foreground shadow-sm"
+            >
+              <Loader2Icon className="size-5 animate-spin" />
+            </div>
+          </div>
+        ) : null}
 
         {hasNextPage ? (
           <div className="pb-4 pt-3">
             <Button
               type="button"
               variant="outline"
-              disabled={isLoadingMore}
+              disabled={isLoadingMore || isFiltering}
               aria-label="Load more expenses"
               className="h-11 w-full"
               onClick={() => {
@@ -634,14 +721,14 @@ export function TeamExpensesTable({
       </div>
 
       <GradientCard
-        aria-busy={isPaginationBusy}
+        aria-busy={isTableBusy}
         className="relative hidden overflow-hidden p-0 md:block"
       >
         <div
-          aria-disabled={isPaginationBusy}
+          aria-disabled={isTableBusy}
           className={cn(
             "transition-opacity",
-            isPaginationBusy && "pointer-events-none select-none opacity-40",
+            isTableBusy && "pointer-events-none select-none opacity-40",
           )}
         >
           <Table>
@@ -653,8 +740,7 @@ export function TeamExpensesTable({
                 {visibilityScope === "team" ? <TableHead>Member</TableHead> : null}
                 <TableHead>Type</TableHead>
                 <TableHead className="text-right">Local</TableHead>
-                <TableHead className="text-right">Converted</TableHead>
-                <TableHead className="w-28 text-right">Receipt</TableHead>
+                <TableHead className="text-right">{organizationCurrencyCode}</TableHead>
                 <TableHead className="w-12 text-right" />
               </TableRow>
             </TableHeader>
@@ -706,9 +792,6 @@ export function TeamExpensesTable({
                         {expense.convertedAmountLabel}
                       </TableCell>
                       <TableCell className="text-right">
-                        <ExpenseReceiptActions expense={expense} />
-                      </TableCell>
-                      <TableCell className="text-right">
                         <ExpenseActionsMenu
                           expense={expense}
                           formOptions={formOptions}
@@ -723,11 +806,11 @@ export function TeamExpensesTable({
           </Table>
         </div>
 
-        {isPaginationBusy ? (
+        {isTableBusy ? (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/20">
             <div
               role="status"
-              aria-label="Loading expenses"
+              aria-label={isFiltering ? "Loading filtered expenses" : "Loading expenses"}
               className="flex size-11 items-center justify-center rounded-full border bg-background/90 text-muted-foreground shadow-sm"
             >
               <Loader2Icon className="size-5 animate-spin" />
@@ -741,8 +824,8 @@ export function TeamExpensesTable({
           <PaginationContent>
             <PaginationItem>
               <PaginationPrevious
-                aria-disabled={!hasPreviousPage || isPaginationBusy}
-                disabled={!hasPreviousPage || isPaginationBusy}
+                aria-disabled={!hasPreviousPage || isTableBusy}
+                disabled={!hasPreviousPage || isTableBusy}
                 onClick={(event) => {
                   event.preventDefault()
                   if (hasPreviousPage) {
@@ -757,7 +840,7 @@ export function TeamExpensesTable({
                   <PaginationLink
                     isActive={item === currentPage}
                     aria-current={item === currentPage ? "page" : undefined}
-                    disabled={isPaginationBusy}
+                    disabled={isTableBusy}
                     onClick={(event) => {
                       event.preventDefault()
                       navigateToPage(item)
@@ -774,8 +857,8 @@ export function TeamExpensesTable({
             )}
             <PaginationItem>
               <PaginationNext
-                aria-disabled={!hasNextPage || isPaginationBusy}
-                disabled={!hasNextPage || isPaginationBusy}
+                aria-disabled={!hasNextPage || isTableBusy}
+                disabled={!hasNextPage || isTableBusy}
                 onClick={(event) => {
                   event.preventDefault()
                   if (hasNextPage) {

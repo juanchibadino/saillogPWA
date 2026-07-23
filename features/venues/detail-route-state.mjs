@@ -1,3 +1,8 @@
+import {
+  normalizeTeamExpenseCrewFilter,
+  normalizeTeamExpenseType,
+} from "../expenses/list-route-state.mjs"
+
 export const VENUE_DETAIL_TABS = [
   "camps",
   "sessions",
@@ -58,7 +63,9 @@ export function resolveVenueDetailRouteRequest(input) {
     requestedPage: normalizeVenueDetailPage(input.pageParam),
     requestedLoadMoreMode: input.loadMoreParam === "1",
     requestedHighlight: resolveVenueDetailHighlightFilter(input.highlightParam),
+    requestedCrewFilter: normalizeTeamExpenseCrewFilter(input.crewParam),
     requestedMemberId: input.memberParam || undefined,
+    requestedType: normalizeTeamExpenseType(input.typeParam),
   }
 }
 
@@ -94,7 +101,35 @@ export function buildVenueDetailPageHref(input) {
     }
   }
 
-  params.delete("crew")
+  if (input.nextCrewFilter === null) {
+    params.delete("crew")
+  } else if (typeof input.nextCrewFilter === "string") {
+    const crewFilter = normalizeTeamExpenseCrewFilter(input.nextCrewFilter)
+
+    if (crewFilter) {
+      params.set("crew", crewFilter)
+    } else {
+      params.delete("crew")
+    }
+  }
+
+  if (input.nextExpenseType === null) {
+    params.delete("type")
+  } else if (typeof input.nextExpenseType === "string") {
+    const expenseType = normalizeTeamExpenseType(input.nextExpenseType)
+
+    if (expenseType) {
+      params.set("type", expenseType)
+    } else {
+      params.delete("type")
+    }
+  }
+
+  const existingCrewFilter = params.get("crew")
+
+  if (existingCrewFilter && !normalizeTeamExpenseCrewFilter(existingCrewFilter)) {
+    params.delete("crew")
+  }
 
   const resolvedTab = input.nextTab ?? params.get("tab")
 
@@ -104,7 +139,9 @@ export function buildVenueDetailPageHref(input) {
   }
 
   if (resolvedTab !== "expenses") {
+    params.delete("crew")
     params.delete("member")
+    params.delete("type")
   }
 
   const shouldResetPage =
@@ -112,7 +149,9 @@ export function buildVenueDetailPageHref(input) {
     typeof input.nextTab !== "undefined" ||
     typeof input.nextYear !== "undefined" ||
     typeof input.nextHighlight !== "undefined" ||
-    typeof input.nextMemberId !== "undefined"
+    typeof input.nextCrewFilter !== "undefined" ||
+    typeof input.nextMemberId !== "undefined" ||
+    typeof input.nextExpenseType !== "undefined"
 
   if (shouldResetPage) {
     params.delete("page")

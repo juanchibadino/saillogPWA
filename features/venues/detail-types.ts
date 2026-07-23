@@ -183,8 +183,10 @@ export type VenueDetailExpensesTabData = {
   metrics: TeamExpenseMetrics;
   selectedCrewFilter: TeamExpenseCrewFilter;
   selectedMemberId?: string;
+  selectedType?: TeamExpenseListItem["expenseType"];
   selectedVisibilityScope: "mine" | "team";
   teamExpensesVisible: boolean;
+  typeOptions: Array<{ label: string; value: TeamExpenseListItem["expenseType"] }>;
 };
 
 export type VenueDetailTabDataByTab = {
