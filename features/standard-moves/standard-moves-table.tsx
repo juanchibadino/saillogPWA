@@ -11,6 +11,10 @@ import type {
   TeamStandardMoveStatusFilter,
 } from "@/features/standard-moves/data"
 import { buildTeamStandardMovesPageHref } from "@/features/standard-moves/list-route-state.mjs"
+import {
+  NAVIGATION_SCOPE_ORG_QUERY_KEY,
+  NAVIGATION_SCOPE_TEAM_QUERY_KEY,
+} from "@/lib/navigation/constants"
 import type { NavigationScope } from "@/lib/navigation/types"
 import { cn } from "@/lib/utils"
 import { GradientCard } from "@/components/shared/gradient-card"
@@ -41,6 +45,31 @@ type PendingPageNavigation = {
   toPage: number
 }
 
+type StandardMoveUsageCamp = {
+  id: string
+  name: string
+  usageCount: number
+}
+
+type StandardMoveUsageData = {
+  itemId: string
+  usageCount: number
+  camps: StandardMoveUsageCamp[]
+}
+
+type StandardMoveUsageLoadState =
+  | {
+      status: "loading"
+    }
+  | {
+      status: "loaded"
+      data: StandardMoveUsageData
+    }
+  | {
+      status: "error"
+      message: string
+    }
+
 function formatDateTimeLabel(value: string): string {
   const date = new Date(value)
 
@@ -67,6 +96,70 @@ function formatDateTimeLabel(value: string): string {
   return `${month}/${day}/${year} ${hour}:${minute}`
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+function isStandardMoveUsageCamp(value: unknown): value is StandardMoveUsageCamp {
+  if (!isRecord(value)) {
+    return false
+  }
+
+  return (
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.usageCount === "number"
+  )
+}
+
+function isStandardMoveUsageData(value: unknown): value is StandardMoveUsageData {
+  if (!isRecord(value)) {
+    return false
+  }
+
+  return (
+    typeof value.itemId === "string" &&
+    typeof value.usageCount === "number" &&
+    Array.isArray(value.camps) &&
+    value.camps.every(isStandardMoveUsageCamp)
+  )
+}
+
+function buildStandardMoveUsageUrl(input: {
+  scope: NavigationScope
+  standardMoveId: string
+}): string | null {
+  if (input.scope.activeTeamId === null) {
+    return null
+  }
+
+  const params = new URLSearchParams()
+  params.set(NAVIGATION_SCOPE_ORG_QUERY_KEY, input.scope.activeOrgId)
+  params.set(NAVIGATION_SCOPE_TEAM_QUERY_KEY, input.scope.activeTeamId)
+
+  return `/api/team-standard-moves/${encodeURIComponent(
+    input.standardMoveId,
+  )}/usage?${params.toString()}`
+}
+
+async function resolveStandardMoveUsageError(response: Response): Promise<string> {
+  try {
+    const payload: unknown = await response.json()
+
+    if (isRecord(payload) && typeof payload.detail === "string") {
+      return payload.detail
+    }
+
+    if (isRecord(payload) && typeof payload.error === "string") {
+      return payload.error
+    }
+  } catch {
+    // Ignore malformed error bodies and use the HTTP status fallback.
+  }
+
+  return `Could not load camp usage (${response.status})`
+}
+
 function renderStatusBadge(isActive: boolean) {
   if (isActive) {
     return (
@@ -77,6 +170,79 @@ function renderStatusBadge(isActive: boolean) {
   }
 
   return <Badge variant="secondary">Archived</Badge>
+}
+
+function StandardMoveCampUsagePanel({
+  standardMove,
+  usageState,
+  onRetry,
+}: {
+  standardMove: TeamStandardMoveListItem
+  usageState: StandardMoveUsageLoadState | undefined
+  onRetry: () => void
+}) {
+  if (standardMove.usageCount === 0) {
+    return (
+      <div className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
+        Not used in camps yet.
+      </div>
+    )
+  }
+
+  if (!usageState || usageState.status === "loading") {
+    return (
+      <div className="space-y-2 rounded-lg border border-dashed px-3 py-2">
+        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+          <Loader2Icon className="size-3.5 animate-spin" />
+          <span>Loading camps...</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <div className="h-6 w-24 rounded-full bg-muted" />
+          <div className="h-6 w-32 rounded-full bg-muted" />
+        </div>
+      </div>
+    )
+  }
+
+  if (usageState.status === "error") {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-destructive/30 px-3 py-2 text-xs">
+        <span className="text-destructive">{usageState.message}</span>
+        <Button
+          type="button"
+          variant="outline"
+          size="xs"
+          onClick={(event) => {
+            event.stopPropagation()
+            onRetry()
+          }}
+        >
+          Retry
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-dashed px-3 py-2">
+      <p className="text-xs font-medium text-muted-foreground">Used in camps</p>
+      {usageState.data.camps.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No camps found for this usage.</p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {usageState.data.camps.map((camp) => (
+            <Badge
+              key={camp.id}
+              variant="outline"
+              className="max-w-full whitespace-normal break-words px-2.5 py-1 text-xs"
+            >
+              {camp.usageCount > 1 ? `${camp.name} · ${camp.usageCount}` : camp.name}
+            </Badge>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function resolveEmptyMessage(input: {
@@ -162,6 +328,13 @@ export function TeamStandardMovesTable({
     React.useTransition()
   const [pendingPageNavigation, setPendingPageNavigation] =
     React.useState<PendingPageNavigation | null>(null)
+  const [expandedMoveId, setExpandedMoveId] = React.useState<string | null>(null)
+  const [usageStateByMoveId, setUsageStateByMoveId] = React.useState<
+    Partial<Record<string, StandardMoveUsageLoadState>>
+  >({})
+  const usageAbortControllersRef = React.useRef<Map<string, AbortController>>(
+    new Map(),
+  )
   const emptyMessage = resolveEmptyMessage({
     noTeamSelected,
     selectedStatusFilter,
@@ -179,6 +352,123 @@ export function TeamStandardMovesTable({
       nextPage: nextPageNumber,
       includeLoadMore,
     })
+  }
+
+  React.useEffect(() => {
+    const usageAbortControllers = usageAbortControllersRef.current
+
+    return () => {
+      usageAbortControllers.forEach((controller) => {
+        controller.abort()
+      })
+      usageAbortControllers.clear()
+    }
+  }, [])
+
+  async function loadStandardMoveUsage(
+    standardMove: TeamStandardMoveListItem,
+    options: { force?: boolean } = {},
+  ): Promise<void> {
+    if (standardMove.usageCount === 0) {
+      return
+    }
+
+    const usageUrl = buildStandardMoveUsageUrl({
+      scope,
+      standardMoveId: standardMove.id,
+    })
+
+    if (!usageUrl) {
+      return
+    }
+
+    const currentState = usageStateByMoveId[standardMove.id]
+
+    if (
+      !options.force &&
+      (currentState?.status === "loading" || currentState?.status === "loaded")
+    ) {
+      return
+    }
+
+    usageAbortControllersRef.current.get(standardMove.id)?.abort()
+
+    const controller = new AbortController()
+    usageAbortControllersRef.current.set(standardMove.id, controller)
+    setUsageStateByMoveId((current) => ({
+      ...current,
+      [standardMove.id]: {
+        status: "loading",
+      },
+    }))
+
+    try {
+      const response = await fetch(usageUrl, {
+        cache: "no-store",
+        headers: {
+          Accept: "application/json",
+        },
+        signal: controller.signal,
+      })
+
+      if (!response.ok) {
+        throw new Error(await resolveStandardMoveUsageError(response))
+      }
+
+      const payload: unknown = await response.json()
+      const data = isRecord(payload) ? payload.data : null
+
+      if (!isStandardMoveUsageData(data) || data.itemId !== standardMove.id) {
+        throw new Error("Invalid camp usage response.")
+      }
+
+      setUsageStateByMoveId((current) => ({
+        ...current,
+        [standardMove.id]: {
+          data,
+          status: "loaded",
+        },
+      }))
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        return
+      }
+
+      setUsageStateByMoveId((current) => ({
+        ...current,
+        [standardMove.id]: {
+          message:
+            error instanceof Error ? error.message : "Could not load camp usage.",
+          status: "error",
+        },
+      }))
+    } finally {
+      if (usageAbortControllersRef.current.get(standardMove.id) === controller) {
+        usageAbortControllersRef.current.delete(standardMove.id)
+      }
+    }
+  }
+
+  function toggleExpandedStandardMove(standardMove: TeamStandardMoveListItem): void {
+    if (expandedMoveId === standardMove.id) {
+      setExpandedMoveId(null)
+      return
+    }
+
+    setExpandedMoveId(standardMove.id)
+    void loadStandardMoveUsage(standardMove)
+  }
+
+  function handleStandardMoveCardKeyDown(
+    event: React.KeyboardEvent<HTMLElement>,
+    standardMove: TeamStandardMoveListItem,
+  ): void {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return
+    }
+
+    event.preventDefault()
+    toggleExpandedStandardMove(standardMove)
   }
 
   function navigateToPage(nextPageNumber: number): void {
@@ -215,53 +505,106 @@ export function TeamStandardMovesTable({
             {emptyMessage}
           </GradientCard>
         ) : (
-          moves.map((standardMove) => (
-            <GradientCard key={standardMove.id} className="px-3 py-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1 space-y-2">
-                  <div className="min-w-0 space-y-1">
-                    <p className="truncate text-sm font-medium">{standardMove.name}</p>
-                    <p
-                      className={cn(
-                        "text-xs text-muted-foreground",
-                        standardMove.description?.trim()
-                          ? "line-clamp-2"
-                          : "italic",
-                      )}
-                    >
-                      {standardMove.description?.trim() || "No description"}
-                    </p>
-                  </div>
+          moves.map((standardMove) => {
+            const isExpanded = expandedMoveId === standardMove.id
 
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <span>
-                      Used{" "}
-                      <span className="font-semibold tabular-nums text-foreground">
-                        {standardMove.usageCount}
+            return (
+              <GradientCard
+                key={standardMove.id}
+                role="button"
+                tabIndex={0}
+                aria-expanded={isExpanded}
+                aria-controls={`standard-move-expanded-${standardMove.id}`}
+                className="cursor-pointer px-3 py-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                onClick={() => {
+                  toggleExpandedStandardMove(standardMove)
+                }}
+                onKeyDown={(event) => {
+                  handleStandardMoveCardKeyDown(event, standardMove)
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="min-w-0 space-y-1">
+                      <p
+                        className={cn(
+                          "text-sm font-medium",
+                          isExpanded
+                            ? "whitespace-normal break-words"
+                            : "truncate",
+                        )}
+                      >
+                        {standardMove.name}
+                      </p>
+                      <p
+                        className={cn(
+                          "text-xs text-muted-foreground",
+                          standardMove.description?.trim()
+                            ? isExpanded
+                              ? "whitespace-normal break-words"
+                              : "line-clamp-2"
+                            : "italic",
+                        )}
+                      >
+                        {standardMove.description?.trim() || "No description"}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span>
+                        Used{" "}
+                        <span className="font-semibold tabular-nums text-foreground">
+                          {standardMove.usageCount}
+                        </span>
                       </span>
-                    </span>
-                    <span aria-hidden="true">·</span>
-                    <span>{formatDateTimeLabel(standardMove.updatedAt)}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>{formatDateTimeLabel(standardMove.updatedAt)}</span>
+                    </div>
+
+                    <div>{renderStatusBadge(standardMove.isActive)}</div>
+
+                    {isExpanded ? (
+                      <div id={`standard-move-expanded-${standardMove.id}`}>
+                        <StandardMoveCampUsagePanel
+                          standardMove={standardMove}
+                          usageState={usageStateByMoveId[standardMove.id]}
+                          onRetry={() => {
+                            void loadStandardMoveUsage(standardMove, {
+                              force: true,
+                            })
+                          }}
+                        />
+                      </div>
+                    ) : null}
                   </div>
 
-                  <div>{renderStatusBadge(standardMove.isActive)}</div>
+                  <div
+                    className="shrink-0"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                    }}
+                    onKeyDown={(event) => {
+                      event.stopPropagation()
+                    }}
+                    onPointerDown={(event) => {
+                      event.stopPropagation()
+                    }}
+                  >
+                    <StandardMoveActionsMenu
+                      standardMove={standardMove}
+                      scope={scope}
+                      statusFilter={selectedStatusFilter}
+                      currentPage={currentPage}
+                      loadMoreMode={loadMoreMode}
+                      canManageStandardMoves={canManageStandardMoves}
+                      surface="drawer"
+                      triggerClassName="h-11 w-11"
+                    />
+                  </div>
                 </div>
-
-                <div className="shrink-0">
-                  <StandardMoveActionsMenu
-                    standardMove={standardMove}
-                    scope={scope}
-                    statusFilter={selectedStatusFilter}
-                    currentPage={currentPage}
-                    loadMoreMode={loadMoreMode}
-                    canManageStandardMoves={canManageStandardMoves}
-                    surface="drawer"
-                    triggerClassName="h-11 w-11"
-                  />
-                </div>
-              </div>
-            </GradientCard>
-          ))
+              </GradientCard>
+            )
+          })
         )}
 
         {hasNextPage ? (

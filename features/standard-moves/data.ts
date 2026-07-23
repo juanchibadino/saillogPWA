@@ -3,6 +3,7 @@ import "server-only"
 import {
   resolveTeamStandardMovesPagination,
 } from "@/features/standard-moves/list-route-state.mjs"
+import { buildStandardMoveCampUsage } from "@/features/standard-moves/usage-core.mjs"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import type { Database } from "@/types/database"
 
@@ -10,10 +11,31 @@ type TeamStandardMoveRow = Pick<
   Database["public"]["Tables"]["team_standard_moves"]["Row"],
   "id" | "team_id" | "name" | "description" | "is_active" | "created_at" | "updated_at"
 >
+type TeamStandardMoveScopeRow = Pick<
+  Database["public"]["Tables"]["team_standard_moves"]["Row"],
+  "id" | "team_id"
+>
+type SessionStandardMoveUsageRow = Pick<
+  Database["public"]["Tables"]["session_standard_moves"]["Row"],
+  "team_standard_move_id" | "session_id"
+>
+type StandardMoveUsageSessionRow = Pick<
+  Database["public"]["Tables"]["sessions"]["Row"],
+  "id" | "camp_id" | "session_date"
+>
+type StandardMoveUsageCampRow = Pick<
+  Database["public"]["Tables"]["camps"]["Row"],
+  "id" | "name"
+>
 
 const TEAM_STANDARD_MOVE_SELECT_COLUMNS =
   "id,team_id,name,description,is_active,created_at,updated_at"
+const TEAM_STANDARD_MOVE_SCOPE_SELECT_COLUMNS = "id,team_id"
 const SESSION_STANDARD_MOVE_SELECT_COLUMNS = "team_standard_move_id"
+const SESSION_STANDARD_MOVE_USAGE_SELECT_COLUMNS =
+  "team_standard_move_id,session_id"
+const STANDARD_MOVE_USAGE_SESSION_SELECT_COLUMNS = "id,camp_id,session_date"
+const STANDARD_MOVE_USAGE_CAMP_SELECT_COLUMNS = "id,name"
 
 export const TEAM_STANDARD_MOVES_PAGE_SIZE = 25
 
@@ -33,6 +55,18 @@ export type TeamStandardMoveStatusFilter = "active" | "archived" | "all"
 export type TeamStandardMoveStatusCounts = {
   active: number
   archived: number
+}
+
+export type TeamStandardMoveUsageCamp = {
+  id: string
+  name: string
+  usageCount: number
+}
+
+export type TeamStandardMoveUsageData = {
+  itemId: string
+  usageCount: number
+  camps: TeamStandardMoveUsageCamp[]
 }
 
 export type TeamStandardMovesChromeData = {
@@ -288,4 +322,86 @@ export async function getTeamStandardMovesPageData(input: {
     ...chromeData,
     ...resultsData,
   }
+}
+
+export async function getTeamStandardMoveUsageData(input: {
+  activeTeamId: string
+  standardMoveId: string
+}): Promise<TeamStandardMoveUsageData | null> {
+  const supabase = await createServerSupabaseClient()
+  const { data: standardMoveRow, error: standardMoveError } = await supabase
+    .from("team_standard_moves")
+    .select(TEAM_STANDARD_MOVE_SCOPE_SELECT_COLUMNS)
+    .eq("id", input.standardMoveId)
+    .eq("team_id", input.activeTeamId)
+    .maybeSingle()
+
+  if (standardMoveError) {
+    throw new Error(`Could not load team standard move: ${standardMoveError.message}`)
+  }
+
+  if (!standardMoveRow) {
+    return null
+  }
+
+  const standardMove = standardMoveRow as TeamStandardMoveScopeRow
+  const { data: usageRowsData, error: usageRowsError } = await supabase
+    .from("session_standard_moves")
+    .select(SESSION_STANDARD_MOVE_USAGE_SELECT_COLUMNS)
+    .eq("team_standard_move_id", standardMove.id)
+
+  if (usageRowsError) {
+    throw new Error(
+      `Could not load session standard move usage: ${usageRowsError.message}`,
+    )
+  }
+
+  const usageRows = (usageRowsData ?? []) as SessionStandardMoveUsageRow[]
+
+  if (usageRows.length === 0) {
+    return buildStandardMoveCampUsage({
+      standardMoveId: standardMove.id,
+      usageRows: [],
+      sessionRows: [],
+      campRows: [],
+    }) as TeamStandardMoveUsageData
+  }
+
+  const sessionIds = [...new Set(usageRows.map((usageRow) => usageRow.session_id))]
+  const { data: sessionRowsData, error: sessionRowsError } = await supabase
+    .from("sessions")
+    .select(STANDARD_MOVE_USAGE_SESSION_SELECT_COLUMNS)
+    .in("id", sessionIds)
+
+  if (sessionRowsError) {
+    throw new Error(
+      `Could not load session standard move sessions: ${sessionRowsError.message}`,
+    )
+  }
+
+  const sessionRows = (sessionRowsData ?? []) as StandardMoveUsageSessionRow[]
+  const campIds = [...new Set(sessionRows.map((sessionRow) => sessionRow.camp_id))]
+  let campRows: StandardMoveUsageCampRow[] = []
+
+  if (campIds.length > 0) {
+    const { data: campRowsData, error: campRowsError } = await supabase
+      .from("camps")
+      .select(STANDARD_MOVE_USAGE_CAMP_SELECT_COLUMNS)
+      .in("id", campIds)
+
+    if (campRowsError) {
+      throw new Error(
+        `Could not load session standard move camps: ${campRowsError.message}`,
+      )
+    }
+
+    campRows = (campRowsData ?? []) as StandardMoveUsageCampRow[]
+  }
+
+  return buildStandardMoveCampUsage({
+    standardMoveId: standardMove.id,
+    usageRows,
+    sessionRows,
+    campRows,
+  }) as TeamStandardMoveUsageData
 }

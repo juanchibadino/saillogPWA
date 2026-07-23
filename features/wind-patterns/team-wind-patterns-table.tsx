@@ -79,11 +79,19 @@ function renderStatusBadge(isActive: boolean) {
   return <Badge variant="secondary">Archived</Badge>
 }
 
-function renderVenueBadge(venueName: string, className?: string) {
+function renderVenueBadge(
+  venueName: string,
+  className?: string,
+  options: { wrap?: boolean } = {},
+) {
   return (
     <Badge
       variant="outline"
-      className={cn("min-h-6 max-w-full truncate px-2.5 py-1 text-xs", className)}
+      className={cn(
+        "min-h-6 max-w-full px-2.5 py-1 text-xs",
+        options.wrap ? "whitespace-normal break-words" : "truncate",
+        className,
+      )}
     >
       {venueName}
     </Badge>
@@ -173,6 +181,9 @@ export function TeamWindPatternsTable({
     React.useTransition()
   const [pendingPageNavigation, setPendingPageNavigation] =
     React.useState<PendingPageNavigation | null>(null)
+  const [expandedPatternId, setExpandedPatternId] = React.useState<string | null>(
+    null,
+  )
   const emptyMessage = resolveEmptyMessage({
     noTeamSelected,
     selectedStatusFilter,
@@ -190,6 +201,24 @@ export function TeamWindPatternsTable({
       nextPage: nextPageNumber,
       includeLoadMore,
     })
+  }
+
+  function toggleExpandedWindPattern(windPattern: TeamWindPatternListItem): void {
+    setExpandedPatternId((currentPatternId) =>
+      currentPatternId === windPattern.id ? null : windPattern.id,
+    )
+  }
+
+  function handleWindPatternCardKeyDown(
+    event: React.KeyboardEvent<HTMLElement>,
+    windPattern: TeamWindPatternListItem,
+  ): void {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return
+    }
+
+    event.preventDefault()
+    toggleExpandedWindPattern(windPattern)
   }
 
   function navigateToPage(nextPageNumber: number): void {
@@ -226,51 +255,96 @@ export function TeamWindPatternsTable({
             {emptyMessage}
           </GradientCard>
         ) : (
-          patterns.map((windPattern) => (
-            <GradientCard key={windPattern.id} className="px-3 py-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1 space-y-2">
-                  <div className="min-w-0 space-y-1">
-                    <p className="truncate text-sm font-medium">{windPattern.name}</p>
-                    <p
+          patterns.map((windPattern) => {
+            const isExpanded = expandedPatternId === windPattern.id
+
+            return (
+              <GradientCard
+                key={windPattern.id}
+                role="button"
+                tabIndex={0}
+                aria-expanded={isExpanded}
+                className="cursor-pointer px-3 py-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                onClick={() => {
+                  toggleExpandedWindPattern(windPattern)
+                }}
+                onKeyDown={(event) => {
+                  handleWindPatternCardKeyDown(event, windPattern)
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="min-w-0 space-y-1">
+                      <p
+                        className={cn(
+                          "text-sm font-medium",
+                          isExpanded
+                            ? "whitespace-normal break-words"
+                            : "truncate",
+                        )}
+                      >
+                        {windPattern.name}
+                      </p>
+                      <p
+                        className={cn(
+                          "text-xs text-muted-foreground",
+                          windPattern.description?.trim()
+                            ? isExpanded
+                              ? "whitespace-normal break-words"
+                              : "line-clamp-2"
+                            : "italic",
+                        )}
+                      >
+                        {windPattern.description?.trim() || "No description"}
+                      </p>
+                    </div>
+
+                    <div
                       className={cn(
-                        "text-xs text-muted-foreground",
-                        windPattern.description?.trim()
-                          ? "line-clamp-2"
-                          : "italic",
+                        "flex flex-wrap gap-2 text-xs text-muted-foreground",
+                        isExpanded ? "items-start" : "items-center",
                       )}
                     >
-                      {windPattern.description?.trim() || "No description"}
-                    </p>
+                      <span>Venue</span>
+                      {renderVenueBadge(windPattern.venueName, "text-foreground", {
+                        wrap: isExpanded,
+                      })}
+                      <span aria-hidden="true">·</span>
+                      <span>{formatDateTimeLabel(windPattern.updatedAt)}</span>
+                    </div>
+
+                    <div>{renderStatusBadge(windPattern.isActive)}</div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <span>Venue</span>
-                    {renderVenueBadge(windPattern.venueName, "text-foreground")}
-                    <span aria-hidden="true">·</span>
-                    <span>{formatDateTimeLabel(windPattern.updatedAt)}</span>
+                  <div
+                    className="shrink-0"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                    }}
+                    onKeyDown={(event) => {
+                      event.stopPropagation()
+                    }}
+                    onPointerDown={(event) => {
+                      event.stopPropagation()
+                    }}
+                  >
+                    <WindPatternActionsMenu
+                      windPattern={windPattern}
+                      scope={scope}
+                      teamVenueId={windPattern.teamVenueId}
+                      redirectTarget="team-page"
+                      statusFilter={selectedStatusFilter}
+                      currentPage={currentPage}
+                      loadMoreMode={loadMoreMode}
+                      canManageWindPatterns={canManageWindPatterns}
+                      surface="drawer"
+                      triggerClassName="h-11 w-11"
+                    />
                   </div>
-
-                  <div>{renderStatusBadge(windPattern.isActive)}</div>
                 </div>
-
-                <div className="shrink-0">
-                  <WindPatternActionsMenu
-                    windPattern={windPattern}
-                    scope={scope}
-                    teamVenueId={windPattern.teamVenueId}
-                    redirectTarget="team-page"
-                    statusFilter={selectedStatusFilter}
-                    currentPage={currentPage}
-                    loadMoreMode={loadMoreMode}
-                    canManageWindPatterns={canManageWindPatterns}
-                    surface="drawer"
-                    triggerClassName="h-11 w-11"
-                  />
-                </div>
-              </div>
-            </GradientCard>
-          ))
+              </GradientCard>
+            )
+          })
         )}
 
         {hasNextPage ? (
