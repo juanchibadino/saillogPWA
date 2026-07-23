@@ -11,6 +11,10 @@ Current reference flows:
   - `features/notifications/email.ts`
   - `features/notifications/push.ts`
 - Venue Assessment Run confirmation flow:
+  - `app/(app)/team-assessments/page.tsx`
+  - `features/assessments/actions.ts`
+  - `features/assessments/assessment-run-notification-dialog.tsx`
+  - `features/assessments/team-assessments-page-client.tsx`
   - `features/venues/assessment-actions.ts`
   - `features/venues/venue-assessments-panel.tsx`
   - `features/notifications/core.mjs`

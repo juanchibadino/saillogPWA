@@ -99,6 +99,9 @@ export type OrganizationSessionAssetUploadEntitlementDecision = {
   subscriptionStatus: SubscriptionStatus
 }
 
+export type OrganizationTeamExpensesEntitlementDecision =
+  OrganizationSessionAssetUploadEntitlementDecision
+
 export const TEST_ORGANIZATION_FREE_SLUGS = TEST_ORGANIZATION_FREE_SLUGS_CORE
 export const TEST_ORGANIZATION_FREE_NAMES = TEST_ORGANIZATION_FREE_NAMES_CORE
 export const PRO_TEST_ORGANIZATION_SLUGS = PRO_TEST_ORGANIZATION_SLUGS_CORE
@@ -517,7 +520,8 @@ export async function resolveOrganizationWriteEntitlement(input: {
   }
 }
 
-export async function resolveOrganizationSessionAssetUploadEntitlement(input: {
+async function resolveOrganizationCapabilityEntitlement(input: {
+  capability: keyof PlanCapabilities
   organizationId: string
   supabase?: ServerSupabaseClient
 }): Promise<OrganizationSessionAssetUploadEntitlementDecision> {
@@ -536,7 +540,7 @@ export async function resolveOrganizationSessionAssetUploadEntitlement(input: {
     }
   }
 
-  if (!snapshot.capabilities.sessionAssetUploads) {
+  if (!snapshot.capabilities[input.capability]) {
     return {
       allowed: false,
       reason: "plan_limit_reached",
@@ -553,4 +557,24 @@ export async function resolveOrganizationSessionAssetUploadEntitlement(input: {
     planTier: snapshot.subscription.planTier,
     subscriptionStatus: snapshot.subscription.status,
   }
+}
+
+export async function resolveOrganizationSessionAssetUploadEntitlement(input: {
+  organizationId: string
+  supabase?: ServerSupabaseClient
+}): Promise<OrganizationSessionAssetUploadEntitlementDecision> {
+  return resolveOrganizationCapabilityEntitlement({
+    ...input,
+    capability: "sessionAssetUploads",
+  })
+}
+
+export async function resolveOrganizationTeamExpensesEntitlement(input: {
+  organizationId: string
+  supabase?: ServerSupabaseClient
+}): Promise<OrganizationTeamExpensesEntitlementDecision> {
+  return resolveOrganizationCapabilityEntitlement({
+    ...input,
+    capability: "teamExpenses",
+  })
 }

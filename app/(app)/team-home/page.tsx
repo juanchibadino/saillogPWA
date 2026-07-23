@@ -925,12 +925,11 @@ async function TeamHomeRosterSection({
                     </Avatar>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{person.name}</p>
-                      <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
-                        <p className="truncate text-xs text-muted-foreground">
-                          {person.roleLabel}
-                        </p>
-                        <TeamHomeInvitedBadge firstSeenAt={person.firstSeenAt} />
-                      </div>
+                      {person.firstSeenAt ? null : (
+                        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
+                          <TeamHomeInvitedBadge firstSeenAt={person.firstSeenAt} />
+                        </div>
+                      )}
                     </div>
                   </div>
 

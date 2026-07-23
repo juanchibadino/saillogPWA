@@ -5,6 +5,7 @@ import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { PlusIcon } from "lucide-react"
 
+import { AssessmentRunNotificationDialog } from "@/features/assessments/assessment-run-notification-dialog"
 import { TeamAssessmentRunCreateDialog } from "@/features/assessments/team-assessment-run-create-dialog"
 import { TeamAssessmentRunsList } from "@/features/assessments/team-assessment-runs-list"
 import { TeamAssessmentTemplateEditorShell } from "@/features/assessments/team-assessment-template-editor-shell"
@@ -310,6 +311,8 @@ function TeamAssessmentsTabDataError({
 }
 
 export function TeamAssessmentsPageClient({
+  assessmentRunNotificationRunId,
+  assessmentRunNotificationTeamVenueId,
   canManageAssessments,
   creatingTemplate,
   createdData,
@@ -317,8 +320,11 @@ export function TeamAssessmentsPageClient({
   scope,
   selectedTab,
   selectedTemplateId,
+  showAssessmentRunNotificationPrompt,
   templatesData,
 }: {
+  assessmentRunNotificationRunId?: string | null
+  assessmentRunNotificationTeamVenueId?: string | null
   canManageAssessments: boolean
   creatingTemplate: boolean
   createdData?: TeamAssessmentsCreatedTabData
@@ -326,6 +332,7 @@ export function TeamAssessmentsPageClient({
   scope: NavigationScope
   selectedTab: TeamAssessmentTab
   selectedTemplateId?: string
+  showAssessmentRunNotificationPrompt?: boolean
   templatesData?: TeamAssessmentsTemplatesTabData
 }) {
   const router = useRouter()
@@ -786,6 +793,13 @@ export function TeamAssessmentsPageClient({
       ) : (
         <TeamAssessmentsTemplatesTabSkeleton canManageAssessments={canManageAssessments} />
       )}
+
+      <AssessmentRunNotificationDialog
+        defaultOpen={showAssessmentRunNotificationPrompt === true}
+        runId={assessmentRunNotificationRunId ?? null}
+        scope={scope}
+        teamVenueId={assessmentRunNotificationTeamVenueId ?? null}
+      />
     </section>
   )
 }

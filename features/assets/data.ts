@@ -671,7 +671,7 @@ async function attachTeamGpsFileData(input: {
     .in("asset_id", gpsAssetIds)
 
   if (error) {
-    throw new Error(`Could not load team GPS file metadata: ${error.message}`)
+    throw new Error(`Could not load team Vakaros metadata: ${error.message}`)
   }
 
   const rowsByAssetId = new Map<string, TeamVakarosUploadRow>()
@@ -1066,6 +1066,6 @@ export function buildTeamAssetsEmptyMessage(input: {
   return input.tab === "images"
     ? "No images uploaded for this team yet."
     : input.tab === "gps-files"
-      ? "No GPS files uploaded for this team yet."
+      ? "No Vakaros uploaded for this team yet."
       : "No files uploaded for this team yet."
 }

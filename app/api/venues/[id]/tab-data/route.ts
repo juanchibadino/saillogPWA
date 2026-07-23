@@ -17,6 +17,7 @@ import {
   canManageTeamFinance,
   canManageTeamSessions,
 } from "@/lib/auth/capabilities"
+import { resolveOrganizationTeamExpensesEntitlement } from "@/lib/billing/entitlements"
 import {
   getCurrentAccessContext,
   type AuthenticatedAccessContext,
@@ -152,6 +153,16 @@ export async function GET(request: Request, context: RouteContext) {
       organizationId: navigation.scope.activeOrgId,
       teamId: navigation.scope.activeTeamId,
     })
+    const teamExpensesEntitlement =
+      tab === "expenses"
+        ? await resolveOrganizationTeamExpensesEntitlement({
+            organizationId: navigation.scope.activeOrgId,
+          })
+        : null
+    const teamExpensesBlockReason =
+      teamExpensesEntitlement && !teamExpensesEntitlement.allowed
+        ? teamExpensesEntitlement.reason
+        : null
     const effectiveExpenseCrewFilter =
       tab === "expenses"
         ? requestedCrewFilter ??
@@ -180,6 +191,7 @@ export async function GET(request: Request, context: RouteContext) {
         selectedHighlight: requestedHighlight,
         selectedMemberId: requestedMemberId,
         tab,
+        teamExpensesBlockReason,
         teamVenue: chromeData.teamVenue,
         venue: chromeData.venue,
         yearContextPromise,
@@ -202,6 +214,7 @@ export async function GET(request: Request, context: RouteContext) {
       year: kpis.selectedYear,
       campId: tabCampId,
       crewFilter: tabCrewFilter,
+      expenseBlockReason: tab === "expenses" ? teamExpensesBlockReason : null,
       expenseType: tabExpenseType,
       highlight: tabHighlight,
       loadMore: tabLoadMore,

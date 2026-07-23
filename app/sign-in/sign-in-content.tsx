@@ -1,12 +1,13 @@
 "use client";
 
 import { type FormEvent, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 import { SignInAccessCodePanel } from "./access-code-panel";
 
@@ -23,6 +24,8 @@ export function SignInAuthContent({
 }: SignInAccessCodeProps) {
   const [isAccessCodeMode, setIsAccessCodeMode] = useState(false);
   const [isPasswordSubmitting, setIsPasswordSubmitting] = useState(false);
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const passwordVisibilityLabel = isPasswordVisible ? "Hide password" : "Show password";
 
   const handlePasswordSubmit = (event: FormEvent<HTMLFormElement>) => {
     if (!event.currentTarget.checkValidity()) {
@@ -84,16 +87,46 @@ export function SignInAuthContent({
 
               <div className="space-y-2">
                 <Label htmlFor="sign-in-password">Password</Label>
-                <Input
-                  id="sign-in-password"
-                  type="password"
-                  name="password"
-                  required
-                  autoComplete="current-password"
-                  placeholder="••••••••"
-                  className="h-11 px-3 md:h-8 md:px-2.5"
-                  readOnly={isPasswordSubmitting}
-                />
+                <div className="relative">
+                  <Input
+                    id="sign-in-password"
+                    type={isPasswordVisible ? "text" : "password"}
+                    name="password"
+                    required
+                    autoComplete="current-password"
+                    placeholder="••••••••"
+                    className="h-11 px-3 pr-12 md:h-8 md:px-2.5 md:pr-9"
+                    readOnly={isPasswordSubmitting}
+                  />
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <button
+                          type="button"
+                          className={buttonVariants({
+                            variant: "ghost",
+                            size: "icon",
+                            className:
+                              "absolute right-1.5 top-1/2 size-8 -translate-y-1/2 text-muted-foreground hover:text-foreground active:not-aria-[haspopup]:!-translate-y-1/2 md:right-1 md:size-6",
+                          })}
+                          disabled={isPasswordSubmitting}
+                        />
+                      }
+                      aria-label={passwordVisibilityLabel}
+                      aria-pressed={isPasswordVisible}
+                      onClick={() => {
+                        setIsPasswordVisible((currentValue) => !currentValue);
+                      }}
+                    >
+                      {isPasswordVisible ? (
+                        <Eye className="size-4" />
+                      ) : (
+                        <EyeOff className="size-4" />
+                      )}
+                    </TooltipTrigger>
+                    <TooltipContent side="top">{passwordVisibilityLabel}</TooltipContent>
+                  </Tooltip>
+                </div>
               </div>
 
               <button

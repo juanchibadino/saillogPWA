@@ -1188,7 +1188,7 @@ export async function getSessionDetailHeaderGpsFile(input: {
     .limit(1)
 
   if (vakarosError) {
-    throw new Error(`Could not load header GPS file metadata: ${vakarosError.message}`)
+    throw new Error(`Could not load header Vakaros metadata: ${vakarosError.message}`)
   }
 
   const vakarosUploads = (vakarosRows ?? []) as SessionVakarosUploadRow[]
@@ -1801,7 +1801,7 @@ export async function getSessionDetailAnalyticsTabData(
       throwSessionDetailScopedTimingError(
         logTabTiming,
         "vakaros_metadata_query_error",
-        `Could not load GPS file metadata for session detail: ${vakarosError.message}`,
+        `Could not load Vakaros metadata for session detail: ${vakarosError.message}`,
       )
     }
 

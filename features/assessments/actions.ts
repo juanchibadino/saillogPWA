@@ -5,14 +5,6 @@ import { redirect } from "next/navigation"
 
 import { canManageAssessmentsFromAccess } from "@/features/assessments/action-rules.mjs"
 import { buildTeamAssessmentsRedirectPath } from "@/features/assessments/list-route-state.mjs"
-import {
-  buildAssessmentRequestMessage,
-  buildScopedNotificationHref,
-  formatActorName,
-  joinCampNames,
-  NOTIFICATION_EVENT_TYPES,
-} from "@/features/notifications/core.mjs"
-import { createNotificationsForRecipients } from "@/features/notifications/server"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import {
@@ -155,6 +147,9 @@ function buildRedirect(input: {
   templateId?: string
   status?: AssessmentStatusCode
   error?: AssessmentErrorCode
+  notifyAssessmentRun?: boolean
+  notifyAssessmentRunId?: string
+  notifyAssessmentTeamVenueId?: string
 }): string {
   return buildTeamAssessmentsRedirectPath({
     returnPath: input.returnPath,
@@ -164,6 +159,9 @@ function buildRedirect(input: {
     templateId: input.templateId,
     status: input.status,
     error: input.error,
+    notifyAssessmentRun: input.notifyAssessmentRun,
+    notifyAssessmentRunId: input.notifyAssessmentRunId,
+    notifyAssessmentTeamVenueId: input.notifyAssessmentTeamVenueId,
   })
 }
 
@@ -519,55 +517,6 @@ async function buildRunName(input: {
   const prefix = input.fallbackTemplateName?.trim() || "Assessment"
 
   return `${prefix} for ${suffix}`.slice(0, 120)
-}
-
-async function loadAssessmentNotificationContext(input: {
-  teamVenueId: string
-  campIds: string[]
-  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>
-}): Promise<{
-  venueName: string
-  campNames: string
-}> {
-  const { data: teamVenueRow, error: teamVenueError } = await input.supabase
-    .from("team_venues")
-    .select("venue_id")
-    .eq("id", input.teamVenueId)
-    .maybeSingle()
-  let venueName = "venue"
-
-  if (!teamVenueError && teamVenueRow) {
-    const { data: venueRow, error: venueError } = await input.supabase
-      .from("venues")
-      .select("name")
-      .eq("id", teamVenueRow.venue_id)
-      .maybeSingle()
-
-    if (!venueError && venueRow?.name?.trim()) {
-      venueName = venueRow.name.trim()
-    }
-  }
-
-  const { data: campRows, error: campError } = await input.supabase
-    .from("camps")
-    .select("id,name")
-    .in("id", input.campIds)
-
-  if (campError) {
-    return {
-      venueName,
-      campNames: "the selected camps",
-    }
-  }
-
-  const campNameById = new Map(
-    (campRows ?? []).map((camp) => [camp.id, camp.name] as const),
-  )
-
-  return {
-    venueName,
-    campNames: joinCampNames(input.campIds.map((campId) => campNameById.get(campId))),
-  }
 }
 
 async function loadTemplateDefinitionForRun(input: {
@@ -1054,39 +1003,6 @@ export async function createAssessmentRunAction(formData: FormData): Promise<voi
     }
   }
 
-  const notificationContext = await loadAssessmentNotificationContext({
-    teamVenueId: parsedInput.data.teamVenueId,
-    campIds: parsedInput.data.campIds,
-    supabase,
-  })
-  const actorName = formatActorName({
-    firstName: context.profile?.first_name,
-    lastName: context.profile?.last_name,
-    email: context.user.email ?? null,
-  })
-
-  await createNotificationsForRecipients({
-    recipientProfileIds: profileIds,
-    actorProfileId: context.user.id,
-    teamId: parsedInput.data.teamId,
-    eventType: NOTIFICATION_EVENT_TYPES.ASSESSMENT_RUN_CREATED,
-    message: buildAssessmentRequestMessage({
-      actorName,
-      venueName: notificationContext.venueName,
-      campNames: notificationContext.campNames,
-    }),
-    targetHref: buildScopedNotificationHref({
-      pathname: `/team-assessments/${runData.id}`,
-      orgId: scope.scopeOrgId,
-      teamId: scope.scopeTeamId,
-    }),
-    metadata: {
-      assessmentRunId: runData.id,
-      teamVenueId: parsedInput.data.teamVenueId,
-      campIds: parsedInput.data.campIds,
-    },
-  })
-
   revalidateAssessmentPaths({
     runId: runData.id,
     teamVenueId: parsedInput.data.teamVenueId,
@@ -1097,6 +1013,9 @@ export async function createAssessmentRunAction(formData: FormData): Promise<voi
       scope,
       tab: "created",
       status: "run_published",
+      notifyAssessmentRun: profileIds.some((profileId) => profileId !== context.user.id),
+      notifyAssessmentRunId: runData.id,
+      notifyAssessmentTeamVenueId: parsedInput.data.teamVenueId,
     }),
   )
 }

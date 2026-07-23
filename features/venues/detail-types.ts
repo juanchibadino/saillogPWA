@@ -175,6 +175,10 @@ export type VenueDetailReportsTabData = {
   reports: VenueDetailReportItem[];
 };
 
+export type VenueDetailExpensesBlockReason =
+  | "plan_limit_reached"
+  | "payment_required";
+
 export type VenueDetailExpensesTabData = {
   canFilterByMember: boolean;
   expenses: TeamExpenseListItem[];
@@ -185,6 +189,7 @@ export type VenueDetailExpensesTabData = {
   selectedMemberId?: string;
   selectedType?: TeamExpenseListItem["expenseType"];
   selectedVisibilityScope: "mine" | "team";
+  teamExpensesBlockReason?: VenueDetailExpensesBlockReason | null;
   teamExpensesVisible: boolean;
   typeOptions: Array<{ label: string; value: TeamExpenseListItem["expenseType"] }>;
 };

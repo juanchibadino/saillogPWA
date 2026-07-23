@@ -120,6 +120,9 @@ export function buildTeamAssessmentsRedirectPath(input) {
   params.delete("status")
   params.delete("error")
   params.delete("loadMore")
+  params.delete("notifyAssessmentRun")
+  params.delete("notifyAssessmentRunId")
+  params.delete("notifyAssessmentTeamVenueId")
 
   if (input.status) {
     params.set("status", input.status)
@@ -157,6 +160,16 @@ export function buildTeamAssessmentsRedirectPath(input) {
     params.set("page", String(input.page))
   } else if (input.page !== undefined) {
     params.delete("page")
+  }
+
+  if (
+    input.notifyAssessmentRun &&
+    input.notifyAssessmentRunId &&
+    input.notifyAssessmentTeamVenueId
+  ) {
+    params.set("notifyAssessmentRun", "1")
+    params.set("notifyAssessmentRunId", input.notifyAssessmentRunId)
+    params.set("notifyAssessmentTeamVenueId", input.notifyAssessmentTeamVenueId)
   }
 
   const query = params.toString()

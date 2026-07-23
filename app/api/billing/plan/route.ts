@@ -25,11 +25,29 @@ export async function GET(request: Request) {
     return NextResponse.json({ planTier: null }, { status: 401 })
   }
 
-  if (!canManageOrganizationOperations(context, organizationId)) {
-    return NextResponse.json({ planTier: null }, { status: 403 })
-  }
-
   const supabase = await createServerSupabaseClient()
+
+  if (!canManageOrganizationOperations(context, organizationId)) {
+    const activeTeamIds = context.teamMemberships
+      .filter((membership) => membership.is_active)
+      .map((membership) => membership.team_id)
+
+    if (activeTeamIds.length === 0) {
+      return NextResponse.json({ planTier: null }, { status: 403 })
+    }
+
+    const { data: teamRows, error: teamError } = await supabase
+      .from("teams")
+      .select("id")
+      .eq("organization_id", organizationId)
+      .eq("is_active", true)
+      .in("id", activeTeamIds)
+      .limit(1)
+
+    if (teamError || (teamRows ?? []).length === 0) {
+      return NextResponse.json({ planTier: null }, { status: 403 })
+    }
+  }
 
   try {
     const subscription = await resolveOrganizationSubscription(organizationId, supabase)

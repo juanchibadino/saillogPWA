@@ -9,6 +9,7 @@ import {
   getTeamVenueDetailYearContextData,
 } from "@/features/venues/detail-data"
 import type {
+  VenueDetailExpensesBlockReason,
   VenueDetailKpisData,
   VenueDetailTabPayload,
   VenueDetailVenue,
@@ -33,6 +34,7 @@ import {
   canManageTeamSessions,
   canManageTeamStructure,
 } from "@/lib/auth/capabilities"
+import { resolveOrganizationTeamExpensesEntitlement } from "@/lib/billing/entitlements"
 import {
   getSingleSearchParamValue,
   resolveNavigationScope,
@@ -223,6 +225,7 @@ async function VenueDetailDeferredContent(input: {
   kpisPromise: Promise<VenueDetailKpisData>
   scope: ResolvedVenueDetailScope
   showAssessmentRunNotificationPrompt: boolean
+  teamExpensesBlockReason: VenueDetailExpensesBlockReason | null
   teamVenueId: string
   venue: VenueDetailVenue
 }) {
@@ -270,6 +273,7 @@ async function VenueDetailDeferredContent(input: {
       canManageExpenseFinance={input.canManageExpenseFinance}
       canManageSessions={input.canManageSessions}
       canManageWindPatterns={input.canManageWindPatterns}
+      teamExpensesBlockReason={input.teamExpensesBlockReason}
       initialWindPatternStatusFilter={input.initialWindPatternStatusFilter}
       assessmentRunNotificationRunId={input.assessmentRunNotificationRunId}
       showAssessmentRunNotificationPrompt={input.showAssessmentRunNotificationPrompt}
@@ -431,7 +435,14 @@ export default async function VenueDetailPage({
           teamId: chromeData.teamVenue.team_id,
         })
     : false
-  const canManageExpenses = canManageSessions
+  const teamExpensesEntitlement = await resolveOrganizationTeamExpensesEntitlement({
+    organizationId: scope.activeOrgId,
+  })
+  const teamExpensesBlockReason: VenueDetailExpensesBlockReason | null =
+    teamExpensesEntitlement && !teamExpensesEntitlement.allowed
+      ? teamExpensesEntitlement.reason
+      : null
+  const canManageExpenses = canManageSessions && !teamExpensesBlockReason
   const effectiveExpenseCrewFilter =
     selectedTab === "expenses"
       ? requestedCrewFilter ??
@@ -463,6 +474,7 @@ export default async function VenueDetailPage({
     selectedHighlight: requestedHighlight,
     selectedMemberId: requestedMemberId,
     tab: selectedTab,
+    teamExpensesBlockReason,
     teamVenue: chromeData.teamVenue,
     venue,
     yearContextPromise,
@@ -558,6 +570,7 @@ export default async function VenueDetailPage({
           kpisPromise={kpisPromise}
           scope={scope}
           showAssessmentRunNotificationPrompt={showAssessmentRunNotificationPrompt}
+          teamExpensesBlockReason={teamExpensesBlockReason}
           teamVenueId={resolvedParams.id}
           venue={venue}
         />

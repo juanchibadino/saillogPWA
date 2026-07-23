@@ -182,7 +182,7 @@ export function SessionGpsFileUploadSurface(input: SessionGpsFileUploadSurfacePr
 
   async function uploadSelectedFile(): Promise<void> {
     if (!selectedFile) {
-      toast.error("Choose a Vakaros CSV file.")
+      toast.error("Choose a Vakaros file.")
       return
     }
 
@@ -209,12 +209,12 @@ export function SessionGpsFileUploadSurface(input: SessionGpsFileUploadSurfacePr
         return
       }
 
-      toast.success("GPS file uploaded.")
+      toast.success("Vakaros uploaded.")
       resetUploadForm()
       setIsOpen(false)
       await input.onGpsFilesChanged()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not upload GPS file.")
+      toast.error(error instanceof Error ? error.message : "Could not upload Vakaros.")
     } finally {
       setIsUploading(false)
     }
@@ -233,7 +233,7 @@ export function SessionGpsFileUploadSurface(input: SessionGpsFileUploadSurfacePr
             setSelectedFile(event.currentTarget.files?.[0] ?? null)
           }}
           className="hidden"
-          aria-label="Choose Vakaros CSV"
+          aria-label="Choose Vakaros"
         />
 
         <div className="space-y-2">
@@ -265,12 +265,12 @@ export function SessionGpsFileUploadSurface(input: SessionGpsFileUploadSurfacePr
                 onClick={() => setSelectedFile(null)}
               >
                 <XIcon className="size-4" />
-                <span className="sr-only">Remove selected GPS file</span>
+                <span className="sr-only">Remove selected Vakaros</span>
               </Button>
             </div>
           ) : (
             <div className="rounded-lg border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
-              Choose one Vakaros CSV before uploading.
+              Choose one Vakaros file before uploading.
             </div>
           )}
         </div>
@@ -284,7 +284,7 @@ export function SessionGpsFileUploadSurface(input: SessionGpsFileUploadSurfacePr
             value={description}
             maxLength={4000}
             disabled={isUploading}
-            placeholder="Add a description for this GPS file."
+            placeholder="Add a description for this Vakaros upload."
             className={isMobile ? "min-h-28 resize-none text-base" : "min-h-24 resize-none"}
             onChange={(event) => setDescription(event.currentTarget.value)}
           />
@@ -306,7 +306,7 @@ export function SessionGpsFileUploadSurface(input: SessionGpsFileUploadSurfacePr
             ) : (
               <UploadIcon className="size-4" />
             )}
-            Upload GPS File
+            Upload Vakaros
           </Button>
         </DrawerFooter>
       ) : (
@@ -323,7 +323,7 @@ export function SessionGpsFileUploadSurface(input: SessionGpsFileUploadSurfacePr
             ) : (
               <UploadIcon className="size-4" />
             )}
-            Upload GPS File
+            Upload Vakaros
           </Button>
         </SheetFooter>
       )}
@@ -345,7 +345,7 @@ export function SessionGpsFileUploadSurface(input: SessionGpsFileUploadSurfacePr
         </DrawerTrigger>
         <DrawerContent className="max-h-[var(--mobile-drawer-max-height)]">
           <DrawerHeader className="shrink-0">
-            <DrawerTitle>Upload GPS File</DrawerTitle>
+            <DrawerTitle>Upload Vakaros</DrawerTitle>
           </DrawerHeader>
           {content}
         </DrawerContent>
@@ -370,7 +370,7 @@ export function SessionGpsFileUploadSurface(input: SessionGpsFileUploadSurfacePr
       </SheetTrigger>
       <SheetContent side="right" className="h-full overflow-hidden sm:max-w-xl">
         <SheetHeader className="shrink-0">
-          <SheetTitle>Upload GPS File</SheetTitle>
+          <SheetTitle>Upload Vakaros</SheetTitle>
         </SheetHeader>
         {content}
       </SheetContent>
@@ -443,12 +443,12 @@ export function SessionGpsFileCard(input: {
         return
       }
 
-      toast.success("GPS file deleted.")
+      toast.success("Vakaros deleted.")
       setDeleteDialogOpen(false)
       input.onGpsFileDeleted?.(input.gpsFile.id)
       await input.onGpsFilesChanged?.()
     } catch {
-      toast.error("Could not delete GPS file.")
+      toast.error("Could not delete Vakaros.")
     } finally {
       setIsDeleting(false)
     }
@@ -463,7 +463,7 @@ export function SessionGpsFileCard(input: {
         {isDeleting ? (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-card/80 text-muted-foreground backdrop-blur-sm">
             <Loader2Icon className="size-6 animate-spin" />
-            <span className="sr-only">Deleting GPS file</span>
+            <span className="sr-only">Deleting Vakaros</span>
           </div>
         ) : null}
         <button
@@ -513,7 +513,7 @@ export function SessionGpsFileCard(input: {
               }
             >
               <MoreVerticalIcon className="size-4" />
-              <span className="sr-only">GPS file actions</span>
+              <span className="sr-only">Vakaros actions</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-36">
               <DropdownMenuItem
@@ -553,9 +553,9 @@ export function SessionGpsFileCard(input: {
           overlayClassName="bg-black/20 backdrop-blur-sm supports-backdrop-filter:backdrop-blur-sm"
         >
           <DialogHeader>
-            <DialogTitle>Delete GPS file?</DialogTitle>
+            <DialogTitle>Delete Vakaros?</DialogTitle>
             <DialogDescription>
-              This removes the GPS file from this session and deletes the stored artifacts.
+              This removes Vakaros from this session and deletes the stored artifacts.
             </DialogDescription>
           </DialogHeader>
 
@@ -649,12 +649,12 @@ export function SessionGpsFilesPanel(input: {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-base font-semibold">GPS Files</h3>
+          <h3 className="text-base font-semibold">Vakaros</h3>
         </div>
 
         {canUploadAssets ? (
           <SessionGpsFileUploadSurface
-            buttonLabel="Upload GPS File"
+            buttonLabel="Upload Vakaros"
             onGpsFilesChanged={input.onGpsFilesChanged}
             scope={input.scope}
             sessionId={input.sessionId}
@@ -667,7 +667,7 @@ export function SessionGpsFilesPanel(input: {
             onClick={() => setIsUpgradeDialogOpen(true)}
           >
             <UploadIcon className="size-4" />
-            Upload GPS File
+            Upload Vakaros
           </Button>
         ) : null}
       </div>
@@ -678,7 +678,7 @@ export function SessionGpsFilesPanel(input: {
           teamId={input.scope.activeTeamId}
           open={isUpgradeDialogOpen}
           onOpenChange={setIsUpgradeDialogOpen}
-          description="GPS file uploads are available on Pro. Upgrade to attach session tracks and unlock higher creation limits."
+          description="Vakaros uploads are available on Pro. Upgrade to attach session tracks and unlock higher creation limits."
         />
       ) : null}
 

@@ -14,6 +14,7 @@ import {
   CloudSunIcon,
   FileTextIcon,
   MapPinIcon,
+  ReceiptTextIcon,
   RouteIcon,
   SailboatIcon,
   ShieldCheckIcon,
@@ -61,6 +62,24 @@ const PRODUCT_FEATURES: FeatureCard[] = [
     description:
       "See sailing time, session volume and activity trends by team, camp, venue and period.",
     icon: ChartBarIcon,
+  },
+  {
+    title: "Expenses",
+    description:
+      "Track team spending with receipts, currency conversion, and PDF exports.",
+    icon: ReceiptTextIcon,
+  },
+  {
+    title: "Assets",
+    description:
+      "Browse session images, files and Vakaros uploads by team, venue, camp and session.",
+    icon: CameraIcon,
+  },
+  {
+    title: "Vakaros GPS playback",
+    description:
+      "Upload Vakaros files to replay tracks and review trim windows inside session detail.",
+    icon: RouteIcon,
   },
 ] as const;
 
@@ -212,8 +231,8 @@ export default async function Home() {
               </p>
             </div>
             <p className="mx-auto max-w-2xl text-center text-base leading-7 text-muted-foreground md:mx-0 md:text-left">
-              Track sessions, training camps, venues, water time, media and reports in one
-              simple mobile-first workspace.
+              Track sessions, training camps, venues, water time, Vakaros GPS files,
+              expenses, media and reports in one simple mobile-first workspace.
             </p>
             <div className="flex flex-col gap-3 sm:flex-row">
               <Link

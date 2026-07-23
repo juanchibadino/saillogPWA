@@ -565,7 +565,10 @@ export function SessionAssetCard(input: {
         {input.overlayActions}
       </div>
 
-      <DialogContent className="grid h-[calc(100dvh-0.75rem)] max-h-[calc(100dvh-0.75rem)] w-[calc(100vw-0.75rem)] max-w-[calc(100vw-0.75rem)] min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-3 overflow-hidden p-3 sm:h-auto sm:max-h-[90dvh] sm:w-full sm:max-w-4xl sm:gap-4 sm:p-4">
+      <DialogContent
+        className="grid h-[calc(100dvh-0.75rem)] max-h-[calc(100dvh-0.75rem)] w-[calc(100vw-0.75rem)] max-w-[calc(100vw-0.75rem)] min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-3 overflow-hidden p-3 sm:h-auto sm:max-h-[90dvh] sm:w-full sm:max-w-4xl sm:gap-4 sm:p-4"
+        overlayClassName="bg-black/35 backdrop-blur-sm supports-backdrop-filter:backdrop-blur-sm"
+      >
         <DialogHeader className="min-w-0">
           <DialogTitle className="min-w-0 max-w-full truncate pr-10">
             {input.asset.file_name}

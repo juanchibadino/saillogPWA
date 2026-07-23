@@ -43,6 +43,7 @@ import type { VenueDetailTabDataByTab } from "@/features/venues/detail-types"
 import { ExpenseFormDialog } from "@/features/expenses/expense-form-dialogs"
 import { TeamExpensesTable } from "@/features/expenses/expenses-table"
 import { buildTeamExpensesReportHref } from "@/features/expenses/list-route-state.mjs"
+import { TeamExpensesProFeatureGate } from "@/features/expenses/team-expenses-pro-feature-gate"
 import { buildVenueDetailPageHref } from "@/features/venues/detail-route-state.mjs"
 import type { NavigationScope } from "@/lib/navigation/types"
 import { cn } from "@/lib/utils"
@@ -546,6 +547,20 @@ export function VenueExpensesPanel({
   })
   const reportCrewLabel = resolveVenueExpenseReportCrewLabel(data)
   const reportVenueName = resolveVenueExpenseReportVenueName({ data, teamVenueId })
+
+  if (data.teamExpensesBlockReason) {
+    return (
+      <section className="space-y-4">
+        <header>
+          <h2 className="text-lg font-semibold">Expenses {selectedYear}</h2>
+        </header>
+        <TeamExpensesProFeatureGate
+          reason={data.teamExpensesBlockReason}
+          scope={scope}
+        />
+      </section>
+    )
+  }
 
   return (
     <section className="space-y-4">

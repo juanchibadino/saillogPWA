@@ -555,7 +555,7 @@ export function VakarosPlayer(input: {
         const nextSeries = parseSeriesCsv(seriesText)
 
         if (nextTrackLatLngs.length === 0 || nextSeries.length === 0) {
-          throw new Error("This GPS file has no playable track.")
+          throw new Error("This Vakaros upload has no playable track.")
         }
 
         if (!isMounted) {
@@ -580,7 +580,7 @@ export function VakarosPlayer(input: {
           return
         }
 
-        setLoadError(error instanceof Error ? error.message : "Could not load GPS file.")
+        setLoadError(error instanceof Error ? error.message : "Could not load Vakaros.")
       } finally {
         if (isMounted) {
           setIsLoading(false)

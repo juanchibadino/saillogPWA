@@ -43,7 +43,7 @@ function RunCreateSubmitButton({
   return (
     <Button type="submit" disabled={pending || disabledByValidation} className={className}>
       {pending ? <Loader2Icon className="size-4 animate-spin" /> : null}
-      {pending ? "Creating assessment..." : "Create assessment"}
+      {pending ? "Creating Assessment..." : "Create Assessment"}
     </Button>
   )
 }
@@ -204,7 +204,7 @@ export function TeamAssessmentRunCreateDialog({
         </Button>
         <DrawerContent className="flex max-h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden">
           <DrawerHeader className="shrink-0 border-b text-left">
-            <DrawerTitle>Create assessment</DrawerTitle>
+            <DrawerTitle>Create Assessment</DrawerTitle>
           </DrawerHeader>
           {renderForm("drawer")}
         </DrawerContent>
@@ -220,7 +220,7 @@ export function TeamAssessmentRunCreateDialog({
       </SheetTrigger>
       <SheetContent side="right" className="flex h-full flex-col gap-0 overflow-hidden sm:max-w-3xl">
         <SheetHeader className="shrink-0 border-b">
-          <SheetTitle>Create assessment</SheetTitle>
+          <SheetTitle>Create Assessment</SheetTitle>
         </SheetHeader>
         {renderForm("sheet")}
       </SheetContent>

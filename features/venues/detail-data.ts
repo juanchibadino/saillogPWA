@@ -32,6 +32,7 @@ import type {
   VenueAssessmentTemplate,
   VenueDetailCampItem,
   VenueDetailChromeData,
+  VenueDetailExpensesBlockReason,
   VenueDetailKpisData,
   VenueDetailKpi,
   VenueDetailPageData,
@@ -408,7 +409,12 @@ function buildEmptyExpenseFormOptions(): TeamExpenseFormOptions {
   };
 }
 
-function buildEmptyTabPayload(tab: VenueDetailTab): VenueDetailTabPayload {
+function buildEmptyTabPayload(
+  tab: VenueDetailTab,
+  input: {
+    teamExpensesBlockReason?: VenueDetailExpensesBlockReason | null;
+  } = {},
+): VenueDetailTabPayload {
   if (tab === "camps") {
     return {
       camps: [],
@@ -458,6 +464,7 @@ function buildEmptyTabPayload(tab: VenueDetailTab): VenueDetailTabPayload {
       selectedMemberId: undefined,
       selectedType: undefined,
       selectedVisibilityScope: "mine",
+      teamExpensesBlockReason: input.teamExpensesBlockReason ?? null,
       teamExpensesVisible: false,
       typeOptions: TEAM_EXPENSE_TYPE_OPTIONS,
     };
@@ -1849,6 +1856,7 @@ export async function getTeamVenueDetailTabData(input: {
   selectedHighlight?: TeamSessionHighlightFilter;
   selectedMemberId?: string;
   tab: VenueDetailTab;
+  teamExpensesBlockReason?: VenueDetailExpensesBlockReason | null;
   teamVenue: VenueDetailTeamVenue | null;
   venue?: VenueDetailVenue | null;
   yearContextPromise?: Promise<TeamVenueDetailYearContextData>;
@@ -1869,7 +1877,9 @@ export async function getTeamVenueDetailTabData(input: {
     const teamVenue = input.teamVenue;
 
     if (!yearContext || !activeTeamId || !teamVenue) {
-      const emptyData = buildEmptyTabPayload(input.tab);
+      const emptyData = buildEmptyTabPayload(input.tab, {
+        teamExpensesBlockReason: input.teamExpensesBlockReason,
+      });
 
       logTeamVenueTabTiming({
         activeTeamId: input.activeTeamId,
@@ -1969,6 +1979,10 @@ export async function getTeamVenueDetailTabData(input: {
         }).camps,
         assessments,
       };
+    } else if (input.tab === "expenses" && input.teamExpensesBlockReason) {
+      data = buildEmptyTabPayload("expenses", {
+        teamExpensesBlockReason: input.teamExpensesBlockReason,
+      });
     } else if (input.tab === "expenses") {
       data = await getVenueExpensesTabData({
         activeOrganizationId: input.activeOrganizationId,

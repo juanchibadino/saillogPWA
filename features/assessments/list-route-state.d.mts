@@ -51,4 +51,7 @@ export function buildTeamAssessmentsRedirectPath(input: {
   templateId?: string
   newTemplate?: boolean
   page?: number
+  notifyAssessmentRun?: boolean
+  notifyAssessmentRunId?: string
+  notifyAssessmentTeamVenueId?: string
 }): string

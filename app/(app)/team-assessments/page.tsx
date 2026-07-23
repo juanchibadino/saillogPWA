@@ -91,6 +91,17 @@ export default async function TeamAssessmentsPage({
 
   const status = getSingleSearchParamValue(resolvedSearchParams.status)
   const error = getSingleSearchParamValue(resolvedSearchParams.error)
+  const assessmentRunNotificationRunId = getSingleSearchParamValue(
+    resolvedSearchParams.notifyAssessmentRunId,
+  )
+  const assessmentRunNotificationTeamVenueId = getSingleSearchParamValue(
+    resolvedSearchParams.notifyAssessmentTeamVenueId,
+  )
+  const showAssessmentRunNotificationPrompt =
+    status === "run_published" &&
+    getSingleSearchParamValue(resolvedSearchParams.notifyAssessmentRun) === "1" &&
+    Boolean(assessmentRunNotificationRunId) &&
+    Boolean(assessmentRunNotificationTeamVenueId)
   const {
     requestedLoadMoreMode,
     requestedNewTemplate,
@@ -197,6 +208,8 @@ export default async function TeamAssessmentsPage({
       ) : null}
 
       <TeamAssessmentsPageClient
+        assessmentRunNotificationRunId={assessmentRunNotificationRunId}
+        assessmentRunNotificationTeamVenueId={assessmentRunNotificationTeamVenueId}
         canManageAssessments={canManageAssessments}
         createdData={createdData}
         creatingTemplate={requestedNewTemplate}
@@ -204,6 +217,7 @@ export default async function TeamAssessmentsPage({
         scope={scope}
         selectedTab={requestedTab}
         selectedTemplateId={requestedTemplateId}
+        showAssessmentRunNotificationPrompt={showAssessmentRunNotificationPrompt}
         templatesData={templatesData}
       />
     </div>

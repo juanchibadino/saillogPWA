@@ -205,6 +205,7 @@ const teamNavSections: SidebarNavSection[] = [
         title: "Expenses",
         url: "/team-expenses",
         icon: ReceiptTextIcon,
+        badge: "Pro Plan",
       },
       {
         title: "Assets",
@@ -460,7 +461,7 @@ export function AppSidebar({
   }, [isScopeSwitchPending])
 
   React.useEffect(() => {
-    if (!canAccessOrganizationModules || !activeOrgId) {
+    if (!canAccessApp || !activeOrgId) {
       return
     }
 
@@ -510,7 +511,7 @@ export function AppSidebar({
     return () => {
       controller.abort()
     }
-  }, [activeOrgId, canAccessOrganizationModules, planTierByOrganizationId])
+  }, [activeOrgId, canAccessApp, planTierByOrganizationId])
 
   React.useEffect(() => {
     function handleSubscriptionPlanUpdated(event: Event): void {
@@ -540,7 +541,7 @@ export function AppSidebar({
   }, [])
 
   const activePlanTier =
-    canAccessOrganizationModules && activeOrgId
+    canAccessApp && activeOrgId
       ? planTierByOrganizationId[activeOrgId]
       : null
   const organizationSectionLabel = activeOrgId ? organizationName : "Organization"
@@ -1087,7 +1088,7 @@ export function AppSidebar({
                           <span className="min-w-0 flex-1 truncate font-medium">
                             {user.name}
                           </span>
-                          {canAccessOrganizationModules ? (
+                          {activePlanTier ? (
                             <Badge
                               variant="secondary"
                               className="shrink-0 text-[10px] font-medium"

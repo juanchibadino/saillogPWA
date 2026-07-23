@@ -14,6 +14,7 @@ export const VENUE_DETAIL_TAB_CACHE_ROUTE = "venues:tab-data"
 export type VenueDetailTabCacheFiltersInput = {
   campId?: string | null
   crewFilter?: string | null
+  expenseBlockReason?: string | null
   expenseType?: string | null
   highlight?: TeamSessionHighlightFilter | null
   loadMore: boolean
@@ -42,6 +43,7 @@ export function buildVenueDetailTabCacheFilters(
   return {
     camp: input.campId ?? null,
     crew: input.crewFilter ?? null,
+    expenseBlockReason: input.expenseBlockReason ?? null,
     type: input.expenseType ?? null,
     highlight: input.highlight ?? null,
     loadMore: input.loadMore,

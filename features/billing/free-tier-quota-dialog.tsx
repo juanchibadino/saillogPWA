@@ -24,7 +24,7 @@ const PRO_PLAN_FEATURES = [
   "Unlimited Venues",
   "Unlimited Camps",
   "Unlimited Sessions",
-  "Session media and file uploads",
+  "Assets for images, files and Vakaros",
 ]
 
 const PRO_FEATURE_BADGE_LABEL = "Pro feature"

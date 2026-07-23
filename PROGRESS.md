@@ -1,8 +1,33 @@
 # PROGRESS.md
 
-Last updated: 2026-07-21
+Last updated: 2026-07-23
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
+
+## 2026-07-23 - Landing assets and Pro plan copy
+
+- Added an `Assets` card to the public landing product section.
+- Added Assets to the Pro plan feature list and upgrade prompt copy.
+- Validation: `git diff --check`, `npm run lint`, and `npm run build` passed.
+
+## 2026-07-23 - Vakaros label cleanup
+
+- Renamed the Session ID Files-tab GPS upload/list copy from `GPS File(s)` to `Vakaros`.
+- Renamed the Team Assets `GPS Files` tab and empty state to `Vakaros` while keeping the internal `gps-files` tab value.
+- Validation: `git diff --check`, `npm run lint`, and `npm run build` passed.
+
+## 2026-07-23 - Password sign-in reveal control
+
+- Added a show/hide password icon button to `/sign-in` password sign-in while preserving the existing mobile input height.
+- Kept the icon button vertically stable on click so it does not inherit the default pressed down movement.
+- Added a blurred background overlay to the shared asset preview dialog.
+- Validation: `git diff --check`, `npm run lint`, and `npm run build` passed.
+
+## 2026-07-23 - Team Home roster role cleanup
+
+- Removed the redundant role text under Team Members names while keeping the right-side role badge.
+- Updated the Team Home roster skeleton to match the single-line member rows.
+- Validation: `git diff --check`, `npm run lint`, and `npm run build` passed.
 
 ## 2026-07-21 - Team Gear threshold naming and alerts
 

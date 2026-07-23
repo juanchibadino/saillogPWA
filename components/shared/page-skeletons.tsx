@@ -189,9 +189,8 @@ export function TeamHomePageSkeleton() {
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <Skeleton className="size-9 rounded-full" />
-                    <div className="min-w-0 space-y-2">
+                    <div className="min-w-0">
                       <Skeleton className="h-4 w-32" />
-                      <Skeleton className="h-3 w-20" />
                     </div>
                   </div>
                   <Skeleton className="h-6 w-16 rounded-full" />

@@ -13,6 +13,9 @@ const FEATURES = [
   "Session setup templates for 49er",
   "Aggregated data for team and organization",
   "Reports for every venue per year",
+  "Expenses with receipts and PDF reports",
+  "Assets for images, files and Vakaros",
+  "Vakaros GPS uploads and playback",
   "Notes",
   "Year calendar connected to Google and Outlook",
 ] as const;

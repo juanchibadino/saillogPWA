@@ -209,6 +209,32 @@ test("builds status redirects that match list feedback readers", () => {
   }
 })
 
+test("builds assessment notification prompt redirects", () => {
+  assert.equal(
+    buildTeamAssessmentsRedirectPath({
+      returnPath: "/team-assessments?org=old&team=old&page=2&loadMore=1",
+      scopeOrgId: "org-1",
+      scopeTeamId: "team-1",
+      status: "run_published",
+      notifyAssessmentRun: true,
+      notifyAssessmentRunId: "run-1",
+      notifyAssessmentTeamVenueId: "team-venue-1",
+    }),
+    "/team-assessments?org=org-1&team=team-1&page=2&status=run_published&notifyAssessmentRun=1&notifyAssessmentRunId=run-1&notifyAssessmentTeamVenueId=team-venue-1",
+  )
+
+  assert.equal(
+    buildTeamAssessmentsRedirectPath({
+      returnPath:
+        "/team-assessments?org=org-1&team=team-1&notifyAssessmentRun=1&notifyAssessmentRunId=run-1&notifyAssessmentTeamVenueId=team-venue-1",
+      scopeOrgId: "org-1",
+      scopeTeamId: "team-1",
+      status: "run_closed",
+    }),
+    "/team-assessments?org=org-1&team=team-1&status=run_closed",
+  )
+})
+
 test("keeps legacy assessment status aliases readable", () => {
   assert.equal(
     getTeamAssessmentStatusMessage("created"),

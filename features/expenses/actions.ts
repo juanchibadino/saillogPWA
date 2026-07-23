@@ -14,6 +14,10 @@ import {
   canManageTeamFinance,
   canManageTeamSessions,
 } from "@/lib/auth/capabilities"
+import {
+  resolveOrganizationTeamExpensesEntitlement,
+  type OrganizationWriteEntitlementReason,
+} from "@/lib/billing/entitlements"
 import { scopeFormInputSchema } from "@/lib/validation/navigation"
 import {
   createTeamExpenseInputSchema,
@@ -108,6 +112,28 @@ function buildError(message: string): ExpenseMutationResult {
     ok: false,
     message,
   }
+}
+
+function getExpensesBlockedMessage(reason: OrganizationWriteEntitlementReason): string {
+  if (reason === "payment_required") {
+    return "Your paid plan is inactive. Recover payment in Subscription to continue using expenses."
+  }
+
+  return "This is a Pro feature. Upgrade to Pro to continue using expenses."
+}
+
+async function resolveExpensesFeatureBlock(
+  organizationId: string,
+): Promise<ExpenseMutationResult | null> {
+  const entitlement = await resolveOrganizationTeamExpensesEntitlement({
+    organizationId,
+  })
+
+  if (entitlement.allowed || !entitlement.reason) {
+    return null
+  }
+
+  return buildError(getExpensesBlockedMessage(entitlement.reason))
 }
 
 function normalizeOptionalText(value: string | undefined): string | null {
@@ -381,6 +407,12 @@ export async function createTeamExpenseAction(
     return buildError("Team scope is required to create expenses.")
   }
 
+  const expensesFeatureBlock = await resolveExpensesFeatureBlock(scope.scopeOrgId)
+
+  if (expensesFeatureBlock) {
+    return expensesFeatureBlock
+  }
+
   const parsedInput = createTeamExpenseInputSchema.safeParse({
     teamId: scope.scopeTeamId,
     teamVenueId: getFormString(formData, "teamVenueId"),
@@ -526,6 +558,12 @@ export async function updateTeamExpenseAction(
 
   if (!scope.scopeOrgId || !scope.scopeTeamId) {
     return buildError("Team scope is required to update expenses.")
+  }
+
+  const expensesFeatureBlock = await resolveExpensesFeatureBlock(scope.scopeOrgId)
+
+  if (expensesFeatureBlock) {
+    return expensesFeatureBlock
   }
 
   const parsedInput = updateTeamExpenseInputSchema.safeParse({
@@ -712,6 +750,12 @@ export async function deleteTeamExpenseAction(
 
   if (!parsedInput.success || !scope.scopeOrgId || !scope.scopeTeamId) {
     return buildError("Invalid expense delete request.")
+  }
+
+  const expensesFeatureBlock = await resolveExpensesFeatureBlock(scope.scopeOrgId)
+
+  if (expensesFeatureBlock) {
+    return expensesFeatureBlock
   }
 
   const canManageSessions = canManageTeamSessions({

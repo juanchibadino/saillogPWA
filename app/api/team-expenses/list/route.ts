@@ -13,6 +13,7 @@ import {
   canManageTeamFinance,
   canManageTeamSessions,
 } from "@/lib/auth/capabilities"
+import { resolveOrganizationTeamExpensesEntitlement } from "@/lib/billing/entitlements"
 import { resolveNavigationScope } from "@/lib/navigation/scope"
 import type { ScopeSearchParams } from "@/lib/navigation/types"
 
@@ -42,6 +43,17 @@ export async function GET(request: Request) {
 
   if (!navigation.scope || navigation.scope.activeTeamId === null) {
     return NextResponse.json({ error: "scope_required" }, { status: 403 })
+  }
+
+  const expensesEntitlement = await resolveOrganizationTeamExpensesEntitlement({
+    organizationId: navigation.scope.activeOrgId,
+  })
+
+  if (!expensesEntitlement.allowed && expensesEntitlement.reason) {
+    return NextResponse.json(
+      { error: expensesEntitlement.reason },
+      { status: expensesEntitlement.reason === "payment_required" ? 402 : 403 },
+    )
   }
 
   const {

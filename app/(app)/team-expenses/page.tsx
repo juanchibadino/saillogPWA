@@ -13,12 +13,14 @@ import {
 import { TeamExpensesTable } from "@/features/expenses/expenses-table"
 import { resolveTeamExpensesListRequest } from "@/features/expenses/list-route-state.mjs"
 import { TEAM_EXPENSE_TYPE_OPTIONS } from "@/features/expenses/shared"
+import { TeamExpensesProFeatureGate } from "@/features/expenses/team-expenses-pro-feature-gate"
 import { TeamExpensesRouteShell } from "@/features/expenses/team-expenses-route-shell"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import {
   canManageTeamFinance,
   canManageTeamSessions,
 } from "@/lib/auth/capabilities"
+import { resolveOrganizationTeamExpensesEntitlement } from "@/lib/billing/entitlements"
 import {
   getSingleSearchParamValue,
   resolveNavigationScope,
@@ -223,6 +225,21 @@ export default async function TeamExpensesPage({
   const activeTeamId = scope.activeTeamId
   const noTeamSelected = activeTeamId === null
   const currentProfileId = context.profile?.id ?? context.user.id
+  const expensesEntitlement = await resolveOrganizationTeamExpensesEntitlement({
+    organizationId: scope.activeOrgId,
+  })
+
+  if (!expensesEntitlement.allowed && expensesEntitlement.reason) {
+    return (
+      <div className="space-y-6">
+        <TeamExpensesProFeatureGate
+          reason={expensesEntitlement.reason}
+          scope={scope}
+        />
+      </div>
+    )
+  }
+
   const canManageExpenseRows =
     activeTeamId !== null &&
     canManageTeamSessions({

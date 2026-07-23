@@ -4,6 +4,7 @@ import {
   getCurrentAccessContext,
   type AuthenticatedAccessContext,
 } from "@/lib/auth/access"
+import { resolveOrganizationTeamExpensesEntitlement } from "@/lib/billing/entitlements"
 import { resolveNavigationScope } from "@/lib/navigation/scope"
 import type { ScopeSearchParams } from "@/lib/navigation/types"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
@@ -47,6 +48,16 @@ export async function GET(request: Request, context: RouteContext) {
 
   if (!navigation.scope || navigation.scope.activeTeamId === null) {
     return new NextResponse(null, { status: 403 })
+  }
+
+  const expensesEntitlement = await resolveOrganizationTeamExpensesEntitlement({
+    organizationId: navigation.scope.activeOrgId,
+  })
+
+  if (!expensesEntitlement.allowed) {
+    return new NextResponse(null, {
+      status: expensesEntitlement.reason === "payment_required" ? 402 : 403,
+    })
   }
 
   const supabase = await createServerSupabaseClient()

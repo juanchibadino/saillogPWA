@@ -498,7 +498,7 @@ export function SessionHeaderGpsPlayerAction(input: {
             "border-border bg-muted text-muted-foreground shadow-none hover:bg-muted hover:text-muted-foreground",
         )}
         aria-disabled={!hasGpsFile}
-        aria-label={hasGpsFile ? "Open GPS player" : "Open Files tab"}
+        aria-label={hasGpsFile ? "Open Vakaros player" : "Open Files tab"}
         onClick={() => {
           if (!input.gpsFile) {
             router.push(
@@ -1743,7 +1743,7 @@ export function SessionDetailTabsClient(input: {
                     scope={input.scope}
                     gpsFiles={tabData.analytics.gpsFiles}
                     gpsFileTotalCount={tabData.analytics.gpsFileTotalCount}
-                    emptyMessage="No GPS files uploaded for this session yet."
+                    emptyMessage="No Vakaros uploaded for this session yet."
                     onGpsFilesChanged={() => handleAssetsChanged("analytics")}
                     canManageSession={input.canManageSession}
                     canUploadAssets={input.canUploadSessionAssets}

@@ -111,7 +111,7 @@ function getEmptyMessage(input: {
   }
 
   return input.tab === "gps-files"
-    ? "No GPS files uploaded for this team yet."
+    ? "No Vakaros uploaded for this team yet."
     : "No files uploaded for this team yet."
 }
 

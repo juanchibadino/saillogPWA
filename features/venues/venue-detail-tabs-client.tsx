@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 
 import type {
+  VenueDetailExpensesBlockReason,
   VenueDetailKpi,
   VenueDetailKpisData,
   VenueDetailTabDataByTab,
@@ -471,6 +472,7 @@ function resolveCacheScope(scope: NavigationScope): ScopedRouteCacheScope {
 function buildVenueDetailTabRequest(input: {
   campId?: string;
   crewFilter?: string;
+  expenseBlockReason?: VenueDetailExpensesBlockReason | null;
   expenseType?: string;
   highlight?: TeamSessionHighlightFilter;
   loadMore: boolean;
@@ -488,6 +490,7 @@ function buildVenueDetailTabRequest(input: {
       tab: input.tab,
       year: input.year,
       crewFilter: input.crewFilter,
+      expenseBlockReason: input.expenseBlockReason,
       expenseType: input.expenseType,
       memberId: input.memberId,
       page: 1,
@@ -529,6 +532,7 @@ function buildVenueDetailTabCacheFromRequest(input: {
     year: input.request.year,
     campId: input.request.campId,
     crewFilter: input.request.crewFilter,
+    expenseBlockReason: input.request.expenseBlockReason,
     expenseType: input.request.expenseType,
     highlight: input.request.highlight,
     loadMore: input.request.loadMore,
@@ -1166,6 +1170,7 @@ export function VenueDetailTabsClient(input: {
   canManageReports: boolean;
   canManageSessions: boolean;
   canManageWindPatterns: boolean;
+  teamExpensesBlockReason?: VenueDetailExpensesBlockReason | null;
   initialWindPatternStatusFilter: WindPatternStatusFilter;
   assessmentRunNotificationRunId?: string | null;
   showAssessmentRunNotificationPrompt?: boolean;
@@ -1296,6 +1301,8 @@ export function VenueDetailTabsClient(input: {
       buildVenueDetailTabRequest({
         campId: requestedCampId,
         crewFilter: selectedExpenseCrewFilter,
+        expenseBlockReason:
+          selectedTab === "expenses" ? input.teamExpensesBlockReason ?? null : null,
         expenseType: routeRequest.requestedType,
         highlight: routeRequest.requestedHighlight,
         loadMore: routeRequest.requestedLoadMoreMode,
@@ -1309,6 +1316,7 @@ export function VenueDetailTabsClient(input: {
     [
       input.scope,
       input.teamVenueId,
+      input.teamExpensesBlockReason,
       requestedCampId,
       routeRequest.requestedHighlight,
       routeRequest.requestedLoadMoreMode,

@@ -315,7 +315,7 @@ function TeamAssetTabs(input: {
             disabled={input.isNavigating}
             className="min-w-0 basis-0 px-2"
           >
-            GPS Files
+            Vakaros
           </TabsTrigger>
         </TabsList>
       </div>
@@ -340,7 +340,7 @@ function TeamAssetTabs(input: {
           disabled={input.isNavigating}
           className="min-w-0 basis-0"
         >
-          GPS Files
+          Vakaros
         </TabsTrigger>
       </TabsList>
     </Tabs>

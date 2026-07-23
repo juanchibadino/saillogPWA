@@ -21,6 +21,7 @@ export type PlanLimits = {
 
 export type PlanCapabilities = {
   sessionAssetUploads: boolean
+  teamExpenses: boolean
 }
 
 export const BILLING_PLAN_LIMITS = BILLING_PLAN_LIMITS_CORE as Record<
