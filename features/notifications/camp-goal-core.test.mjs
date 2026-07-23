@@ -6,6 +6,7 @@ import {
   buildCampGoalEmailPayload,
   buildCampGoalNotificationRows,
   buildCampGoalPushPayload,
+  buildUpdateNotificationSettingsHref,
   getCampGoalEmailRecipients,
 } from "./camp-goal-core.mjs"
 
@@ -173,6 +174,7 @@ test("builds branded Camp Goal email html", () => {
     actorName: "Alex Coach",
     campName: "Miami",
     message: "Alex <Coach> just uploaded the goals for Miami <Camp>. Check them out.",
+    preferencesUrl: "https://www.dockout.app/settings?tab=notifications&org=org-1&team=team-1",
     targetHref: "/team-camps/camp-1?org=org-1&team=team-1&tab=goals",
     targetUrl: "https://www.dockout.app/team-camps/camp-1?org=org-1&team=team-1&tab=goals",
   })
@@ -189,6 +191,15 @@ test("builds branded Camp Goal email html", () => {
     payload.html,
     /href="https:\/\/www\.dockout\.app\/team-camps\/camp-1\?org=org-1&amp;team=team-1&amp;tab=goals"/,
   )
+  assert.match(payload.html, /Manage email notifications/)
+  assert.match(
+    payload.html,
+    /href="https:\/\/www\.dockout\.app\/settings\?tab=notifications&amp;org=org-1&amp;team=team-1"/,
+  )
+  assert.match(
+    payload.text,
+    /Manage email notifications: https:\/\/www\.dockout\.app\/settings\?tab=notifications&org=org-1&team=team-1/,
+  )
   assert.doesNotMatch(payload.html, /Alex <Coach>/)
   assert.equal(payload.subject, "Alex Coach added Goals for Miami Camp.")
 })
@@ -203,6 +214,17 @@ test("does not duplicate Camp in Camp Goal email subject", () => {
   })
 
   assert.equal(payload.subject, "Alex Coach added Goals for Miami Camp.")
+})
+
+test("builds Settings notifications href with preserved scope", () => {
+  assert.equal(
+    buildUpdateNotificationSettingsHref({
+      orgId: "org-1",
+      teamId: "team-1",
+    }),
+    "/settings?tab=notifications&org=org-1&team=team-1",
+  )
+  assert.equal(buildUpdateNotificationSettingsHref(), "/settings?tab=notifications")
 })
 
 test("builds Camp Goal push payload with a safe internal target href", () => {

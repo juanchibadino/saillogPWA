@@ -13,11 +13,13 @@ import { SignInAccessCodePanel } from "./access-code-panel";
 type SignInAccessCodeProps = {
   statusMessage: string | null;
   errorMessage: string | null;
+  nextPath: string;
 };
 
 export function SignInAuthContent({
   statusMessage,
   errorMessage,
+  nextPath,
 }: SignInAccessCodeProps) {
   const [isAccessCodeMode, setIsAccessCodeMode] = useState(false);
   const [isPasswordSubmitting, setIsPasswordSubmitting] = useState(false);
@@ -60,6 +62,7 @@ export function SignInAuthContent({
             className="space-y-4"
             onSubmit={handlePasswordSubmit}
           >
+            <input type="hidden" name="next" value={nextPath} />
             <fieldset
               aria-disabled={isPasswordSubmitting}
               className="space-y-4 data-[pending=true]:opacity-60"
@@ -117,6 +120,7 @@ export function SignInAuthContent({
       ) : null}
 
       <SignInAccessCodePanel
+        nextPath={nextPath}
         onChangeEmail={handleChangeEmail}
         onRequestSuccess={handleAccessCodeRequest}
       />

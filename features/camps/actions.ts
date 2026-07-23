@@ -6,7 +6,7 @@ import { redirect } from "next/navigation"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import { canDeleteCamps, canManageTeamStructure } from "@/lib/auth/capabilities"
 import { resolveOrganizationWriteEntitlement } from "@/lib/billing/entitlements"
-import { getOptionalAppUrlOrigin } from "@/lib/supabase/env"
+import { resolveCurrentRequestOrigin } from "@/lib/http/request-origin"
 import { createAdminSupabaseClient } from "@/lib/supabase/admin"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { scopeFormInputSchema } from "@/lib/validation/navigation"
@@ -37,6 +37,7 @@ import {
   buildCampGoalNotificationRows,
   buildCampGoalPushPayload,
   buildCampGoalTargetHref,
+  buildUpdateNotificationSettingsHref,
 } from "@/features/notifications/camp-goal-core.mjs"
 import { sendCampGoalEmailNotifications } from "@/features/notifications/email"
 import { sendWebPushNotifications } from "@/features/notifications/push"
@@ -322,10 +323,10 @@ async function ensureCampBelongsToScope(input: {
   return Boolean(teamVenueRow)
 }
 
-function buildAbsoluteAppUrl(href: string): string {
+async function buildAbsoluteAppUrl(href: string): Promise<string> {
   try {
-    const origin = getOptionalAppUrlOrigin()
-    return origin ? `${origin}${href}` : href
+    const origin = await resolveCurrentRequestOrigin()
+    return `${origin}${href}`
   } catch {
     return href
   }
@@ -1011,9 +1012,15 @@ export async function confirmCampGoalsNotificationAction(
       actorName,
       campName: notificationContext.campName,
       message,
+      preferencesUrl: await buildAbsoluteAppUrl(
+        buildUpdateNotificationSettingsHref({
+          orgId: scope.scopeOrgId,
+          teamId: scope.scopeTeamId,
+        }),
+      ),
       recipients: deliveryRecipients,
       targetHref,
-      targetUrl: buildAbsoluteAppUrl(targetHref),
+      targetUrl: await buildAbsoluteAppUrl(targetHref),
     })
   }
 

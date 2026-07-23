@@ -52,6 +52,11 @@ export function buildCampGoalTargetHref(input: {
   teamId: string
 }): string
 
+export function buildUpdateNotificationSettingsHref(input?: {
+  orgId?: string | null
+  teamId?: string | null
+}): string
+
 export function buildCampGoalCrewRecipients(input: {
   actorProfileId: string
   memberships: CampGoalCrewMembershipInput[]
@@ -82,6 +87,7 @@ export function buildCampGoalEmailPayload(input: {
   actorName: string
   campName: string
   message: string
+  preferencesUrl?: string
   targetHref: string
   targetUrl: string
 }): {

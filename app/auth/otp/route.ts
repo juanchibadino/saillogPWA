@@ -1,26 +1,44 @@
 import { NextResponse } from "next/server";
 
+import {
+  appendSafeNextParam,
+  normalizeSafeNextPath,
+} from "@/lib/auth/safe-next-path.mjs";
 import { buildRequestUrl, resolveRequestOrigin } from "@/lib/http/request-origin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type OtpRequestBody = {
   email?: string;
+  next?: string;
 };
 
 type OtpRequestResponse =
   | { ok: true }
   | { ok: false; error: "missing_email" | "otp_failed" };
 
-async function getEmailFromRequest(request: Request): Promise<string> {
+async function getOtpInputFromRequest(request: Request): Promise<{
+  email: string;
+  nextPath: string;
+}> {
   const contentType = request.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
     const body = (await request.json().catch(() => ({}))) as OtpRequestBody;
-    return typeof body.email === "string" ? body.email.trim() : "";
+    return {
+      email: typeof body.email === "string" ? body.email.trim() : "",
+      nextPath: normalizeSafeNextPath(body.next),
+    };
   }
 
   const formData = await request.formData();
   const emailValue = formData.get("email");
-  return typeof emailValue === "string" ? emailValue.trim() : "";
+  const nextValue = formData.get("next");
+
+  return {
+    email: typeof emailValue === "string" ? emailValue.trim() : "",
+    nextPath: normalizeSafeNextPath(
+      typeof nextValue === "string" ? nextValue : undefined,
+    ),
+  };
 }
 
 function isJsonRequest(request: Request): boolean {
@@ -30,7 +48,7 @@ function isJsonRequest(request: Request): boolean {
 }
 
 export async function POST(request: Request) {
-  const email = await getEmailFromRequest(request);
+  const { email, nextPath } = await getOtpInputFromRequest(request);
 
   if (!email) {
     if (isJsonRequest(request)) {
@@ -40,14 +58,21 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.redirect(await buildRequestUrl("/sign-in?error=missing_email", request), {
-      status: 303,
-    });
+    return NextResponse.redirect(
+      await buildRequestUrl(
+        appendSafeNextParam("/sign-in?error=missing_email", nextPath),
+        request,
+      ),
+      {
+        status: 303,
+      },
+    );
   }
 
   const supabase = await createServerSupabaseClient();
   const origin = await resolveRequestOrigin(request);
   const callbackUrl = new URL("/auth/callback", origin);
+  callbackUrl.searchParams.set("next", nextPath);
 
   const { error } = await supabase.auth.signInWithOtp({
     email,
@@ -65,16 +90,28 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.redirect(await buildRequestUrl("/sign-in?error=otp_failed", request), {
-      status: 303,
-    });
+    return NextResponse.redirect(
+      await buildRequestUrl(
+        appendSafeNextParam("/sign-in?error=otp_failed", nextPath),
+        request,
+      ),
+      {
+        status: 303,
+      },
+    );
   }
 
   if (isJsonRequest(request)) {
     return NextResponse.json<OtpRequestResponse>({ ok: true }, { status: 200 });
   }
 
-  return NextResponse.redirect(await buildRequestUrl("/sign-in?status=check-email", request), {
-    status: 303,
-  });
+  return NextResponse.redirect(
+    await buildRequestUrl(
+      appendSafeNextParam("/sign-in?status=check-email", nextPath),
+      request,
+    ),
+    {
+      status: 303,
+    },
+  );
 }

@@ -23,6 +23,7 @@ type OtpVerifyError =
 const COOLDOWN_SECONDS = 180;
 
 type SignInAccessCodePanelProps = {
+  nextPath: string;
   onChangeEmail?: () => void;
   onRequestSuccess?: () => void;
 };
@@ -62,6 +63,7 @@ function isValidOtp(token: string): boolean {
 }
 
 export function SignInAccessCodePanel({
+  nextPath,
   onChangeEmail,
   onRequestSuccess,
 }: SignInAccessCodePanelProps) {
@@ -127,7 +129,7 @@ export function SignInAccessCodePanel({
             accept: "application/json",
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ email: email.trim() }),
+          body: JSON.stringify({ email: email.trim(), next: nextPath }),
         });
         const payload = (await response.json().catch(() => null)) as
           | { ok: true }
@@ -149,7 +151,7 @@ export function SignInAccessCodePanel({
         updateLoading(false);
       }
     },
-    [email, notifyRequestSuccess],
+    [email, nextPath, notifyRequestSuccess],
   );
 
   const verifyAccessCode = useCallback(async () => {
@@ -168,11 +170,11 @@ export function SignInAccessCodePanel({
           accept: "application/json",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email: email.trim(), token: otp }),
+        body: JSON.stringify({ email: email.trim(), next: nextPath, token: otp }),
       });
 
       const payload = (await response.json().catch(() => null)) as
-        | { ok: true }
+        | { ok: true; next: string }
         | { ok: false; error: OtpVerifyError }
         | null;
 
@@ -183,13 +185,13 @@ export function SignInAccessCodePanel({
         return;
       }
 
-      router.replace("/post-auth");
+      router.replace(payload.next);
     } catch {
       setVerifyErrorMessage("The access code is invalid. Try again.");
     } finally {
       setIsVerifying(false);
     }
-  }, [email, otp, router]);
+  }, [email, nextPath, otp, router]);
 
   const refreshDisabled = remainingSeconds > 0 || isRefreshing;
   const showRefreshSpinner = remainingSeconds > 0 || isRefreshing;

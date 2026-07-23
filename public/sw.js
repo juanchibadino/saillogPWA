@@ -6,6 +6,7 @@ const APP_SHELL_ASSETS = [
   "/icons/icon-512x512.png",
   "/icons/icon-192x192-maskable.png",
   "/icons/icon-512x512-maskable.png",
+  "/icons/notification-badge.png",
   "/icons/apple-touch-icon.png",
 ];
 
@@ -140,7 +141,7 @@ self.addEventListener("push", (event) => {
 
   event.waitUntil(
     self.registration.showNotification(title, {
-      badge: "/icons/icon-192x192-maskable.png",
+      badge: "/icons/notification-badge.png",
       body,
       data: {
         url: targetUrl,

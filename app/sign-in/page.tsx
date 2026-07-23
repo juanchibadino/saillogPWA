@@ -8,6 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { getCurrentAccessContext, hasAppAccess } from "@/lib/auth/access";
+import { normalizeSafeNextPath } from "@/lib/auth/safe-next-path.mjs";
 import { SignInAuthContent } from "./sign-in-content";
 
 type SignInSearchParams = Promise<
@@ -71,13 +72,16 @@ export default async function SignInPage({
 }: {
   searchParams: SignInSearchParams;
 }) {
+  const resolvedSearchParams = await searchParams;
+  const nextPath = normalizeSafeNextPath(
+    getSingleSearchParamValue(resolvedSearchParams.next),
+  );
   const context = await getCurrentAccessContext();
 
   if (context.user && hasAppAccess(context)) {
-    redirect("/post-auth");
+    redirect(nextPath);
   }
 
-  const resolvedSearchParams = await searchParams;
   const status = getSingleSearchParamValue(resolvedSearchParams.status);
   const error = getSingleSearchParamValue(resolvedSearchParams.error);
   const mode = resolveMode(getSingleSearchParamValue(resolvedSearchParams.mode));
@@ -101,6 +105,7 @@ export default async function SignInPage({
           <SignInAuthContent
             statusMessage={statusMessage}
             errorMessage={errorMessage}
+            nextPath={nextPath}
           />
           <p className="text-center text-xs leading-5 text-muted-foreground">
             By continuing, you agree to the{" "}

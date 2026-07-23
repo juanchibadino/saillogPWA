@@ -414,12 +414,24 @@ function CampGoalNotificationDialog({
   const [notifyPush, setNotifyPush] = React.useState(true)
   const [isPending, setIsPending] = React.useState(false)
   const [errorMessage, setErrorMessage] = React.useState("")
+  const openedPromptCampIdRef = React.useRef<string | null>(
+    defaultOpen ? campId : null,
+  )
 
   React.useEffect(() => {
-    setIsOpen(defaultOpen)
-  }, [defaultOpen])
+    if (!defaultOpen || openedPromptCampIdRef.current === campId) {
+      return
+    }
+
+    openedPromptCampIdRef.current = campId
+    setNotifyEmail(true)
+    setNotifyPush(true)
+    setErrorMessage("")
+    setIsOpen(true)
+  }, [campId, defaultOpen])
 
   function closeDialog(): void {
+    openedPromptCampIdRef.current = null
     setIsOpen(false)
     clearCampGoalNotificationPromptParam()
   }
@@ -473,14 +485,19 @@ function CampGoalNotificationDialog({
     <Dialog
       open={isOpen}
       onOpenChange={(nextOpen) => {
-        setIsOpen(nextOpen)
-
-        if (!nextOpen) {
-          clearCampGoalNotificationPromptParam()
+        if (nextOpen) {
+          setIsOpen(true)
+          return
         }
+
+        closeDialog()
       }}
     >
-      <DialogContent className="sm:max-w-md">
+      <DialogContent
+        className="sm:max-w-md"
+        forceOverlayRender
+        overlayClassName="bg-black/20 backdrop-blur-sm supports-backdrop-filter:backdrop-blur-sm"
+      >
         <DialogHeader>
           <DialogTitle>Notify crew?</DialogTitle>
           <DialogDescription>

@@ -1,24 +1,13 @@
 import { NextResponse } from "next/server";
 
 import { buildRequestUrl } from "@/lib/http/request-origin";
+import { normalizeSafeNextPath } from "@/lib/auth/safe-next-path.mjs";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-
-function normalizeNextPath(nextValue: string | null): string {
-  if (!nextValue) {
-    return "/post-auth";
-  }
-
-  if (!nextValue.startsWith("/") || nextValue.startsWith("//")) {
-    return "/post-auth";
-  }
-
-  return nextValue;
-}
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
-  const nextPath = normalizeNextPath(requestUrl.searchParams.get("next"));
+  const nextPath = normalizeSafeNextPath(requestUrl.searchParams.get("next"));
   const callbackErrorUrl = await buildRequestUrl("/sign-in?error=callback_failed", request);
 
   if (!code) {

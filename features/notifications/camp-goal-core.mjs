@@ -30,6 +30,21 @@ export function buildCampGoalTargetHref(input) {
   })
 }
 
+export function buildUpdateNotificationSettingsHref(input = {}) {
+  const params = new URLSearchParams()
+  params.set("tab", "notifications")
+
+  if (typeof input.orgId === "string" && input.orgId.trim().length > 0) {
+    params.set("org", input.orgId.trim())
+  }
+
+  if (typeof input.teamId === "string" && input.teamId.trim().length > 0) {
+    params.set("team", input.teamId.trim())
+  }
+
+  return `/settings?${params.toString()}`
+}
+
 export function buildCampGoalCrewRecipients(input) {
   const profileById = new Map(
     (input.profiles ?? []).map((profile) => [profile.id, profile]),
@@ -151,6 +166,8 @@ function escapeHtml(value) {
 export function buildCampGoalEmailPayload(input) {
   const targetLabel = input.targetUrl || input.targetHref
   const targetUrl = escapeHtml(targetLabel)
+  const preferencesLabel = input.preferencesUrl || "/settings?tab=notifications"
+  const preferencesUrl = escapeHtml(preferencesLabel)
   const message = escapeHtml(input.message)
   const campName = escapeHtml(input.campName || "this camp")
   const subjectCampName = formatCampGoalSubjectCampName(input.campName)
@@ -187,13 +204,23 @@ export function buildCampGoalEmailPayload(input) {
     The goals for ${campName} were shared with the active crew.
   </p>
 
+  <p style="margin: 20px 0 0; font-size: 14px; line-height: 1.5; color: #6b7280;">
+    To stop receiving Dock Out update emails,
+    <a
+      href="${preferencesUrl}"
+      style="color: #111827; font-weight: 600; text-decoration: underline;"
+    >
+      Manage email notifications
+    </a>.
+  </p>
+
   <p style="margin: 32px 0 0; font-size: 14px; color: #9ca3af;">
     See you on the water,<br />
     The Dock Out team
   </p>
 </div>`.trim(),
     subject: `${input.actorName} added Goals for ${subjectCampName}.`,
-    text: `${input.message}\n\nOpen camp goals: ${targetLabel}`,
+    text: `${input.message}\n\nOpen camp goals: ${targetLabel}\n\nManage email notifications: ${preferencesLabel}`,
   }
 }
 
