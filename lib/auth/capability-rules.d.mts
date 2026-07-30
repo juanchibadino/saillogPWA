@@ -16,6 +16,18 @@ export function canManageTeamVenuesFromAccess(input: {
   teamId: string
 }): boolean
 
+export function canCreateTeamVenuesFromAccess(input: {
+  context: CapabilityAccessContext
+  organizationId: string
+  teamId: string
+}): boolean
+
+export function canCreateCampsFromAccess(input: {
+  context: CapabilityAccessContext
+  organizationId: string
+  teamId: string
+}): boolean
+
 export function canManageTeamFinanceFromAccess(input: {
   context: CapabilityAccessContext
   organizationId: string

@@ -1,8 +1,15 @@
 # PROGRESS.md
 
-Last updated: 2026-07-23
+Last updated: 2026-07-30
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
+
+## 2026-07-30 - Crew create access for Team Venues and Camps
+
+- Added create-only permissions so active Crew can create/link Team Venues and create Camps from `/team-venues`, `/team-camps`, and the Venue detail Camps tab.
+- Kept Team Venue update/delete and Camp update/delete on the stricter existing manager permissions.
+- Added Supabase migration `063_crew_create_team_venues_and_camps.sql` to align `venues`, `team_venues`, and `camps` insert policies with the app-level create rules.
+- Validation: `node --test lib/auth/capability-rules.test.mjs features/team-venues/list-route-state.test.mjs`, `./node_modules/.bin/tsc --noEmit --pretty false`, `npm run lint`, `npm test`, `git diff --check`, and `npm run build` passed.
 
 ## 2026-07-23 - Landing assets and Pro plan copy
 

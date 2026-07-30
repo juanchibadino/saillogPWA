@@ -8,6 +8,8 @@ import {
   resolveTeamVenuesListRequest,
 } from "./list-route-state.mjs"
 import {
+  TEAM_VENUE_CREATE_ACTIONS,
+  TEAM_VENUE_MANAGE_ACTIONS,
   TEAM_VENUE_WRITE_ACTIONS,
   canDeleteTeamVenueLink,
   canRunTeamVenueWriteAction,
@@ -144,8 +146,51 @@ test("builds Team Venue action redirects preserving status page and load-more st
   )
 })
 
-test("allows organization admins team admins and coaches to create link update and delete Team Venues", () => {
-  for (const action of TEAM_VENUE_WRITE_ACTIONS) {
+test("allows organization admins team admins coaches and crew to create Team Venues", () => {
+  for (const action of TEAM_VENUE_CREATE_ACTIONS) {
+    assert.equal(
+      canRunTeamVenueWriteAction({
+        action,
+        context: buildContext({
+          organizationMemberships: [
+            {
+              organization_id: "org-1",
+              role: "organization_admin",
+            },
+          ],
+        }),
+        organizationId: "org-1",
+        teamId: "team-1",
+      }),
+      true,
+      `${action}:organization_admin`,
+    )
+
+    for (const role of ["team_admin", "coach", "crew"]) {
+      assert.equal(
+        canRunTeamVenueWriteAction({
+          action,
+          context: buildContext({
+            teamMemberships: [
+              {
+                team_id: "team-1",
+                role,
+                is_active: true,
+              },
+            ],
+          }),
+          organizationId: "org-1",
+          teamId: "team-1",
+        }),
+        true,
+        `${action}:${role}`,
+      )
+    }
+  }
+})
+
+test("allows organization admins team admins and coaches to update and delete Team Venues", () => {
+  for (const action of TEAM_VENUE_MANAGE_ACTIONS) {
     assert.equal(
       canRunTeamVenueWriteAction({
         action,
@@ -187,8 +232,53 @@ test("allows organization admins team admins and coaches to create link update a
   }
 })
 
-test("forbids Team Venue create link update and delete without structure permissions", () => {
+test("forbids Team Venue writes without active matching access", () => {
   for (const action of TEAM_VENUE_WRITE_ACTIONS) {
+    assert.equal(
+      canRunTeamVenueWriteAction({
+        action,
+        context: buildContext(),
+        organizationId: "org-1",
+        teamId: "team-1",
+      }),
+      false,
+      `${action}:no-access`,
+    )
+  }
+})
+
+test("forbids Team Venue create for inactive and wrong-team memberships", () => {
+  for (const action of TEAM_VENUE_CREATE_ACTIONS) {
+    for (const membership of [
+      {
+        team_id: "team-1",
+        role: "crew",
+        is_active: false,
+      },
+      {
+        team_id: "team-2",
+        role: "crew",
+        is_active: true,
+      },
+    ]) {
+      assert.equal(
+        canRunTeamVenueWriteAction({
+          action,
+          context: buildContext({
+            teamMemberships: [membership],
+          }),
+          organizationId: "org-1",
+          teamId: "team-1",
+        }),
+        false,
+        `${action}:${membership.team_id}:${membership.is_active}`,
+      )
+    }
+  }
+})
+
+test("forbids Crew from Team Venue update and delete", () => {
+  for (const action of TEAM_VENUE_MANAGE_ACTIONS) {
     assert.equal(
       canRunTeamVenueWriteAction({
         action,
@@ -206,44 +296,6 @@ test("forbids Team Venue create link update and delete without structure permiss
       }),
       false,
       `${action}:crew`,
-    )
-
-    assert.equal(
-      canRunTeamVenueWriteAction({
-        action,
-        context: buildContext({
-          teamMemberships: [
-            {
-              team_id: "team-1",
-              role: "crew",
-              is_active: false,
-            },
-          ],
-        }),
-        organizationId: "org-1",
-        teamId: "team-1",
-      }),
-      false,
-      `${action}:inactive-team-member`,
-    )
-
-    assert.equal(
-      canRunTeamVenueWriteAction({
-        action,
-        context: buildContext({
-          teamMemberships: [
-            {
-              team_id: "team-2",
-              role: "coach",
-              is_active: true,
-            },
-          ],
-        }),
-        organizationId: "org-1",
-        teamId: "team-1",
-      }),
-      false,
-      `${action}:wrong-team`,
     )
   }
 })

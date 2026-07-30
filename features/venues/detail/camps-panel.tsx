@@ -33,6 +33,7 @@ function formatCampTypeLabel(value: VenueCampItem["campType"]): string {
 }
 
 export function VenueCampsPanel({
+  canCreateCamps,
   canDeleteCamps,
   canManageCamps,
   data,
@@ -43,6 +44,7 @@ export function VenueCampsPanel({
   venueLocation,
   venueName,
 }: {
+  canCreateCamps: boolean;
   canDeleteCamps: boolean;
   canManageCamps: boolean;
   data: VenueDetailTabDataByTab["camps"];
@@ -107,7 +109,7 @@ export function VenueCampsPanel({
               selectedVenueId={venueId}
               currentPage={1}
               returnPath={campReturnPath}
-              disabled={!canManageCamps}
+              disabled={!canCreateCamps}
               surface="drawer"
               triggerVariant="fab"
             />
@@ -119,7 +121,7 @@ export function VenueCampsPanel({
               selectedVenueId={venueId}
               currentPage={1}
               returnPath={campReturnPath}
-              disabled={!canManageCamps}
+              disabled={!canCreateCamps}
               surface="sheet"
             />
           </div>

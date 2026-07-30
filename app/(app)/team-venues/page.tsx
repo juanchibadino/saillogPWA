@@ -22,7 +22,10 @@ import { TeamVenuesResultsRetry } from "@/features/team-venues/team-venues-resul
 import { TeamVenuesResultsClient } from "@/features/team-venues/team-venues-results-client"
 import { TeamVenuesRouteShell } from "@/features/team-venues/team-venues-route-shell"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
-import { canManageTeamVenues } from "@/lib/auth/capabilities"
+import {
+  canCreateTeamVenues,
+  canManageTeamVenues,
+} from "@/lib/auth/capabilities"
 import {
   getSingleSearchParamValue,
   resolveNavigationScope,
@@ -125,6 +128,7 @@ function getEmptyTeamVenuesChromeData(input: {
 
 async function TeamVenuesShellSlot(input: {
   activeTeamId: string | null
+  canCreateVenueRows: boolean
   canManageVenueRows: boolean
   chromeDataPromise: TeamVenuesChromeDataPromise
   currentYear: number
@@ -138,7 +142,7 @@ async function TeamVenuesShellSlot(input: {
   return (
     <TeamVenuesRouteShell
       chromeData={chromeData}
-      canManageVenueRows={input.canManageVenueRows}
+      canCreateVenueRows={input.canCreateVenueRows}
       currentPage={input.requestedPage}
       loadMoreMode={input.requestedLoadMoreMode}
       noTeamSelected={input.noTeamSelected}
@@ -262,6 +266,13 @@ export default async function TeamVenuesPage({
   const scope = navigation.scope
   const noTeamSelected = scope.activeTeamId === null
   const activeTeamId = scope.activeTeamId
+  const canCreateVenueRows = activeTeamId
+    ? canCreateTeamVenues({
+        context,
+        organizationId: scope.activeOrgId,
+        teamId: activeTeamId,
+      })
+    : false
   const canManageVenueRows = activeTeamId
     ? canManageTeamVenues({
         context,
@@ -314,6 +325,7 @@ export default async function TeamVenuesPage({
       <Suspense fallback={<TeamVenuesPageSkeleton />}>
         <TeamVenuesShellSlot
           activeTeamId={activeTeamId}
+          canCreateVenueRows={canCreateVenueRows}
           canManageVenueRows={canManageVenueRows}
           chromeDataPromise={chromeDataPromise}
           currentYear={currentYear}

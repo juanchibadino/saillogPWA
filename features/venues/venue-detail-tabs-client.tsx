@@ -924,6 +924,7 @@ function renderTabPanel(input: {
   venueName: string;
   data: VenueDetailTabPayload;
   selectedYear: number;
+  canCreateCamps: boolean;
   canDeleteCamps: boolean;
   canManageCamps: boolean;
   canManageAssessments: boolean;
@@ -942,6 +943,7 @@ function renderTabPanel(input: {
 
     return (
       <VenueCampsPanel
+        canCreateCamps={input.canCreateCamps}
         canDeleteCamps={input.canDeleteCamps}
         canManageCamps={input.canManageCamps}
         data={data}
@@ -1162,6 +1164,7 @@ export function VenueDetailTabsClient(input: {
   initialYear: number;
   initialTab: VenueDetailTab;
   initialTabData: VenueDetailTabPayload;
+  canCreateCamps: boolean;
   canDeleteCamps: boolean;
   canManageCamps: boolean;
   canManageAssessments: boolean;
@@ -1548,6 +1551,7 @@ export function VenueDetailTabsClient(input: {
       venueName: input.venueName,
       data,
       selectedYear,
+      canCreateCamps: input.canCreateCamps,
       canDeleteCamps: input.canDeleteCamps,
       canManageCamps: input.canManageCamps,
       canManageAssessments: input.canManageAssessments,

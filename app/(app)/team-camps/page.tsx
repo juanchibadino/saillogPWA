@@ -22,7 +22,11 @@ import {
   type TeamCampsChromeData,
 } from "@/features/camps/data"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
-import { canDeleteCamps, canManageTeamStructure } from "@/lib/auth/capabilities"
+import {
+  canCreateCamps,
+  canDeleteCamps,
+  canManageTeamStructure,
+} from "@/lib/auth/capabilities"
 import {
   getSingleSearchParamValue,
   resolveNavigationScope,
@@ -100,6 +104,7 @@ function getEmptyTeamCampsChromeData(input: {
 
 async function TeamCampsShellSlot(input: {
   activeTeamId: string | null
+  canCreateCamps: boolean
   canDeleteCampRows: boolean
   canManageCamps: boolean
   chromeDataPromise: TeamCampsChromeDataPromise
@@ -112,7 +117,7 @@ async function TeamCampsShellSlot(input: {
 
   return (
     <TeamCampsRouteShell
-      canManageCamps={input.canManageCamps}
+      canCreateCamps={input.canCreateCamps}
       chromeData={chromeData}
       currentPage={input.requestedPage}
       noTeamSelected={input.noTeamSelected}
@@ -233,6 +238,13 @@ export default async function TeamCampsPage({
   const noTeamSelected = scope.activeTeamId === null
   const activeTeamId = scope.activeTeamId
 
+  const canCreateCampRows =
+    activeTeamId !== null &&
+    canCreateCamps({
+      context,
+      organizationId: scope.activeOrgId,
+      teamId: activeTeamId,
+    })
   const canManageCamps =
     activeTeamId !== null &&
     canManageTeamStructure({
@@ -294,6 +306,7 @@ export default async function TeamCampsPage({
       <Suspense fallback={<TeamCampsPageSkeleton />}>
         <TeamCampsShellSlot
           activeTeamId={activeTeamId}
+          canCreateCamps={canCreateCampRows}
           canDeleteCampRows={canDeleteCampRows}
           canManageCamps={canManageCamps}
           chromeDataPromise={chromeDataPromise}

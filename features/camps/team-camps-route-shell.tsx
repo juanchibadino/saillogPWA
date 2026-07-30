@@ -23,14 +23,14 @@ function normalizeInternalHref(href: string): string {
 }
 
 export function TeamCampsRouteShell({
-  canManageCamps,
+  canCreateCamps,
   children,
   chromeData,
   currentPage,
   noTeamSelected,
   scope,
 }: {
-  canManageCamps: boolean
+  canCreateCamps: boolean
   children: ReactNode
   chromeData: TeamCampsChromeData
   currentPage: number
@@ -52,7 +52,7 @@ export function TeamCampsRouteShell({
     isFilterNavigationPending ||
     pendingFilterNavigation?.fromHref === currentHref
   const createDisabled =
-    noTeamSelected || !canManageCamps || chromeData.teamVenueOptions.length === 0
+    noTeamSelected || !canCreateCamps || chromeData.teamVenueOptions.length === 0
 
   function navigateToFilterHref(href: string): void {
     const nextHref = normalizeInternalHref(href)

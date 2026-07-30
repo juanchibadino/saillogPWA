@@ -1,5 +1,7 @@
 import type { AccessContext } from "@/lib/auth/access";
 import {
+  canCreateCampsFromAccess,
+  canCreateTeamVenuesFromAccess,
   canManageOrganizationOperationsFromAccess,
   canManageTeamFinanceFromAccess,
   canManageTeamSessionsFromAccess,
@@ -71,6 +73,22 @@ export function canManageTeamVenues(input: {
   teamId: string;
 }): boolean {
   return canManageTeamVenuesFromAccess(input);
+}
+
+export function canCreateTeamVenues(input: {
+  context: AccessContext;
+  organizationId: string;
+  teamId: string;
+}): boolean {
+  return canCreateTeamVenuesFromAccess(input);
+}
+
+export function canCreateCamps(input: {
+  context: AccessContext;
+  organizationId: string;
+  teamId: string;
+}): boolean {
+  return canCreateCampsFromAccess(input);
 }
 
 export function canManageTeamFinance(input: {

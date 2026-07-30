@@ -46,7 +46,7 @@ function buildTeamVenueStatusHref(input: {
 }
 
 export function TeamVenuesRouteShell({
-  canManageVenueRows,
+  canCreateVenueRows,
   children,
   chromeData,
   currentPage,
@@ -54,7 +54,7 @@ export function TeamVenuesRouteShell({
   noTeamSelected,
   scope,
 }: {
-  canManageVenueRows: boolean
+  canCreateVenueRows: boolean
   children: ReactNode
   chromeData: TeamVenuesChromeData
   currentPage: number
@@ -76,7 +76,7 @@ export function TeamVenuesRouteShell({
   const isFilterNavigationBusy =
     isFilterNavigationPending ||
     pendingFilterNavigation?.fromHref === currentHref
-  const createDisabled = noTeamSelected || !canManageVenueRows
+  const createDisabled = noTeamSelected || !canCreateVenueRows
 
   function navigateToFilterHref(href: string): void {
     const nextHref = normalizeInternalHref(href)

@@ -28,6 +28,7 @@ import { VenuesFeedback } from "@/features/venues/venues-feedback"
 import { EditVenueDialog } from "@/features/venues/venue-form-dialogs"
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
 import {
+  canCreateCamps,
   canDeleteCamps,
   canManageOrganizationOperations,
   canManageTeamFinance,
@@ -210,6 +211,7 @@ function resolveWindPatternStatusFilter(value: string | undefined): WindPatternS
 async function VenueDetailDeferredContent(input: {
   activeOrganization: VenueOrganizationOption
   assessmentRunNotificationRunId?: string | null
+  canCreateCamps: boolean
   canDeleteCamps: boolean
   canManageCamps: boolean
   canManageAssessments: boolean
@@ -265,6 +267,7 @@ async function VenueDetailDeferredContent(input: {
       initialYear={kpisData.selectedYear}
       initialTab={input.initialTab}
       initialTabData={initialTabData}
+      canCreateCamps={input.canCreateCamps}
       canDeleteCamps={input.canDeleteCamps}
       canManageCamps={input.canManageCamps}
       canManageAssessments={input.canManageAssessments}
@@ -409,6 +412,14 @@ export default async function VenueDetailPage({
         })
       : false
   const canManageCamps = canManageAssessments
+  const canCreateCampRows =
+    !noTeamSelected && chromeData.teamVenue
+      ? canCreateCamps({
+          context,
+          organizationId: scope.activeOrgId,
+          teamId: chromeData.teamVenue.team_id,
+        })
+      : false
   const canDeleteCampRows =
     !noTeamSelected && chromeData.teamVenue
       ? canDeleteCamps({
@@ -555,6 +566,7 @@ export default async function VenueDetailPage({
         <VenueDetailDeferredContent
           activeOrganization={activeOrganization}
           assessmentRunNotificationRunId={assessmentRunNotificationRunId}
+          canCreateCamps={canCreateCampRows}
           canDeleteCamps={canDeleteCampRows}
           canManageCamps={canManageCamps}
           canManageAssessments={canManageAssessments}

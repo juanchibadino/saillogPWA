@@ -4,7 +4,11 @@ import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
 import { requireAuthenticatedAccessContext } from "@/lib/auth/access"
-import { canDeleteCamps, canManageTeamStructure } from "@/lib/auth/capabilities"
+import {
+  canCreateCamps,
+  canDeleteCamps,
+  canManageTeamStructure,
+} from "@/lib/auth/capabilities"
 import { resolveOrganizationWriteEntitlement } from "@/lib/billing/entitlements"
 import { resolveCurrentRequestOrigin } from "@/lib/http/request-origin"
 import { createAdminSupabaseClient } from "@/lib/supabase/admin"
@@ -473,7 +477,7 @@ export async function createCampAction(formData: FormData): Promise<void> {
   }
 
   if (
-    !canManageTeamStructure({
+    !canCreateCamps({
       context,
       organizationId: scope.scopeOrgId,
       teamId: scope.scopeTeamId,
