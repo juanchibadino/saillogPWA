@@ -2050,9 +2050,11 @@ export type Database = {
       save_session_setup_atomic: {
         Args: {
           p_delete_item_ids: string[];
+          p_free_notes?: string | null;
           p_ordered_item_ids: string[] | null;
           p_session_id: string;
           p_team_id: string;
+          p_update_free_notes?: boolean;
           p_values: Json;
         };
         Returns: undefined;

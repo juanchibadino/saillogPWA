@@ -610,6 +610,7 @@ export function SessionHeaderActions(input: {
       <SetupDialog
         sessionId={input.sessionId}
         scope={input.scope}
+        freeNotes={setupData?.freeNotes ?? null}
         items={setupData?.setupDialogItems ?? []}
         isLoading={isSetupLoading && !setupData}
         loadError={setupData ? null : setupLoadError}

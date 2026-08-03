@@ -1,8 +1,15 @@
 # PROGRESS.md
 
-Last updated: 2026-07-30
+Last updated: 2026-08-03
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
+
+## 2026-08-03 - Team Session setup Free Notes
+
+- Added the duplicated `Free Notes` textarea to the Team Session `/team-sessions/[id]` Setup edit form below the setup metrics while keeping the existing Info-tab Free Notes field unchanged.
+- Extended setup data loading, validation, mutation payloads, and the setup save RPC contract so metric edits and note-only edits persist to `session_setups.free_notes` through the same setup save path.
+- Added Supabase migration `064_session_setup_free_notes_atomic.sql` and refreshed the database function type for `save_session_setup_atomic`.
+- Validation: `npx tsc --noEmit`, `npm run lint`, `npm test`, and `git diff --check` passed. Browser smoke was blocked by local authentication in this environment: unauthenticated Team Session access redirected to `/sign-in`, and the available test login attempt failed.
 
 ## 2026-07-30 - Crew create access for Team Venues and Camps
 

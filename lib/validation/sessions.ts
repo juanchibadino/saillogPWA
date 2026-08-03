@@ -89,6 +89,8 @@ export const updateSessionSetupInputSchema = z.object({
   sessionId: z.string().uuid(),
   setupPayload: z.string().trim().min(2).max(200000),
   orderedItemIdsPayload: z.string().trim().min(2).max(200000).optional(),
+  updateFreeNotes: z.boolean().optional().default(false),
+  freeNotes: optionalTrimmedTextSchema,
 })
 
 export const createTeamSetupMetricInputSchema = z.object({

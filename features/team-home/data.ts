@@ -1,5 +1,6 @@
 import "server-only"
 
+import { buildLatestTeamHomeVenueItems } from "@/features/team-home/data-core.mjs"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import type { Database } from "@/types/database"
 
@@ -85,6 +86,11 @@ type TeamHomeLatestCampRow = Pick<
   "id" | "team_venue_id" | "name" | "start_date" | "end_date"
 >
 
+type TeamHomeLatestVenueCampRow = Pick<
+  Database["public"]["Tables"]["camps"]["Row"],
+  "id" | "team_venue_id" | "name" | "start_date" | "end_date" | "is_active" | "created_at"
+>
+
 type TeamHomeSessionRow = Pick<
   Database["public"]["Tables"]["sessions"]["Row"],
   "id" | "camp_id" | "session_type" | "session_date" | "net_time_minutes"
@@ -124,6 +130,13 @@ export type TeamHomeLatestVenueLive = {
   name: string
   location: string
   linkedAt: string
+  latestCampId: string | null
+  latestCampName: string | null
+  latestCampStartDate: string | null
+  latestCampEndDate: string | null
+  campDateRangeStart: string | null
+  campDateRangeEnd: string | null
+  isCurrentCampVenue: boolean
 }
 
 export type TeamHomeLatestSessionLive = {
@@ -161,10 +174,6 @@ export type TeamHomeTeamMemberLive = {
   roleLabel: string
   avatarUrl: string | null
   firstSeenAt: string | null
-}
-
-function buildVenueLocation(city: string, country: string): string {
-  return `${city}, ${country}`
 }
 
 function uniqueIds(values: string[]): string[] {
@@ -562,7 +571,6 @@ export async function getTeamHomeLatestVenues(input: {
     .select("id,team_id,venue_id,created_at")
     .eq("team_id", input.activeTeamId)
     .order("created_at", { ascending: false })
-    .limit(limit)
 
   if (teamVenueError) {
     throw new Error(`Could not load latest team venues: ${teamVenueError.message}`)
@@ -574,6 +582,17 @@ export async function getTeamHomeLatestVenues(input: {
     return []
   }
 
+  const teamVenueIds = teamVenueRows.map((row) => row.id)
+  const { data: campData, error: campError } = await supabase
+    .from("camps")
+    .select("id,team_venue_id,name,start_date,end_date,is_active,created_at")
+    .in("team_venue_id", teamVenueIds)
+
+  if (campError) {
+    throw new Error(`Could not load camps for latest team venues: ${campError.message}`)
+  }
+
+  const campRows: TeamHomeLatestVenueCampRow[] = campData ?? []
   const venueIds = uniqueIds(teamVenueRows.map((row) => row.venue_id))
   const { data: venueData, error: venueError } = await supabase
     .from("venues")
@@ -585,25 +604,15 @@ export async function getTeamHomeLatestVenues(input: {
   }
 
   const venueRows: VenueRow[] = venueData ?? []
-  const venueById = new Map(venueRows.map((row) => [row.id, row]))
+  const latestVenueItems: TeamHomeLatestVenueLive[] = buildLatestTeamHomeVenueItems({
+    camps: campRows,
+    limit,
+    teamVenues: teamVenueRows,
+    today: new Date(),
+    venues: venueRows,
+  })
 
-  return teamVenueRows
-    .map((row) => {
-      const venue = venueById.get(row.venue_id)
-
-      if (!venue) {
-        return null
-      }
-
-      return {
-        teamVenueId: row.id,
-        venueId: venue.id,
-        name: venue.name,
-        location: buildVenueLocation(venue.city, venue.country),
-        linkedAt: row.created_at,
-      }
-    })
-    .filter((row): row is TeamHomeLatestVenueLive => row !== null)
+  return latestVenueItems
 }
 
 export async function getTeamHomeKpis(input: {

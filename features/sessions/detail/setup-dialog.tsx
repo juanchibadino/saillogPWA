@@ -889,6 +889,7 @@ function EditSetupMetricSubmitButton(props: {
 export function SetupDialog(input: {
   sessionId: string
   scope: NavigationScope
+  freeNotes: string | null
   items: SessionSetupDialogItem[]
   isLoading?: boolean
   loadError?: string | null
@@ -922,6 +923,7 @@ export function SetupDialog(input: {
     buildInitialSetupDraft(input.items),
   )
   const [boatOrderIds, setBoatOrderIds] = React.useState<string[]>(initialBoatOrderIds)
+  const [freeNotesDraft, setFreeNotesDraft] = React.useState(input.freeNotes ?? "")
   const [isSavingSetup, setIsSavingSetup] = React.useState(false)
   const previousInputItemsRef = React.useRef(input.items)
 
@@ -1051,6 +1053,16 @@ export function SetupDialog(input: {
     }
   }, [input.items, isEditMode, isOpen])
 
+  React.useEffect(() => {
+    if (isSavingSetup) {
+      return
+    }
+
+    if (!isOpen || !isEditMode) {
+      setFreeNotesDraft(input.freeNotes ?? "")
+    }
+  }, [input.freeNotes, isEditMode, isOpen, isSavingSetup])
+
   const setupPayloadEntries = React.useMemo(
     () =>
       buildChangedSetupPayloadEntries({
@@ -1064,6 +1076,8 @@ export function SetupDialog(input: {
     () => JSON.stringify(setupPayloadEntries),
     [setupPayloadEntries],
   )
+  const hasFreeNotesChange =
+    normalizeSetupTextValue(freeNotesDraft) !== normalizeSetupTextValue(input.freeNotes ?? "")
 
   const orderedBoatItems = React.useMemo(
     () =>
@@ -1094,6 +1108,7 @@ export function SetupDialog(input: {
   function resetDialogState() {
     setDraftByItemId(buildInitialSetupDraft(setupItems))
     setBoatOrderIds(buildSetupOrderIds(setupItems, "boat"))
+    setFreeNotesDraft(input.freeNotes ?? "")
     setIsEditMode(false)
     setSetupSurfaceView("setup")
     setEditingMetricId(null)
@@ -1124,7 +1139,7 @@ export function SetupDialog(input: {
       return
     }
 
-    if (setupPayloadEntries.length === 0) {
+    if (setupPayloadEntries.length === 0 && !hasFreeNotesChange) {
       setIsEditMode(false)
       setSetupSurfaceView("setup")
       setIsOpen(false)
@@ -1132,9 +1147,12 @@ export function SetupDialog(input: {
     }
 
     const formData = new FormData(event.currentTarget)
+    formData.set("updateFreeNotes", hasFreeNotesChange ? "true" : "false")
+    formData.set("freeNotes", freeNotesDraft)
     const previousSetupItems = setupItems
     const submittedDraftByItemId = draftByItemId
     const submittedBoatOrderIds = boatOrderIds
+    const submittedFreeNotesDraft = freeNotesDraft
     const optimisticSetupItems = buildOptimisticSetupItems({
       items: setupItems,
       draftByItemId,
@@ -1157,6 +1175,7 @@ export function SetupDialog(input: {
         setSetupItems(previousSetupItems)
         setDraftByItemId(submittedDraftByItemId)
         setBoatOrderIds(submittedBoatOrderIds)
+        setFreeNotesDraft(submittedFreeNotesDraft)
         setIsEditMode(true)
         setSetupSurfaceView("setup")
         setIsOpen(true)
@@ -1175,6 +1194,7 @@ export function SetupDialog(input: {
       setSetupItems(previousSetupItems)
       setDraftByItemId(submittedDraftByItemId)
       setBoatOrderIds(submittedBoatOrderIds)
+      setFreeNotesDraft(submittedFreeNotesDraft)
       setIsEditMode(true)
       setSetupSurfaceView("setup")
       setIsOpen(true)
@@ -1727,6 +1747,29 @@ export function SetupDialog(input: {
     )
   }
 
+  function renderFreeNotesField() {
+    const fieldId = `setup-free-notes-${input.sessionId}`
+
+    return renderSection(
+      "Free Notes",
+      <div className="space-y-2">
+        <Label htmlFor={fieldId} className="sr-only">
+          Free Notes
+        </Label>
+        <Textarea
+          id={fieldId}
+          name="freeNotes"
+          className="min-h-32 scroll-my-8 text-base md:text-sm"
+          rows={4}
+          maxLength={4000}
+          value={freeNotesDraft}
+          onFocus={keepMobileFieldVisible}
+          onChange={(event) => setFreeNotesDraft(event.target.value)}
+        />
+      </div>,
+    )
+  }
+
   function renderManageMetricsButton(metricGroup: SetupMetricGroup) {
     const title = getSetupMetricGroupTitle(metricGroup)
 
@@ -1801,12 +1844,13 @@ export function SetupDialog(input: {
     >
       <SetupScopeHiddenFields sessionId={input.sessionId} scope={input.scope} />
       <input type="hidden" name="setupPayload" value={payloadValue} />
+      <input type="hidden" name="updateFreeNotes" value={hasFreeNotesChange ? "true" : "false"} />
 
       <SetupDialogFieldset isSaving={isSavingSetup}>
         <div className="no-scrollbar min-h-0 flex-1 space-y-6 overflow-y-auto px-4 pb-6 pr-5 scroll-pb-28 md:pb-4 md:scroll-pb-4">
           {setupLoadState ? (
             setupLoadState
-          ) : setupItems.length === 0 ? (
+          ) : setupItems.length === 0 && !isEditMode ? (
             <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
               No setup metrics are configured for this team yet.
             </div>
@@ -1871,6 +1915,8 @@ export function SetupDialog(input: {
                     renderManageMetricsButton("boat"),
                   )
                 : null}
+
+              {isEditMode ? renderFreeNotesField() : null}
             </>
           )}
         </div>

@@ -206,7 +206,10 @@ export type SessionDetailData = {
   linkedGearItemIds: string[]
 }
 
-export type SessionDetailSetupData = Pick<SessionDetailData, "setupDialogItems">
+export type SessionDetailSetupData = {
+  freeNotes: string | null
+  setupDialogItems: SessionSetupDialogItem[]
+}
 
 export type SessionDetailInfoTabData = Pick<
   SessionDetailData,

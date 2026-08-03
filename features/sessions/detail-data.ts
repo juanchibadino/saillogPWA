@@ -1931,11 +1931,21 @@ export async function getSessionDetailSetupData(
     },
   })
   const supabase = await createServerSupabaseClient()
-  const { data: teamSetupItemsData, error: teamSetupItemsError } = await supabase
-    .from("team_setup_items")
-    .select(TEAM_SETUP_ITEMS_SELECT_COLUMNS)
-    .eq("team_id", input.activeTeamId)
-    .order("position", { ascending: true })
+  const [
+    { data: teamSetupItemsData, error: teamSetupItemsError },
+    { data: setupRowData, error: setupRowError },
+  ] = await Promise.all([
+    supabase
+      .from("team_setup_items")
+      .select(TEAM_SETUP_ITEMS_SELECT_COLUMNS)
+      .eq("team_id", input.activeTeamId)
+      .order("position", { ascending: true }),
+    supabase
+      .from("session_setups")
+      .select(SESSION_SETUP_SELECT_COLUMNS)
+      .eq("session_id", input.sessionId)
+      .maybeSingle(),
+  ])
 
   if (teamSetupItemsError) {
     throwSessionDetailScopedTimingError(
@@ -1945,7 +1955,16 @@ export async function getSessionDetailSetupData(
     )
   }
 
+  if (setupRowError) {
+    throwSessionDetailScopedTimingError(
+      logSetupTiming,
+      "setup_query_error",
+      `Could not load setup for session detail: ${setupRowError.message}`,
+    )
+  }
+
   const teamSetupItems = (teamSetupItemsData ?? []) as TeamSetupItemRow[]
+  const setupRow = setupRowData as SessionSetupRow | null
   const teamSetupItemIds = teamSetupItems.map((item) => item.id)
   let teamSetupItemOptions: TeamSetupItemOptionRow[] = []
   let sessionSetupValues: SessionSetupItemValueRow[] = []
@@ -2019,7 +2038,10 @@ export async function getSessionDetailSetupData(
     setupItemCount: teamSetupItems.length,
   })
 
-  return { setupDialogItems }
+  return {
+    freeNotes: normalizeText(setupRow?.free_notes),
+    setupDialogItems,
+  }
 }
 
 export async function getSessionDetailGoalsTabData(input: {

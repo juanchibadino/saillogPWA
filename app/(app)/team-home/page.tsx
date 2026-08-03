@@ -463,17 +463,6 @@ function getCurrentCampIds(
   )
 }
 
-function getCurrentVenueIds(
-  camps: TeamHomeLatestCampLive[],
-  today: Date,
-): Set<string> {
-  return new Set(
-    camps
-      .filter((camp) => isTodayWithinCampDateRange(camp.startDate, camp.endDate, today))
-      .map((camp) => camp.venueId),
-  )
-}
-
 function TeamHomeKpiCardsSkeleton() {
   return (
     <>
@@ -758,28 +747,22 @@ async function TeamHomeLatestActivitySection({
 }
 
 async function TeamHomeLatestVenuesSection({
-  latestCampsPromise,
   latestVenuesPromise,
   scope,
   teamVenuesHref,
 }: {
-  latestCampsPromise: Promise<TeamHomeLatestCampLive[]>
   latestVenuesPromise: Promise<TeamHomeLatestVenueLive[]>
   scope: ActiveTeamHomeScope
   teamVenuesHref: string
 }) {
-  const [latestVenues, latestCamps] = await Promise.all([
-    latestVenuesPromise,
-    latestCampsPromise,
-  ])
-  const currentVenueIds = getCurrentVenueIds(latestCamps, new Date())
+  const latestVenues = await latestVenuesPromise
 
   return (
     <GradientCard>
       <CardHeader className="flex flex-row items-center justify-between pb-0">
         <div className="space-y-1">
           <CardTitle>Latest Venues</CardTitle>
-          <CardDescription>Recently linked to this team</CardDescription>
+          <CardDescription>Most recent camp venues</CardDescription>
         </div>
         <TeamHomeHeaderViewAllLink href={teamVenuesHref} />
       </CardHeader>
@@ -802,7 +785,7 @@ async function TeamHomeLatestVenuesSection({
                       <p className="truncate text-sm font-medium underline-offset-4 hover:underline">
                         {venue.name}
                       </p>
-                      {currentVenueIds.has(venue.venueId) ? <CurrentBadge /> : null}
+                      {venue.isCurrentCampVenue ? <CurrentBadge /> : null}
                     </div>
                     <p className="truncate text-xs text-muted-foreground">
                       {venue.location}
@@ -810,7 +793,12 @@ async function TeamHomeLatestVenuesSection({
                   </div>
 
                   <p className="shrink-0 text-xs text-muted-foreground md:text-sm">
-                    {`Linked ${formatTimestampDateLabel(venue.linkedAt)}`}
+                    {venue.campDateRangeStart && venue.campDateRangeEnd
+                      ? formatCampDateRangeLabel(
+                          venue.campDateRangeStart,
+                          venue.campDateRangeEnd,
+                        )
+                      : `Linked ${formatTimestampDateLabel(venue.linkedAt)}`}
                   </p>
                 </Link>
               </li>
@@ -1163,7 +1151,6 @@ export default async function TeamHomePage({
 
         <Suspense fallback={<TeamHomeLatestVenuesSkeleton />}>
           <TeamHomeLatestVenuesSection
-            latestCampsPromise={latestCampsPromise}
             latestVenuesPromise={latestVenuesPromise}
             scope={activeTeamScope}
             teamVenuesHref={teamVenuesHref}

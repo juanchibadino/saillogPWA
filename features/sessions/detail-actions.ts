@@ -2282,6 +2282,8 @@ async function updateSessionSetupMutation(
     sessionId,
     setupPayload: getFormString(formData, "setupPayload"),
     orderedItemIdsPayload: getFormString(formData, "orderedItemIdsPayload"),
+    updateFreeNotes: getFormString(formData, "updateFreeNotes") === "true",
+    freeNotes: getFormString(formData, "freeNotes"),
   })
 
   if (!parsedInput.success) {
@@ -2325,6 +2327,8 @@ async function updateSessionSetupMutation(
     typeof parsedInput.data.orderedItemIdsPayload === "string"
       ? parseStringArrayPayload(parsedInput.data.orderedItemIdsPayload)
       : undefined
+  const shouldUpdateFreeNotes = parsedInput.data.updateFreeNotes
+  const freeNotes = normalizeOptionalText(parsedInput.data.freeNotes)
 
   if (!parsedPayload || orderedItemIds === null) {
     return buildSessionSetupActionError({
@@ -2349,8 +2353,9 @@ async function updateSessionSetupMutation(
 
   const hasValueChanges = payloadByItemId.size > 0
   const hasOrderChange = typeof orderedItemIds !== "undefined" && orderedItemIds.length > 0
+  const hasFreeNotesChange = shouldUpdateFreeNotes
 
-  if (!hasValueChanges && !hasOrderChange) {
+  if (!hasValueChanges && !hasOrderChange && !hasFreeNotesChange) {
     return {
       ok: true,
       sessionId: parsedInput.data.sessionId,
@@ -2558,9 +2563,11 @@ async function updateSessionSetupMutation(
 
   const { error: saveSetupError } = await supabase.rpc("save_session_setup_atomic", {
     p_delete_item_ids: itemIdsToDelete,
+    p_free_notes: shouldUpdateFreeNotes ? freeNotes : null,
     p_ordered_item_ids: hasOrderChange ? orderedItemIds : null,
     p_session_id: parsedInput.data.sessionId,
     p_team_id: scope.scopeTeamId,
+    p_update_free_notes: shouldUpdateFreeNotes,
     p_values: setupValuesToSave,
   })
 
@@ -2572,9 +2579,17 @@ async function updateSessionSetupMutation(
     })
   }
 
-  revalidateSessionSetupSlices({
-    sessionId: parsedInput.data.sessionId,
-  })
+  if (shouldUpdateFreeNotes) {
+    revalidateSessionSlices({
+      sessionId: parsedInput.data.sessionId,
+      campId: scopedSession.camp.id,
+      teamVenueId: scopedSession.teamVenue.id,
+    })
+  } else {
+    revalidateSessionSetupSlices({
+      sessionId: parsedInput.data.sessionId,
+    })
+  }
 
   return {
     ok: true,
