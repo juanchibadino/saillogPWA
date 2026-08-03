@@ -4,6 +4,18 @@ Last updated: 2026-08-03
 Repository: `juanchibadino/saillogPWA`
 Branch: `main`
 
+## 2026-08-03 - Expenses report PDF renderer
+
+- Aligned the serverless Chromium fallback with Playwright by updating `@sparticuz/chromium` from `138.0.2` to `148.0.0`, matching the Chromium major expected by Playwright 1.60.
+- Marked the Expenses and Venue Report PDF routes as Node runtime routes and preserved renderer failure details for both the packaged Playwright path and the serverless Chromium fallback.
+- Validation: `npx tsc --noEmit --pretty false`, `npm run lint`, `npm test`, `git diff --check`, `npm run build`, and a direct local Playwright PDF smoke passed. `npm install` warned that `@sparticuz/chromium@148.0.0` declares Node `>=22.17.0`; local Node 20 still imported it successfully, but deployment should run Node 22+ for the supported path.
+
+## 2026-08-03 - Expenses mobile drawer keyboard behavior
+
+- Updated the shared mobile Drawer keyboard-offset cleanup so bottom drawers clear retained Vaul keyboard positioning when a text-entry field blurs without moving focus to another drawer input.
+- Added mobile Drawer focus scrolling to the Expenses form fields so Amount, Vendor, Description, and related inputs stay visible while the soft keyboard opens in `/team-expenses` and Venue detail Expenses.
+- Validation: `npx tsc --noEmit --pretty false`, `npm run lint`, `npm test`, `git diff --check`, and `npm run build` passed. Browser smoke reached `/team-expenses` at `360x740` but redirected to `/sign-in`, so authenticated drawer interaction testing was blocked in this environment.
+
 ## 2026-08-03 - Team Session setup Free Notes
 
 - Added the duplicated `Free Notes` textarea to the Team Session `/team-sessions/[id]` Setup edit form below the setup metrics while keeping the existing Info-tab Free Notes field unchanged.

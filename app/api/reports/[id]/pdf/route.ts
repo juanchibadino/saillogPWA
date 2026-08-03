@@ -3,6 +3,8 @@ import { NextResponse } from "next/server"
 import { generateReportPdf } from "@/features/reports/pdf"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 
+export const runtime = "nodejs"
+
 type RouteContext = {
   params: Promise<{ id: string }>
 }

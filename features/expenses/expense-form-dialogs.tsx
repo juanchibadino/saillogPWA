@@ -30,6 +30,7 @@ import {
   formatCurrencyAmount,
   type ExpenseType,
 } from "@/features/expenses/shared"
+import { useIsMobile } from "@/hooks/use-mobile"
 import type { NavigationScope } from "@/lib/navigation/types"
 import {
   Attachment,
@@ -419,10 +420,30 @@ function ExpenseFormFields({
 
   const selectedCurrencySymbol = getCurrencySymbol(selectedCurrencyCode)
   const isDrawerSurface = surface === "drawer"
-  const inputClassName = isDrawerSurface ? "h-11 px-3 text-base md:text-sm" : undefined
+  const isMobile = useIsMobile()
+
+  function keepMobileFieldVisible(event: React.FocusEvent<HTMLElement>) {
+    if (!isDrawerSurface || !isMobile) {
+      return
+    }
+
+    const target = event.currentTarget
+
+    window.setTimeout(() => {
+      target.scrollIntoView({
+        block: "center",
+        inline: "nearest",
+        behavior: "smooth",
+      })
+    }, 120)
+  }
+
+  const inputClassName = isDrawerSurface
+    ? "h-11 scroll-my-8 px-3 text-base md:text-sm"
+    : undefined
   const selectClassName = cn(
     "w-full rounded-lg border border-input bg-background text-sm outline-none ring-ring/50 focus-visible:ring-[3px]",
-    isDrawerSurface ? "h-11 px-3 text-base md:text-sm" : "h-9 px-3",
+    isDrawerSurface ? "h-11 scroll-my-8 px-3 text-base md:text-sm" : "h-9 px-3",
   )
   const lockedVenueClassName = cn(
     "flex items-center rounded-lg border border-input bg-muted/30",
@@ -434,11 +455,13 @@ function ExpenseFormFields({
   )
   const amountInputClassName = cn(
     "h-full min-w-0 flex-1 rounded-none border-0 bg-transparent py-0 focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent",
-    isDrawerSurface ? "px-2.5 text-base md:text-sm" : "px-2.5 text-sm",
+    isDrawerSurface ? "scroll-my-8 px-2.5 text-base md:text-sm" : "px-2.5 text-sm",
   )
   const currencySelectClassName = cn(
     "h-full cursor-pointer appearance-none bg-transparent py-0 pl-3 text-center font-medium text-foreground outline-none",
-    isDrawerSurface ? "min-w-24 pr-8 text-base md:text-sm" : "min-w-20 pr-7 text-sm",
+    isDrawerSurface
+      ? "min-w-24 scroll-my-8 pr-8 text-base md:text-sm"
+      : "min-w-20 pr-7 text-sm",
   )
 
   return (
@@ -461,6 +484,7 @@ function ExpenseFormFields({
               fallback: defaultExpenseDate,
             })}
             className={inputClassName}
+            onFocus={keepMobileFieldVisible}
           />
         </div>
 
@@ -472,6 +496,7 @@ function ExpenseFormFields({
             required
             defaultValue={expense?.expenseType ?? "meals"}
             className={selectClassName}
+            onFocus={keepMobileFieldVisible}
           >
             {options.typeOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -505,6 +530,7 @@ function ExpenseFormFields({
               value={selectedVenueId}
               onChange={(event) => setSelectedVenueId(event.currentTarget.value)}
               className={selectClassName}
+              onFocus={keepMobileFieldVisible}
             >
               <option value="">Select venue</option>
               {options.venueOptions.map((option) => (
@@ -525,6 +551,7 @@ function ExpenseFormFields({
               required
               defaultValue={expense?.assignedToProfileId ?? ""}
               className={selectClassName}
+              onFocus={keepMobileFieldVisible}
             >
               <option value="">Select member</option>
               {options.memberOptions.map((option) => (
@@ -557,6 +584,7 @@ function ExpenseFormFields({
               key: "amountLocal",
             })}
             className={amountInputClassName}
+            onFocus={keepMobileFieldVisible}
           />
           <div className="h-6 w-px shrink-0 bg-border" aria-hidden="true" />
           <div className="relative h-full shrink-0">
@@ -568,6 +596,7 @@ function ExpenseFormFields({
               aria-label="Currency"
               onChange={(event) => setSelectedCurrencyCode(event.currentTarget.value)}
               className={currencySelectClassName}
+              onFocus={keepMobileFieldVisible}
             >
               {options.currencyOptions.map((currency) => (
                 <option key={currency} value={currency}>
@@ -589,6 +618,7 @@ function ExpenseFormFields({
           maxLength={160}
           defaultValue={expense?.vendor ?? ""}
           className={inputClassName}
+          onFocus={keepMobileFieldVisible}
         />
       </div>
 
@@ -599,7 +629,11 @@ function ExpenseFormFields({
           name="description"
           maxLength={1000}
           defaultValue={expense?.description ?? ""}
-          className="min-h-24 text-base md:text-sm"
+          className={cn(
+            "min-h-24 text-base md:text-sm",
+            isDrawerSurface && "scroll-my-8",
+          )}
+          onFocus={keepMobileFieldVisible}
         />
       </div>
 

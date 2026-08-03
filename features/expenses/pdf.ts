@@ -460,6 +460,12 @@ function toUint8Array(value: Uint8Array | Buffer): Uint8Array {
   return value instanceof Uint8Array ? value : new Uint8Array(value)
 }
 
+function formatPdfRendererError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+
+  return message.replace(/\s+/g, " ").slice(0, 700)
+}
+
 async function renderPdfWithPlaywrightPackage(html: string): Promise<Uint8Array> {
   const playwright = await dynamicImport<PlaywrightLike>("playwright")
   const browser = await playwright.chromium.launch({
@@ -524,17 +530,29 @@ async function renderPdfWithPlaywrightCore(html: string): Promise<Uint8Array> {
 }
 
 async function renderHtmlToPdfBytes(html: string): Promise<Uint8Array> {
+  let playwrightPackageError: unknown = null
+
   try {
     return await renderPdfWithPlaywrightPackage(html)
-  } catch {
+  } catch (error) {
+    playwrightPackageError = error
     // Fallback to the serverless Chromium stack.
   }
 
   try {
     return await renderPdfWithPlaywrightCore(html)
-  } catch {
+  } catch (serverlessChromiumError) {
+    console.error("Expenses PDF renderer failed", {
+      playwrightPackageError,
+      serverlessChromiumError,
+    })
+
     throw new Error(
-      "Could not initialize Chromium PDF renderer. Install `playwright` or `playwright-core` + `@sparticuz/chromium`.",
+      [
+        "Could not initialize Chromium PDF renderer.",
+        `Playwright package: ${formatPdfRendererError(playwrightPackageError)}.`,
+        `Serverless Chromium: ${formatPdfRendererError(serverlessChromiumError)}.`,
+      ].join(" "),
     )
   }
 }

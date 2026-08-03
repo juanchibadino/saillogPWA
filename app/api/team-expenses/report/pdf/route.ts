@@ -15,6 +15,8 @@ import { resolveOrganizationTeamExpensesEntitlement } from "@/lib/billing/entitl
 import { resolveNavigationScope } from "@/lib/navigation/scope"
 import type { ScopeSearchParams } from "@/lib/navigation/types"
 
+export const runtime = "nodejs"
+
 function buildScopeSearchParams(requestUrl: URL): ScopeSearchParams {
   const searchParams: ScopeSearchParams = {}
 

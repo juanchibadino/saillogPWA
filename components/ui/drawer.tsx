@@ -48,6 +48,7 @@ function DrawerOverlay({
 function DrawerContent({
   className,
   children,
+  onBlurCapture,
   onFocusOutside,
   onPointerDownOutside,
   onSubmitCapture,
@@ -82,25 +83,17 @@ function DrawerContent({
     )
   }
 
-  function releaseMobileKeyboardOffset(content: HTMLElement) {
+  function isBottomDrawer(content: HTMLElement) {
+    return content.getAttribute("data-vaul-drawer-direction") === "bottom"
+  }
+
+  function resetMobileKeyboardOffsetAfterViewportSettles(content: HTMLElement) {
     if (
       typeof window === "undefined" ||
-      content.getAttribute("data-vaul-drawer-direction") !== "bottom"
+      !isBottomDrawer(content)
     ) {
       return
     }
-
-    const activeElement = document.activeElement
-
-    if (
-      !(activeElement instanceof HTMLElement) ||
-      !content.contains(activeElement) ||
-      !isKeyboardInputElement(activeElement)
-    ) {
-      return
-    }
-
-    activeElement.blur()
 
     const visualViewport = window.visualViewport
     let timeoutId = 0
@@ -144,6 +137,56 @@ function DrawerContent({
     resetAfterViewportSettles()
   }
 
+  function releaseMobileKeyboardOffset(content: HTMLElement) {
+    if (
+      typeof window === "undefined" ||
+      !isBottomDrawer(content)
+    ) {
+      return
+    }
+
+    const activeElement = document.activeElement
+
+    if (
+      !(activeElement instanceof HTMLElement) ||
+      !content.contains(activeElement) ||
+      !isKeyboardInputElement(activeElement)
+    ) {
+      return
+    }
+
+    activeElement.blur()
+    resetMobileKeyboardOffsetAfterViewportSettles(content)
+  }
+
+  function releaseMobileKeyboardOffsetAfterBlur(
+    content: HTMLElement,
+    blurredElement: HTMLElement,
+  ) {
+    if (
+      typeof window === "undefined" ||
+      !isBottomDrawer(content) ||
+      !content.contains(blurredElement) ||
+      !isKeyboardInputElement(blurredElement)
+    ) {
+      return
+    }
+
+    window.setTimeout(() => {
+      const activeElement = document.activeElement
+
+      if (
+        activeElement instanceof HTMLElement &&
+        content.contains(activeElement) &&
+        isKeyboardInputElement(activeElement)
+      ) {
+        return
+      }
+
+      resetMobileKeyboardOffsetAfterViewportSettles(content)
+    }, 0)
+  }
+
   return (
     <DrawerPortal data-slot="drawer-portal">
       <DrawerOverlay />
@@ -165,6 +208,13 @@ function DrawerContent({
 
           if (isPortaledInteractiveEventTarget(event.detail.originalEvent)) {
             event.preventDefault()
+          }
+        }}
+        onBlurCapture={(event) => {
+          onBlurCapture?.(event)
+
+          if (event.target instanceof HTMLElement) {
+            releaseMobileKeyboardOffsetAfterBlur(event.currentTarget, event.target)
           }
         }}
         onSubmitCapture={(event) => {
