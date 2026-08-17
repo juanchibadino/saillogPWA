@@ -1,7 +1,10 @@
 import "server-only"
 
+import serverlessChromium from "@sparticuz/chromium"
 import { readFile } from "node:fs/promises"
 import path from "node:path"
+import { chromium as playwrightChromium } from "playwright"
+import { chromium as playwrightCoreChromium } from "playwright-core"
 
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import type { Database } from "@/types/database"
@@ -99,39 +102,6 @@ type ConditionAggregatePayload = {
 }
 
 type TemplatePayload = Record<string, string>
-
-type BrowserPageLike = {
-  setContent: (
-    html: string,
-    options: { waitUntil: string; timeout: number },
-  ) => Promise<void>
-  waitForTimeout: (timeoutMs: number) => Promise<void>
-  pdf: (options: {
-    format: string
-    printBackground: boolean
-    preferCSSPageSize: boolean
-  }) => Promise<Uint8Array | Buffer>
-}
-
-type BrowserLike = {
-  newPage: () => Promise<BrowserPageLike>
-  close: () => Promise<void>
-}
-
-type PlaywrightLike = {
-  chromium: {
-    launch: (options: {
-      headless: boolean
-      args: string[]
-      executablePath?: string
-    }) => Promise<BrowserLike>
-  }
-}
-
-type ChromiumServerlessLike = {
-  args: string[]
-  executablePath: () => Promise<string>
-}
 
 const PLACEHOLDER_RE = /{{\s*([^}]+?)\s*}}/g
 const CONDITION_FIELDS = ["Sea State", "TWD", "Best", "To Work", "Free Notes"] as const
@@ -285,14 +255,6 @@ async function loadPublicAssetDataUri(input: {
   return `data:${input.mimeType};base64,${asset.toString("base64")}`
 }
 
-async function dynamicImport<T = unknown>(moduleName: string): Promise<T> {
-  const importer = new Function("name", "return import(name)") as (
-    name: string,
-  ) => Promise<unknown>
-
-  return importer(moduleName) as Promise<T>
-}
-
 function toUint8Array(value: Uint8Array | Buffer): Uint8Array {
   return value instanceof Uint8Array ? value : new Uint8Array(value)
 }
@@ -304,8 +266,7 @@ function formatPdfRendererError(error: unknown): string {
 }
 
 async function renderPdfWithPlaywrightPackage(html: string): Promise<Uint8Array> {
-  const playwright = await dynamicImport<PlaywrightLike>("playwright")
-  const browser = await playwright.chromium.launch({
+  const browser = await playwrightChromium.launch({
     headless: true,
     args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
   })
@@ -328,27 +289,12 @@ async function renderPdfWithPlaywrightPackage(html: string): Promise<Uint8Array>
 }
 
 async function renderPdfWithPlaywrightCore(html: string): Promise<Uint8Array> {
-  const chromiumModule = await dynamicImport<{
-    default?: ChromiumServerlessLike
-  } & Partial<ChromiumServerlessLike>>("@sparticuz/chromium")
-  const playwrightCore = await dynamicImport<PlaywrightLike>("playwright-core")
+  const executablePath = await serverlessChromium.executablePath()
 
-  const chromium: ChromiumServerlessLike =
-    chromiumModule.default ??
-    ({
-      args: chromiumModule.args ?? [],
-      executablePath:
-        chromiumModule.executablePath ??
-        (async () => {
-          throw new Error("Missing Chromium executablePath")
-        }),
-    } satisfies ChromiumServerlessLike)
-  const executablePath = await chromium.executablePath()
-
-  const browser = await playwrightCore.chromium.launch({
+  const browser = await playwrightCoreChromium.launch({
     executablePath,
     headless: true,
-    args: chromium.args,
+    args: serverlessChromium.args,
   })
 
   try {
